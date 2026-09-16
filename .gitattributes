@@ -1,0 +1,6 @@
+# Jednolite końce linii na Windowsie i macOS.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ttf binary
+*.jar binary

@@ -1,0 +1,22 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock.bak
+
+# Klucze projektu Supabase – nigdy do repozytorium
+env.json
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Android / iOS generowane lokalnie
+android/.gradle/
+android/local.properties
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Generated.xcconfig
