@@ -133,15 +133,25 @@ class DiscoverScreen extends ConsumerWidget {
   }
 }
 
-class _Header extends StatelessWidget {
+class _Header extends ConsumerWidget {
   const _Header();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final text = Theme.of(context).textTheme;
+    // Bez konta albo bez podanego imienia samo „Witaj!”.
+    final name = ref.watch(profileProvider).value?.firstName?.trim();
+    final greeting = (name == null || name.isEmpty)
+        ? 'Witaj!'
+        : 'Witaj, $name!';
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      child: Text('Najlepsza kuchnia w okolicy', style: text.headlineMedium),
+      child: Text(
+        greeting,
+        style: text.headlineMedium,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
     );
   }
 }

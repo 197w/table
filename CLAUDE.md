@@ -23,7 +23,7 @@ Z użytkownikiem rozmawiamy po polsku. Teksty w aplikacji i komentarze w kodzie 
   (SharedPreferencesAsync), geolocator, url_launcher, add_2_calendar, package_info_plus, flutter_svg.
 - Konfiguracja Supabase w `env.json` (poza repozytorium), przekazywana przez `--dart-define-from-file=env.json`.
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0011, wszystkie wdrożone). Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox`
+  (0001–0011, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok) i `supabase/seed_krakow.sql` (Kraków), oba wgrane. Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox`
   (hook `dev_send_sms_hook`). Gdy użytkownik napisze „kod”, podaj najnowszy `otp` z tej tabeli (jego numer kończy się na 098).
 
 ## Struktura
