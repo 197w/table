@@ -1,4 +1,4 @@
--- Rarytka · migracja 0004
+-- Table · migracja 0004
 -- Wyszukiwanie lokali, ranking kuchni, opinie, zdarzenia i usuwanie konta.
 
 -- ---------------------------------------------------------------

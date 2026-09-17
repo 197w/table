@@ -1,20 +1,21 @@
-# Rarytka
+# Table
 
 Aplikacja do rezerwacji stolików i rankingu kuchni. Ten projekt to wersja dla gości na telefony (Flutter).
 Panel restauracji będzie osobną aplikacją na tablety i komputery, nigdy na telefony.
 Z użytkownikiem rozmawiamy po polsku. Teksty w aplikacji i komentarze w kodzie też są po polsku.
 
-## Stan na 16.09.2026
+## Stan na 17.09.2026
 
-- Aplikacja działa na Androidzie (Galaxy S23). Rozwijana była na Windowsie.
-- **Bieżące zadanie:** pierwsze uruchomienie na iPhonie 14 (iOS 27) z MacBooka Air M2.
-  - Darmowe Apple ID (Personal Team): aplikacja wygasa po 7 dniach, bez push.
-  - Xcode jest pobrany. Do zrobienia: `flutter doctor`, podpisanie w Xcode (Runner → Signing & Capabilities → Team),
-    `flutter run --release -d <iPhone> --dart-define-from-file=env.json`, zaufanie deweloperowi na iPhonie
-    (Ustawienia → Ogólne → VPN i zarządzanie urządzeniem). Tryb dewelopera na iPhonie musi być włączony.
-  - Flutter na Macu ma być w wersji 3.47.4 (tak jak na Windowsie).
-  - Bundle ID: `pl.rarytka.rarytka`. Przy konflikcie z darmowym kontem dodać sufiks, np. `.test`.
-  - iOS deployment target 15.0. Brak Podfile w repozytorium, Flutter wygeneruje go sam.
+- 17.09.2026 aplikacja zmieniła nazwę z „Rarytka” na „Table”. Repozytorium: github.com/197w/table (prywatne).
+  Identyfikator aplikacji na Androidzie i iOS: `pl.table.app` (wcześniej `pl.rarytka.rarytka`).
+- Logo w `design/logo`: `table-1024px` (zielone) to ikona aplikacji dla gości, `table-b-1024px` (niebieskie) czeka na decyzję.
+  Ikony platform: `python tool/generate_icons.py`, potem `dart run flutter_launcher_icons`.
+- **Każda aktualizacja trafia na oba telefony:**
+  - Android: Galaxy S23 podłączony do Windowsa.
+  - iOS: iPhone 14 (iOS 27) podłączony do MacBooka Air M2. Sesja Claude na Macu robi `git pull` i
+    `flutter run --release -d <iPhone> --dart-define-from-file=env.json`.
+  - Darmowe Apple ID (Personal Team): aplikacja na iPhonie wygasa po 7 dniach, bez push.
+  - Flutter na obu komputerach w wersji 3.47.4. iOS deployment target 15.0, Swift Package Manager (bez Podfile).
 
 ## Stos
 

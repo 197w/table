@@ -1,4 +1,4 @@
--- Rarytka · migracja 0001
+-- Table · migracja 0001
 -- Rozszerzenia, profile gości, restauracje, godziny otwarcia i menu.
 
 create extension if not exists postgis with schema extensions;

@@ -1,4 +1,4 @@
--- Rarytka · dane przykładowe: Kraków
+-- Table · dane przykładowe: Kraków
 -- Uruchom po seed.sql. Lokale, adresy, NIP-y i opinie są fikcyjne.
 
 insert into public.restaurants

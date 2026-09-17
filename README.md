@@ -1,4 +1,4 @@
-# Rarytka 0.1 · aplikacja dla gości
+# Table 0.1 · aplikacja dla gości
 
 Pierwsza wersja aplikacji na telefony: odkrywanie lokali, ranking kuchni, menu, opinie,
 rezerwacja stolika z automatycznym doborem i konto gościa logowane numerem telefonu.
@@ -48,7 +48,7 @@ Wgraj cztery pliki Figtree do `assets/fonts`. Instrukcja jest w `assets/fonts/WG
 W folderze projektu:
 
 ```bash
-flutter create --platforms=android,ios --org pl.rarytka --project-name rarytka .
+flutter create --platforms=android,ios --org pl.table --project-name table .
 ```
 
 Polecenie dopisuje tylko brakujące pliki i nie nadpisuje kodu w `lib`.
@@ -80,7 +80,7 @@ W `ios/Runner/Info.plist`, wewnątrz głównego `<dict>`, dodaj:
 
 ```xml
 <key>NSLocationWhenInUseUsageDescription</key>
-<string>Rarytka pokazuje najlepsze lokale w twojej okolicy.</string>
+<string>Table pokazuje najlepsze lokale w twojej okolicy.</string>
 ```
 
 ## 4. Supabase
@@ -149,4 +149,4 @@ flutter run --dart-define-from-file=env.json
 - Wyłącz hook `dev_send_sms_hook` i usuń tabelę `private.dev_sms_outbox`.
 - Podłącz bramkę SMS, na przykład SMSAPI, i ustaw limity wysyłki.
 - Usuń dane przykładowe: `delete from restaurants where is_example;`
-- Zamień robocze logo na docelowe ikony i sprawdź nazwę pakietu `pl.rarytka.rarytka`.
+- Zamień robocze logo na docelowe ikony i sprawdź nazwę pakietu `pl.table.app`.

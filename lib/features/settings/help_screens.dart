@@ -75,7 +75,7 @@ class _ReportBugScreenState extends ConsumerState<ReportBugScreen> {
       if (!mounted) return;
       showMessage(
         context,
-        'Dziękujemy. Zgłoszenie trafiło do zespołu Rarytki.',
+        'Dziękujemy. Zgłoszenie trafiło do zespołu Table.',
       );
       context.pop();
     } catch (e) {

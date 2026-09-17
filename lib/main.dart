@@ -59,7 +59,7 @@ Future<void> main() async {
           ),
         ),
       ],
-      child: const RarytkaApp(),
+      child: const TableApp(),
     ),
   );
 }

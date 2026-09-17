@@ -87,7 +87,7 @@ class _BodyState extends ConsumerState<_Body> {
   Future<void> _addToCalendar() async {
     final d = widget.detail;
     final description = [
-      'Rezerwacja stolika w Rarytce: ${Fmt.people(d.partySize)}.',
+      'Rezerwacja stolika w Table: ${Fmt.people(d.partySize)}.',
       if (d.occasion != null) 'Okazja: ${d.occasion!.label}.',
       'Telefon do lokalu: ${d.phone}',
     ].join('\n');

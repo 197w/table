@@ -1,12 +1,12 @@
 # Ikona aplikacji generowana z plików w assets/icon.
-# Pliki PNG tworzy: node tool/generate_icon_png.js
+# Pliki PNG tworzy: python tool/generate_icons.py
 # Ikony platform tworzy: dart run flutter_launcher_icons
 flutter_launcher_icons:
   image_path: "assets/icon/icon.png"
   android: "launcher_icon"
   ios: true
   remove_alpha_ios: true
-  background_color_ios: "#559C84"
+  background_color_ios: "#579C84"
   min_sdk_android: 24
   adaptive_icon_background: "assets/icon/background.png"
   adaptive_icon_foreground: "assets/icon/foreground.png"

@@ -1,4 +1,4 @@
--- Rarytka · dane przykładowe do testów
+-- Table · dane przykładowe do testów
 -- Uruchom po wszystkich migracjach. Lokale, adresy, NIP-y i opinie są fikcyjne
 -- i oznaczone polem is_example, żeby aplikacja pokazywała je jako przykłady.
 

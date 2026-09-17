@@ -1,4 +1,4 @@
--- Rarytka · migracja 0005
+-- Table · migracja 0005
 -- Wolne terminy, automatyczny dobór stolika, rezerwacja i odwołanie.
 
 create schema if not exists private;

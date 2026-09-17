@@ -1,4 +1,4 @@
--- Rarytka · migracja 0008
+-- Table · migracja 0008
 -- Wybór miasta i ranking najlepszej kuchni w okolicy lokalu.
 
 drop function if exists public.search_restaurants(double precision, double precision, numeric, text, text);

@@ -100,7 +100,7 @@ class _NotificationFormState extends ConsumerState<_NotificationForm> {
           children: [
             SettingsSwitchRow(
               icon: AppIcons.megaphone,
-              title: 'Nowości w Rarytce',
+              title: 'Nowości w Table',
               subtitle: 'Nowe lokale i funkcje aplikacji',
               value: _prefs.news,
               onChanged: (v) => _update(_prefs.copyWith(news: v)),

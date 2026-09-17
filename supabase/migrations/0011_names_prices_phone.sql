@@ -1,4 +1,4 @@
--- Rarytka · migracja 0011
+-- Table · migracja 0011
 -- Imię i nazwisko dla restauracji, cena na osobę w opiniach i automatyczny poziom cen,
 -- opinie zostają po usunięciu konta, kod SMS przy zmianie numeru telefonu.
 

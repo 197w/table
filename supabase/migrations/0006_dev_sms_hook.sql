@@ -1,4 +1,4 @@
--- Rarytka · migracja 0006 · TYLKO DO TESTÓW
+-- Table · migracja 0006 · TYLKO DO TESTÓW
 -- Zamiast wysyłać SMS, Supabase zapisuje kod w tabeli private.dev_sms_outbox.
 -- Kod podejrzysz w panelu: Table Editor, schemat "private".
 -- Przed wydaniem aplikacji wyłącz ten hook i podłącz prawdziwą bramkę SMS.

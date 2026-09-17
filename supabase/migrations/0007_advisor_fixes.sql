@@ -1,4 +1,4 @@
--- Rarytka · migracja 0007
+-- Table · migracja 0007
 -- Poprawki po doradcy bezpieczeństwa i wydajności Supabase.
 
 -- Stała ścieżka wyszukiwania w funkcjach pomocniczych.

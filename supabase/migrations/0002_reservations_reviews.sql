@@ -1,4 +1,4 @@
--- Rarytka · migracja 0002
+-- Table · migracja 0002
 -- Stoliki, rezerwacje z blokadą podwójnej rezerwacji, opinie i zdarzenia.
 
 -- ---------------------------------------------------------------

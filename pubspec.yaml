@@ -1,5 +1,5 @@
-name: rarytka
-description: "Rarytka: rezerwacje stolików i ranking kuchni w okolicy. Aplikacja dla gości."
+name: table
+description: "Table: rezerwacje stolików i ranking kuchni w okolicy. Aplikacja dla gości."
 publish_to: "none"
 version: 0.1.0+1
 

@@ -21,14 +21,14 @@ import '../features/settings/settings_screen.dart';
 import 'shell.dart';
 import 'theme_setting.dart';
 
-class RarytkaApp extends ConsumerStatefulWidget {
-  const RarytkaApp({super.key});
+class TableApp extends ConsumerStatefulWidget {
+  const TableApp({super.key});
 
   @override
-  ConsumerState<RarytkaApp> createState() => _RarytkaAppState();
+  ConsumerState<TableApp> createState() => _TableAppState();
 }
 
-class _RarytkaAppState extends ConsumerState<RarytkaApp>
+class _TableAppState extends ConsumerState<TableApp>
     with WidgetsBindingObserver {
   late final _AuthRefresh _authRefresh;
   late final GoRouter _router;
@@ -77,7 +77,7 @@ class _RarytkaAppState extends ConsumerState<RarytkaApp>
     // Zmiana jest natychmiastowa, bez smużenia kolorów, a stan nawigacji trzyma router.
     return MaterialApp.router(
       key: ValueKey(brightness),
-      title: 'Rarytka',
+      title: 'Table',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.build(palette),
       locale: const Locale('pl', 'PL'),

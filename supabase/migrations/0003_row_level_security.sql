@@ -1,4 +1,4 @@
--- Rarytka · migracja 0003
+-- Table · migracja 0003
 -- Uprawnienia. Domyślnie wszystko jest zablokowane.
 -- Zapis rezerwacji, opinii i zdarzeń odbywa się wyłącznie przez funkcje z migracji 0004.
 

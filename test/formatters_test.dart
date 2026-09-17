@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:rarytka/core/formatters.dart';
-import 'package:rarytka/data/models.dart';
-import 'package:rarytka/features/auth/auth_screens.dart';
+import 'package:table/core/formatters.dart';
+import 'package:table/data/models.dart';
+import 'package:table/features/auth/auth_screens.dart';
 
 void main() {
   group('normalizePolishPhone', () {

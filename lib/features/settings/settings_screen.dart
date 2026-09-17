@@ -87,8 +87,8 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 28),
           Text(
             version == null
-                ? 'Rarytka · wersja testowa'
-                : 'Rarytka $version · wersja testowa',
+                ? 'Table · wersja testowa'
+                : 'Table $version · wersja testowa',
             textAlign: TextAlign.center,
             style: Theme.of(
               context,

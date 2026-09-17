@@ -1,4 +1,4 @@
--- Rarytka · migracja 0010
+-- Table · migracja 0010
 -- Ustawienia powiadomień push i zgłoszenia błędów z aplikacji.
 -- Wszystkie powiadomienia idą przez push. SMS służy wyłącznie do kodów logowania.
 

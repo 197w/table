@@ -1,11 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Rarytka: połączenie z Supabase i lokale w okolicy gościa. -->
+    <!-- Table: połączenie z Supabase i lokale w okolicy gościa. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <application
-        android:label="Rarytka"
+        android:label="Table"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
         <activity

@@ -1,4 +1,4 @@
--- Rarytka · migracja 0009
+-- Table · migracja 0009
 -- Szczegóły rezerwacji z położeniem lokalu. Ranking w okolicy lokalu usunięty z aplikacji.
 
 drop function if exists public.nearby_ranking(uuid, numeric, integer);
