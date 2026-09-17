@@ -1,0 +1,45 @@
+name: table_panel
+description: "Table: panel restauracji na komputery (Windows i macOS)."
+publish_to: "none"
+version: 0.1.0+1
+resolution: workspace
+
+environment:
+  sdk: ^3.12.0
+  flutter: ">=3.47.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  table_core:
+    path: ../../packages/table_core
+  material_ui: ^1.2.0
+  supabase_flutter: ^2.17.2
+  flutter_riverpod: ^3.4.3
+  go_router: ^18.0.1
+  shared_preferences: ^2.5.5
+  window_manager: any
+  intl: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+
+# Ikona panelu: niebieska wersja logo z design/logo/table-b-1024px.png.
+# Generowanie: dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "assets/icon/icon.png"
+  android: false
+  ios: false
+  windows:
+    generate: true
+    image_path: "assets/icon/icon.png"
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: "assets/icon/icon.png"

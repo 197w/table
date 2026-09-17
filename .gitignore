@@ -14,9 +14,14 @@ env.json
 .vscode/
 *.iml
 
-# Android / iOS generowane lokalnie
-android/.gradle/
-android/local.properties
-ios/Pods/
-ios/.symlinks/
-ios/Flutter/Generated.xcconfig
+# Generowane lokalnie: Android, iOS, macOS, Windows
+**/android/.gradle/
+**/android/local.properties
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/ephemeral/
+**/ios/Flutter/flutter_export_environment.sh
+**/macos/Pods/
+**/macos/Flutter/ephemeral/
+**/windows/flutter/ephemeral/

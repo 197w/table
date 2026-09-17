@@ -1,12 +1,12 @@
 """Tworzy pliki ikony aplikacji z logo w design/logo/table-1024px.png.
 
-Wynik w assets/icon:
+Wynik w apps/guest/assets/icon:
 - icon.png: pełna ikona 1024 px (iOS i starszy Android),
 - background.png: sam gradient tła ikony adaptacyjnej Androida,
 - foreground.png i monochrome.png: biały znak na przezroczystym tle,
   wpisany w strefę bezpieczną ikony adaptacyjnej.
 
-Potem: dart run flutter_launcher_icons
+Potem w apps/guest: dart run flutter_launcher_icons
 """
 
 from pathlib import Path
@@ -15,7 +15,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "design" / "logo" / "table-1024px.png"
-OUT = ROOT / "assets" / "icon"
+OUT = ROOT / "apps" / "guest" / "assets" / "icon"
 SIZE = 1024
 
 # Ikona adaptacyjna ma 108 dp, a launcher pokazuje środkowe 72 dp.

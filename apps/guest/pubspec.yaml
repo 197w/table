@@ -1,0 +1,34 @@
+name: table
+description: "Table: rezerwacje stolików i ranking kuchni w okolicy. Aplikacja dla gości."
+publish_to: "none"
+version: 0.1.0+1
+resolution: workspace
+
+environment:
+  sdk: ^3.12.0
+  flutter: ">=3.47.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  table_core:
+    path: ../../packages/table_core
+  material_ui: ^1.2.0
+  supabase_flutter: ^2.17.2
+  flutter_riverpod: ^3.4.3
+  go_router: ^18.0.1
+  url_launcher: ^6.3.2
+  shared_preferences: ^2.5.5
+  geolocator: ^14.0.3
+  intl: any
+  add_2_calendar: ^3.1.1
+  package_info_plus: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
