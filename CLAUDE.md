@@ -12,9 +12,9 @@ Z użytkownikiem rozmawiamy po polsku. Teksty w aplikacji i komentarze w kodzie 
   Ikony platform: `python tool/generate_icons.py`, potem `dart run flutter_launcher_icons`.
 - **Każda aktualizacja trafia na oba telefony:**
   - Android: Galaxy S23 podłączony do Windowsa.
-  - iOS: iPhone 14 (iOS 27) podłączony do MacBooka Air M2. Sesja Claude na Macu robi `git pull` i
-    `flutter run --release -d <iPhone> --dart-define-from-file=env.json`.
-  - Darmowe Apple ID (Personal Team): aplikacja na iPhonie wygasa po 7 dniach, bez push.
+  - iOS: symulator iOS na MacBooku Air M2 (od 17.09.2026 zamiast prywatnego iPhone'a użytkownika).
+    Sesja Claude na Macu robi `git pull` i `flutter run -d <symulator> --dart-define-from-file=env.json`.
+  - Projekt Xcode ma `DEVELOPMENT_TEAM = KHS3GJSPNL` (Personal Team użytkownika). Nie usuwać tej linii.
   - Flutter na obu komputerach w wersji 3.47.4. iOS deployment target 15.0, Swift Package Manager (bez Podfile).
 
 ## Stos
