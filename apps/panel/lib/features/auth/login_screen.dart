@@ -154,7 +154,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                         const SizedBox(height: 24),
                         Text(
-                          'Konto dla lokalu zakłada zespół Table po weryfikacji restauracji. '
+                          'Konto lokalu założysz na stronie internetowej Table. '
                           'Pracowników dodaje właściciel lokalu.',
                           style: text.bodySmall?.copyWith(
                             color: AppColors.textDisabled,

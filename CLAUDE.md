@@ -22,7 +22,8 @@ Z użytkownikiem rozmawiamy po polsku. Teksty w aplikacjach i komentarze w kodzi
 - **Panel restauracji: każda aktualizacja na oba systemy:** Windows na tym komputerze, macOS na MacBooku.
 - Sesja Claude na Macu robi `git pull` i uruchamia aplikacje. Flutter na obu komputerach w wersji 3.47.4.
 - Konto testowe panelu: `panel@table.test`, właściciel Pierogarni Na Mostku (Pro) i Gruzińskiej Chaty (Free).
-  Hasło zna użytkownik, nie zapisujemy go w repozytorium.
+  Drugie konto: `reve@table.test`, właściciel REVE Restaurant (Pro, Białystok, dane adresowe do uzupełnienia).
+  Hasła zna użytkownik, nie zapisujemy ich w repozytorium.
 
 ## Uruchamianie
 
@@ -62,6 +63,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 ## Panel restauracji
 
 - Logowanie e-mailem i hasłem. Obowiązkowe 2FA dodajemy przed wydaniem.
+- Konto restauracji zakłada się wyłącznie na stronie internetowej, którą robimy na samym końcu.
+  W panelu nie ma rejestracji. Do tego czasu konta testowe zakładamy ręcznie w bazie.
 - Role w `restaurant_staff`: owner, manager, staff. Kierownik i właściciel zmieniają salę, menu, dane lokalu
   i odpowiadają na opinie. Obsługa prowadzi rezerwacje. Uprawnień pilnuje baza (RLS i funkcje `panel_*`).
 - Rezerwacje i plan sali tylko w planie Pro. Plan Free widzi opinie, menu, lokal i statystyki wyświetleń.
