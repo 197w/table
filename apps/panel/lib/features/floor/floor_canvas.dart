@@ -356,3 +356,70 @@ bool tablesOverlap(DiningTable a, DiningTable b) {
 
   return bounds(a).deflate(1).overlaps(bounds(b).deflate(1));
 }
+
+/// Rezerwacja zajmująca stolik o danej godzinie i najbliższa kolejna.
+({PanelReservation? current, PanelReservation? next}) tableState(
+  DiningTable table,
+  List<PanelReservation> reservations,
+  DateTime at, {
+  bool seatedCountsNow = true,
+}) {
+  PanelReservation? current;
+  PanelReservation? next;
+  for (final r in reservations) {
+    if (!r.status.isActive || !r.tableIds.contains(table.id)) continue;
+    final seatedNow = seatedCountsNow && r.status == ReservationStatus.seated;
+    if ((!r.startsAt.isAfter(at) || seatedNow) && r.endsAt.isAfter(at)) {
+      current = r;
+    } else if (r.startsAt.isAfter(at) &&
+        (next == null || r.startsAt.isBefore(next.startsAt))) {
+      next = r;
+    }
+  }
+  return (current: current, next: next);
+}
+
+String _shortName(String name) {
+  final parts = name.trim().split(RegExp(r'\s+'));
+  return parts.length > 1 ? parts.last : parts.first;
+}
+
+/// Kolory stolika w podglądzie zajętości.
+TableLook liveTableLook(
+  DiningTable table,
+  List<PanelReservation> reservations,
+  DateTime at, {
+  bool seatedCountsNow = true,
+  bool highlighted = false,
+}) {
+  if (!table.active) {
+    return TableLook(
+      fill: AppColors.surface,
+      stroke: AppColors.ring,
+      caption: 'wyłączony',
+      dimmed: true,
+    );
+  }
+  final state = tableState(table, reservations, at, seatedCountsNow: seatedCountsNow);
+  final current = state.current;
+  if (current != null) {
+    final seated = current.status == ReservationStatus.seated;
+    return TableLook(
+      fill: seated ? AppColors.accentTint : AppColors.warning.withValues(alpha: 0.14),
+      stroke: highlighted
+          ? AppColors.accent
+          : (seated ? AppColors.accent : AppColors.warning),
+      strokeWidth: highlighted ? 3 : 2,
+      caption:
+          '${seated ? 'do' : 'od'} ${Fmt.time(seated ? current.endsAt : current.startsAt)} · ${_shortName(current.guestName)}',
+      captionColor: seated ? AppColors.accent : AppColors.warning,
+    );
+  }
+  final next = state.next;
+  final soon = next != null && next.startsAt.difference(at).inMinutes <= 90;
+  return TableLook(
+    fill: AppColors.surface,
+    stroke: soon ? AppColors.warning : AppColors.ringStrong,
+    caption: next == null ? '${table.seats} os. · wolny' : 'wolny do ${Fmt.time(next.startsAt)}',
+  );
+}

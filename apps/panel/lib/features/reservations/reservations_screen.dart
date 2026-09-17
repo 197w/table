@@ -6,6 +6,7 @@ import 'package:table_core/table_core.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
+import '../floor/floor_canvas.dart';
 import 'reservation_dialogs.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
@@ -40,6 +41,7 @@ class ReservationsScreen extends ConsumerStatefulWidget {
 
 class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
   String? _selectedId;
+  String? _zoneName;
   _Filter _filter = _Filter.all;
 
   Future<void> _pickDay(DateTime current) async {
@@ -167,48 +169,75 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
               ),
               data: (all) {
                 final visible = all.where(_filter.matches).toList();
+                final tables =
+                    ref.watch(tablesProvider(restaurant.id)).value ?? const <DiningTable>[];
+                final zones =
+                    ref.watch(zonesProvider(restaurant.id)).value ?? const <FloorZone>[];
+                final side = SizedBox(
+                  width: 440,
+                  child: selected != null
+                      ? ReservationDetail(
+                          key: ValueKey(selected.id),
+                          reservation: selected,
+                          restaurantId: restaurant.id,
+                          onChanged: () => ref.invalidate(reservationsProvider(query)),
+                          onBack: () => setState(() => _selectedId = null),
+                        )
+                      : Card(
+                          child: visible.isEmpty
+                              ? MessageView(
+                                  icon: AppIcons.calendarDots,
+                                  title: all.isEmpty ? 'Brak rezerwacji' : 'Nic w tym filtrze',
+                                  message: all.isEmpty
+                                      ? 'Rezerwacje z aplikacji pojawią się tu same. Telefoniczne dodasz przyciskiem „Nowa rezerwacja”.'
+                                      : 'Wybierz inny filtr, żeby zobaczyć pozostałe rezerwacje.',
+                                )
+                              : Padding(
+                                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                                  child: _ReservationList(
+                                    items: visible,
+                                    selectedId: _selectedId,
+                                    onSelect: (id) => setState(() => _selectedId = id),
+                                  ),
+                                ),
+                        ),
+                );
+
+                if (tables.isEmpty) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Expanded(
+                        child: MessageView(
+                          icon: AppIcons.squaresFour,
+                          title: 'Sala jest pusta',
+                          message:
+                              'Rozstaw stoliki w zakładce „Plan sali”, a tutaj zobaczysz je razem z rezerwacjami.',
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                      side,
+                    ],
+                  );
+                }
+
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Expanded(
-                      child: visible.isEmpty
-                          ? MessageView(
-                              icon: AppIcons.calendarDots,
-                              title: all.isEmpty
-                                  ? 'Brak rezerwacji'
-                                  : 'Nic w tym filtrze',
-                              message: all.isEmpty
-                                  ? 'Rezerwacje z aplikacji pojawią się tu same. Telefoniczne dodasz przyciskiem „Nowa rezerwacja”.'
-                                  : 'Wybierz inny filtr, żeby zobaczyć pozostałe rezerwacje.',
-                            )
-                          : _ReservationList(
-                              items: visible,
-                              selectedId: _selectedId,
-                              onSelect: (id) =>
-                                  setState(() => _selectedId = id),
-                            ),
+                      child: _PlanPanel(
+                        zones: zones,
+                        tables: tables,
+                        reservations: all,
+                        day: day,
+                        zoneName: _zoneName,
+                        selected: selected,
+                        onZone: (z) => setState(() => _zoneName = z),
+                        onSelectReservation: (id) => setState(() => _selectedId = id),
+                      ),
                     ),
                     const SizedBox(width: 20),
-                    SizedBox(
-                      width: 400,
-                      child: selected == null
-                          ? const Card(
-                              child: MessageView(
-                                icon: AppIcons.list,
-                                title: 'Wybierz rezerwację',
-                                message:
-                                    'Kliknij rezerwację na liście, żeby zobaczyć szczegóły, notatki i akcje.',
-                              ),
-                            )
-                          : ReservationDetail(
-                              key: ValueKey(selected.id),
-                              reservation: selected,
-                              restaurantId: restaurant.id,
-                              onChanged: () => ref.invalidate(
-                                reservationsProvider(query),
-                              ),
-                            ),
-                    ),
+                    side,
                   ],
                 );
               },
@@ -526,11 +555,15 @@ class ReservationDetail extends ConsumerStatefulWidget {
     required this.reservation,
     required this.restaurantId,
     required this.onChanged,
+    required this.onBack,
   });
 
   final PanelReservation reservation;
   final String restaurantId;
   final VoidCallback onChanged;
+
+  /// Powrót do listy rezerwacji w prawej kolumnie.
+  final VoidCallback onBack;
 
   @override
   ConsumerState<ReservationDetail> createState() => _ReservationDetailState();
@@ -609,6 +642,12 @@ class _ReservationDetailState extends ConsumerState<ReservationDetail> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              IconButton(
+                tooltip: 'Wróć do listy',
+                icon: const Glyph(AppIcons.caretLeft, size: 18),
+                onPressed: widget.onBack,
+              ),
+              const SizedBox(width: 4),
               Expanded(child: Text(r.guestName, style: text.titleLarge)),
               const SizedBox(width: 8),
               StatusPill(status: r.status),
@@ -887,6 +926,114 @@ class _Callout extends StatelessWidget {
                   Text(title!, style: theme.labelLarge?.copyWith(color: color)),
                 Text(text, style: theme.bodyMedium),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------
+// Plan sali obok listy rezerwacji
+// ---------------------------------------------------------------
+
+class _PlanPanel extends StatelessWidget {
+  const _PlanPanel({
+    required this.zones,
+    required this.tables,
+    required this.reservations,
+    required this.day,
+    required this.zoneName,
+    required this.selected,
+    required this.onZone,
+    required this.onSelectReservation,
+  });
+
+  final List<FloorZone> zones;
+  final List<DiningTable> tables;
+  final List<PanelReservation> reservations;
+  final DateTime day;
+  final String? zoneName;
+  final PanelReservation? selected;
+  final ValueChanged<String> onZone;
+  final ValueChanged<String> onSelectReservation;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final now = DateTime.now();
+    final isToday = day == dateOnly(now);
+    // Bez wybranej rezerwacji plan pokazuje bieżącą chwilę, a w innym dniu wieczór.
+    final at = selected?.startsAt ??
+        (isToday ? now : DateTime(day.year, day.month, day.day, 18));
+
+    final list = [...zones];
+    for (final t in tables) {
+      if (!list.any((z) => z.name == t.zone)) {
+        list.add(
+          FloorZone(id: null, name: t.zone, widthCm: 1000, heightCm: 700, position: list.length),
+        );
+      }
+    }
+    if (list.isEmpty) return const SizedBox.shrink();
+    final zone = list.firstWhere((z) => z.name == zoneName, orElse: () => list.first);
+    final inZone = tables.where((t) => t.zone == zone.name).toList();
+    final seatedCountsNow = selected == null && isToday;
+
+    return Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Row(
+              children: [
+                if (list.length > 1)
+                  SegmentedTabs<String>(
+                    options: [for (final z in list) (z.name, Fmt.capitalize(z.name))],
+                    selected: zone.name,
+                    onChanged: onZone,
+                  )
+                else
+                  Text(Fmt.capitalize(zone.name), style: text.titleMedium),
+                const Spacer(),
+                Glyph(AppIcons.clock, size: 15, color: AppColors.textMuted),
+                const SizedBox(width: 6),
+                Text(
+                  selected == null
+                      ? (isToday ? 'zajętość teraz' : 'zajętość o ${Fmt.time(at)}')
+                      : 'zajętość o ${Fmt.time(at)}, godzina wybranej rezerwacji',
+                  style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+              child: FloorCanvas(
+                zone: zone,
+                tables: inZone,
+                selectedId: null,
+                lookOf: (t) => liveTableLook(
+                  t,
+                  reservations,
+                  at,
+                  seatedCountsNow: seatedCountsNow,
+                  highlighted: selected?.tableIds.contains(t.id) ?? false,
+                ),
+                onTapTable: (t) {
+                  final state = tableState(
+                    t,
+                    reservations,
+                    at,
+                    seatedCountsNow: seatedCountsNow,
+                  );
+                  final r = state.current ?? state.next;
+                  if (r != null) onSelectReservation(r.id);
+                },
+              ),
             ),
           ),
         ],

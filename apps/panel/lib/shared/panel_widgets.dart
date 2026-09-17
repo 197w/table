@@ -151,13 +151,13 @@ class StatTile extends StatelessWidget {
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
-            if (hint != null)
-              Text(
-                hint!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-              ),
+            // Wiersz podpisu jest zawsze, żeby kafelki w rzędzie miały równą wysokość.
+            Text(
+              hint ?? '',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+            ),
           ],
         ),
       ),

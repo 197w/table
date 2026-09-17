@@ -445,55 +445,8 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     );
   }
 
-  /// Rezerwacja, która w danej chwili zajmuje stolik, i najbliższa kolejna.
-  (PanelReservation?, PanelReservation?) _stateOf(DiningTable t, List<PanelReservation> all) {
-    final at = _viewTime;
-    PanelReservation? current;
-    PanelReservation? next;
-    for (final r in all) {
-      if (!r.status.isActive || !r.tableIds.contains(t.id)) continue;
-      final seatedEarly = r.status == ReservationStatus.seated && _minuteOfDay == null;
-      if ((!r.startsAt.isAfter(at) || seatedEarly) && r.endsAt.isAfter(at)) {
-        current = r;
-      } else if (r.startsAt.isAfter(at) && (next == null || r.startsAt.isBefore(next.startsAt))) {
-        next = r;
-      }
-    }
-    return (current, next);
-  }
-
-  TableLook _liveLook(DiningTable t, List<PanelReservation> reservations) {
-    if (!t.active) {
-      return TableLook(
-        fill: AppColors.surface,
-        stroke: AppColors.ring,
-        caption: 'wyłączony',
-        dimmed: true,
-      );
-    }
-    final (current, next) = _stateOf(t, reservations);
-    if (current != null) {
-      final seated = current.status == ReservationStatus.seated;
-      return TableLook(
-        fill: seated ? AppColors.accentTint : AppColors.warning.withValues(alpha: 0.14),
-        stroke: seated ? AppColors.accent : AppColors.warning,
-        strokeWidth: 2,
-        caption: '${seated ? 'do' : 'od'} ${Fmt.time(seated ? current.endsAt : current.startsAt)} · ${_surname(current.guestName)}',
-        captionColor: seated ? AppColors.accent : AppColors.warning,
-      );
-    }
-    final soon = next != null && next.startsAt.difference(_viewTime).inMinutes <= 90;
-    return TableLook(
-      fill: AppColors.surface,
-      stroke: soon ? AppColors.warning : AppColors.ringStrong,
-      caption: next == null ? '${t.seats} os. · wolny' : 'wolny do ${Fmt.time(next.startsAt)}',
-    );
-  }
-
-  String _surname(String name) {
-    final parts = name.trim().split(RegExp(r'\s+'));
-    return parts.length > 1 ? parts.last : parts.first;
-  }
+  TableLook _liveLook(DiningTable t, List<PanelReservation> reservations) =>
+      liveTableLook(t, reservations, _viewTime, seatedCountsNow: _minuteOfDay == null);
 
   Widget _livePanel(List<DiningTable> tables, List<PanelReservation> reservations) {
     final text = Theme.of(context).textTheme;
@@ -508,7 +461,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       var seats = 0;
       for (final t in active) {
         seats += t.seats;
-        if (_stateOf(t, reservations).$1 != null) busy++;
+        if (tableState(t, reservations, _viewTime, seatedCountsNow: _minuteOfDay == null).current != null) busy++;
       }
       return PanelCard(
         title: 'Sala ${_minuteOfDay == null ? 'teraz' : 'o ${Fmt.time(_viewTime)}'}',
@@ -1087,22 +1040,54 @@ class _Stepper extends StatelessWidget {
   }
 }
 
-Future<String?> _askText(BuildContext context, {required String title, required String label}) {
-  final controller = TextEditingController();
+Future<String?> _askText(
+  BuildContext context, {
+  required String title,
+  required String label,
+}) {
   return showDialog<String>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: Text(title),
+    builder: (context) => _TextDialog(title: title, label: label),
+  );
+}
+
+/// Okno z jednym polem tekstowym. Kontroler żyje tak długo jak okno.
+class _TextDialog extends StatefulWidget {
+  const _TextDialog({required this.title, required this.label});
+
+  final String title;
+  final String label;
+
+  @override
+  State<_TextDialog> createState() => _TextDialogState();
+}
+
+class _TextDialogState extends State<_TextDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final value = _controller.text.trim();
+    if (value.isNotEmpty) Navigator.pop(context, value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
       content: SizedBox(
         width: 360,
         child: TextField(
-          controller: controller,
+          controller: _controller,
           autofocus: true,
           maxLength: 40,
-          decoration: InputDecoration(labelText: label),
-          onSubmitted: (v) {
-            if (v.trim().isNotEmpty) Navigator.pop(context, v.trim());
-          },
+          decoration: InputDecoration(labelText: widget.label, counterText: ''),
+          onSubmitted: (_) => _submit(),
         ),
       ),
       actions: [
@@ -1111,14 +1096,8 @@ Future<String?> _askText(BuildContext context, {required String title, required 
           style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
           child: const Text('Anuluj'),
         ),
-        FilledButton(
-          onPressed: () {
-            final v = controller.text.trim();
-            if (v.isNotEmpty) Navigator.pop(context, v);
-          },
-          child: const Text('Dodaj'),
-        ),
+        FilledButton(onPressed: _submit, child: const Text('Dodaj')),
       ],
-    ),
-  ).whenComplete(controller.dispose);
+    );
+  }
 }

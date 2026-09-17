@@ -422,21 +422,61 @@ Future<String?> _askName(
   required String action,
   String initial = '',
 }) {
-  final controller = TextEditingController(text: initial);
   return showDialog<String>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: Text(title),
+    builder: (context) => _NameDialog(
+      title: title,
+      action: action,
+      label: 'Nazwa',
+      initial: initial,
+    ),
+  );
+}
+
+/// Okno z jednym polem tekstowym. Kontroler żyje tak długo jak okno.
+class _NameDialog extends StatefulWidget {
+  const _NameDialog({
+    required this.title,
+    required this.action,
+    required this.label,
+    this.initial = '',
+  });
+
+  final String title;
+  final String action;
+  final String label;
+  final String initial;
+
+  @override
+  State<_NameDialog> createState() => _NameDialogState();
+}
+
+class _NameDialogState extends State<_NameDialog> {
+  late final _controller = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final value = _controller.text.trim();
+    if (value.isNotEmpty) Navigator.pop(context, value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
       content: SizedBox(
         width: 380,
         child: TextField(
-          controller: controller,
+          controller: _controller,
           autofocus: true,
           maxLength: 60,
-          decoration: const InputDecoration(labelText: 'Nazwa'),
-          onSubmitted: (v) {
-            if (v.trim().isNotEmpty) Navigator.pop(context, v.trim());
-          },
+          decoration: InputDecoration(labelText: widget.label, counterText: ''),
+          onSubmitted: (_) => _submit(),
         ),
       ),
       actions: [
@@ -445,16 +485,10 @@ Future<String?> _askName(
           style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
           child: const Text('Anuluj'),
         ),
-        FilledButton(
-          onPressed: () {
-            final v = controller.text.trim();
-            if (v.isNotEmpty) Navigator.pop(context, v);
-          },
-          child: Text(action),
-        ),
+        FilledButton(onPressed: _submit, child: Text(widget.action)),
       ],
-    ),
-  ).whenComplete(controller.dispose);
+    );
+  }
 }
 
 class _ItemDialog extends ConsumerStatefulWidget {
