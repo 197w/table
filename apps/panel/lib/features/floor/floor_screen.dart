@@ -538,7 +538,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
   TableLook _editLook(DiningTable t, bool overlaps) {
     return TableLook(
       fill: overlaps ? AppColors.error.withValues(alpha: 0.12) : AppColors.surfaceRaised,
-      stroke: overlaps ? AppColors.error : AppColors.ringStrong,
+      stroke: overlaps ? AppColors.error : planLine,
       caption: t.isSeat ? null : '${t.seats} os.',
       captionColor: overlaps ? AppColors.error : null,
       dimmed: !t.active,
@@ -715,7 +715,7 @@ class _Legend extends StatelessWidget {
         item(AppColors.accentTint, AppColors.accent, 'Goście przy stoliku'),
         item(AppColors.warning.withValues(alpha: 0.14), AppColors.warning, 'Zarezerwowany na tę godzinę'),
         item(AppColors.surface, AppColors.warning, 'Wolny, rezerwacja w ciągu 90 minut'),
-        item(AppColors.surface, AppColors.ringStrong, 'Wolny'),
+        item(AppColors.surface, planLine, 'Wolny'),
       ],
     );
   }

@@ -328,14 +328,7 @@ class _HoursFormState extends ConsumerState<_HoursForm> {
 
   Future<void> _pick(int day, bool opens) async {
     final d = _days[day];
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: opens ? d.opens : d.closes,
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-        child: child!,
-      ),
-    );
+    final picked = await pickTime(context, initial: opens ? d.opens : d.closes);
     if (picked == null) return;
     setState(() => opens ? d.opens = picked : d.closes = picked);
   }

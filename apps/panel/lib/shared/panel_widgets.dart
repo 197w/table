@@ -327,3 +327,131 @@ String groszeToText(int grosze) {
   final gr = grosze % 100;
   return gr == 0 ? '$zl' : '$zl,${gr.toString().padLeft(2, '0')}';
 }
+
+/// Wybór godziny jako siatka godzin i minut. Czytelniejszy niż systemowa tarcza zegara.
+Future<TimeOfDay?> pickTime(
+  BuildContext context, {
+  required TimeOfDay initial,
+  String title = 'Wybierz godzinę',
+  int minuteStep = 15,
+}) {
+  return showDialog<TimeOfDay>(
+    context: context,
+    builder: (_) => _TimeGridDialog(
+      initial: initial,
+      title: title,
+      minuteStep: minuteStep,
+    ),
+  );
+}
+
+class _TimeGridDialog extends StatefulWidget {
+  const _TimeGridDialog({
+    required this.initial,
+    required this.title,
+    required this.minuteStep,
+  });
+
+  final TimeOfDay initial;
+  final String title;
+  final int minuteStep;
+
+  @override
+  State<_TimeGridDialog> createState() => _TimeGridDialogState();
+}
+
+class _TimeGridDialogState extends State<_TimeGridDialog> {
+  late int _hour = widget.initial.hour;
+  late int _minute = widget.initial.minute;
+
+  String _two(int v) => v.toString().padLeft(2, '0');
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final minutes = <int>{
+      for (var m = 0; m < 60; m += widget.minuteStep) m,
+      widget.initial.minute,
+    }.toList()
+      ..sort();
+
+    Widget cell(String label, bool selected, VoidCallback onTap) {
+      return Material(
+        color: selected ? AppColors.accentFill : AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Center(
+            child: Text(
+              label,
+              style: text.titleSmall?.copyWith(
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: selected ? AppColors.onAccent : AppColors.text,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget grid(List<Widget> children) => GridView.count(
+      crossAxisCount: 6,
+      shrinkWrap: true,
+      mainAxisSpacing: 6,
+      crossAxisSpacing: 6,
+      childAspectRatio: 1.6,
+      physics: const NeverScrollableScrollPhysics(),
+      children: children,
+    );
+
+    return AlertDialog(
+      title: Row(
+        children: [
+          Expanded(child: Text(widget.title)),
+          Text(
+            '${_two(_hour)}:${_two(_minute)}',
+            style: text.headlineMedium?.copyWith(
+              color: AppColors.accent,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Godzina', style: text.labelLarge?.copyWith(color: AppColors.textMuted)),
+            const SizedBox(height: 8),
+            grid([
+              for (var h = 0; h < 24; h++)
+                cell(_two(h), h == _hour, () => setState(() => _hour = h)),
+            ]),
+            const SizedBox(height: 16),
+            Text('Minuty', style: text.labelLarge?.copyWith(color: AppColors.textMuted)),
+            const SizedBox(height: 8),
+            grid([
+              for (final m in minutes)
+                cell(_two(m), m == _minute, () => setState(() => _minute = m)),
+            ]),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+          child: const Text('Anuluj'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, TimeOfDay(hour: _hour, minute: _minute)),
+          child: const Text('Wybierz'),
+        ),
+      ],
+    );
+  }
+}

@@ -130,15 +130,27 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
               onPressed: () => _pickDay(day),
             ),
             const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: () => _create(restaurant.id, ReservationSource.walkIn),
-              icon: const Glyph(AppIcons.doorOpen, size: 18),
-              label: const Text('Gość z ulicy'),
+            Tooltip(
+              message: 'Gość z ulicy',
+              child: OutlinedButton(
+                onPressed: () => _create(restaurant.id, ReservationSource.walkIn),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(44, 40),
+                  padding: EdgeInsets.zero,
+                ),
+                child: const Glyph(AppIcons.doorOpen, size: 18),
+              ),
             ),
-            FilledButton.icon(
-              onPressed: () => _create(restaurant.id, ReservationSource.phone),
-              icon: const Glyph(AppIcons.plus, size: 18),
-              label: const Text('Nowa rezerwacja'),
+            Tooltip(
+              message: 'Nowa rezerwacja',
+              child: FilledButton(
+                onPressed: () => _create(restaurant.id, ReservationSource.phone),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(44, 40),
+                  padding: EdgeInsets.zero,
+                ),
+                child: const Glyph(AppIcons.plus, size: 18),
+              ),
             ),
           ],
           below: Column(
@@ -191,7 +203,7 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                                   icon: AppIcons.calendarDots,
                                   title: all.isEmpty ? 'Brak rezerwacji' : 'Nic w tym filtrze',
                                   message: all.isEmpty
-                                      ? 'Rezerwacje z aplikacji pojawią się tu same. Telefoniczne dodasz przyciskiem „Nowa rezerwacja”.'
+                                      ? 'Rezerwacje z aplikacji pojawią się tu same. Telefoniczne dodasz przyciskiem z plusem u góry.'
                                       : 'Wybierz inny filtr, żeby zobaczyć pozostałe rezerwacje.',
                                 )
                               : Padding(

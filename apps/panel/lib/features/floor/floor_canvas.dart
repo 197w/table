@@ -80,6 +80,20 @@ Offset _rotate(Offset p, double degrees) {
   );
 }
 
+bool get _lightTheme => AppColors.palette.brightness == Brightness.light;
+
+/// Obrys stolików i ścian strefy. W jasnym motywie pierścienie są zbyt blade, więc linia jest ciemniejsza.
+Color get planLine => _lightTheme ? const Color(0x8A000000) : AppColors.ringStrong;
+
+/// Kratka co 50 cm.
+Color get planGrid => _lightTheme ? const Color(0x21000000) : AppColors.ring;
+
+/// Krzesła.
+Color get planChair => _lightTheme ? const Color(0xFFB3B9B6) : AppColors.ringStrong;
+
+/// Obrys wyłączonego stolika.
+Color get planLineMuted => _lightTheme ? const Color(0x4D000000) : AppColors.ring;
+
 /// Kolor stałych elementów sali: jasnoszary w obu motywach.
 Color elementFill(BuildContext context) =>
     Theme.of(context).brightness == Brightness.dark
@@ -168,11 +182,11 @@ class FloorCanvas extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: AppColors.surface,
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: AppColors.ringStrong),
+                        border: Border.all(color: planLine),
                       ),
                       child: showGrid
                           ? CustomPaint(
-                              painter: _GridPainter(scale: scale, color: AppColors.ring),
+                              painter: _GridPainter(scale: scale, color: planGrid),
                             )
                           : null,
                     ),
@@ -275,7 +289,7 @@ class FloorCanvas extends StatelessWidget {
                 fill: look.fill,
                 stroke: selected ? AppColors.accent : look.stroke,
                 strokeWidth: selected ? 2.5 : look.strokeWidth,
-                chairColor: AppColors.ringStrong,
+                chairColor: planChair,
                 dimmed: look.dimmed,
               ),
             ),
@@ -521,7 +535,7 @@ TableLook liveTableLook(
   if (!table.active) {
     return TableLook(
       fill: AppColors.surface,
-      stroke: AppColors.ring,
+      stroke: planLineMuted,
       caption: 'wyłączony',
       dimmed: true,
     );
@@ -545,7 +559,7 @@ TableLook liveTableLook(
   final soon = next != null && next.startsAt.difference(at).inMinutes <= 90;
   return TableLook(
     fill: AppColors.surface,
-    stroke: highlighted ? AppColors.accent : (soon ? AppColors.warning : AppColors.ringStrong),
+    stroke: highlighted ? AppColors.accent : (soon ? AppColors.warning : planLine),
     strokeWidth: highlighted ? 3 : 1.5,
     caption: next == null
         ? (table.isSeat ? 'wolne' : '${table.seats} os. · wolny')

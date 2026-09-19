@@ -78,14 +78,7 @@ class _NewReservationDialogState extends ConsumerState<NewReservationDialog> {
   }
 
   Future<void> _pickTime() async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: _time,
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-        child: child!,
-      ),
-    );
+    final picked = await pickTime(context, initial: _time);
     if (picked != null) setState(() => _time = picked);
   }
 

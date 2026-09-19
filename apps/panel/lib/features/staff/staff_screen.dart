@@ -619,14 +619,7 @@ class _AvailabilityDialogState extends ConsumerState<_AvailabilityDialog> {
   }
 
   Future<void> _pick(bool start) async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: start ? _starts : _ends,
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-        child: child!,
-      ),
-    );
+    final picked = await pickTime(context, initial: start ? _starts : _ends);
     if (picked != null) setState(() => start ? _starts = picked : _ends = picked);
   }
 

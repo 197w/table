@@ -6,7 +6,6 @@ import 'package:table_core/table_core.dart';
 import '../data/models.dart';
 import '../data/providers.dart';
 import '../features/auth/login_screen.dart';
-import '../shared/panel_widgets.dart';
 import 'app.dart';
 
 /// Układ panelu: boczne menu z wyborem lokalu i treść sekcji.
