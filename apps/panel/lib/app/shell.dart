@@ -6,6 +6,7 @@ import 'package:table_core/table_core.dart';
 import '../data/models.dart';
 import '../data/providers.dart';
 import '../features/auth/login_screen.dart';
+import '../shared/panel_widgets.dart';
 import 'app.dart';
 
 /// Układ panelu: boczne menu z wyborem lokalu i treść sekcji.
@@ -57,13 +58,24 @@ class _NavItem {
   final AppIconData icon;
 }
 
-const _items = [
-  _NavItem(PanelRoutes.reservations, 'Rezerwacje', AppIcons.calendarDots),
-  _NavItem(PanelRoutes.floor, 'Plan sali', AppIcons.squaresFour),
-  _NavItem(PanelRoutes.menu, 'Menu', AppIcons.bookOpen),
-  _NavItem(PanelRoutes.profile, 'Lokal', AppIcons.storefront),
-  _NavItem(PanelRoutes.reviews, 'Opinie', AppIcons.chatCircle),
-  _NavItem(PanelRoutes.stats, 'Statystyki', AppIcons.chartBar),
+/// Sekcje panelu pogrupowane według tego, kto i kiedy z nich korzysta.
+const _groups = <(String, List<_NavItem>)>[
+  ('Sala', [
+    _NavItem(PanelRoutes.reservations, 'Rezerwacje', AppIcons.calendarDots),
+    _NavItem(PanelRoutes.floor, 'Plan sali', AppIcons.squaresFour),
+  ]),
+  ('Zespół', [
+    _NavItem(PanelRoutes.staff, 'Pracownicy', AppIcons.users),
+  ]),
+  ('Lokal', [
+    _NavItem(PanelRoutes.profile, 'Dane lokalu', AppIcons.storefront),
+    _NavItem(PanelRoutes.menu, 'Menu', AppIcons.bookOpen),
+    _NavItem(PanelRoutes.giftCards, 'Karty podarunkowe', AppIcons.envelope),
+  ]),
+  ('Wyniki', [
+    _NavItem(PanelRoutes.reviews, 'Opinie', AppIcons.chatCircle),
+    _NavItem(PanelRoutes.stats, 'Statystyki', AppIcons.chartBar),
+  ]),
 ];
 
 class _Sidebar extends ConsumerWidget {
@@ -99,14 +111,32 @@ class _Sidebar extends ConsumerWidget {
           const SizedBox(height: 20),
           if (current != null)
             _RestaurantSwitcher(current: current, restaurants: list),
-          const SizedBox(height: 16),
-          for (final item in _items)
-            _SidebarButton(
-              item: item,
-              selected: location.startsWith(item.route),
-              onTap: () => context.go(item.route),
+          const SizedBox(height: 8),
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                for (final (title, items) in _groups) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 14, 10, 6),
+                    child: Text(
+                      title.toUpperCase(),
+                      style: text.labelSmall?.copyWith(
+                        color: AppColors.textDisabled,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  for (final item in items)
+                    _SidebarButton(
+                      item: item,
+                      selected: location.startsWith(item.route),
+                      onTap: () => context.go(item.route),
+                    ),
+                ],
+              ],
             ),
-          const Spacer(),
+          ),
           Divider(color: AppColors.ring),
           const SizedBox(height: 10),
           Padding(
@@ -228,7 +258,7 @@ class _RestaurantSwitcher extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          RestaurantMark(name: current.name, size: 34, radius: 8),
+          RestaurantLogo(name: current.name, logoUrl: current.logoUrl, size: 34, radius: 8),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

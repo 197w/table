@@ -173,6 +173,8 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                     ref.watch(tablesProvider(restaurant.id)).value ?? const <DiningTable>[];
                 final zones =
                     ref.watch(zonesProvider(restaurant.id)).value ?? const <FloorZone>[];
+                final elements =
+                    ref.watch(elementsProvider(restaurant.id)).value ?? const <FloorElement>[];
                 final side = SizedBox(
                   width: 440,
                   child: selected != null
@@ -228,6 +230,7 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                       child: _PlanPanel(
                         zones: zones,
                         tables: tables,
+                        elements: elements,
                         reservations: all,
                         day: day,
                         zoneName: _zoneName,
@@ -942,6 +945,7 @@ class _PlanPanel extends StatelessWidget {
   const _PlanPanel({
     required this.zones,
     required this.tables,
+    required this.elements,
     required this.reservations,
     required this.day,
     required this.zoneName,
@@ -952,6 +956,7 @@ class _PlanPanel extends StatelessWidget {
 
   final List<FloorZone> zones;
   final List<DiningTable> tables;
+  final List<FloorElement> elements;
   final List<PanelReservation> reservations;
   final DateTime day;
   final String? zoneName;
@@ -1015,6 +1020,9 @@ class _PlanPanel extends StatelessWidget {
               child: FloorCanvas(
                 zone: zone,
                 tables: inZone,
+                elements: elements.where((e) => e.zone == zone.name).toList(),
+                // Kratka pomaga przy rozstawianiu, więc jest tylko w zakładce „Plan sali”.
+                showGrid: false,
                 selectedId: null,
                 lookOf: (t) => liveTableLook(
                   t,

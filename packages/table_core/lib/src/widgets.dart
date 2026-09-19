@@ -628,3 +628,36 @@ class _DropdownItem extends StatelessWidget {
     );
   }
 }
+
+/// Logo lokalu z internetu, a bez logo znak z inicjałami.
+class RestaurantLogo extends StatelessWidget {
+  const RestaurantLogo({
+    super.key,
+    required this.name,
+    required this.logoUrl,
+    this.size = 56,
+    this.radius,
+  });
+
+  final String name;
+  final String? logoUrl;
+  final double size;
+  final double? radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = logoUrl;
+    final fallback = RestaurantMark(name: name, size: size, radius: radius);
+    if (url == null) return fallback;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius ?? size / 4),
+      child: Image.network(
+        url,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => fallback,
+      ),
+    );
+  }
+}

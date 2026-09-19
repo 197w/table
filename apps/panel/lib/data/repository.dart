@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:table_core/table_core.dart';
@@ -159,6 +160,16 @@ class PanelRepository {
     });
   }
 
+  Future<List<FloorElement>> elements(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db
+          .from('floor_elements')
+          .select()
+          .eq('restaurant_id', restaurantId);
+      return rows.map(FloorElement.fromJson).toList();
+    });
+  }
+
   /// Zapisuje cały układ sali: najpierw usuwa, potem zmienia i dodaje.
   Future<void> saveFloor({
     required String restaurantId,
@@ -166,10 +177,28 @@ class PanelRepository {
     required List<String> deletedZoneIds,
     required List<DiningTable> tables,
     required List<String> deletedTableIds,
+    required List<FloorElement> elements,
+    required List<String> deletedElementIds,
   }) {
     return _guard(() async {
       if (deletedTableIds.isNotEmpty) {
         await _db.from('dining_tables').delete().inFilter('id', deletedTableIds);
+      }
+      if (deletedElementIds.isNotEmpty) {
+        await _db.from('floor_elements').delete().inFilter('id', deletedElementIds);
+      }
+
+      final keptElements = elements.where((e) => e.id != null).toList();
+      final newElements = elements.where((e) => e.id == null).toList();
+      if (keptElements.isNotEmpty) {
+        await _db
+            .from('floor_elements')
+            .upsert([for (final e in keptElements) e.toJson(restaurantId)]);
+      }
+      if (newElements.isNotEmpty) {
+        await _db
+            .from('floor_elements')
+            .insert([for (final e in newElements) e.toJson(restaurantId)]);
       }
 
       for (var i = 0; i < zones.length; i++) {
@@ -216,7 +245,7 @@ class PanelRepository {
       final row = await _db
           .from('restaurants')
           .select(
-            'id, name, cuisine, description, address, city, phone, slot_interval_min, price_level, '
+            'id, name, cuisine, description, address, city, phone, slot_interval_min, price_level, logo_url, '
             'opening_hours(weekday, opens, closes)',
           )
           .eq('id', restaurantId)
@@ -363,6 +392,160 @@ class PanelRepository {
           .map((e) => DayStat.fromJson(e as Map<String, dynamic>))
           .toList();
     });
+  }
+
+  // -------------------------------------------------------------
+  // Logo lokalu
+  // -------------------------------------------------------------
+
+  static const logoBucket = 'restaurant-logos';
+
+  /// Wgrywa logo do Storage i zapisuje jego publiczny adres w profilu lokalu.
+  Future<String> uploadLogo({
+    required String restaurantId,
+    required Uint8List bytes,
+    required String extension,
+  }) {
+    return _guard(() async {
+      final ext = extension.toLowerCase() == 'jpeg' ? 'jpg' : extension.toLowerCase();
+      final contentType = switch (ext) {
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        _ => 'image/jpeg',
+      };
+      // Nowa nazwa przy każdej zmianie, żeby aplikacje nie pokazywały starego logo z pamięci podręcznej.
+      final path = '$restaurantId/logo-${DateTime.now().millisecondsSinceEpoch}.$ext';
+      await _db.storage.from(logoBucket).uploadBinary(
+        path,
+        bytes,
+        fileOptions: FileOptions(contentType: contentType, upsert: true),
+      );
+      final url = _db.storage.from(logoBucket).getPublicUrl(path);
+      await updateProfile(restaurantId, {'logo_url': url});
+      return url;
+    });
+  }
+
+  Future<void> removeLogo(String restaurantId) {
+    return updateProfile(restaurantId, {'logo_url': null});
+  }
+
+  // -------------------------------------------------------------
+  // Pracownicy i dyspozycyjność
+  // -------------------------------------------------------------
+
+  Future<List<StaffMember>> staff(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db
+          .from('staff_members')
+          .select()
+          .eq('restaurant_id', restaurantId)
+          .order('name');
+      return rows.map(StaffMember.fromJson).toList();
+    });
+  }
+
+  Future<void> saveStaffMember({
+    required String restaurantId,
+    String? id,
+    required String name,
+    String? position,
+    String? phone,
+    required int color,
+    bool active = true,
+  }) {
+    String? clean(String? v) => (v == null || v.trim().isEmpty) ? null : v.trim();
+    final row = {
+      'restaurant_id': restaurantId,
+      'name': name.trim(),
+      'position': clean(position),
+      'phone': clean(phone),
+      'color': color,
+      'active': active,
+    };
+    return _guard(
+      () => id == null
+          ? _db.from('staff_members').insert(row)
+          : _db.from('staff_members').update(row).eq('id', id),
+    );
+  }
+
+  Future<void> deleteStaffMember(String id) {
+    return _guard(() => _db.from('staff_members').delete().eq('id', id));
+  }
+
+  Future<List<Availability>> availability({
+    required String restaurantId,
+    required DateTime from,
+    required DateTime to,
+  }) {
+    String d(DateTime x) =>
+        '${x.year}-${x.month.toString().padLeft(2, '0')}-${x.day.toString().padLeft(2, '0')}';
+    return _guard(() async {
+      final rows = await _db
+          .from('staff_availability')
+          .select()
+          .eq('restaurant_id', restaurantId)
+          .gte('day', d(from))
+          .lt('day', d(to))
+          .order('starts');
+      return rows.map(Availability.fromJson).toList();
+    });
+  }
+
+  Future<void> saveAvailability({
+    required String restaurantId,
+    String? id,
+    required String memberId,
+    required DateTime day,
+    required String starts,
+    required String ends,
+    String? note,
+  }) {
+    final row = {
+      'restaurant_id': restaurantId,
+      'member_id': memberId,
+      'day':
+          '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}',
+      'starts': starts,
+      'ends': ends,
+      'note': (note == null || note.trim().isEmpty) ? null : note.trim(),
+    };
+    return _guard(
+      () => id == null
+          ? _db.from('staff_availability').insert(row)
+          : _db.from('staff_availability').update(row).eq('id', id),
+    );
+  }
+
+  Future<void> deleteAvailability(String id) {
+    return _guard(() => _db.from('staff_availability').delete().eq('id', id));
+  }
+
+  // -------------------------------------------------------------
+  // Karty podarunkowe
+  // -------------------------------------------------------------
+
+  Future<List<GiftCard>> giftCards(String restaurantId, {String? code}) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>(
+        'panel_gift_cards',
+        params: {'p_restaurant_id': restaurantId, 'p_code': code},
+      );
+      return rows
+          .map((e) => GiftCard.fromJson(e as Map<String, dynamic>))
+          .toList();
+    });
+  }
+
+  /// Pobiera kwotę z karty. Zwraca saldo po operacji w groszach.
+  Future<int> redeemGiftCard(String cardId, int amountGrosze) {
+    return _guard(
+      () => _db.rpc<int>(
+        'panel_redeem_gift_card',
+        params: {'p_card_id': cardId, 'p_amount_grosze': amountGrosze},
+      ),
+    );
   }
 
   // -------------------------------------------------------------

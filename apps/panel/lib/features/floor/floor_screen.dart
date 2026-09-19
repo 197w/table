@@ -35,7 +35,9 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
   // Edycja: kopia robocza układu.
   List<FloorZone> _zones = [];
   List<DiningTable> _tables = [];
+  List<FloorElement> _elements = [];
   final List<String> _deletedTables = [];
+  final List<String> _deletedElements = [];
   final List<String> _deletedZones = [];
   bool _dirty = false;
   bool _saving = false;
@@ -61,7 +63,11 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     return DateTime(d.year, d.month, d.day, m ~/ 60, m % 60);
   }
 
-  void _startEditing(List<FloorZone> zones, List<DiningTable> tables) {
+  void _startEditing(
+    List<FloorZone> zones,
+    List<DiningTable> tables,
+    List<FloorElement> elements,
+  ) {
     final all = [...zones];
     for (final t in tables) {
       if (!all.any((z) => z.name == t.zone)) {
@@ -71,7 +77,9 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     setState(() {
       _zones = all;
       _tables = [...tables];
+      _elements = [...elements];
       _deletedTables.clear();
+      _deletedElements.clear();
       _deletedZones.clear();
       _dirty = false;
       _mode = _Mode.edit;
@@ -109,9 +117,9 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     });
   }
 
-  void _addTable(FloorZone zone) {
-    var n = _tables.length + 1;
-    String label() => 'S$n';
+  void _addTable(FloorZone zone, {bool seat = false}) {
+    var n = seat ? 1 : _tables.length + 1;
+    String label() => seat ? 'M$n' : 'S$n';
     while (_tables.any((t) => t.label == label())) {
       n++;
     }
@@ -119,21 +127,72 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       id: null,
       draftKey: 'nowy-${DateTime.now().microsecondsSinceEpoch}',
       label: label(),
-      seats: 4,
-      widthCm: 120,
-      heightCm: 80,
+      kind: seat ? TableKind.seat : TableKind.table,
+      seats: seat ? 1 : 4,
+      widthCm: seat ? 45 : 120,
+      heightCm: seat ? 45 : 80,
       zone: zone.name,
       priority: 0,
       active: true,
       xCm: zone.widthCm ~/ 2,
       yCm: zone.heightCm ~/ 2,
       rotation: 0,
-      shape: TableShape.rect,
+      shape: seat ? TableShape.round : TableShape.rect,
     );
     setState(() {
       _tables = [..._tables, table];
       _selectedKey = FloorCanvas.keyOf(table);
       _dirty = true;
+    });
+  }
+
+  void _addElement(FloorZone zone) {
+    final element = FloorElement(
+      id: null,
+      draftKey: 'element-${DateTime.now().microsecondsSinceEpoch}',
+      zone: zone.name,
+      xCm: zone.widthCm ~/ 2,
+      yCm: zone.heightCm ~/ 2,
+      widthCm: 200,
+      heightCm: 60,
+      rotation: 0,
+      shape: TableShape.rect,
+    );
+    setState(() {
+      _elements = [..._elements, element];
+      _selectedKey = element.key;
+      _dirty = true;
+    });
+  }
+
+  void _updateElement(FloorElement element, FloorElement Function(FloorElement) change) {
+    setState(() {
+      _elements = [
+        for (final e in _elements)
+          if (e.key == element.key) change(e) else e,
+      ];
+      _selectedKey = element.key;
+      _dirty = true;
+    });
+  }
+
+  void _deleteElement(FloorElement element) {
+    setState(() {
+      _elements = _elements.where((e) => e.key != element.key).toList();
+      if (element.id != null) _deletedElements.add(element.id!);
+      _selectedKey = null;
+      _dirty = true;
+    });
+  }
+
+  /// Przesuwa jedno krzesło. Przy pierwszej zmianie automatyczne rozstawienie staje się własnym.
+  void _dragChair(DiningTable table, int index, Offset deltaCm) {
+    _update(table, (t) {
+      final chairs = [...chairsOf(t)];
+      if (index >= chairs.length) return t;
+      final c = chairs[index];
+      chairs[index] = ChairPos(c.x + deltaCm.dx, c.y + deltaCm.dy);
+      return t.copyWith(chairs: chairs);
     });
   }
 
@@ -223,10 +282,13 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
         deletedZoneIds: _deletedZones,
         tables: _tables,
         deletedTableIds: _deletedTables,
+        elements: _elements,
+        deletedElementIds: _deletedElements,
       );
       ref
         ..invalidate(zonesProvider(restaurantId))
-        ..invalidate(tablesProvider(restaurantId));
+        ..invalidate(tablesProvider(restaurantId))
+        ..invalidate(elementsProvider(restaurantId));
       if (!mounted) return;
       setState(() {
         _mode = _Mode.live;
@@ -261,6 +323,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
 
     final zonesAsync = ref.watch(zonesProvider(restaurant.id));
     final tablesAsync = ref.watch(tablesProvider(restaurant.id));
+    final elementsAsync = ref.watch(elementsProvider(restaurant.id));
     final today = dateOnly(_now);
     final reservations =
         ref.watch(reservationsProvider((restaurantId: restaurant.id, day: today))).value ??
@@ -279,6 +342,12 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     final editing = _mode == _Mode.edit;
     final zones = editing ? _zones : zonesAsync.value!;
     final tables = editing ? _tables : tablesAsync.value!;
+    final elements = editing ? _elements : (elementsAsync.value ?? const <FloorElement>[]);
+    void startEditing() => _startEditing(
+      zonesAsync.value!,
+      tablesAsync.value!,
+      elementsAsync.value ?? const [],
+    );
 
     // Stoliki ze strefą, której nie ma w tabeli stref, pokazujemy w strefie o domyślnych wymiarach.
     final zoneList = [...zones];
@@ -294,12 +363,12 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
         PageHeader(
           title: 'Plan sali',
           subtitle: editing
-              ? 'Przeciągnij stolik, żeby go przesunąć. Pozycja przyciąga się co 10 cm.'
+              ? 'Przeciągaj stoliki, krzesła zaznaczonego stolika i stałe elementy. Pozycja przyciąga się co 10 cm.'
               : 'Zajętość stolików ${_minuteOfDay == null ? 'teraz' : 'dziś o ${Fmt.time(_viewTime)}'}. Odświeża się sama.',
           actions: [
             if (!editing && restaurant.canManage)
               OutlinedButton.icon(
-                onPressed: () => _startEditing(zonesAsync.value!, tablesAsync.value!),
+                onPressed: startEditing,
                 icon: const Glyph(AppIcons.pencil, size: 16),
                 label: const Text('Edytuj układ'),
               ),
@@ -339,12 +408,25 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
                 minuteOfDay: _minuteOfDay,
                 onChanged: (m) => setState(() => _minuteOfDay = m),
               ),
-              if (editing && zoneList.isNotEmpty)
+              if (editing && zoneList.isNotEmpty) ...[
+                OutlinedButton.icon(
+                  onPressed: () => _addElement(_currentZone(zoneList)),
+                  icon: const Glyph(AppIcons.rectangle, size: 16),
+                  label: const Text('Element stały'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () => _addTable(_currentZone(zoneList), seat: true),
+                  icon: const Glyph(AppIcons.circle, size: 16),
+                  label: const Text('Miejsce'),
+                ),
+                const SizedBox(width: 8),
                 FilledButton.icon(
                   onPressed: () => _addTable(_currentZone(zoneList)),
                   icon: const Glyph(AppIcons.plus, size: 16),
-                  label: const Text('Dodaj stolik'),
+                  label: const Text('Stolik'),
                 ),
+              ],
             ],
           ),
         ),
@@ -358,7 +440,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
                       : 'Kierownik lokalu jeszcze nie narysował sali.',
                   actionLabel: restaurant.canManage ? 'Edytuj układ' : null,
                   onAction: restaurant.canManage
-                      ? () => _startEditing(zonesAsync.value!, tablesAsync.value!)
+                      ? startEditing
                       : null,
                 )
               : Padding(
@@ -366,12 +448,12 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(child: _canvas(zoneList, tables, reservations, editing)),
+                      Expanded(child: _canvas(zoneList, tables, elements, reservations, editing)),
                       const SizedBox(width: 20),
                       SizedBox(
                         width: 340,
                         child: editing
-                            ? _inspector(_currentZone(zoneList), tables)
+                            ? _inspector(_currentZone(zoneList), tables, elements)
                             : _livePanel(tables, reservations),
                       ),
                     ],
@@ -388,11 +470,13 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
   Widget _canvas(
     List<FloorZone> zones,
     List<DiningTable> tables,
+    List<FloorElement> elements,
     List<PanelReservation> reservations,
     bool editing,
   ) {
     final zone = _currentZone(zones);
     final inZone = tables.where((t) => t.zone == zone.name).toList();
+    final zoneElements = elements.where((e) => e.zone == zone.name).toList();
     final overlapping = <String>{};
     if (editing) {
       for (var i = 0; i < inZone.length; i++) {
@@ -412,7 +496,23 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
         child: FloorCanvas(
           zone: zone,
           tables: inZone,
+          elements: zoneElements,
           selectedId: _selectedKey,
+          chairEditKey: editing ? _selectedKey : null,
+          onDragChair: editing ? _dragChair : null,
+          onTapElement: editing ? (e) => setState(() => _selectedKey = e.key) : null,
+          onDragElement: editing
+              ? (e, d) => _updateElement(e, (x) => x.copyWith(
+                    xCm: (x.xCm + d.dx).round().clamp(0, zone.widthCm),
+                    yCm: (x.yCm + d.dy).round().clamp(0, zone.heightCm),
+                  ))
+              : null,
+          onDragElementEnd: editing
+              ? (e) => _updateElement(e, (x) => x.copyWith(
+                    xCm: ((x.xCm / 10).round() * 10).clamp(0, zone.widthCm),
+                    yCm: ((x.yCm / 10).round() * 10).clamp(0, zone.heightCm),
+                  ))
+              : null,
           onTapTable: (t) => setState(() => _selectedKey = FloorCanvas.keyOf(t)),
           onTapEmpty: () => setState(() => _selectedKey = null),
           lookOf: (t) => editing
@@ -439,7 +539,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     return TableLook(
       fill: overlaps ? AppColors.error.withValues(alpha: 0.12) : AppColors.surfaceRaised,
       stroke: overlaps ? AppColors.error : AppColors.ringStrong,
-      caption: '${t.seats} os.',
+      caption: t.isSeat ? null : '${t.seats} os.',
       captionColor: overlaps ? AppColors.error : null,
       dimmed: !t.active,
     );
@@ -547,10 +647,23 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     );
   }
 
-  Widget _inspector(FloorZone zone, List<DiningTable> tables) {
+  Widget _inspector(FloorZone zone, List<DiningTable> tables, List<FloorElement> elements) {
     DiningTable? table;
     for (final t in tables) {
       if (FloorCanvas.keyOf(t) == _selectedKey) table = t;
+    }
+    FloorElement? element;
+    for (final e in elements) {
+      if (e.key == _selectedKey) element = e;
+    }
+    if (element != null) {
+      return _ElementInspector(
+        key: ValueKey('element-${element.key}'),
+        element: element,
+        onChanged: (change) => _updateElement(element!, change),
+        onDelete: () => _deleteElement(element!),
+        onClose: () => setState(() => _selectedKey = null),
+      );
     }
     if (table == null) {
       return _ZoneInspector(
@@ -797,7 +910,12 @@ class _TableInspectorState extends State<_TableInspector> {
         children: [
           Row(
             children: [
-              Expanded(child: Text('Stolik', style: text.titleMedium)),
+              Expanded(
+                child: Text(
+                  t.isSeat ? 'Miejsce do rezerwacji' : 'Stolik',
+                  style: text.titleMedium,
+                ),
+              ),
               IconButton(
                 tooltip: 'Zamknij',
                 icon: const Glyph(AppIcons.close, size: 16),
@@ -818,16 +936,28 @@ class _TableInspectorState extends State<_TableInspector> {
                   },
                 ),
               ),
-              const SizedBox(width: 10),
-              _Stepper(
-                label: 'Miejsca',
-                value: t.seats,
-                min: 1,
-                max: 30,
-                onChanged: (v) => widget.onChanged((x) => x.copyWith(seats: v)),
-              ),
+              if (!t.isSeat) ...[
+                const SizedBox(width: 10),
+                _Stepper(
+                  label: 'Miejsca',
+                  value: t.seats,
+                  min: 1,
+                  max: 30,
+                  // Nowa liczba miejsc rozstawia krzesła od nowa.
+                  onChanged: (v) => widget.onChanged((x) => x.copyWith(seats: v, resetChairs: true)),
+                ),
+              ],
             ],
           ),
+          if (t.isSeat) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Pojedyncze krzesło albo hoker, który gość rezerwuje dla jednej osoby, na przykład przy barze. '
+              'Sąsiednie miejsca z tą samą grupą łączenia system zestawi dla większej grupy.',
+              style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+            ),
+          ],
+          if (!t.isSeat) ...[
           const SizedBox(height: 14),
           SegmentedTabs<TableShape>(
             options: [for (final s in TableShape.values) (s, s.label)],
@@ -888,6 +1018,24 @@ class _TableInspectorState extends State<_TableInspector> {
                 ),
               ],
             ),
+          const SizedBox(height: 12),
+          Text('Krzesła', style: text.titleSmall),
+          const SizedBox(height: 4),
+          Text(
+            t.chairs == null
+                ? 'Rozstawione automatycznie. Przeciągnij krzesło na planie, żeby ustawić je po swojemu.'
+                : 'Ustawione ręcznie. Przeciągaj krzesła na planie.',
+            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+          ),
+          if (t.chairs != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () => widget.onChanged((x) => x.copyWith(resetChairs: true)),
+                child: const Text('Rozstaw automatycznie'),
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
             initialValue: widget.zones.contains(t.zone) ? t.zone : null,
@@ -959,7 +1107,7 @@ class _TableInspectorState extends State<_TableInspector> {
           TextButton(
             onPressed: widget.onDelete,
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Usuń stolik'),
+            child: Text(t.isSeat ? 'Usuń miejsce' : 'Usuń stolik'),
           ),
         ],
       ),
@@ -1098,6 +1246,140 @@ class _TextDialogState extends State<_TextDialog> {
         ),
         FilledButton(onPressed: _submit, child: const Text('Dodaj')),
       ],
+    );
+  }
+}
+
+class _ElementInspector extends StatefulWidget {
+  const _ElementInspector({
+    super.key,
+    required this.element,
+    required this.onChanged,
+    required this.onDelete,
+    required this.onClose,
+  });
+
+  final FloorElement element;
+  final ValueChanged<FloorElement Function(FloorElement)> onChanged;
+  final VoidCallback onDelete;
+  final VoidCallback onClose;
+
+  @override
+  State<_ElementInspector> createState() => _ElementInspectorState();
+}
+
+class _ElementInspectorState extends State<_ElementInspector> {
+  late final _width = TextEditingController(text: '${widget.element.widthCm}');
+  late final _height = TextEditingController(text: '${widget.element.heightCm}');
+
+  @override
+  void dispose() {
+    _width.dispose();
+    _height.dispose();
+    super.dispose();
+  }
+
+  void _applySize() {
+    final w = parseInt(_width.text);
+    final h = parseInt(_height.text);
+    if (w == null || h == null || w < 5 || h < 5 || w > 5000 || h > 5000) {
+      showMessage(context, 'Wymiary elementu od 5 do 5000 cm.');
+      return;
+    }
+    widget.onChanged((e) => e.copyWith(
+      widthCm: w,
+      heightCm: widget.element.shape == TableShape.round ? w : h,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final e = widget.element;
+    final text = Theme.of(context).textTheme;
+    return Card(
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text('Element stały', style: text.titleMedium)),
+              IconButton(
+                tooltip: 'Zamknij',
+                icon: const Glyph(AppIcons.close, size: 16),
+                onPressed: widget.onClose,
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Ściana, bar, filar albo donica. Na planie jest jasnoszary, bez napisu, i nie da się go zarezerwować.',
+            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 14),
+          SegmentedTabs<TableShape>(
+            options: const [(TableShape.rect, 'Prostokąt'), (TableShape.round, 'Koło')],
+            selected: e.shape,
+            onChanged: (shape) {
+              widget.onChanged((x) => x.copyWith(
+                shape: shape,
+                heightCm: shape == TableShape.round ? x.widthCm : x.heightCm,
+              ));
+              if (shape == TableShape.round) _height.text = _width.text;
+            },
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _NumberField(
+                  controller: _width,
+                  label: e.shape == TableShape.round ? 'Średnica' : 'Szerokość',
+                  suffix: 'cm',
+                  onSubmitted: _applySize,
+                ),
+              ),
+              if (e.shape == TableShape.rect) ...[
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _NumberField(controller: _height, label: 'Głębokość', suffix: 'cm', onSubmitted: _applySize),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(onPressed: _applySize, child: const Text('Zastosuj wymiary')),
+          ),
+          if (e.shape == TableShape.rect)
+            Row(
+              children: [
+                Text('Obrót', style: text.bodyMedium),
+                const Spacer(),
+                IconButton(
+                  tooltip: 'Obróć o 15° w lewo',
+                  icon: const Glyph(AppIcons.undo, size: 16),
+                  onPressed: () => widget.onChanged((x) => x.copyWith(rotation: (x.rotation - 15) % 360)),
+                ),
+                SizedBox(
+                  width: 44,
+                  child: Text('${e.rotation}°', textAlign: TextAlign.center, style: text.labelLarge?.copyWith(fontFeatures: _tabular)),
+                ),
+                IconButton(
+                  tooltip: 'Obróć o 15° w prawo',
+                  icon: const Glyph(AppIcons.refresh, size: 16),
+                  onPressed: () => widget.onChanged((x) => x.copyWith(rotation: (x.rotation + 15) % 360)),
+                ),
+              ],
+            ),
+          const SizedBox(height: 18),
+          TextButton(
+            onPressed: widget.onDelete,
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Usuń element'),
+          ),
+        ],
+      ),
     );
   }
 }

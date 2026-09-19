@@ -49,6 +49,7 @@ class RestaurantSummary {
     required this.city,
     required this.isPro,
     required this.isExample,
+    this.logoUrl,
     required this.distanceM,
     required this.verifiedReviews,
     required this.unverifiedReviews,
@@ -64,6 +65,7 @@ class RestaurantSummary {
   final String city;
   final bool isPro;
   final bool isExample;
+  final String? logoUrl;
   final double distanceM;
   final int verifiedReviews;
   final int unverifiedReviews;
@@ -80,6 +82,7 @@ class RestaurantSummary {
       city: json['city'] as String,
       isPro: json['plan'] == 'pro',
       isExample: json['is_example'] == true,
+      logoUrl: json['logo_url'] as String?,
       distanceM: _toDouble(json['distance_m']) ?? 0,
       verifiedReviews: _toInt(json['verified_reviews']),
       unverifiedReviews: _toInt(json['unverified_reviews']),
@@ -207,6 +210,7 @@ class RestaurantDetail {
     required this.phone,
     required this.isPro,
     required this.isExample,
+    this.logoUrl,
     required this.hours,
     required this.menu,
     required this.rating,
@@ -223,6 +227,7 @@ class RestaurantDetail {
   final String phone;
   final bool isPro;
   final bool isExample;
+  final String? logoUrl;
   final List<OpeningHours> hours;
   final List<MenuSection> menu;
   final Rating rating;
@@ -249,6 +254,7 @@ class RestaurantDetail {
       phone: json['phone'] as String,
       isPro: json['plan'] == 'pro',
       isExample: json['is_example'] == true,
+      logoUrl: json['logo_url'] as String?,
       hours: hours,
       menu: menu,
       rating: rating,
@@ -364,6 +370,7 @@ class Reservation {
     required this.restaurantName,
     required this.restaurantAddress,
     required this.restaurantPhone,
+    this.restaurantLogoUrl,
     required this.partySize,
     required this.startsAt,
     required this.endsAt,
@@ -377,6 +384,7 @@ class Reservation {
   final String restaurantName;
   final String restaurantAddress;
   final String restaurantPhone;
+  final String? restaurantLogoUrl;
   final int partySize;
   final DateTime startsAt;
   final DateTime endsAt;
@@ -403,6 +411,7 @@ class Reservation {
       restaurantName: restaurant['name'] as String? ?? 'Restauracja',
       restaurantAddress: restaurant['address'] as String? ?? '',
       restaurantPhone: restaurant['phone'] as String? ?? '',
+      restaurantLogoUrl: restaurant['logo_url'] as String?,
       partySize: _toInt(json['party_size']),
       startsAt: DateTime.parse(json['starts_at'] as String),
       endsAt: DateTime.parse(json['ends_at'] as String),
@@ -584,3 +593,65 @@ class NotificationPreferences {
   };
 }
 
+
+// ---------------------------------------------------------------
+// Karty podarunkowe
+// ---------------------------------------------------------------
+
+class GuestGiftCard {
+  const GuestGiftCard({
+    required this.id,
+    required this.restaurantId,
+    required this.restaurantName,
+    required this.restaurantCity,
+    required this.code,
+    required this.initialGrosze,
+    required this.balanceGrosze,
+    required this.testMode,
+    required this.status,
+    required this.expiresAt,
+    required this.createdAt,
+    this.logoUrl,
+    this.recipientName,
+    this.message,
+  });
+
+  final String id;
+  final String restaurantId;
+  final String restaurantName;
+  final String restaurantCity;
+  final String? logoUrl;
+  final String code;
+  final int initialGrosze;
+  final int balanceGrosze;
+  final String? recipientName;
+  final String? message;
+
+  /// Karta kupiona bez prawdziwej płatności, na czas testów.
+  final bool testMode;
+  final String status;
+  final DateTime expiresAt;
+  final DateTime createdAt;
+
+  bool get isExpired => expiresAt.isBefore(DateTime.now());
+  bool get isUsable => status == 'active' && !isExpired && balanceGrosze > 0;
+
+  factory GuestGiftCard.fromJson(Map<String, dynamic> json) {
+    return GuestGiftCard(
+      id: json['id'] as String,
+      restaurantId: json['restaurant_id'] as String,
+      restaurantName: json['restaurant_name'] as String,
+      restaurantCity: json['restaurant_city'] as String? ?? '',
+      logoUrl: json['logo_url'] as String?,
+      code: json['code'] as String,
+      initialGrosze: _toInt(json['initial_grosze']),
+      balanceGrosze: _toInt(json['balance_grosze']),
+      recipientName: json['recipient_name'] as String?,
+      message: json['message'] as String?,
+      testMode: json['test_mode'] == true,
+      status: json['status'] as String? ?? 'active',
+      expiresAt: DateTime.parse(json['expires_at'] as String).toLocal(),
+      createdAt: DateTime.parse(json['created_at'] as String).toLocal(),
+    );
+  }
+}

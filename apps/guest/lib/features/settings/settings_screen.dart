@@ -50,6 +50,12 @@ class SettingsScreen extends ConsumerWidget {
                 onTap: () => open(AppRoutes.settingsTheme),
               ),
               SettingsRow(
+                icon: AppIcons.envelope,
+                title: 'Karty podarunkowe',
+                locked: !loggedIn,
+                onTap: () => open(AppRoutes.giftCards, needsAccount: true),
+              ),
+              SettingsRow(
                 icon: AppIcons.bell,
                 title: 'Powiadomienia',
                 locked: !loggedIn,

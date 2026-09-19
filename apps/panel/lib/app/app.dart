@@ -8,10 +8,12 @@ import 'package:table_core/table_core.dart';
 
 import '../features/auth/login_screen.dart';
 import '../features/floor/floor_screen.dart';
+import '../features/gift_cards/gift_cards_screen.dart';
 import '../features/menu/menu_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/reservations/reservations_screen.dart';
 import '../features/reviews/reviews_screen.dart';
+import '../features/staff/staff_screen.dart';
 import '../features/stats/stats_screen.dart';
 import 'panel_theme.dart';
 import 'shell.dart';
@@ -103,6 +105,8 @@ GoRouter _buildRouter(Listenable refresh) {
         routes: [
           _page(PanelRoutes.reservations, const ReservationsScreen()),
           _page(PanelRoutes.floor, const FloorScreen()),
+          _page(PanelRoutes.staff, const StaffScreen()),
+          _page(PanelRoutes.giftCards, const GiftCardsScreen()),
           _page(PanelRoutes.menu, const MenuScreen()),
           _page(PanelRoutes.profile, const ProfileScreen()),
           _page(PanelRoutes.reviews, const ReviewsScreen()),
@@ -123,6 +127,8 @@ abstract final class PanelRoutes {
   static const login = '/logowanie';
   static const reservations = '/rezerwacje';
   static const floor = '/sala';
+  static const staff = '/pracownicy';
+  static const giftCards = '/karty';
   static const menu = '/menu';
   static const profile = '/lokal';
   static const reviews = '/opinie';

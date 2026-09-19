@@ -9,6 +9,7 @@ import 'package:table_core/table_core.dart';
 import '../features/auth/auth_screens.dart';
 import '../features/booking/booking_screen.dart';
 import '../features/discover/discover_screen.dart';
+import '../features/gift_cards/gift_card_screens.dart';
 import '../features/reservations/reservation_detail_screen.dart';
 import '../features/reservations/reservations_screen.dart';
 import '../features/restaurant/restaurant_screen.dart';
@@ -90,7 +91,9 @@ class _TableAppState extends ConsumerState<TableApp>
 /// Ekrany wymagające zalogowania. Zakładki dolnego menu same pokazują prośbę o logowanie,
 /// bo przekierowanie z zakładki zabierało gościowi dolne menu.
 bool _requiresLogin(String path) {
-  return path.endsWith('/rezerwuj') || path.endsWith('/opinia');
+  return path.endsWith('/rezerwuj') ||
+      path.endsWith('/opinia') ||
+      path.endsWith('/karta');
 }
 
 bool _isAuthScreen(String path) =>
@@ -220,6 +223,18 @@ GoRouter _buildRouter(Listenable refresh) {
                     path: 'zaawansowane',
                     builder: (_, _) => const AdvancedSettingsScreen(),
                   ),
+                  GoRoute(
+                    path: 'karty',
+                    builder: (_, _) => const GiftCardsScreen(),
+                    routes: [
+                      GoRoute(
+                        path: ':cardId',
+                        builder: (context, state) => GiftCardDetailScreen(
+                          cardId: state.pathParameters['cardId']!,
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ],
@@ -235,6 +250,12 @@ GoRouter _buildRouter(Listenable refresh) {
             path: 'rezerwuj',
             builder: (context, state) =>
                 BookingScreen(restaurantId: state.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: 'karta',
+            builder: (context, state) => GiftCardPurchaseScreen(
+              restaurantId: state.pathParameters['id']!,
+            ),
           ),
           GoRoute(
             path: 'opinia',
@@ -308,6 +329,9 @@ abstract final class AppRoutes {
   static String restaurant(String id) => '/restauracja/$id';
   static String reservationDetail(String id) => '/rezerwacje/$id';
   static String booking(String id) => '/restauracja/$id/rezerwuj';
+  static String buyGiftCard(String id) => '/restauracja/$id/karta';
+  static const giftCards = '/ustawienia/karty';
+  static String giftCard(String id) => '/ustawienia/karty/$id';
   static String review(String id, {String? reservationId}) => Uri(
     path: '/restauracja/$id/opinia',
     queryParameters: reservationId == null

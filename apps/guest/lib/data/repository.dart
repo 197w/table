@@ -135,7 +135,7 @@ class Repository {
         _db
             .from('restaurants')
             .select(
-              'id, name, cuisine, price_level, description, address, city, phone, plan, is_example, '
+              'id, name, cuisine, price_level, description, address, city, phone, plan, is_example, logo_url, '
               'opening_hours(weekday, opens, closes), '
               'menu_sections(id, name, position, menu_items(id, name, description, price_grosze, allergens, position))',
             )
@@ -243,7 +243,7 @@ class Repository {
           .from('reservations')
           .select(
             'id, restaurant_id, party_size, starts_at, ends_at, status, occasion, message, '
-            'restaurants(name, address, phone)',
+            'restaurants(name, address, phone, logo_url)',
           )
           .order('starts_at', ascending: false)
           .limit(100);
@@ -295,6 +295,39 @@ class Repository {
         },
       ),
     );
+  }
+
+  // -------------------------------------------------------------
+  // Karty podarunkowe
+  // -------------------------------------------------------------
+
+  /// Tryb testowy: karta powstaje bez płatności. Zwraca identyfikator karty.
+  Future<String> purchaseGiftCard({
+    required String restaurantId,
+    required int amountGrosze,
+    String? recipientName,
+    String? message,
+  }) {
+    return _guard(
+      () => _db.rpc<String>(
+        'purchase_gift_card',
+        params: {
+          'p_restaurant_id': restaurantId,
+          'p_amount_grosze': amountGrosze,
+          'p_recipient_name': recipientName,
+          'p_message': message,
+        },
+      ),
+    );
+  }
+
+  Future<List<GuestGiftCard>> myGiftCards() {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>('my_gift_cards');
+      return rows
+          .map((e) => GuestGiftCard.fromJson(e as Map<String, dynamic>))
+          .toList();
+    });
   }
 
   // -------------------------------------------------------------

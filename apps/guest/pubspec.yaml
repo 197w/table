@@ -23,6 +23,7 @@ dependencies:
   intl: any
   add_2_calendar: ^3.1.1
   package_info_plus: any
+  qr_flutter: any
 
 dev_dependencies:
   flutter_test:

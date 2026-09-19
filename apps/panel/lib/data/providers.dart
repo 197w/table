@@ -165,6 +165,32 @@ final reviewsProvider = FutureProvider.autoDispose
       (ref, id) => ref.watch(repositoryProvider).reviews(id),
     );
 
+final elementsProvider = FutureProvider.autoDispose
+    .family<List<FloorElement>, String>(
+      (ref, id) => ref.watch(repositoryProvider).elements(id),
+    );
+
+final staffProvider = FutureProvider.autoDispose
+    .family<List<StaffMember>, String>(
+      (ref, id) => ref.watch(repositoryProvider).staff(id),
+    );
+
+typedef WeekQuery = ({String restaurantId, DateTime weekStart});
+
+final availabilityProvider = FutureProvider.autoDispose
+    .family<List<Availability>, WeekQuery>(
+      (ref, q) => ref.watch(repositoryProvider).availability(
+        restaurantId: q.restaurantId,
+        from: q.weekStart,
+        to: DateTime(q.weekStart.year, q.weekStart.month, q.weekStart.day + 7),
+      ),
+    );
+
+final giftCardsProvider = FutureProvider.autoDispose
+    .family<List<GiftCard>, String>(
+      (ref, id) => ref.watch(repositoryProvider).giftCards(id),
+    );
+
 typedef StatsQuery = ({String restaurantId, int days});
 
 final statsProvider = FutureProvider.autoDispose

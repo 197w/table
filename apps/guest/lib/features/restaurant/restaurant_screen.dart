@@ -90,7 +90,7 @@ class _Body extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
           child: Row(
             children: [
-              RestaurantMark(name: r.name, size: 64),
+              RestaurantLogo(name: r.name, logoUrl: r.logoUrl, size: 64),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -127,6 +127,14 @@ class _Body extends ConsumerWidget {
                 Text(
                   r.description!,
                   style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                ),
+              ],
+              if (r.isPro) ...[
+                const SizedBox(height: 14),
+                OutlinedButton.icon(
+                  onPressed: () => context.push(AppRoutes.buyGiftCard(r.id)),
+                  icon: const Glyph(AppIcons.envelope, size: 18),
+                  label: const Text('Kup kartę podarunkową'),
                 ),
               ],
             ],

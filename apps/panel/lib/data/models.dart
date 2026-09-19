@@ -48,6 +48,7 @@ class PanelRestaurant {
     required this.city,
     required this.isPro,
     required this.role,
+    this.logoUrl,
   });
 
   final String id;
@@ -55,6 +56,7 @@ class PanelRestaurant {
   final String city;
   final bool isPro;
   final StaffRole role;
+  final String? logoUrl;
 
   /// Kierownik i właściciel zmieniają salę, menu, dane lokalu i odpowiadają na opinie.
   bool get canManage => role != StaffRole.staff;
@@ -66,6 +68,7 @@ class PanelRestaurant {
       city: json['city'] as String? ?? '',
       isPro: json['plan'] == 'pro',
       role: StaffRole.fromDb(json['role']),
+      logoUrl: json['logo_url'] as String?,
     );
   }
 }
@@ -300,12 +303,23 @@ class DiningTable {
     required this.yCm,
     required this.rotation,
     required this.shape,
+    this.kind = TableKind.table,
+    this.chairs,
     this.joinGroup,
     this.draftKey,
   });
 
   /// Null dla stolika dodanego w edytorze i jeszcze niezapisanego.
   final String? id;
+
+  /// Stolik albo pojedyncze krzesło do rezerwacji, na przykład hoker przy barze.
+  final TableKind kind;
+
+  /// Własne położenie krzeseł w cm względem środka blatu, przed obrotem.
+  /// Null oznacza rozstawienie automatyczne według liczby miejsc.
+  final List<ChairPos>? chairs;
+
+  bool get isSeat => kind == TableKind.seat;
 
   /// Stały klucz niezapisanego stolika w edytorze. Nie trafia do bazy.
   final String? draftKey;
@@ -338,10 +352,14 @@ class DiningTable {
     int? yCm,
     int? rotation,
     TableShape? shape,
+    List<ChairPos>? chairs,
+    bool resetChairs = false,
   }) {
     return DiningTable(
       id: id,
       draftKey: draftKey,
+      kind: kind,
+      chairs: resetChairs ? null : (chairs ?? this.chairs),
       label: label ?? this.label,
       seats: seats ?? this.seats,
       widthCm: widthCm ?? this.widthCm,
@@ -372,6 +390,8 @@ class DiningTable {
     'y_cm': yCm,
     'rotation': rotation,
     'shape': shape.name,
+    'kind': kind.name,
+    'chairs': chairs == null ? null : [for (final c in chairs!) c.toJson()],
   };
 
   factory DiningTable.fromJson(Map<String, dynamic> json) {
@@ -387,6 +407,99 @@ class DiningTable {
       active: json['active'] != false,
       xCm: _toInt(json['x_cm'], 100),
       yCm: _toInt(json['y_cm'], 100),
+      rotation: _toInt(json['rotation']),
+      shape: TableShape.fromDb(json['shape']),
+      kind: json['kind'] == 'seat' ? TableKind.seat : TableKind.table,
+      chairs: json['chairs'] is List
+          ? [for (final c in json['chairs'] as List) ChairPos.fromJson(c as Map<String, dynamic>)]
+          : null,
+    );
+  }
+}
+
+enum TableKind { table, seat }
+
+/// Środek krzesła w cm względem środka blatu.
+class ChairPos {
+  const ChairPos(this.x, this.y);
+
+  final double x;
+  final double y;
+
+  Map<String, dynamic> toJson() => {'x': x.round(), 'y': y.round()};
+
+  factory ChairPos.fromJson(Map<String, dynamic> json) =>
+      ChairPos((json['x'] as num).toDouble(), (json['y'] as num).toDouble());
+}
+
+/// Stały element sali: ściana, bar, filar, donica. Jasnoszary, bez podpisu, nie do rezerwacji.
+class FloorElement {
+  const FloorElement({
+    required this.id,
+    required this.zone,
+    required this.xCm,
+    required this.yCm,
+    required this.widthCm,
+    required this.heightCm,
+    required this.rotation,
+    required this.shape,
+    this.draftKey,
+  });
+
+  final String? id;
+  final String? draftKey;
+  final String zone;
+  final int xCm;
+  final int yCm;
+  final int widthCm;
+  final int heightCm;
+  final int rotation;
+  final TableShape shape;
+
+  String get key => id ?? draftKey!;
+
+  FloorElement copyWith({
+    String? zone,
+    int? xCm,
+    int? yCm,
+    int? widthCm,
+    int? heightCm,
+    int? rotation,
+    TableShape? shape,
+  }) {
+    return FloorElement(
+      id: id,
+      draftKey: draftKey,
+      zone: zone ?? this.zone,
+      xCm: xCm ?? this.xCm,
+      yCm: yCm ?? this.yCm,
+      widthCm: widthCm ?? this.widthCm,
+      heightCm: heightCm ?? this.heightCm,
+      rotation: rotation ?? this.rotation,
+      shape: shape ?? this.shape,
+    );
+  }
+
+  Map<String, dynamic> toJson(String restaurantId) => {
+    'id': ?id,
+    'restaurant_id': restaurantId,
+    'zone': zone,
+    'x_cm': xCm,
+    'y_cm': yCm,
+    'width_cm': widthCm,
+    'height_cm': heightCm,
+    'rotation': rotation,
+    'shape': shape.name,
+  };
+
+  factory FloorElement.fromJson(Map<String, dynamic> json) {
+    return FloorElement(
+      id: json['id'] as String,
+      zone: json['zone'] as String? ?? 'sala',
+      xCm: _toInt(json['x_cm'], 100),
+      yCm: _toInt(json['y_cm'], 100),
+      widthCm: _toInt(json['width_cm'], 100),
+      heightCm: _toInt(json['height_cm'], 40),
       rotation: _toInt(json['rotation']),
       shape: TableShape.fromDb(json['shape']),
     );
@@ -439,7 +552,10 @@ class RestaurantProfile {
     required this.priceLevel,
     required this.hours,
     this.description,
+    this.logoUrl,
   });
+
+  final String? logoUrl;
 
   final String id;
   final String name;
@@ -469,6 +585,7 @@ class RestaurantProfile {
       slotIntervalMin: _toInt(json['slot_interval_min'], 15),
       priceLevel: _toInt(json['price_level'], 2),
       hours: hours,
+      logoUrl: json['logo_url'] as String?,
     );
   }
 }
@@ -656,4 +773,122 @@ class DayStat {
 double? averageOf(Iterable<int> values) {
   if (values.isEmpty) return null;
   return _toDouble(values.reduce((a, b) => a + b) / values.length);
+}
+
+// ---------------------------------------------------------------
+// Pracownicy i dyspozycyjność
+// ---------------------------------------------------------------
+
+class StaffMember {
+  const StaffMember({
+    required this.id,
+    required this.name,
+    required this.color,
+    required this.active,
+    this.position,
+    this.phone,
+  });
+
+  final String id;
+  final String name;
+  final String? position;
+  final String? phone;
+
+  /// Numer koloru 0–7 w kalendarzu.
+  final int color;
+  final bool active;
+
+  factory StaffMember.fromJson(Map<String, dynamic> json) {
+    return StaffMember(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      position: json['position'] as String?,
+      phone: json['phone'] as String?,
+      color: _toInt(json['color']),
+      active: json['active'] != false,
+    );
+  }
+}
+
+class Availability {
+  const Availability({
+    required this.id,
+    required this.memberId,
+    required this.day,
+    required this.starts,
+    required this.ends,
+    this.note,
+  });
+
+  final String id;
+  final String memberId;
+  final DateTime day;
+
+  /// Godziny w formacie HH:MM.
+  final String starts;
+  final String ends;
+  final String? note;
+
+  factory Availability.fromJson(Map<String, dynamic> json) {
+    String hm(Object? v) => (v as String).substring(0, 5);
+    return Availability(
+      id: json['id'] as String,
+      memberId: json['member_id'] as String,
+      day: DateTime.parse(json['day'] as String),
+      starts: hm(json['starts']),
+      ends: hm(json['ends']),
+      note: json['note'] as String?,
+    );
+  }
+}
+
+// ---------------------------------------------------------------
+// Karty podarunkowe
+// ---------------------------------------------------------------
+
+class GiftCard {
+  const GiftCard({
+    required this.id,
+    required this.code,
+    required this.initialGrosze,
+    required this.balanceGrosze,
+    required this.testMode,
+    required this.status,
+    required this.expiresAt,
+    required this.createdAt,
+    this.recipientName,
+    this.message,
+    this.lastUsedAt,
+  });
+
+  final String id;
+  final String code;
+  final int initialGrosze;
+  final int balanceGrosze;
+  final String? recipientName;
+  final String? message;
+  final bool testMode;
+  final String status;
+  final DateTime expiresAt;
+  final DateTime createdAt;
+  final DateTime? lastUsedAt;
+
+  bool get isExpired => expiresAt.isBefore(DateTime.now());
+  bool get isUsable => status == 'active' && !isExpired && balanceGrosze > 0;
+
+  factory GiftCard.fromJson(Map<String, dynamic> json) {
+    return GiftCard(
+      id: json['id'] as String,
+      code: json['code'] as String,
+      initialGrosze: _toInt(json['initial_grosze']),
+      balanceGrosze: _toInt(json['balance_grosze']),
+      recipientName: json['recipient_name'] as String?,
+      message: json['message'] as String?,
+      testMode: json['test_mode'] == true,
+      status: json['status'] as String? ?? 'active',
+      expiresAt: _toDate(json['expires_at']),
+      createdAt: _toDate(json['created_at']),
+      lastUsedAt: _toDateOrNull(json['last_used_at']),
+    );
+  }
 }

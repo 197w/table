@@ -337,7 +337,7 @@ class _RestaurantCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  _RankedMark(name: r.name, position: position),
+                  _RankedMark(name: r.name, logoUrl: r.logoUrl, position: position),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -397,15 +397,16 @@ class _RestaurantCard extends StatelessWidget {
 }
 
 class _RankedMark extends StatelessWidget {
-  const _RankedMark({required this.name, this.position});
+  const _RankedMark({required this.name, this.logoUrl, this.position});
 
   final String name;
+  final String? logoUrl;
   final int? position;
 
   @override
   Widget build(BuildContext context) {
     // Znak siedzi w rogu karty: promień 8 = promień karty 22 minus odstęp 14.
-    final mark = RestaurantMark(name: name, size: 48, radius: 8);
+    final mark = RestaurantLogo(name: name, logoUrl: logoUrl, size: 48, radius: 8);
     if (position == null) return mark;
     return Stack(
       clipBehavior: Clip.none,

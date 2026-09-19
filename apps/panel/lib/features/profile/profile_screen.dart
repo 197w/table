@@ -1,3 +1,4 @@
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
@@ -30,7 +31,7 @@ class ProfileScreen extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const PageHeader(
-          title: 'Lokal',
+          title: 'Dane lokalu',
           subtitle: 'Dane widoczne dla gości w aplikacji Table.',
         ),
         if (!restaurant.canManage)
@@ -51,10 +52,17 @@ class ProfileScreen extends ConsumerWidget {
                 children: [
                   Expanded(
                     flex: 3,
-                    child: _DetailsForm(
-                      key: ValueKey('dane-${profile.id}'),
-                      profile: profile,
-                      editable: restaurant.canManage,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _LogoCard(profile: profile, editable: restaurant.canManage),
+                        const SizedBox(height: 20),
+                        _DetailsForm(
+                          key: ValueKey('dane-${profile.id}'),
+                          profile: profile,
+                          editable: restaurant.canManage,
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 20),
@@ -459,6 +467,131 @@ class _TimeButton extends StatelessWidget {
       child: Text(
         value,
         style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
+      ),
+    );
+  }
+}
+
+class _LogoCard extends ConsumerStatefulWidget {
+  const _LogoCard({required this.profile, required this.editable});
+
+  final RestaurantProfile profile;
+  final bool editable;
+
+  @override
+  ConsumerState<_LogoCard> createState() => _LogoCardState();
+}
+
+class _LogoCardState extends ConsumerState<_LogoCard> {
+  bool _busy = false;
+
+  static const _maxBytes = 2 * 1024 * 1024;
+
+  Future<void> _pick() async {
+    final file = await openFile(
+      acceptedTypeGroups: const [
+        XTypeGroup(
+          label: 'Obrazy',
+          extensions: ['png', 'jpg', 'jpeg', 'webp'],
+          uniformTypeIdentifiers: ['public.png', 'public.jpeg', 'org.webmproject.webp'],
+        ),
+      ],
+    );
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    if (bytes.length > _maxBytes) {
+      if (mounted) showMessage(context, 'Logo może mieć najwyżej 2 MB. Zmniejsz plik i spróbuj ponownie.');
+      return;
+    }
+    final name = file.name.toLowerCase();
+    final ext = name.contains('.') ? name.split('.').last : 'png';
+    if (!['png', 'jpg', 'jpeg', 'webp'].contains(ext)) {
+      if (mounted) showMessage(context, 'Wybierz plik PNG, JPG albo WEBP.');
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await ref.read(repositoryProvider).uploadLogo(
+        restaurantId: widget.profile.id,
+        bytes: bytes,
+        extension: ext,
+      );
+      ref
+        ..invalidate(profileProvider(widget.profile.id))
+        ..invalidate(restaurantsProvider);
+      if (mounted) showMessage(context, 'Logo zapisane. Goście zobaczą je w aplikacji.');
+    } catch (e) {
+      if (mounted) showMessage(context, errorText(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _remove() async {
+    final ok = await confirm(
+      context,
+      title: 'Usunąć logo?',
+      message: 'W aplikacji zamiast logo pojawią się inicjały lokalu.',
+      action: 'Usuń',
+      destructive: true,
+    );
+    if (!ok) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(repositoryProvider).removeLogo(widget.profile.id);
+      ref
+        ..invalidate(profileProvider(widget.profile.id))
+        ..invalidate(restaurantsProvider);
+    } catch (e) {
+      if (mounted) showMessage(context, errorText(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final profile = widget.profile;
+    return PanelCard(
+      title: 'Logo',
+      child: Row(
+        children: [
+          RestaurantLogo(name: profile.name, logoUrl: profile.logoUrl, size: 88, radius: 20),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Logo widzą goście na liście lokali, na stronie lokalu i przy rezerwacjach. '
+                  'Najlepiej kwadratowe, PNG, JPG albo WEBP, do 2 MB.',
+                  style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                ),
+                if (widget.editable) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      FilledButton.icon(
+                        onPressed: _busy ? null : _pick,
+                        icon: const Glyph(AppIcons.plus, size: 16),
+                        label: Text(profile.logoUrl == null ? 'Wgraj logo' : 'Zmień logo'),
+                      ),
+                      if (profile.logoUrl != null) ...[
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: _busy ? null : _remove,
+                          style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                          child: const Text('Usuń'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

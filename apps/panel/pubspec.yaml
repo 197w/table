@@ -19,6 +19,7 @@ dependencies:
   go_router: ^18.0.1
   shared_preferences: ^2.5.5
   window_manager: any
+  file_selector: any
   intl: any
 
 dev_dependencies:
