@@ -549,6 +549,7 @@ class RestaurantProfile {
     required this.city,
     required this.phone,
     required this.slotIntervalMin,
+    required this.maxPartySize,
     required this.priceLevel,
     required this.hours,
     this.description,
@@ -565,6 +566,9 @@ class RestaurantProfile {
   final String city;
   final String phone;
   final int slotIntervalMin;
+
+  /// Największa grupa, którą gość zarezerwuje w aplikacji.
+  final int maxPartySize;
   final int priceLevel;
   final List<OpeningHours> hours;
 
@@ -583,6 +587,7 @@ class RestaurantProfile {
       city: json['city'] as String,
       phone: json['phone'] as String,
       slotIntervalMin: _toInt(json['slot_interval_min'], 15),
+      maxPartySize: _toInt(json['max_party_size'], 12),
       priceLevel: _toInt(json['price_level'], 2),
       hours: hours,
       logoUrl: json['logo_url'] as String?,

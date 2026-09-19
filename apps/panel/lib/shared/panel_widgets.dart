@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
@@ -328,130 +330,139 @@ String groszeToText(int grosze) {
   return gr == 0 ? '$zl' : '$zl,${gr.toString().padLeft(2, '0')}';
 }
 
-/// Wybór godziny jako siatka godzin i minut. Czytelniejszy niż systemowa tarcza zegara.
+/// Wybór godziny: dwie wąskie kolumny, godziny i minuty. Zwraca null po anulowaniu.
 Future<TimeOfDay?> pickTime(
   BuildContext context, {
   required TimeOfDay initial,
-  String title = 'Wybierz godzinę',
   int minuteStep = 15,
 }) {
   return showDialog<TimeOfDay>(
     context: context,
-    builder: (_) => _TimeGridDialog(
-      initial: initial,
-      title: title,
-      minuteStep: minuteStep,
-    ),
+    builder: (_) => _TimeDialog(initial: initial, minuteStep: minuteStep),
   );
 }
 
-class _TimeGridDialog extends StatefulWidget {
-  const _TimeGridDialog({
-    required this.initial,
-    required this.title,
-    required this.minuteStep,
-  });
+class _TimeDialog extends StatefulWidget {
+  const _TimeDialog({required this.initial, required this.minuteStep});
 
   final TimeOfDay initial;
-  final String title;
   final int minuteStep;
 
   @override
-  State<_TimeGridDialog> createState() => _TimeGridDialogState();
+  State<_TimeDialog> createState() => _TimeDialogState();
 }
 
-class _TimeGridDialogState extends State<_TimeGridDialog> {
+class _TimeDialogState extends State<_TimeDialog> {
+  static const _itemHeight = 34.0;
+
   late int _hour = widget.initial.hour;
   late int _minute = widget.initial.minute;
+  late final List<int> _minutes = <int>{
+    for (var m = 0; m < 60; m += widget.minuteStep) m,
+    widget.initial.minute,
+  }.toList()..sort();
+
+  // Wybrana wartość od razu w środku listy.
+  late final _hours = ScrollController(initialScrollOffset: math.max(0, (_hour - 2) * _itemHeight));
+  late final _mins = ScrollController(
+    initialScrollOffset: math.max(0, (_minutes.indexOf(_minute) - 2) * _itemHeight),
+  );
+
+  @override
+  void dispose() {
+    _hours.dispose();
+    _mins.dispose();
+    super.dispose();
+  }
 
   String _two(int v) => v.toString().padLeft(2, '0');
+
+  Widget _column(ScrollController controller, List<int> values, int selected, ValueChanged<int> onTap) {
+    final text = Theme.of(context).textTheme;
+    return SizedBox(
+      width: 64,
+      height: _itemHeight * 5,
+      child: ListView.builder(
+        controller: controller,
+        itemExtent: _itemHeight,
+        itemCount: values.length,
+        itemBuilder: (context, i) {
+          final v = values[i];
+          final isSelected = v == selected;
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Material(
+              color: isSelected ? AppColors.accentFill : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => onTap(v),
+                child: Center(
+                  child: Text(
+                    _two(v),
+                    style: text.bodyLarge?.copyWith(
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                      color: isSelected ? AppColors.onAccent : AppColors.text,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final minutes = <int>{
-      for (var m = 0; m < 60; m += widget.minuteStep) m,
-      widget.initial.minute,
-    }.toList()
-      ..sort();
-
-    Widget cell(String label, bool selected, VoidCallback onTap) {
-      return Material(
-        color: selected ? AppColors.accentFill : AppColors.surfaceRaised,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: Center(
-            child: Text(
-              label,
-              style: text.titleSmall?.copyWith(
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                color: selected ? AppColors.onAccent : AppColors.text,
-                fontFeatures: const [FontFeature.tabularFigures()],
+    return Dialog(
+      child: SizedBox(
+        width: 216,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${_two(_hour)}:${_two(_minute)}',
+                style: text.headlineMedium?.copyWith(
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
               ),
-            ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _column(_hours, [for (var h = 0; h < 24; h++) h], _hour, (v) => setState(() => _hour = v)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Text(':', style: text.titleMedium?.copyWith(color: AppColors.textMuted)),
+                  ),
+                  _column(_mins, _minutes, _minute, (v) => setState(() => _minute = v)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+                    child: const Text('Anuluj'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, TimeOfDay(hour: _hour, minute: _minute)),
+                    child: const Text('OK'),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
-      );
-    }
-
-    Widget grid(List<Widget> children) => GridView.count(
-      crossAxisCount: 6,
-      shrinkWrap: true,
-      mainAxisSpacing: 6,
-      crossAxisSpacing: 6,
-      childAspectRatio: 1.6,
-      physics: const NeverScrollableScrollPhysics(),
-      children: children,
-    );
-
-    return AlertDialog(
-      title: Row(
-        children: [
-          Expanded(child: Text(widget.title)),
-          Text(
-            '${_two(_hour)}:${_two(_minute)}',
-            style: text.headlineMedium?.copyWith(
-              color: AppColors.accent,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-        ],
       ),
-      content: SizedBox(
-        width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Godzina', style: text.labelLarge?.copyWith(color: AppColors.textMuted)),
-            const SizedBox(height: 8),
-            grid([
-              for (var h = 0; h < 24; h++)
-                cell(_two(h), h == _hour, () => setState(() => _hour = h)),
-            ]),
-            const SizedBox(height: 16),
-            Text('Minuty', style: text.labelLarge?.copyWith(color: AppColors.textMuted)),
-            const SizedBox(height: 8),
-            grid([
-              for (final m in minutes)
-                cell(_two(m), m == _minute, () => setState(() => _minute = m)),
-            ]),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
-          child: const Text('Anuluj'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, TimeOfDay(hour: _hour, minute: _minute)),
-          child: const Text('Wybierz'),
-        ),
-      ],
     );
   }
 }

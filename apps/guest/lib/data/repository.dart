@@ -135,7 +135,7 @@ class Repository {
         _db
             .from('restaurants')
             .select(
-              'id, name, cuisine, price_level, description, address, city, phone, plan, is_example, logo_url, '
+              'id, name, cuisine, price_level, description, address, city, phone, plan, is_example, logo_url, max_party_size, '
               'opening_hours(weekday, opens, closes), '
               'menu_sections(id, name, position, menu_items(id, name, description, price_grosze, allergens, position))',
             )

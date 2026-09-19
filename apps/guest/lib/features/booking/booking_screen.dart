@@ -215,7 +215,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                     ),
                     IconButton(
                       tooltip: 'Więcej osób',
-                      onPressed: _party < 12
+                      onPressed: _party < (restaurant?.maxPartySize ?? 12)
                           ? () => _setParty(_party + 1)
                           : null,
                       icon: const Glyph(AppIcons.plus),

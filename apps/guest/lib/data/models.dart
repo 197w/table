@@ -211,6 +211,7 @@ class RestaurantDetail {
     required this.isPro,
     required this.isExample,
     this.logoUrl,
+    this.maxPartySize = 12,
     required this.hours,
     required this.menu,
     required this.rating,
@@ -228,6 +229,9 @@ class RestaurantDetail {
   final bool isPro;
   final bool isExample;
   final String? logoUrl;
+
+  /// Największa grupa, którą można zarezerwować w aplikacji.
+  final int maxPartySize;
   final List<OpeningHours> hours;
   final List<MenuSection> menu;
   final Rating rating;
@@ -255,6 +259,7 @@ class RestaurantDetail {
       isPro: json['plan'] == 'pro',
       isExample: json['is_example'] == true,
       logoUrl: json['logo_url'] as String?,
+      maxPartySize: _toInt(json['max_party_size']) == 0 ? 12 : _toInt(json['max_party_size']),
       hours: hours,
       menu: menu,
       rating: rating,

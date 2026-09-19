@@ -245,7 +245,7 @@ class PanelRepository {
       final row = await _db
           .from('restaurants')
           .select(
-            'id, name, cuisine, description, address, city, phone, slot_interval_min, price_level, logo_url, '
+            'id, name, cuisine, description, address, city, phone, slot_interval_min, max_party_size, price_level, logo_url, '
             'opening_hours(weekday, opens, closes)',
           )
           .eq('id', restaurantId)

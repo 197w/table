@@ -104,6 +104,7 @@ class _DetailsFormState extends ConsumerState<_DetailsForm> {
   late final _phone = TextEditingController(text: widget.profile.phone);
   late String _cuisine = widget.profile.cuisine;
   late int _interval = widget.profile.slotIntervalMin;
+  late int _maxParty = widget.profile.maxPartySize;
   bool _busy = false;
 
   @override
@@ -134,6 +135,7 @@ class _DetailsFormState extends ConsumerState<_DetailsForm> {
         'phone': _phone.text.replaceAll(' ', ''),
         'cuisine': _cuisine,
         'slot_interval_min': _interval,
+        'max_party_size': _maxParty,
       });
       ref
         ..invalidate(profileProvider(widget.profile.id))
@@ -251,6 +253,46 @@ class _DetailsFormState extends ConsumerState<_DetailsForm> {
                   selected: _interval,
                   onChanged: (v) => setState(() => _interval = v),
                 ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Największa grupa w jednej rezerwacji',
+                      style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                    ),
+                    Text(
+                      'Większe grupy goście umówią telefonicznie. Obsługa w panelu może dodać do 30 osób.',
+                      style: text.bodySmall?.copyWith(color: AppColors.textDisabled),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Mniej osób',
+                icon: const Glyph(AppIcons.minus, size: 16),
+                onPressed: enabled && _maxParty > 1 ? () => setState(() => _maxParty--) : null,
+              ),
+              SizedBox(
+                width: 64,
+                child: Text(
+                  Fmt.people(_maxParty),
+                  textAlign: TextAlign.center,
+                  style: text.labelLarge?.copyWith(
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Więcej osób',
+                icon: const Glyph(AppIcons.plus, size: 16),
+                onPressed: enabled && _maxParty < 30 ? () => setState(() => _maxParty++) : null,
               ),
             ],
           ),
