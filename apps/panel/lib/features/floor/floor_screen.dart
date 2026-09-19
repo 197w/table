@@ -51,6 +51,66 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
   // Pozycja kursora przy przeciąganiu krzesła, zanim krzesło przyciągnie się do stolika.
   Offset? _chairRaw;
 
+  // Historia zmian do cofania (Ctrl+Z). Każdy wpis to stan układu sprzed zmiany.
+  final List<_Snapshot> _history = [];
+  String? _lastAction;
+  DateTime _lastActionAt = DateTime(0);
+
+  // Zmienia się po cofnięciu, żeby panele boczne wczytały pola od nowa.
+  int _undoGeneration = 0;
+
+  /// Zapamiętuje stan przed zmianą. Szybkie zmiany tego samego elementu,
+  /// na przykład przeciąganie albo pisanie numeru, tworzą jeden krok.
+  void _remember([String? action]) {
+    final now = DateTime.now();
+    final sameGesture = action != null &&
+        action == _lastAction &&
+        now.difference(_lastActionAt) < const Duration(milliseconds: 800);
+    _lastAction = action;
+    _lastActionAt = now;
+    if (sameGesture) return;
+    _history.add(_Snapshot(
+      zones: _zones,
+      tables: _tables,
+      elements: _elements,
+      deletedTables: [..._deletedTables],
+      deletedElements: [..._deletedElements],
+      deletedZones: [..._deletedZones],
+      dirty: _dirty,
+      zoneName: _zoneName,
+    ));
+    if (_history.length > 100) _history.removeAt(0);
+  }
+
+  void _undo() {
+    if (_mode != _Mode.edit || _history.isEmpty) return;
+    final s = _history.removeLast();
+    setState(() {
+      _zones = s.zones;
+      _tables = s.tables;
+      _elements = s.elements;
+      _deletedTables
+        ..clear()
+        ..addAll(s.deletedTables);
+      _deletedElements
+        ..clear()
+        ..addAll(s.deletedElements);
+      _deletedZones
+        ..clear()
+        ..addAll(s.deletedZones);
+      _dirty = s.dirty;
+      _zoneName = s.zoneName;
+      _lastAction = null;
+      _undoGeneration++;
+      final key = _selectedKey;
+      if (key != null &&
+          !_tables.any((t) => FloorCanvas.keyOf(t) == key) &&
+          !_elements.any((e) => e.key == key)) {
+        _selectedKey = null;
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -91,6 +151,8 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       _deletedTables.clear();
       _deletedElements.clear();
       _deletedZones.clear();
+      _history.clear();
+      _lastAction = null;
       _dirty = false;
       _mode = _Mode.edit;
       _selectedKey = null;
@@ -112,11 +174,13 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       _mode = _Mode.live;
       _dirty = false;
       _selectedKey = null;
+      _history.clear();
     });
   }
 
   void _update(DiningTable table, DiningTable Function(DiningTable) change) {
     final key = FloorCanvas.keyOf(table);
+    _remember('stolik-$key');
     setState(() {
       _tables = [
         for (final t in _tables)
@@ -153,6 +217,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       rotation: 0,
       shape: seat ? TableShape.round : TableShape.rect,
     );
+    _remember();
     setState(() {
       _tables = [..._tables, table];
       _selectedKey = FloorCanvas.keyOf(table);
@@ -172,6 +237,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       rotation: 0,
       shape: TableShape.rect,
     );
+    _remember();
     setState(() {
       _elements = [..._elements, element];
       _selectedKey = element.key;
@@ -180,6 +246,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
   }
 
   void _updateElement(FloorElement element, FloorElement Function(FloorElement) change) {
+    _remember('element-${element.key}');
     setState(() {
       _elements = [
         for (final e in _elements)
@@ -191,6 +258,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
   }
 
   void _deleteElement(FloorElement element) {
+    _remember();
     setState(() {
       _elements = _elements.where((e) => e.key != element.key).toList();
       if (element.id != null) _deletedElements.add(element.id!);
@@ -232,6 +300,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
   /// Wstawia kopię stolika, miejsca albo elementu 50 cm obok oryginału.
   void _paste(Object? item, FloorZone zone) {
     if (item == null) return;
+    _remember();
     final stamp = DateTime.now().microsecondsSinceEpoch;
     int cx(int x) => (x + 50).clamp(0, zone.widthCm);
     int cy(int y) => (y + 50).clamp(0, zone.heightCm);
@@ -297,6 +366,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       destructive: true,
     );
     if (!ok) return;
+    _remember();
     setState(() {
       final key = FloorCanvas.keyOf(table);
       _tables = _tables.where((t) => FloorCanvas.keyOf(t) != key).toList();
@@ -313,6 +383,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       if (mounted) showMessage(context, 'Strefa o tej nazwie już istnieje.');
       return;
     }
+    _remember();
     setState(() {
       _zones = [
         ..._zones,
@@ -324,6 +395,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
   }
 
   void _updateZone(FloorZone zone, FloorZone updated) {
+    _remember('strefa-${zone.name}');
     setState(() {
       _zones = [for (final z in _zones) if (z == zone) updated else z];
       if (updated.name != zone.name) {
@@ -349,6 +421,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       destructive: true,
     );
     if (!ok) return;
+    _remember();
     setState(() {
       _zones = _zones.where((z) => z != zone).toList();
       if (zone.id != null) _deletedZones.add(zone.id!);
@@ -385,6 +458,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
         _mode = _Mode.live;
         _dirty = false;
         _selectedKey = null;
+        _history.clear();
       });
       showMessage(context, 'Układ sali zapisany.');
     } catch (e) {
@@ -454,7 +528,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
         PageHeader(
           title: 'Edycja sali',
           subtitle: editing
-              ? 'Przeciągaj stoliki, krzesła i stałe elementy. Ctrl+C i Ctrl+V kopiują zaznaczony element (na Macu Cmd).'
+              ? 'Przeciągaj stoliki, krzesła i stałe elementy. Ctrl+C i Ctrl+V kopiują, Ctrl+Z cofa (na Macu Cmd).'
               : 'Zajętość stolików ${_minuteOfDay == null ? 'teraz' : 'dziś o ${Fmt.time(_viewTime)}'}. Odświeża się sama.',
           actions: [
             if (!editing && restaurant.canManage)
@@ -464,6 +538,11 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
                 label: const Text('Edytuj układ'),
               ),
             if (editing) ...[
+              IconButton(
+                tooltip: 'Cofnij (Ctrl+Z)',
+                onPressed: _saving || _history.isEmpty ? null : _undo,
+                icon: const Glyph(AppIcons.undo, size: 18),
+              ),
               TextButton(
                 onPressed: _saving ? null : _stopEditing,
                 style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
@@ -588,6 +667,8 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     return CallbackShortcuts(
       bindings: editing
           ? {
+              const SingleActivator(LogicalKeyboardKey.keyZ, control: true): _undo,
+              const SingleActivator(LogicalKeyboardKey.keyZ, meta: true): _undo,
               const SingleActivator(LogicalKeyboardKey.keyC, control: true): _copy,
               const SingleActivator(LogicalKeyboardKey.keyC, meta: true): _copy,
               const SingleActivator(LogicalKeyboardKey.keyV, control: true): () => _paste(_clipboard, zone),
@@ -679,12 +760,8 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
 
     if (table == null) {
       final active = tables.where((t) => t.active).toList();
-      var busy = 0;
-      var seats = 0;
-      for (final t in active) {
-        seats += t.seats;
-        if (tableState(t, reservations, _viewTime, seatedCountsNow: _minuteOfDay == null).current != null) busy++;
-      }
+      final tableCount = active.where((t) => !t.isSeat).length;
+      final seats = active.fold(0, (sum, t) => sum + t.seats);
       return PanelCard(
         title: 'Sala ${_minuteOfDay == null ? 'teraz' : 'o ${Fmt.time(_viewTime)}'}',
         child: Column(
@@ -692,15 +769,10 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
           children: [
             Row(
               children: [
-                Expanded(child: StatTile(label: 'Zajęte stoliki', value: '$busy', accent: busy > 0)),
+                Expanded(child: StatTile(label: 'Stoliki', value: '$tableCount')),
                 const SizedBox(width: 10),
-                Expanded(child: StatTile(label: 'Wolne', value: '${active.length - busy}')),
+                Expanded(child: StatTile(label: 'Miejsca siedzące', value: '$seats')),
               ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Miejsc przy wszystkich stolikach: $seats.',
-              style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
             ),
             const SizedBox(height: 18),
             const _Legend(),
@@ -780,7 +852,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     }
     if (element != null) {
       return _ElementInspector(
-        key: ValueKey('element-${element.key}'),
+        key: ValueKey('element-${element.key}-$_undoGeneration'),
         element: element,
         onChanged: (change) => _updateElement(element!, change),
         onDuplicate: () => _paste(element, zone),
@@ -790,7 +862,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     }
     if (table == null) {
       return _ZoneInspector(
-        key: ValueKey('strefa-${zone.name}'),
+        key: ValueKey('strefa-${zone.name}-$_undoGeneration'),
         zone: zone,
         tableCount: tables.where((t) => t.zone == zone.name).length,
         onChanged: (updated) => _updateZone(zone, updated),
@@ -798,7 +870,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       );
     }
     return _TableInspector(
-      key: ValueKey('stolik-${FloorCanvas.keyOf(table)}'),
+      key: ValueKey('stolik-${FloorCanvas.keyOf(table)}-$_undoGeneration'),
       table: table,
       zones: _zones.map((z) => z.name).toList(),
       onChanged: (change) => _update(table!, change),
@@ -1578,4 +1650,27 @@ class _RotationFieldState extends State<_RotationField> {
       ],
     );
   }
+}
+
+/// Stan układu sali zapamiętany przed zmianą.
+class _Snapshot {
+  const _Snapshot({
+    required this.zones,
+    required this.tables,
+    required this.elements,
+    required this.deletedTables,
+    required this.deletedElements,
+    required this.deletedZones,
+    required this.dirty,
+    required this.zoneName,
+  });
+
+  final List<FloorZone> zones;
+  final List<DiningTable> tables;
+  final List<FloorElement> elements;
+  final List<String> deletedTables;
+  final List<String> deletedElements;
+  final List<String> deletedZones;
+  final bool dirty;
+  final String? zoneName;
 }

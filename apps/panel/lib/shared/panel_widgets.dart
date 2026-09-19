@@ -210,7 +210,7 @@ class SegmentedTabs<T> extends StatelessWidget {
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(9),
                     boxShadow: value == selected
-                        ? [BoxShadow(color: AppColors.ring, blurRadius: 0, spreadRadius: 1)]
+                        ? [BoxShadow(color: AppColors.accent, blurRadius: 0, spreadRadius: 1)]
                         : null,
                   ),
                   child: Text(

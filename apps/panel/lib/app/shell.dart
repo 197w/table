@@ -5,7 +5,6 @@ import 'package:table_core/table_core.dart';
 
 import '../data/models.dart';
 import '../data/providers.dart';
-import '../features/auth/login_screen.dart';
 import 'app.dart';
 
 /// Układ panelu: boczne menu z wyborem lokalu i treść sekcji.
@@ -97,17 +96,6 @@ class _Sidebar extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Row(
-              children: [
-                const TableLogo(size: 30),
-                const SizedBox(width: 10),
-                Text('Table', style: text.titleLarge),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
           if (current != null)
             _RestaurantSwitcher(current: current, restaurants: list),
           const SizedBox(height: 8),
