@@ -6,6 +6,8 @@ import 'package:table_core/table_core.dart';
 abstract final class PanelTheme {
   static ThemeData build(AppPalette p) {
     final base = AppTheme.build(p);
+    final dark = p.brightness == Brightness.dark;
+    final shadow = dark ? const Color(0xFF000000) : const Color(0xFF0C2A22);
     const radius10 = BorderRadius.all(Radius.circular(10));
     const buttonText = TextStyle(
       fontFamily: AppTheme.fontFamily,
@@ -17,12 +19,23 @@ abstract final class PanelTheme {
 
     return base.copyWith(
       visualDensity: VisualDensity.standard,
+      // Karty odrywają się od tła cieniem, a nie samym pierścieniem.
+      cardTheme: base.cardTheme.copyWith(
+        elevation: dark ? 14 : 10,
+        shadowColor: shadow.withValues(alpha: dark ? 0.7 : 0.18),
+        shape: RoundedRectangleBorder(
+          borderRadius: const BorderRadius.all(Radius.circular(22)),
+          side: BorderSide(color: p.ringStrong),
+        ),
+      ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: p.accentFill,
           foregroundColor: p.onAccent,
           disabledBackgroundColor: p.surfaceRaised,
           disabledForegroundColor: p.textDisabled,
+          elevation: 3,
+          shadowColor: p.accentFill.withValues(alpha: 0.5),
           minimumSize: size,
           padding: padding,
           shape: const RoundedRectangleBorder(borderRadius: radius10),
@@ -84,6 +97,8 @@ abstract final class PanelTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: p.surface,
         surfaceTintColor: Colors.transparent,
+        elevation: 28,
+        shadowColor: shadow.withValues(alpha: dark ? 0.75 : 0.28),
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(22)),
         ),
@@ -112,4 +127,47 @@ abstract final class PanelTheme {
       snackBarTheme: base.snackBarTheme.copyWith(width: 420),
     );
   }
+}
+
+/// Warstwy panelu: menu najgłębiej, treść wyżej, karty na wierzchu.
+abstract final class PanelDepth {
+  static bool get _dark => AppColors.palette.brightness == Brightness.dark;
+
+  static Color get _shadow =>
+      _dark ? const Color(0xFF000000) : const Color(0xFF0C2A22);
+
+  /// Tło menu: o ton głębsze niż treść.
+  static Color get sidebar => _dark
+      ? Color.lerp(AppColors.background, Colors.black, 0.45)!
+      : Color.lerp(AppColors.background, Colors.black, 0.05)!;
+
+  /// Tło treści: delikatny pion od jaśniejszej góry do tła.
+  static LinearGradient get content => LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [
+      Color.lerp(AppColors.background, AppColors.surface, _dark ? 0.35 : 0.7)!,
+      _dark
+          ? Color.lerp(AppColors.background, Colors.black, 0.25)!
+          : AppColors.background,
+    ],
+  );
+
+  /// Cień rzucany przez menu na treść.
+  static List<BoxShadow> get sidebarEdge => [
+    BoxShadow(
+      color: _shadow.withValues(alpha: _dark ? 0.55 : 0.12),
+      blurRadius: 18,
+      offset: const Offset(2, 0),
+    ),
+  ];
+
+  /// Cień pod wyróżnionym elementem, na przykład wybraną sekcją menu.
+  static List<BoxShadow> get raised => [
+    BoxShadow(
+      color: _shadow.withValues(alpha: _dark ? 0.5 : 0.14),
+      blurRadius: 10,
+      offset: const Offset(0, 3),
+    ),
+  ];
 }

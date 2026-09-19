@@ -124,6 +124,8 @@ class StatTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     return Card(
+      // Kafelek leży na karcie, więc jest o ton jaśniejszy od niej.
+      color: AppColors.surfaceRaised,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         child: Column(
@@ -218,6 +220,14 @@ class SegmentedTabs<T> extends StatelessWidget {
                         ),
                         blurRadius: 0,
                         spreadRadius: 1,
+                      ),
+                      // Wybrana opcja unosi się nad pigułką.
+                      BoxShadow(
+                        color: Colors.black.withValues(
+                          alpha: value == selected ? 0.35 : 0,
+                        ),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),

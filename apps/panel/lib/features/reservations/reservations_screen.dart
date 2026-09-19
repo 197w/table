@@ -479,7 +479,10 @@ class _ReservationRow extends StatelessWidget {
         r.status == ReservationStatus.noShow;
 
     return Material(
-      color: AppColors.surface,
+      // Wiersz leży na karcie, więc jest od niej jaśniejszy i rzuca cień.
+      color: AppColors.surfaceRaised,
+      elevation: selected ? 6 : 2,
+      shadowColor: Colors.black,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
         side: BorderSide(

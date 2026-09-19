@@ -6,6 +6,7 @@ import 'package:table_core/table_core.dart';
 import '../data/models.dart';
 import '../data/providers.dart';
 import 'app.dart';
+import 'panel_theme.dart';
 
 /// Układ panelu: boczne menu z wyborem lokalu i treść sekcji.
 class PanelShell extends ConsumerWidget {
@@ -21,26 +22,32 @@ class PanelShell extends ConsumerWidget {
     return Scaffold(
       body: Row(
         children: [
-          _Sidebar(location: location),
-          VerticalDivider(width: 1, color: AppColors.ring),
+          // Menu rzuca cień na treść, żeby warstwy były od siebie odsunięte.
+          DecoratedBox(
+            decoration: BoxDecoration(boxShadow: PanelDepth.sidebarEdge),
+            child: _Sidebar(location: location),
+          ),
           Expanded(
-            child: restaurants.when(
-              loading: () => const LoadingView(),
-              error: (e, _) => ErrorView(
-                error: e,
-                onRetry: () => ref.invalidate(restaurantsProvider),
+            child: DecoratedBox(
+              decoration: BoxDecoration(gradient: PanelDepth.content),
+              child: restaurants.when(
+                loading: () => const LoadingView(),
+                error: (e, _) => ErrorView(
+                  error: e,
+                  onRetry: () => ref.invalidate(restaurantsProvider),
+                ),
+                data: (list) => list.isEmpty
+                    ? MessageView(
+                        icon: AppIcons.storefront,
+                        title: 'To konto nie ma jeszcze lokalu',
+                        message:
+                            'Poproś właściciela lokalu o dodanie Cię do zespołu albo napisz do nas, '
+                            'żeby dodać restaurację do Table.',
+                        actionLabel: 'Wyloguj się',
+                        onAction: () => ref.read(repositoryProvider).signOut(),
+                      )
+                    : child,
               ),
-              data: (list) => list.isEmpty
-                  ? MessageView(
-                      icon: AppIcons.storefront,
-                      title: 'To konto nie ma jeszcze lokalu',
-                      message:
-                          'Poproś właściciela lokalu o dodanie Cię do zespołu albo napisz do nas, '
-                          'żeby dodać restaurację do Table.',
-                      actionLabel: 'Wyloguj się',
-                      onAction: () => ref.read(repositoryProvider).signOut(),
-                    )
-                  : child,
             ),
           ),
         ],
@@ -91,7 +98,7 @@ class _Sidebar extends ConsumerWidget {
 
     return Container(
       width: 256,
-      color: AppColors.background,
+      color: PanelDepth.sidebar,
       padding: const EdgeInsets.fromLTRB(14, 20, 14, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -191,8 +198,12 @@ class _SidebarButton extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Material(
-        color: selected ? AppColors.surfaceRaised : Colors.transparent,
+        color: selected ? AppColors.surface : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
+        elevation: selected ? 6 : 0,
+        shadowColor: AppColors.palette.brightness == Brightness.dark
+            ? Colors.black
+            : const Color(0x330C2A22),
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(10),
