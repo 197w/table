@@ -46,7 +46,10 @@ abstract final class PanelTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: p.text,
+          backgroundColor: dark ? p.surface : p.background,
           side: BorderSide(color: p.ringStrong),
+          elevation: 2,
+          shadowColor: shadow.withValues(alpha: dark ? 0.5 : 0.12),
           minimumSize: size,
           padding: padding,
           shape: const RoundedRectangleBorder(borderRadius: radius10),
@@ -66,12 +69,18 @@ abstract final class PanelTheme {
       iconButtonTheme: IconButtonThemeData(
         style: IconButton.styleFrom(
           foregroundColor: p.textMuted,
+          backgroundColor: dark ? p.surface : p.background,
           minimumSize: const Size(36, 36),
-          shape: const RoundedRectangleBorder(borderRadius: radius10),
+          shape: RoundedRectangleBorder(
+            borderRadius: radius10,
+            side: BorderSide(color: p.ring),
+          ),
         ),
       ),
       inputDecorationTheme: base.inputDecorationTheme.copyWith(
         isDense: true,
+        filled: true,
+        fillColor: dark ? p.surface : p.background,
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         border: const OutlineInputBorder(
           borderRadius: radius10,
@@ -136,22 +145,15 @@ abstract final class PanelDepth {
   static Color get _shadow =>
       _dark ? const Color(0xFF000000) : const Color(0xFF0C2A22);
 
-  /// Tło menu: o ton głębsze niż treść.
+  /// Tło menu: najgłębsza warstwa panelu.
   static Color get sidebar => _dark
-      ? Color.lerp(AppColors.background, Colors.black, 0.45)!
-      : Color.lerp(AppColors.background, Colors.black, 0.05)!;
+      ? Color.lerp(AppColors.background, Colors.black, 0.6)!
+      : Color.lerp(AppColors.background, Colors.black, 0.06)!;
 
-  /// Tło treści: delikatny pion od jaśniejszej góry do tła.
-  static LinearGradient get content => LinearGradient(
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-    colors: [
-      Color.lerp(AppColors.background, AppColors.surface, _dark ? 0.35 : 0.7)!,
-      _dark
-          ? Color.lerp(AppColors.background, Colors.black, 0.25)!
-          : AppColors.background,
-    ],
-  );
+  /// Tło treści: jednolite, ciemniejsze od kart.
+  static Color get content => _dark
+      ? Color.lerp(AppColors.background, Colors.black, 0.4)!
+      : AppColors.background;
 
   /// Cień rzucany przez menu na treść.
   static List<BoxShadow> get sidebarEdge => [

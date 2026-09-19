@@ -28,8 +28,8 @@ class PanelShell extends ConsumerWidget {
             child: _Sidebar(location: location),
           ),
           Expanded(
-            child: DecoratedBox(
-              decoration: BoxDecoration(gradient: PanelDepth.content),
+            child: ColoredBox(
+              color: PanelDepth.content,
               child: restaurants.when(
                 loading: () => const LoadingView(),
                 error: (e, _) => ErrorView(
