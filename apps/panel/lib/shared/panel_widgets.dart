@@ -23,38 +23,87 @@ class PageHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(32, 28, 32, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(32, 28, 32, below == null ? 20 : 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: text.headlineMedium),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle!,
-                        style: text.bodyMedium?.copyWith(
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                    ],
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title, style: text.headlineMedium),
+                        if (subtitle != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle!,
+                            style: text.bodyMedium?.copyWith(
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  for (var i = 0; i < actions.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 8),
+                    actions[i],
                   ],
-                ),
+                ],
               ),
-              for (var i = 0; i < actions.length; i++) ...[
-                if (i > 0) const SizedBox(width: 8),
-                actions[i],
-              ],
+              if (below != null) ...[const SizedBox(height: 16), below!],
             ],
           ),
-          if (below != null) ...[const SizedBox(height: 16), below!],
+        ),
+        // Cienka linia oddziela nagłówek z filtrami od treści strony.
+        Divider(height: 1, thickness: 1, color: AppColors.ring),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+}
+
+/// Pigułka z tekstem, na przykład „Na żywo”. Z kropką, gdy coś się dzieje samo.
+class PanelPill extends StatelessWidget {
+  const PanelPill(this.label, {super.key, this.icon, this.dotColor});
+
+  final String label;
+  final AppIconData? icon;
+  final Color? dotColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.ring),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (dotColor != null) ...[
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 8),
+          ],
+          if (icon != null) ...[
+            Glyph(icon!, size: 14, color: AppColors.textMuted),
+            const SizedBox(width: 6),
+          ],
+          Text(label, style: text.labelLarge?.copyWith(color: AppColors.textMuted)),
         ],
       ),
     );
@@ -86,14 +135,14 @@ class PanelCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     return Card(
-      child: Padding(
-        padding: padding,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (title != null) ...[
-              Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (title != null) ...[
+            Padding(
+              padding: EdgeInsets.fromLTRB(padding.left, 16, padding.right, 16),
+              child: Row(
                 children: [
                   if (icon != null) ...[
                     IconBadge(icon!, color: iconColor ?? AppColors.accentFill),
@@ -103,11 +152,17 @@ class PanelCard extends StatelessWidget {
                   ?trailing,
                 ],
               ),
-              const SizedBox(height: 16),
-            ],
-            child,
+            ),
+            // Linia oddziela nagłówek karty od jej treści, na całą szerokość.
+            Divider(height: 1, thickness: 1, color: AppColors.ring),
           ],
-        ),
+          Padding(
+            padding: title == null
+                ? padding
+                : EdgeInsets.fromLTRB(padding.left, 18, padding.right, padding.bottom),
+            child: child,
+          ),
+        ],
       ),
     );
   }

@@ -141,13 +141,16 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
               ),
             ),
           ],
-          below: Align(
-            alignment: Alignment.centerLeft,
-            child: SegmentedTabs<_Filter>(
-              options: [for (final f in _Filter.values) (f, f.label)],
-              selected: _filter,
-              onChanged: (f) => setState(() => _filter = f),
-            ),
+          below: Row(
+            children: [
+              SegmentedTabs<_Filter>(
+                options: [for (final f in _Filter.values) (f, f.label)],
+                selected: _filter,
+                onChanged: (f) => setState(() => _filter = f),
+              ),
+              const SizedBox(width: 12),
+              PanelPill('Na żywo', dotColor: AppColors.accentFill),
+            ],
           ),
         ),
         Expanded(
