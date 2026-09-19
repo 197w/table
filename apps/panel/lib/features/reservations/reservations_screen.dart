@@ -322,39 +322,71 @@ class _ReservationList extends StatelessWidget {
   final String? selectedId;
   final ValueChanged<String> onSelect;
 
+  /// Aktualne to rezerwacje, które jeszcze czekają na gości albo trwają przy stoliku.
+  static bool _isCurrent(PanelReservation r) =>
+      r.status == ReservationStatus.confirmed ||
+      r.status == ReservationStatus.seated;
+
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final current = items.where(_isCurrent).toList();
+    final finished = items.where((r) => !_isCurrent(r)).toList();
     final rows = <Widget>[];
-    int? lastHour;
-    for (final r in items) {
-      final hour = r.startsAt.hour;
-      if (hour != lastHour) {
-        rows.add(
-          Padding(
-            padding: EdgeInsets.fromLTRB(4, rows.isEmpty ? 0 : 14, 0, 8),
-            child: Text(
-              '${hour.toString().padLeft(2, '0')}:00',
-              style: text.labelMedium?.copyWith(
-                color: AppColors.textMuted,
-                fontFeatures: _tabular,
-              ),
-            ),
-          ),
-        );
-        lastHour = hour;
-      }
+
+    void section(String title, List<PanelReservation> list) {
+      if (list.isEmpty) return;
       rows.add(
         Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: _ReservationRow(
-            reservation: r,
-            selected: r.id == selectedId,
-            onTap: () => onSelect(r.id),
+          padding: EdgeInsets.fromLTRB(4, rows.isEmpty ? 0 : 22, 4, 4),
+          child: Row(
+            children: [
+              Text(title, style: text.titleSmall),
+              const SizedBox(width: 8),
+              Text(
+                '${list.length}',
+                style: text.labelMedium?.copyWith(
+                  color: AppColors.textMuted,
+                  fontFeatures: _tabular,
+                ),
+              ),
+            ],
           ),
         ),
       );
+      int? lastHour;
+      for (final r in list) {
+        final hour = r.startsAt.hour;
+        if (hour != lastHour) {
+          rows.add(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 10, 0, 8),
+              child: Text(
+                '${hour.toString().padLeft(2, '0')}:00',
+                style: text.labelMedium?.copyWith(
+                  color: AppColors.textMuted,
+                  fontFeatures: _tabular,
+                ),
+              ),
+            ),
+          );
+          lastHour = hour;
+        }
+        rows.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _ReservationRow(
+              reservation: r,
+              selected: r.id == selectedId,
+              onTap: () => onSelect(r.id),
+            ),
+          ),
+        );
+      }
     }
+
+    section('Aktualne', current);
+    section('Zakończone', finished);
     return ListView(padding: EdgeInsets.zero, children: rows);
   }
 }
@@ -440,13 +472,6 @@ class _ReservationRow extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         SourceIcon(source: r.source),
-                        if (r.occasion != null) ...[
-                          const SizedBox(width: 8),
-                          Tag(
-                            r.occasion!.label.toUpperCase(),
-                            color: AppColors.accent,
-                          ),
-                        ],
                         if (r.diet != null) ...[
                           const SizedBox(width: 6),
                           Tooltip(
@@ -461,21 +486,35 @@ class _ReservationRow extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      [
-                        if (!r.isBlock) Fmt.people(r.partySize),
-                        if (r.tableLabels.isNotEmpty)
-                          'stolik ${r.tableLabels.join(' + ')}'
-                        else
-                          'bez stolika',
-                        if (r.message != null) '„${r.message}”',
-                      ].join(' · '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: text.bodySmall?.copyWith(
-                        color: AppColors.textMuted,
-                        fontFeatures: _tabular,
-                      ),
+                    // Okazja w drugiej linii, żeby długa etykieta nie zasłaniała imienia.
+                    Row(
+                      children: [
+                        if (r.occasion != null) ...[
+                          Tag(
+                            r.occasion!.label.toUpperCase(),
+                            color: AppColors.accent,
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        Expanded(
+                          child: Text(
+                            [
+                              if (!r.isBlock) Fmt.people(r.partySize),
+                              if (r.tableLabels.isNotEmpty)
+                                'stolik ${r.tableLabels.join(' + ')}'
+                              else
+                                'bez stolika',
+                              if (r.message != null) '„${r.message}”',
+                            ].join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.bodySmall?.copyWith(
+                              color: AppColors.textMuted,
+                              fontFeatures: _tabular,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
