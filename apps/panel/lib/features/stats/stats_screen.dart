@@ -142,6 +142,10 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                       ),
                     ),
                   ),
+                  if (restaurant.isPro) ...[
+                    const SizedBox(height: 16),
+                    _OccasionsCard(query: query),
+                  ],
                   if (!restaurant.isPro) ...[
                     const SizedBox(height: 16),
                     Text(
@@ -268,5 +272,68 @@ class _BarChart extends StatelessWidget {
       if (value <= step) return step;
     }
     return ((value / 4000).ceil()) * 4000;
+  }
+}
+
+/// Okazje rezerwacji w wybranym okresie: urodziny, rocznice, randki...
+class _OccasionsCard extends ConsumerWidget {
+  const _OccasionsCard({required this.query});
+
+  final StatsQuery query;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final stats = ref.watch(occasionStatsProvider(query)).value ?? const <OccasionStat>[];
+    final top = stats.fold(0, (m, s) => math.max(m, s.reservations));
+
+    return PanelCard(
+      title: 'Okazje',
+      child: stats.isEmpty
+          ? Text(
+              'W tym okresie żadna rezerwacja nie miała okazji.',
+              style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+            )
+          : Column(
+              children: [
+                for (final s in stats)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      children: [
+                        SizedBox(width: 180, child: Text(s.occasion.label, style: text.bodyMedium)),
+                        Expanded(
+                          child: LayoutBuilder(
+                            builder: (context, c) => Align(
+                              alignment: Alignment.centerLeft,
+                              child: Container(
+                                height: 10,
+                                width: math.max(6, c.maxWidth * s.reservations / top),
+                                decoration: BoxDecoration(
+                                  color: AppColors.accentFill,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        SizedBox(
+                          width: 150,
+                          child: Text(
+                            '${s.reservations} rez. · ${Fmt.people(s.covers)}',
+                            textAlign: TextAlign.right,
+                            style: text.bodyMedium?.copyWith(
+                              color: AppColors.textMuted,
+                              fontFeatures: const [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+    );
   }
 }

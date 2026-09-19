@@ -738,6 +738,26 @@ class PanelReview {
   }
 }
 
+class OccasionStat {
+  const OccasionStat({
+    required this.occasion,
+    required this.reservations,
+    required this.covers,
+  });
+
+  final Occasion occasion;
+  final int reservations;
+  final int covers;
+
+  factory OccasionStat.fromJson(Map<String, dynamic> json) {
+    return OccasionStat(
+      occasion: Occasion.fromDb(json['occasion']) ?? Occasion.other,
+      reservations: _toInt(json['reservations']),
+      covers: _toInt(json['covers']),
+    );
+  }
+}
+
 class DayStat {
   const DayStat({
     required this.day,

@@ -153,20 +153,13 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
               ),
             ),
           ],
-          below: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _Summary(items: items),
-              const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: SegmentedTabs<_Filter>(
-                  options: [for (final f in _Filter.values) (f, f.label)],
-                  selected: _filter,
-                  onChanged: (f) => setState(() => _filter = f),
-                ),
-              ),
-            ],
+          below: Align(
+            alignment: Alignment.centerLeft,
+            child: SegmentedTabs<_Filter>(
+              options: [for (final f in _Filter.values) (f, f.label)],
+              selected: _filter,
+              onChanged: (f) => setState(() => _filter = f),
+            ),
           ),
         ),
         Expanded(
@@ -198,7 +191,13 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                           onBack: () => setState(() => _selectedId = null),
                         )
                       : Card(
-                          child: visible.isEmpty
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _Counts(items: all),
+                              Divider(height: 1, color: AppColors.ring),
+                              Expanded(
+                                child: visible.isEmpty
                               ? MessageView(
                                   icon: AppIcons.calendarDots,
                                   title: all.isEmpty ? 'Brak rezerwacji' : 'Nic w tym filtrze',
@@ -214,6 +213,9 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                                     onSelect: (id) => setState(() => _selectedId = id),
                                   ),
                                 ),
+                              ),
+                            ],
+                          ),
                         ),
                 );
 
@@ -264,71 +266,47 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
   }
 }
 
-class _Summary extends StatelessWidget {
-  const _Summary({required this.items});
+/// Liczba rezerwacji i gości w dniu, jako ikona i liczba nad listą.
+class _Counts extends StatelessWidget {
+  const _Counts({required this.items});
 
   final List<PanelReservation> items;
 
   @override
   Widget build(BuildContext context) {
-    final real = items.where((r) => !r.isBlock).toList();
-    final active = real.where((r) => r.status != ReservationStatus.cancelled);
-    final booked = active.where((r) => r.status != ReservationStatus.noShow);
-    final seated = real.where((r) => r.status == ReservationStatus.seated);
+    final text = Theme.of(context).textTheme;
+    final booked = items.where(
+      (r) =>
+          !r.isBlock &&
+          r.status != ReservationStatus.cancelled &&
+          r.status != ReservationStatus.noShow,
+    );
+    final guests = booked.fold(0, (sum, r) => sum + r.partySize);
 
-    final occasions = <Occasion, int>{};
-    for (final r in booked) {
-      if (r.occasion != null) {
-        occasions[r.occasion!] = (occasions[r.occasion!] ?? 0) + 1;
-      }
-    }
-    final occasionHint = occasions.entries
-        .map((e) => '${e.value} × ${e.key.label.toLowerCase()}')
-        .join(', ');
+    Widget count(AppIconData icon, int value, String tooltip) => Tooltip(
+      message: tooltip,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Glyph(icon, size: 16, color: AppColors.textMuted),
+          const SizedBox(width: 6),
+          Text(
+            '$value',
+            style: text.titleSmall?.copyWith(fontFeatures: _tabular),
+          ),
+        ],
+      ),
+    );
 
-    int guests(Iterable<PanelReservation> list) =>
-        list.fold(0, (sum, r) => sum + r.partySize);
-
-    return Row(
-      children: [
-        Expanded(
-          child: StatTile(
-            label: 'Rezerwacje',
-            value: '${booked.length}',
-            icon: AppIcons.calendarCheck,
-            hint:
-                '${real.where((r) => r.status == ReservationStatus.cancelled).length} odwołanych',
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: StatTile(
-            label: 'Goście',
-            value: '${guests(booked)}',
-            icon: AppIcons.users,
-            hint: 'łącznie w tym dniu',
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: StatTile(
-            label: 'Teraz przy stolikach',
-            value: '${seated.length}',
-            icon: AppIcons.armchair,
-            hint: Fmt.people(guests(seated)),
-            accent: seated.isNotEmpty,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: StatTile(
-            label: 'Okazje',
-            value: '${occasions.values.fold(0, (a, b) => a + b)}',
-            icon: AppIcons.confetti,
-            hint: occasionHint.isEmpty ? 'brak w tym dniu' : occasionHint,
-          ),
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
+        children: [
+          count(AppIcons.calendarCheck, booked.length, 'Rezerwacje w tym dniu'),
+          const SizedBox(width: 20),
+          count(AppIcons.users, guests, 'Goście w tym dniu'),
+        ],
+      ),
     );
   }
 }

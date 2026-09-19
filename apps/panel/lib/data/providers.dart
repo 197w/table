@@ -197,3 +197,8 @@ final statsProvider = FutureProvider.autoDispose
     .family<List<DayStat>, StatsQuery>(
       (ref, q) => ref.watch(repositoryProvider).stats(q.restaurantId, q.days),
     );
+
+final occasionStatsProvider = FutureProvider.autoDispose
+    .family<List<OccasionStat>, StatsQuery>(
+      (ref, q) => ref.watch(repositoryProvider).occasionStats(q.restaurantId, q.days),
+    );

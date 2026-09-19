@@ -69,7 +69,14 @@ class _PanelAppState extends ConsumerState<PanelApp>
         : AppPalette.light;
     AppColors.use(palette);
 
-    return MaterialApp.router(
+    // Windows odtwarza dźwięk błędu, gdy aplikacja nie obsłuży naciśniętego klawisza,
+    // na przykład po kliknięciu w puste pole, kiedy żadne pole tekstowe nie jest aktywne.
+    // Ten Focus jest nad całą aplikacją, więc dostaje tylko klawisze, których nic nie obsłużyło.
+    return Focus(
+      autofocus: true,
+      skipTraversal: true,
+      onKeyEvent: (_, _) => KeyEventResult.handled,
+      child: MaterialApp.router(
       key: ValueKey(brightness),
       title: 'Table · Panel restauracji',
       debugShowCheckedModeBanner: false,
@@ -78,6 +85,7 @@ class _PanelAppState extends ConsumerState<PanelApp>
       supportedLocales: const [Locale('pl', 'PL')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       routerConfig: _router,
+      ),
     );
   }
 }

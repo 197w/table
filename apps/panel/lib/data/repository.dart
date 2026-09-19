@@ -382,6 +382,18 @@ class PanelRepository {
     );
   }
 
+  Future<List<OccasionStat>> occasionStats(String restaurantId, int days) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>(
+        'panel_occasion_stats',
+        params: {'p_restaurant_id': restaurantId, 'p_days': days},
+      );
+      return rows
+          .map((e) => OccasionStat.fromJson(e as Map<String, dynamic>))
+          .toList();
+    });
+  }
+
   Future<List<DayStat>> stats(String restaurantId, int days) {
     return _guard(() async {
       final rows = await _db.rpc<List<dynamic>>(
