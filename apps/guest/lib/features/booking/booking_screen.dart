@@ -58,6 +58,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
   Future<void> _book() async {
     final slot = _slot;
     if (slot == null) return;
+    FocusScope.of(context).unfocus();
     if (_diet.text.trim().isNotEmpty && !_dietConsent) {
       showMessage(
         context,
@@ -126,6 +127,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
       ),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 24),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
@@ -319,8 +321,10 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                     controller: _diet,
                     maxLength: 300,
                     maxLines: 2,
+                    // Przykład jako podpowiedź, bo pływająca etykieta wychodziła
+                    // nad pole i rozwijana sekcja ją ucinała.
                     decoration: const InputDecoration(
-                      labelText: 'Na przykład: bez orzechów, bez glutenu',
+                      hintText: 'Na przykład: bez orzechów, bez glutenu',
                     ),
                   ),
                   CheckboxListTile(
@@ -344,11 +348,17 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: _SummaryBar(
-        slot: _slot,
-        party: _party,
-        busy: _busy,
-        onBook: _book,
+      // Dolny pasek Scaffolda zostaje pod klawiaturą, więc podnosimy go o jej wysokość.
+      bottomNavigationBar: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: _SummaryBar(
+          slot: _slot,
+          party: _party,
+          busy: _busy,
+          onBook: _book,
+        ),
       ),
     );
   }
