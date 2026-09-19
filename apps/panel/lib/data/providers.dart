@@ -1,9 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'models.dart';
 import 'repository.dart';
+
+extension CacheFor on Ref {
+  /// Trzyma dane jeszcze przez chwilę po zamknięciu ekranu. Powrót do zakładki
+  /// pokazuje je od razu, zamiast mrugać ładowaniem i pustym stanem.
+  void cacheFor([Duration duration = const Duration(minutes: 5)]) {
+    final link = keepAlive();
+    final timer = Timer(duration, link.close);
+    onDispose(timer.cancel);
+  }
+}
 
 final repositoryProvider = Provider<PanelRepository>(
   (ref) => PanelRepository(Supabase.instance.client),
@@ -128,6 +140,7 @@ final reservationsLiveProvider = NotifierProvider.autoDispose
 /// Rezerwacje jednego dnia. Odświeżają się same, gdy ktoś zmieni rezerwację lokalu.
 final reservationsProvider = FutureProvider.autoDispose
     .family<List<PanelReservation>, DayQuery>((ref, q) {
+      ref.cacheFor();
       ref.watch(reservationsLiveProvider(q.restaurantId));
       final repo = ref.watch(repositoryProvider);
       return repo.reservations(
@@ -142,44 +155,44 @@ final reservationsProvider = FutureProvider.autoDispose
 // ---------------------------------------------------------------
 
 final zonesProvider = FutureProvider.autoDispose.family<List<FloorZone>, String>(
-  (ref, id) => ref.watch(repositoryProvider).zones(id),
+  (ref, id) => (ref..cacheFor()).watch(repositoryProvider).zones(id),
 );
 
 final tablesProvider = FutureProvider.autoDispose
     .family<List<DiningTable>, String>(
-      (ref, id) => ref.watch(repositoryProvider).tables(id),
+      (ref, id) => (ref..cacheFor()).watch(repositoryProvider).tables(id),
     );
 
 final profileProvider = FutureProvider.autoDispose
     .family<RestaurantProfile, String>(
-      (ref, id) => ref.watch(repositoryProvider).profile(id),
+      (ref, id) => (ref..cacheFor()).watch(repositoryProvider).profile(id),
     );
 
 final menuProvider = FutureProvider.autoDispose
     .family<List<MenuSection>, String>(
-      (ref, id) => ref.watch(repositoryProvider).menu(id),
+      (ref, id) => (ref..cacheFor()).watch(repositoryProvider).menu(id),
     );
 
 final reviewsProvider = FutureProvider.autoDispose
     .family<List<PanelReview>, String>(
-      (ref, id) => ref.watch(repositoryProvider).reviews(id),
+      (ref, id) => (ref..cacheFor()).watch(repositoryProvider).reviews(id),
     );
 
 final elementsProvider = FutureProvider.autoDispose
     .family<List<FloorElement>, String>(
-      (ref, id) => ref.watch(repositoryProvider).elements(id),
+      (ref, id) => (ref..cacheFor()).watch(repositoryProvider).elements(id),
     );
 
 final staffProvider = FutureProvider.autoDispose
     .family<List<StaffMember>, String>(
-      (ref, id) => ref.watch(repositoryProvider).staff(id),
+      (ref, id) => (ref..cacheFor()).watch(repositoryProvider).staff(id),
     );
 
 typedef WeekQuery = ({String restaurantId, DateTime weekStart});
 
 final availabilityProvider = FutureProvider.autoDispose
     .family<List<Availability>, WeekQuery>(
-      (ref, q) => ref.watch(repositoryProvider).availability(
+      (ref, q) => (ref..cacheFor()).watch(repositoryProvider).availability(
         restaurantId: q.restaurantId,
         from: q.weekStart,
         to: DateTime(q.weekStart.year, q.weekStart.month, q.weekStart.day + 7),
@@ -188,17 +201,17 @@ final availabilityProvider = FutureProvider.autoDispose
 
 final giftCardsProvider = FutureProvider.autoDispose
     .family<List<GiftCard>, String>(
-      (ref, id) => ref.watch(repositoryProvider).giftCards(id),
+      (ref, id) => (ref..cacheFor()).watch(repositoryProvider).giftCards(id),
     );
 
 typedef StatsQuery = ({String restaurantId, int days});
 
 final statsProvider = FutureProvider.autoDispose
     .family<List<DayStat>, StatsQuery>(
-      (ref, q) => ref.watch(repositoryProvider).stats(q.restaurantId, q.days),
+      (ref, q) => (ref..cacheFor()).watch(repositoryProvider).stats(q.restaurantId, q.days),
     );
 
 final occasionStatsProvider = FutureProvider.autoDispose
     .family<List<OccasionStat>, StatsQuery>(
-      (ref, q) => ref.watch(repositoryProvider).occasionStats(q.restaurantId, q.days),
+      (ref, q) => (ref..cacheFor()).watch(repositoryProvider).occasionStats(q.restaurantId, q.days),
     );

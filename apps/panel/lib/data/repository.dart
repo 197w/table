@@ -430,7 +430,7 @@ class PanelRepository {
       await _db.storage.from(logoBucket).uploadBinary(
         path,
         bytes,
-        fileOptions: FileOptions(contentType: contentType, upsert: true),
+        fileOptions: FileOptions(contentType: contentType),
       );
       final url = _db.storage.from(logoBucket).getPublicUrl(path);
       await updateProfile(restaurantId, {'logo_url': url});

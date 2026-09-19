@@ -108,21 +108,9 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
           subtitle:
               '${Fmt.capitalize(Fmt.dayLong(day))}${isToday ? ' · dziś' : ''}',
           actions: [
-            IconButton(
-              tooltip: 'Poprzedni dzień',
-              icon: const Glyph(AppIcons.caretLeft, size: 18),
-              onPressed: () => ref.read(selectedDayProvider.notifier).shift(-1),
-            ),
-            OutlinedButton(
-              onPressed: isToday
-                  ? null
-                  : () => ref.read(selectedDayProvider.notifier).today(),
-              child: const Text('Dziś'),
-            ),
-            IconButton(
-              tooltip: 'Następny dzień',
-              icon: const Glyph(AppIcons.caretRight, size: 18),
-              onPressed: () => ref.read(selectedDayProvider.notifier).shift(1),
+            _DayStrip(
+              day: day,
+              onSelect: (d) => ref.read(selectedDayProvider.notifier).set(d),
             ),
             IconButton(
               tooltip: 'Wybierz dzień',
@@ -174,8 +162,8 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
               ),
               data: (all) {
                 final visible = all.where(_filter.matches).toList();
-                final tables =
-                    ref.watch(tablesProvider(restaurant.id)).value ?? const <DiningTable>[];
+                final tablesAsync = ref.watch(tablesProvider(restaurant.id));
+                final tables = tablesAsync.value ?? const <DiningTable>[];
                 final zones =
                     ref.watch(zonesProvider(restaurant.id)).value ?? const <FloorZone>[];
                 final elements =
@@ -219,6 +207,18 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                         ),
                 );
 
+                // Dopóki stoliki się wczytują, nie pokazujemy komunikatu o pustej sali.
+                if (!tablesAsync.hasValue) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Expanded(child: LoadingView()),
+                      const SizedBox(width: 20),
+                      side,
+                    ],
+                  );
+                }
+
                 if (tables.isEmpty) {
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -261,6 +261,74 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// Trzy dni wokół wybranego: skrót dnia tygodnia nad numerem. Dzisiejszy w kolorze akcentu.
+class _DayStrip extends StatelessWidget {
+  const _DayStrip({required this.day, required this.onSelect});
+
+  final DateTime day;
+  final ValueChanged<DateTime> onSelect;
+
+  static const _names = ['PON.', 'WT.', 'ŚR.', 'CZW.', 'PIĄ.', 'SOB.', 'NIE.'];
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final today = dateOnly(DateTime.now());
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var offset = -1; offset <= 1; offset++)
+          () {
+            final d = DateTime(day.year, day.month, day.day + offset);
+            final selected = offset == 0;
+            final color = d == today
+                ? AppColors.accent
+                : (selected ? AppColors.text : AppColors.textMuted);
+            return Tooltip(
+              message: Fmt.capitalize(Fmt.dayLong(d)),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () => onSelect(d),
+                  child: Container(
+                    width: 52,
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    decoration: BoxDecoration(
+                      color: selected ? AppColors.surfaceRaised : null,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _names[d.weekday - 1],
+                          style: text.labelSmall?.copyWith(
+                            color: color,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.4,
+                          ),
+                        ),
+                        Text(
+                          '${d.day}',
+                          style: text.titleMedium?.copyWith(
+                            color: color,
+                            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                            fontFeatures: _tabular,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }(),
       ],
     );
   }

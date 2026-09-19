@@ -205,13 +205,21 @@ class SegmentedTabs<T> extends StatelessWidget {
                     vertical: 7,
                   ),
                   decoration: BoxDecoration(
-                    color: value == selected
-                        ? AppColors.surface
-                        : Colors.transparent,
+                    // Ten sam kolor z inną przezroczystością, żeby przejście
+                    // nie przechodziło przez szarość ani czerń.
+                    color: AppColors.surface.withValues(
+                      alpha: value == selected ? 1 : 0,
+                    ),
                     borderRadius: BorderRadius.circular(9),
-                    boxShadow: value == selected
-                        ? [BoxShadow(color: AppColors.accent, blurRadius: 0, spreadRadius: 1)]
-                        : null,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.accent.withValues(
+                          alpha: value == selected ? 1 : 0,
+                        ),
+                        blurRadius: 0,
+                        spreadRadius: 1,
+                      ),
+                    ],
                   ),
                   child: Text(
                     label,
