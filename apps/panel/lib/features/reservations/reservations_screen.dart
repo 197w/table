@@ -228,7 +228,7 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                           icon: AppIcons.squaresFour,
                           title: 'Sala jest pusta',
                           message:
-                              'Rozstaw stoliki w zakładce „Plan sali”, a tutaj zobaczysz je razem z rezerwacjami.',
+                              'Rozstaw stoliki w zakładce „Edycja sali”, a tutaj zobaczysz je razem z rezerwacjami.',
                         ),
                       ),
                       const SizedBox(width: 20),
@@ -1011,7 +1011,7 @@ class _PlanPanel extends StatelessWidget {
                 zone: zone,
                 tables: inZone,
                 elements: elements.where((e) => e.zone == zone.name).toList(),
-                // Kratka pomaga przy rozstawianiu, więc jest tylko w zakładce „Plan sali”.
+                // Kratka pomaga przy rozstawianiu, więc jest tylko w zakładce „Edycja sali”.
                 showGrid: false,
                 selectedId: null,
                 lookOf: (t) => liveTableLook(

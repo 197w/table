@@ -42,6 +42,15 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
   bool _dirty = false;
   bool _saving = false;
 
+  // Schowek edytora: skopiowany stolik, miejsce albo element stały.
+  Object? _clipboard;
+
+  // Skróty kopiowania działają, gdy fokus jest na planie, a nie w polu tekstowym.
+  final _canvasFocus = FocusNode(debugLabel: 'plan sali');
+
+  // Pozycja kursora przy przeciąganiu krzesła, zanim krzesło przyciągnie się do stolika.
+  Offset? _chairRaw;
+
   @override
   void initState() {
     super.initState();
@@ -53,6 +62,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
   @override
   void dispose() {
     _clock?.cancel();
+    _canvasFocus.dispose();
     super.dispose();
   }
 
@@ -110,11 +120,15 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     setState(() {
       _tables = [
         for (final t in _tables)
-          if (FloorCanvas.keyOf(t) == key) change(t) else t,
+          if (FloorCanvas.keyOf(t) == key) _selectAfter(change(t)) else t,
       ];
-      _selectedKey = FloorCanvas.keyOf(change(table));
       _dirty = true;
     });
+  }
+
+  DiningTable _selectAfter(DiningTable t) {
+    _selectedKey = FloorCanvas.keyOf(t);
+    return t;
   }
 
   void _addTable(FloorZone zone, {bool seat = false}) {
@@ -186,14 +200,91 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
   }
 
   /// Przesuwa jedno krzesło. Przy pierwszej zmianie automatyczne rozstawienie staje się własnym.
+  /// Krzesło nie odjedzie od stolika: zostaje w pasie wokół blatu.
   void _dragChair(DiningTable table, int index, Offset deltaCm) {
     _update(table, (t) {
       final chairs = [...chairsOf(t)];
       if (index >= chairs.length) return t;
-      final c = chairs[index];
-      chairs[index] = ChairPos(c.x + deltaCm.dx, c.y + deltaCm.dy);
+      final raw = (_chairRaw ?? Offset(chairs[index].x, chairs[index].y)) + deltaCm;
+      _chairRaw = raw;
+      chairs[index] = attachChair(t, ChairPos(raw.dx, raw.dy));
       return t.copyWith(chairs: chairs);
     });
+  }
+
+  Object? _selectedItem() {
+    for (final t in _tables) {
+      if (FloorCanvas.keyOf(t) == _selectedKey) return t;
+    }
+    for (final e in _elements) {
+      if (e.key == _selectedKey) return e;
+    }
+    return null;
+  }
+
+  void _copy() {
+    final item = _selectedItem();
+    if (item == null) return;
+    _clipboard = item;
+    showMessage(context, 'Skopiowano. Wklej skrótem Ctrl+V.');
+  }
+
+  /// Wstawia kopię stolika, miejsca albo elementu 50 cm obok oryginału.
+  void _paste(Object? item, FloorZone zone) {
+    if (item == null) return;
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    int cx(int x) => (x + 50).clamp(0, zone.widthCm);
+    int cy(int y) => (y + 50).clamp(0, zone.heightCm);
+
+    if (item is DiningTable) {
+      final prefix = item.isSeat ? 'M' : 'S';
+      var n = item.isSeat ? 1 : _tables.length + 1;
+      while (_tables.any((t) => t.label == '$prefix$n')) {
+        n++;
+      }
+      final copy = DiningTable(
+        id: null,
+        draftKey: 'kopia-$stamp',
+        label: '$prefix$n',
+        kind: item.kind,
+        seats: item.seats,
+        widthCm: item.widthCm,
+        heightCm: item.heightCm,
+        zone: zone.name,
+        priority: item.priority,
+        active: item.active,
+        xCm: cx(item.xCm),
+        yCm: cy(item.yCm),
+        rotation: item.rotation,
+        shape: item.shape,
+        chairs: item.chairs,
+        joinGroup: item.joinGroup,
+      );
+      setState(() {
+        _tables = [..._tables, copy];
+        _selectedKey = FloorCanvas.keyOf(copy);
+        _clipboard = copy;
+        _dirty = true;
+      });
+    } else if (item is FloorElement) {
+      final copy = FloorElement(
+        id: null,
+        draftKey: 'element-$stamp',
+        zone: zone.name,
+        xCm: cx(item.xCm),
+        yCm: cy(item.yCm),
+        widthCm: item.widthCm,
+        heightCm: item.heightCm,
+        rotation: item.rotation,
+        shape: item.shape,
+      );
+      setState(() {
+        _elements = [..._elements, copy];
+        _selectedKey = copy.key;
+        _clipboard = copy;
+        _dirty = true;
+      });
+    }
   }
 
   Future<void> _deleteTable(DiningTable table) async {
@@ -315,8 +406,8 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       return const Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PageHeader(title: 'Plan sali'),
-          Expanded(child: ProGate(feature: 'Plan sali')),
+          PageHeader(title: 'Edycja sali'),
+          Expanded(child: ProGate(feature: 'Edycja sali')),
         ],
       );
     }
@@ -361,9 +452,9 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          title: 'Plan sali',
+          title: 'Edycja sali',
           subtitle: editing
-              ? 'Przeciągaj stoliki, krzesła zaznaczonego stolika i stałe elementy. Pozycja przyciąga się co 10 cm.'
+              ? 'Przeciągaj stoliki, krzesła i stałe elementy. Ctrl+C i Ctrl+V kopiują zaznaczony element (na Macu Cmd).'
               : 'Zajętość stolików ${_minuteOfDay == null ? 'teraz' : 'dziś o ${Fmt.time(_viewTime)}'}. Odświeża się sama.',
           actions: [
             if (!editing && restaurant.canManage)
@@ -490,7 +581,24 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       }
     }
 
-    return Card(
+    void focusPlan() {
+      if (editing) _canvasFocus.requestFocus();
+    }
+
+    return CallbackShortcuts(
+      bindings: editing
+          ? {
+              const SingleActivator(LogicalKeyboardKey.keyC, control: true): _copy,
+              const SingleActivator(LogicalKeyboardKey.keyC, meta: true): _copy,
+              const SingleActivator(LogicalKeyboardKey.keyV, control: true): () => _paste(_clipboard, zone),
+              const SingleActivator(LogicalKeyboardKey.keyV, meta: true): () => _paste(_clipboard, zone),
+              const SingleActivator(LogicalKeyboardKey.keyD, control: true): () => _paste(_selectedItem(), zone),
+              const SingleActivator(LogicalKeyboardKey.keyD, meta: true): () => _paste(_selectedItem(), zone),
+            }
+          : const <ShortcutActivator, VoidCallback>{},
+      child: Focus(
+        focusNode: _canvasFocus,
+        child: Card(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: FloorCanvas(
@@ -500,7 +608,13 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
           selectedId: _selectedKey,
           chairEditKey: editing ? _selectedKey : null,
           onDragChair: editing ? _dragChair : null,
-          onTapElement: editing ? (e) => setState(() => _selectedKey = e.key) : null,
+          onDragChairEnd: editing ? (_) => _chairRaw = null : null,
+          onTapElement: editing
+              ? (e) {
+                  focusPlan();
+                  setState(() => _selectedKey = e.key);
+                }
+              : null,
           onDragElement: editing
               ? (e, d) => _updateElement(e, (x) => x.copyWith(
                     xCm: (x.xCm + d.dx).round().clamp(0, zone.widthCm),
@@ -513,8 +627,14 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
                     yCm: ((x.yCm / 10).round() * 10).clamp(0, zone.heightCm),
                   ))
               : null,
-          onTapTable: (t) => setState(() => _selectedKey = FloorCanvas.keyOf(t)),
-          onTapEmpty: () => setState(() => _selectedKey = null),
+          onTapTable: (t) {
+            focusPlan();
+            setState(() => _selectedKey = FloorCanvas.keyOf(t));
+          },
+          onTapEmpty: () {
+            focusPlan();
+            setState(() => _selectedKey = null);
+          },
           lookOf: (t) => editing
               ? _editLook(t, overlapping.contains(FloorCanvas.keyOf(t)))
               : _liveLook(t, reservations),
@@ -530,6 +650,8 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
                     yCm: ((x.yCm / 10).round() * 10).clamp(0, zone.heightCm),
                   ))
               : null,
+        ),
+      ),
         ),
       ),
     );
@@ -661,6 +783,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
         key: ValueKey('element-${element.key}'),
         element: element,
         onChanged: (change) => _updateElement(element!, change),
+        onDuplicate: () => _paste(element, zone),
         onDelete: () => _deleteElement(element!),
         onClose: () => setState(() => _selectedKey = null),
       );
@@ -679,6 +802,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       table: table,
       zones: _zones.map((z) => z.name).toList(),
       onChanged: (change) => _update(table!, change),
+      onDuplicate: () => _paste(table, zone),
       onDelete: () => _deleteTable(table!),
       onClose: () => setState(() => _selectedKey = null),
     );
@@ -848,6 +972,7 @@ class _TableInspector extends StatefulWidget {
     required this.table,
     required this.zones,
     required this.onChanged,
+    required this.onDuplicate,
     required this.onDelete,
     required this.onClose,
   });
@@ -855,6 +980,7 @@ class _TableInspector extends StatefulWidget {
   final DiningTable table;
   final List<String> zones;
   final ValueChanged<DiningTable Function(DiningTable)> onChanged;
+  final VoidCallback onDuplicate;
   final VoidCallback onDelete;
   final VoidCallback onClose;
 
@@ -893,10 +1019,22 @@ class _TableInspectorState extends State<_TableInspector> {
       showMessage(context, 'Wymiary blatu od 30 do 1000 cm.');
       return;
     }
-    widget.onChanged((t) => t.copyWith(
-      widthCm: w,
-      heightCm: widget.table.shape == TableShape.round ? w : h,
-    ));
+    widget.onChanged((t) {
+      final resized = t.copyWith(
+        widthCm: w,
+        heightCm: t.shape == TableShape.round ? w : h,
+      );
+      final chairs = t.chairs;
+      if (chairs == null) return resized;
+      // Własne krzesła przesuwają się razem z krawędziami blatu.
+      return resized.copyWith(chairs: [
+        for (final c in chairs)
+          attachChair(
+            resized,
+            ChairPos(c.x * resized.widthCm / t.widthCm, c.y * resized.heightCm / t.heightCm),
+          ),
+      ]);
+    });
   }
 
   @override
@@ -967,6 +1105,7 @@ class _TableInspectorState extends State<_TableInspector> {
                 (x) => x.copyWith(
                   shape: s,
                   heightCm: s == TableShape.round ? x.widthCm : x.heightCm,
+                  resetChairs: true,
                 ),
               );
               if (s == TableShape.round) _height.text = _width.text;
@@ -998,33 +1137,17 @@ class _TableInspectorState extends State<_TableInspector> {
           ),
           const SizedBox(height: 6),
           if (t.shape == TableShape.rect)
-            Row(
-              children: [
-                Text('Obrót', style: text.bodyMedium),
-                const Spacer(),
-                IconButton(
-                  tooltip: 'Obróć o 15° w lewo',
-                  icon: const Glyph(AppIcons.undo, size: 16),
-                  onPressed: () => widget.onChanged((x) => x.copyWith(rotation: (x.rotation - 15) % 360)),
-                ),
-                SizedBox(
-                  width: 44,
-                  child: Text('${t.rotation}°', textAlign: TextAlign.center, style: text.labelLarge?.copyWith(fontFeatures: _tabular)),
-                ),
-                IconButton(
-                  tooltip: 'Obróć o 15° w prawo',
-                  icon: const Glyph(AppIcons.refresh, size: 16),
-                  onPressed: () => widget.onChanged((x) => x.copyWith(rotation: (x.rotation + 15) % 360)),
-                ),
-              ],
+            _RotationField(
+              value: t.rotation,
+              onChanged: (v) => widget.onChanged((x) => x.copyWith(rotation: v)),
             ),
           const SizedBox(height: 12),
           Text('Krzesła', style: text.titleSmall),
           const SizedBox(height: 4),
           Text(
             t.chairs == null
-                ? 'Rozstawione automatycznie. Przeciągnij krzesło na planie, żeby ustawić je po swojemu.'
-                : 'Ustawione ręcznie. Przeciągaj krzesła na planie.',
+                ? 'Rozstawione automatycznie wzdłuż szerokości. Przeciągnij krzesło, żeby ustawić je po swojemu.'
+                : 'Ustawione ręcznie. Krzesła przesuwają się tylko wokół blatu.',
             style: text.bodySmall?.copyWith(color: AppColors.textMuted),
           ),
           if (t.chairs != null)
@@ -1104,10 +1227,20 @@ class _TableInspectorState extends State<_TableInspector> {
             ],
           ),
           const SizedBox(height: 18),
-          TextButton(
-            onPressed: widget.onDelete,
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: Text(t.isSeat ? 'Usuń miejsce' : 'Usuń stolik'),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: widget.onDuplicate,
+                icon: const Glyph(AppIcons.copy, size: 16),
+                label: const Text('Duplikuj'),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: widget.onDelete,
+                style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                child: Text(t.isSeat ? 'Usuń miejsce' : 'Usuń stolik'),
+              ),
+            ],
           ),
         ],
       ),
@@ -1255,12 +1388,14 @@ class _ElementInspector extends StatefulWidget {
     super.key,
     required this.element,
     required this.onChanged,
+    required this.onDuplicate,
     required this.onDelete,
     required this.onClose,
   });
 
   final FloorElement element;
   final ValueChanged<FloorElement Function(FloorElement)> onChanged;
+  final VoidCallback onDuplicate;
   final VoidCallback onDelete;
   final VoidCallback onClose;
 
@@ -1352,34 +1487,95 @@ class _ElementInspectorState extends State<_ElementInspector> {
             child: TextButton(onPressed: _applySize, child: const Text('Zastosuj wymiary')),
           ),
           if (e.shape == TableShape.rect)
-            Row(
-              children: [
-                Text('Obrót', style: text.bodyMedium),
-                const Spacer(),
-                IconButton(
-                  tooltip: 'Obróć o 15° w lewo',
-                  icon: const Glyph(AppIcons.undo, size: 16),
-                  onPressed: () => widget.onChanged((x) => x.copyWith(rotation: (x.rotation - 15) % 360)),
-                ),
-                SizedBox(
-                  width: 44,
-                  child: Text('${e.rotation}°', textAlign: TextAlign.center, style: text.labelLarge?.copyWith(fontFeatures: _tabular)),
-                ),
-                IconButton(
-                  tooltip: 'Obróć o 15° w prawo',
-                  icon: const Glyph(AppIcons.refresh, size: 16),
-                  onPressed: () => widget.onChanged((x) => x.copyWith(rotation: (x.rotation + 15) % 360)),
-                ),
-              ],
+            _RotationField(
+              value: e.rotation,
+              onChanged: (v) => widget.onChanged((x) => x.copyWith(rotation: v)),
             ),
           const SizedBox(height: 18),
-          TextButton(
-            onPressed: widget.onDelete,
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Usuń element'),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: widget.onDuplicate,
+                icon: const Glyph(AppIcons.copy, size: 16),
+                label: const Text('Duplikuj'),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: widget.onDelete,
+                style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                child: const Text('Usuń element'),
+              ),
+            ],
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Obrót w stopniach: pole do wpisania kąta i przyciski co 15°.
+class _RotationField extends StatefulWidget {
+  const _RotationField({required this.value, required this.onChanged});
+
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  State<_RotationField> createState() => _RotationFieldState();
+}
+
+class _RotationFieldState extends State<_RotationField> {
+  late final _controller = TextEditingController(text: '${widget.value}');
+
+  @override
+  void didUpdateWidget(covariant _RotationField old) {
+    super.didUpdateWidget(old);
+    if (old.value != widget.value && parseInt(_controller.text) != widget.value) {
+      _controller.text = '${widget.value}';
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _set(int degrees) => widget.onChanged(degrees % 360);
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Row(
+      children: [
+        Text('Obrót', style: text.bodyMedium),
+        const Spacer(),
+        IconButton(
+          tooltip: 'Obróć o 15° w lewo',
+          icon: const Glyph(AppIcons.undo, size: 16),
+          onPressed: () => _set(widget.value - 15),
+        ),
+        SizedBox(
+          width: 76,
+          child: TextField(
+            controller: _controller,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(3)],
+            style: const TextStyle(fontFeatures: _tabular),
+            decoration: const InputDecoration(isDense: true, suffixText: '°'),
+            onChanged: (v) {
+              final degrees = parseInt(v);
+              if (degrees != null) _set(degrees);
+            },
+          ),
+        ),
+        IconButton(
+          tooltip: 'Obróć o 15° w prawo',
+          icon: const Glyph(AppIcons.refresh, size: 16),
+          onPressed: () => _set(widget.value + 15),
+        ),
+      ],
     );
   }
 }

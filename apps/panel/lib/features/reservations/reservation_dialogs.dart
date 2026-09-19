@@ -495,7 +495,7 @@ class TablePicker extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     if (tables.isEmpty) {
       return Text(
-        'Lokal nie ma jeszcze stolików. Dodaj je w zakładce „Plan sali”.',
+        'Lokal nie ma jeszcze stolików. Dodaj je w zakładce „Edycja sali”.',
         style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
       );
     }

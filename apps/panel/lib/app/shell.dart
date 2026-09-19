@@ -61,7 +61,7 @@ class _NavItem {
 const _groups = <(String, List<_NavItem>)>[
   ('Sala', [
     _NavItem(PanelRoutes.reservations, 'Rezerwacje', AppIcons.calendarDots),
-    _NavItem(PanelRoutes.floor, 'Plan sali', AppIcons.squaresFour),
+    _NavItem(PanelRoutes.floor, 'Edycja sali', AppIcons.squaresFour),
   ]),
   ('Zespół', [
     _NavItem(PanelRoutes.staff, 'Pracownicy', AppIcons.users),

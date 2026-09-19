@@ -11,6 +11,11 @@ const chairDiameterCm = 38.0;
 /// Odstęp krzesła od krawędzi blatu, w centymetrach.
 const chairGapCm = 6.0;
 
+/// Najmniejsza i największa odległość środka krzesła od krawędzi blatu, w centymetrach.
+/// Krzesło można przesuwać tylko w tym pasie, więc zawsze stoi przy swoim stoliku.
+const chairMinReachCm = chairDiameterCm / 2 - 6;
+const chairMaxReachCm = chairGapCm + chairDiameterCm / 2 + 20;
+
 /// Wygląd stolika na planie.
 class TableLook {
   const TableLook({
@@ -50,27 +55,67 @@ List<ChairPos> autoChairs(DiningTable t) {
     return result;
   }
 
-  // Krzesła na dłuższych bokach, przy nieparzystej liczbie jedno na krótszym.
-  final horizontal = w >= h;
-  final longSide = horizontal ? w : h;
-  final off = (horizontal ? h : w) / 2 + chairGapCm + r;
+  // Krzesła zawsze wzdłuż szerokości, przy nieparzystej liczbie jedno na prawym końcu.
+  // Zmiana wymiarów nie przerzuca więc krzeseł na inne boki, stolik obraca tylko kąt obrotu.
+  final off = h / 2 + chairGapCm + r;
   final perSide = seats ~/ 2;
   for (final sign in [-1.0, 1.0]) {
     final count = sign < 0 ? perSide + (seats == 1 ? 1 : 0) : perSide;
     for (var i = 0; i < count; i++) {
-      final along = -longSide / 2 + longSide * (i + 1) / (count + 1);
-      result.add(horizontal ? ChairPos(along, sign * off) : ChairPos(sign * off, along));
+      result.add(ChairPos(-w / 2 + w * (i + 1) / (count + 1), sign * off));
     }
   }
   if (seats.isOdd && seats > 1) {
-    final endOff = longSide / 2 + chairGapCm + r;
-    result.add(horizontal ? ChairPos(endOff, 0) : ChairPos(0, endOff));
+    result.add(ChairPos(w / 2 + chairGapCm + r, 0));
   }
   return result;
 }
 
-/// Krzesła stolika: własne ustawienie albo automatyczne.
-List<ChairPos> chairsOf(DiningTable t) => t.chairs ?? autoChairs(t);
+/// Przyciąga krzesło do stolika: środek krzesła zostaje w pasie wokół blatu.
+/// Pozycja w cm względem środka blatu, przed obrotem.
+ChairPos attachChair(DiningTable t, ChairPos c) {
+  final p = Offset(c.x, c.y);
+  if (t.shape == TableShape.round) {
+    final radius = math.max(t.widthCm, t.heightCm) / 2;
+    final d = p.distance;
+    final dir = d < 0.01 ? const Offset(0, -1) : p / d;
+    final q = dir * (radius + (d - radius).clamp(chairMinReachCm, chairMaxReachCm));
+    return ChairPos(q.dx, q.dy);
+  }
+
+  final hw = t.widthCm / 2;
+  final hh = t.heightCm / 2;
+  Offset edge;
+  Offset normal;
+  double dist;
+  if (p.dx.abs() <= hw && p.dy.abs() <= hh) {
+    // Krzesło na blacie: wypychamy je przez najbliższą krawędź.
+    final sx = p.dx < 0 ? -1.0 : 1.0;
+    final sy = p.dy < 0 ? -1.0 : 1.0;
+    final toX = hw - p.dx.abs();
+    final toY = hh - p.dy.abs();
+    if (toX < toY) {
+      edge = Offset(sx * hw, p.dy);
+      normal = Offset(sx, 0);
+      dist = -toX;
+    } else {
+      edge = Offset(p.dx, sy * hh);
+      normal = Offset(0, sy);
+      dist = -toY;
+    }
+  } else {
+    edge = Offset(p.dx.clamp(-hw, hw), p.dy.clamp(-hh, hh));
+    final v = p - edge;
+    dist = v.distance;
+    normal = v / dist;
+  }
+  final q = edge + normal * dist.clamp(chairMinReachCm, chairMaxReachCm);
+  return ChairPos(q.dx, q.dy);
+}
+
+/// Krzesła stolika: własne ustawienie (zawsze przy blacie) albo automatyczne.
+List<ChairPos> chairsOf(DiningTable t) =>
+    t.chairs == null ? autoChairs(t) : [for (final c in t.chairs!) attachChair(t, c)];
 
 Offset _rotate(Offset p, double degrees) {
   final a = degrees * math.pi / 180;
