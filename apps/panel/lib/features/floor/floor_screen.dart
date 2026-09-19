@@ -764,14 +764,30 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       final seats = active.fold(0, (sum, t) => sum + t.seats);
       return PanelCard(
         title: 'Sala ${_minuteOfDay == null ? 'teraz' : 'o ${Fmt.time(_viewTime)}'}',
+        icon: AppIcons.squaresFour,
+        iconColor: TileColors.blue,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
-                Expanded(child: StatTile(label: 'Stoliki', value: '$tableCount')),
+                Expanded(
+                  child: StatTile(
+                    label: 'Stoliki',
+                    value: '$tableCount',
+                    icon: AppIcons.squaresFour,
+                    color: TileColors.blue,
+                  ),
+                ),
                 const SizedBox(width: 10),
-                Expanded(child: StatTile(label: 'Miejsca siedzące', value: '$seats')),
+                Expanded(
+                  child: StatTile(
+                    label: 'Miejsca siedzące',
+                    value: '$seats',
+                    icon: AppIcons.users,
+                    color: TileColors.green,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 18),

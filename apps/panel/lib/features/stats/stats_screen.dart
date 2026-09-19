@@ -23,6 +23,14 @@ enum _Metric {
     views => s.views,
     calls => s.callClicks,
   };
+
+  /// Kolor slupkow, ten sam co na kaflu z ta liczba.
+  Color get color => switch (this) {
+    covers => TileColors.green,
+    reservations => TileColors.blue,
+    views => TileColors.violet,
+    calls => TileColors.amber,
+  };
 }
 
 class StatsScreen extends ConsumerStatefulWidget {
@@ -40,7 +48,8 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
   Widget build(BuildContext context) {
     final restaurant = ref.watch(currentRestaurantProvider);
     if (restaurant == null) return const LoadingView();
-    final query = (restaurantId: restaurant.id, days: _days);
+    // Pobieramy dwa okresy: biezacy na wykres i poprzedni do porownania.
+    final query = (restaurantId: restaurant.id, days: _days * 2);
     final async = ref.watch(statsProvider(query));
     final metrics = restaurant.isPro
         ? _Metric.values
@@ -69,8 +78,21 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
               error: e,
               onRetry: () => ref.invalidate(statsProvider(query)),
             ),
-            data: (stats) {
+            data: (all) {
+              final split = all.length > _days ? all.length - _days : 0;
+              final stats = all.sublist(split);
+              final earlier = all.sublist(0, split);
               int sum(int Function(DayStat) f) => stats.fold(0, (a, s) => a + f(s));
+
+              // Zmiana wzgledem poprzedniego okresu tej samej dlugosci.
+              double? change(int Function(DayStat) f) {
+                if (earlier.isEmpty) return null;
+                final before = earlier.fold(0, (a, s) => a + f(s));
+                final now = sum(f);
+                if (before == 0) return now == 0 ? 0 : 100;
+                return (now - before) / before * 100;
+              }
+
               final reservations = sum((s) => s.reservations);
               final noShows = sum((s) => s.noShows);
               final noShowRate = reservations == 0 ? 0.0 : noShows / reservations * 100;
@@ -85,6 +107,8 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                           label: 'Wyświetlenia profilu',
                           value: '${sum((s) => s.views)}',
                           icon: AppIcons.eye,
+                          color: TileColors.violet,
+                          change: change((s) => s.views),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -93,6 +117,8 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                           label: 'Kliknięcia „Zadzwoń”',
                           value: '${sum((s) => s.callClicks)}',
                           icon: AppIcons.phone,
+                          color: TileColors.amber,
+                          change: change((s) => s.callClicks),
                         ),
                       ),
                       if (restaurant.isPro) ...[
@@ -102,7 +128,9 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                             label: 'Rezerwacje',
                             value: '$reservations',
                             icon: AppIcons.calendarCheck,
+                            color: TileColors.blue,
                             hint: '${sum((s) => s.cancellations)} odwołanych',
+                            change: change((s) => s.reservations),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -111,7 +139,9 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                             label: 'Goście',
                             value: '${sum((s) => s.covers)}',
                             icon: AppIcons.users,
+                            color: TileColors.green,
                             accent: true,
+                            change: change((s) => s.covers),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -120,7 +150,10 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                             label: 'Niestawiennictwa',
                             value: '$noShows',
                             icon: AppIcons.userMinus,
+                            color: TileColors.rose,
                             hint: '${Fmt.rating(noShowRate)}% rezerwacji',
+                            change: change((s) => s.noShows),
+                            moreIsBetter: false,
                           ),
                         ),
                       ],
@@ -129,6 +162,8 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                   const SizedBox(height: 16),
                   PanelCard(
                     title: metric.label,
+                    icon: AppIcons.chartBar,
+                    iconColor: metric.color,
                     trailing: SegmentedTabs<_Metric>(
                       options: [for (final m in metrics) (m, m.label)],
                       selected: metric,
@@ -139,6 +174,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                       child: _BarChart(
                         days: stats,
                         valueOf: metric.valueOf,
+                        color: metric.color,
                       ),
                     ),
                   ),
@@ -167,15 +203,23 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
 
 /// Słupki dzienne z podpisami osi. Wartość słupka pokazuje dymek po najechaniu.
 class _BarChart extends StatelessWidget {
-  const _BarChart({required this.days, required this.valueOf});
+  const _BarChart({
+    required this.days,
+    required this.valueOf,
+    required this.color,
+  });
 
   final List<DayStat> days;
   final int Function(DayStat) valueOf;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final values = [for (final d in days) valueOf(d)];
+    final now = DateTime.now();
+    bool isToday(DateTime d) =>
+        d.year == now.year && d.month == now.month && d.day == now.day;
     final maxValue = values.fold(0, math.max);
     final top = maxValue == 0 ? 4 : _niceCeil(maxValue);
     final labelEvery = days.length <= 7 ? 1 : (days.length <= 30 ? 5 : 15);
@@ -225,7 +269,9 @@ class _BarChart extends StatelessWidget {
                                   width: barWidth,
                                   height: math.max(2, c.maxHeight * values[i] / top),
                                   decoration: BoxDecoration(
-                                    color: values[i] == 0 ? AppColors.ring : AppColors.accentFill,
+                                    color: values[i] == 0
+                                        ? AppColors.ring
+                                        : (isToday(days[i].day) ? AppColors.accentFill : color),
                                     borderRadius: BorderRadius.vertical(
                                       top: Radius.circular(math.min(4, barWidth / 2)),
                                     ),
@@ -247,13 +293,18 @@ class _BarChart extends StatelessWidget {
                   children: [
                     for (var i = 0; i < days.length; i++)
                       Expanded(
-                        child: i % labelEvery == 0 || i == days.length - 1
+                        child: i % labelEvery == 0 || i == days.length - 1 || isToday(days[i].day)
                             ? Text(
                                 '${days[i].day.day}.${days[i].day.month.toString().padLeft(2, '0')}',
                                 maxLines: 1,
                                 overflow: TextOverflow.visible,
                                 softWrap: false,
-                                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                                style: text.bodySmall?.copyWith(
+                                  color: isToday(days[i].day)
+                                      ? AppColors.accent
+                                      : AppColors.textMuted,
+                                  fontWeight: isToday(days[i].day) ? FontWeight.w600 : null,
+                                ),
                               )
                             : const SizedBox.shrink(),
                       ),
@@ -289,6 +340,8 @@ class _OccasionsCard extends ConsumerWidget {
 
     return PanelCard(
       title: 'Okazje',
+      icon: AppIcons.calendarDots,
+      iconColor: TileColors.violet,
       child: stats.isEmpty
           ? Text(
               'W tym okresie żadna rezerwacja nie miała okazji.',

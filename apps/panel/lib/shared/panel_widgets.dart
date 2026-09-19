@@ -68,11 +68,17 @@ class PanelCard extends StatelessWidget {
     required this.child,
     this.title,
     this.trailing,
+    this.icon,
+    this.iconColor,
     this.padding = const EdgeInsets.all(20),
   });
 
   final String? title;
   final Widget? trailing;
+
+  /// Ikona w kolorowej kostce przed tytułem.
+  final AppIconData? icon;
+  final Color? iconColor;
   final Widget child;
   final EdgeInsets padding;
 
@@ -89,6 +95,10 @@ class PanelCard extends StatelessWidget {
             if (title != null) ...[
               Row(
                 children: [
+                  if (icon != null) ...[
+                    IconBadge(icon!, color: iconColor ?? AppColors.accentFill),
+                    const SizedBox(width: 10),
+                  ],
                   Expanded(child: Text(title!, style: text.titleMedium)),
                   ?trailing,
                 ],
@@ -103,7 +113,46 @@ class PanelCard extends StatelessWidget {
   }
 }
 
-/// Liczba z opisem, na przykład „14 gości”.
+/// Kolorowa kostka z ikoną, jak w kaflach liczb i nagłówkach kart.
+class IconBadge extends StatelessWidget {
+  const IconBadge(this.icon, {super.key, required this.color, this.size = 34});
+
+  final AppIconData icon;
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(size / 3),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.35),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Glyph(icon, size: size * 0.52, color: Colors.white),
+    );
+  }
+}
+
+/// Barwy kafli liczb. Każda miara ma swój kolor, ten sam co jej słupki na wykresie.
+abstract final class TileColors {
+  static const green = Color(0xFF2FB673);
+  static const blue = Color(0xFF3B82F6);
+  static const amber = Color(0xFFD99A15);
+  static const violet = Color(0xFF7C5CFF);
+  static const rose = Color(0xFFD9455F);
+}
+
+/// Liczba z opisem, na przykład „14 gości”. Z ikoną w kolorowej kostce
+/// i zmianą względem poprzedniego okresu.
 class StatTile extends StatelessWidget {
   const StatTile({
     super.key,
@@ -112,6 +161,9 @@ class StatTile extends StatelessWidget {
     this.icon,
     this.hint,
     this.accent = false,
+    this.color,
+    this.change,
+    this.moreIsBetter = true,
   });
 
   final String label;
@@ -120,9 +172,21 @@ class StatTile extends StatelessWidget {
   final String? hint;
   final bool accent;
 
+  /// Kolor kostki z ikoną.
+  final Color? color;
+
+  /// Zmiana w procentach względem poprzedniego okresu. Null, gdy nie ma z czym porównać.
+  final double? change;
+
+  /// Czy wzrost jest dobrą wiadomością. Przy niestawiennictwach jest odwrotnie.
+  final bool moreIsBetter;
+
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final up = (change ?? 0) >= 0;
+    final good = up == moreIsBetter;
+
     return Card(
       // Kafelek leży na karcie, więc jest o ton jaśniejszy od niej.
       color: AppColors.surfaceRaised,
@@ -134,33 +198,56 @@ class StatTile extends StatelessWidget {
             Row(
               children: [
                 if (icon != null) ...[
-                  Glyph(icon!, size: 16, color: AppColors.textMuted),
-                  const SizedBox(width: 6),
+                  IconBadge(icon!, color: color ?? AppColors.accentFill),
+                  const SizedBox(width: 10),
                 ],
                 Expanded(
                   child: Text(
                     label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              value,
+              style: text.displaySmall?.copyWith(
+                color: accent ? AppColors.accent : AppColors.text,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+            const SizedBox(height: 4),
+            // Wiersz podpisu jest zawsze, żeby kafelki w rzędzie miały równą wysokość.
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    hint ?? '',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: text.bodySmall?.copyWith(color: AppColors.textMuted),
                   ),
                 ),
+                if (change != null) ...[
+                  Glyph(
+                    up ? AppIcons.caretUp : AppIcons.caretDown,
+                    size: 12,
+                    color: good ? AppColors.accent : AppColors.error,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${Fmt.rating(change!.abs())}%',
+                    style: text.bodySmall?.copyWith(
+                      color: good ? AppColors.accent : AppColors.error,
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
               ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              style: text.headlineMedium?.copyWith(
-                color: accent ? AppColors.accent : AppColors.text,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-            // Wiersz podpisu jest zawsze, żeby kafelki w rzędzie miały równą wysokość.
-            Text(
-              hint ?? '',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: text.bodySmall?.copyWith(color: AppColors.textMuted),
             ),
           ],
         ),
