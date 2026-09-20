@@ -507,9 +507,9 @@ class _TablePainter extends CustomPainter {
       canvas.drawOval(rect, fillPaint);
       canvas.drawOval(rect, strokePaint);
     } else {
-      final rr = RRect.fromRectAndRadius(rect, Radius.circular(6 * scale + 2));
-      canvas.drawRRect(rr, fillPaint);
-      canvas.drawRRect(rr, strokePaint);
+      // Blaty rysujemy ostrymi narożnikami, bez zaokrągleń.
+      canvas.drawRect(rect, fillPaint);
+      canvas.drawRect(rect, strokePaint);
     }
     canvas.restore();
   }
@@ -626,12 +626,10 @@ TableLook liveTableLook(
   }
   final next = state.next;
   final soon = next != null && next.startsAt.difference(at).inMinutes <= 90;
+  // Wolny stolik nie potrzebuje podpisu: sam numer wystarczy.
   return TableLook(
     fill: AppColors.surface,
     stroke: highlighted ? AppColors.accent : (soon ? AppColors.warning : planLine),
     strokeWidth: highlighted ? 3 : 1.5,
-    caption: next == null
-        ? (table.isSeat ? 'wolne' : '${table.seats} os. · wolny')
-        : 'wolny do ${Fmt.time(next.startsAt)}',
   );
 }

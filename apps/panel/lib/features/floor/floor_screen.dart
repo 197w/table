@@ -732,7 +732,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     return TableLook(
       fill: overlaps ? AppColors.error.withValues(alpha: 0.12) : AppColors.surfaceRaised,
       stroke: overlaps ? AppColors.error : planLine,
-      caption: t.isSeat ? null : '${t.seats} os.',
+      // Bez podpisu pod blatem: liczbę miejsc widać po krzesłach i w panelu obok.
       captionColor: overlaps ? AppColors.error : null,
       dimmed: !t.active,
     );
