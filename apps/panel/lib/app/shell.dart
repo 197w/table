@@ -182,7 +182,7 @@ class _Sidebar extends ConsumerWidget {
                         child: Divider(height: 1, color: AppColors.ring),
                       ),
                       Opacity(
-                        opacity: fade,
+                        opacity: labelFade(fade),
                         child: Padding(
                           padding: const EdgeInsets.only(left: 10, top: 6),
                           child: Text(
@@ -242,7 +242,7 @@ class _Sidebar extends ConsumerWidget {
           width: inner,
           height: 26,
           child: Opacity(
-            opacity: fade,
+            opacity: labelFade(fade),
             child: Padding(
               padding: const EdgeInsets.only(left: 10),
               child: Text(
@@ -262,6 +262,10 @@ class _Sidebar extends ConsumerWidget {
 
 /// Szerokość treści w zwiniętym pasku: 76 minus odstępy po bokach.
 const kRailInner = 48.0;
+
+/// Widoczność podpisów: gasną w pierwszej części ruchu, więc znikają,
+/// zanim zwężający się pasek zacznie je ucinać.
+double labelFade(double fade) => ((fade - 0.45) / 0.55).clamp(0.0, 1.0);
 
 /// Szerokość kwadratu z ikoną przy danym stanie menu (1 rozwinięte, 0 zwinięte).
 /// Obie krańcowe wartości są stałe, więc ikona jedzie w jedną stronę i nie wraca.
@@ -336,7 +340,7 @@ class _IconRow extends StatelessWidget {
                     if (fade > 0)
                       Expanded(
                         child: Opacity(
-                          opacity: fade,
+                          opacity: labelFade(fade),
                           child: Text(
                             label,
                             maxLines: 1,
@@ -415,7 +419,7 @@ class _RestaurantSwitcher extends ConsumerWidget {
             if (fade > 0)
               Expanded(
                 child: Opacity(
-                  opacity: fade,
+                  opacity: labelFade(fade),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -450,7 +454,7 @@ class _RestaurantSwitcher extends ConsumerWidget {
               ),
             if (fade > 0)
               Opacity(
-                opacity: canSwitch ? fade : 0,
+                opacity: canSwitch ? labelFade(fade) : 0,
                 child: Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: Glyph(AppIcons.caretDown, size: 16, color: AppColors.textMuted),
