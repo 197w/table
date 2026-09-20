@@ -19,6 +19,13 @@ abstract final class PanelTheme {
 
     return base.copyWith(
       visualDensity: VisualDensity.standard,
+      // Im większy napis, tym ciaśniejsze odstępy liter. Tekst zwykły zostaje.
+      textTheme: base.textTheme.copyWith(
+        displaySmall: base.textTheme.displaySmall?.copyWith(letterSpacing: -1),
+        headlineMedium: base.textTheme.headlineMedium?.copyWith(letterSpacing: -0.6),
+        headlineSmall: base.textTheme.headlineSmall?.copyWith(letterSpacing: -0.4),
+        titleLarge: base.textTheme.titleLarge?.copyWith(letterSpacing: -0.2),
+      ),
       // Karty odrywają się od tła cieniem, a nie samym pierścieniem.
       cardTheme: base.cardTheme.copyWith(
         elevation: dark ? 14 : 10,

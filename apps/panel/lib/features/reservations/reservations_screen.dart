@@ -481,13 +481,16 @@ class _ReservationRow extends StatelessWidget {
         r.status == ReservationStatus.cancelled ||
         r.status == ReservationStatus.noShow;
 
-    return Material(
+    return PanelPress(
+      scale: 0.985,
+      child: Material(
       // Wiersz leży na karcie, więc jest od niej jaśniejszy i rzuca cień.
       color: AppColors.surfaceRaised,
       elevation: selected ? 6 : 2,
       shadowColor: Colors.black,
+      // Promień współśrodkowy z kartą: 22 karty minus 12 wcięcia listy.
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
         side: BorderSide(
           color: selected ? AppColors.accent : AppColors.ring,
           width: selected ? 1.5 : 1,
@@ -495,7 +498,7 @@ class _ReservationRow extends StatelessWidget {
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
         hoverColor: AppColors.ring,
         splashColor: Colors.transparent,
         child: Padding(
@@ -598,6 +601,7 @@ class _ReservationRow extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

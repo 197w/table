@@ -6,6 +6,7 @@ import 'package:table_core/table_core.dart';
 import '../data/models.dart';
 import '../data/providers.dart';
 import 'app.dart';
+import '../shared/panel_widgets.dart';
 import 'panel_theme.dart';
 
 /// Układ panelu: boczne menu z wyborem lokalu i treść sekcji.
@@ -197,7 +198,8 @@ class _SidebarButton extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
-      child: Material(
+      child: PanelPress(
+        child: Material(
         color: selected ? AppColors.surface : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
         elevation: selected ? 6 : 0,
@@ -231,6 +233,7 @@ class _SidebarButton extends StatelessWidget {
             ),
           ),
         ),
+        ),
       ),
     );
   }
@@ -256,7 +259,10 @@ class _RestaurantSwitcher extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          RestaurantLogo(name: current.name, logoUrl: current.logoUrl, size: 34, radius: 8),
+          ImageOutline(
+            radius: 8,
+            child: RestaurantLogo(name: current.name, logoUrl: current.logoUrl, size: 34, radius: 8),
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

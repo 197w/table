@@ -592,7 +592,10 @@ class _LogoCardState extends ConsumerState<_LogoCard> {
       title: 'Logo',
       child: Row(
         children: [
-          RestaurantLogo(name: profile.name, logoUrl: profile.logoUrl, size: 88, radius: 20),
+          ImageOutline(
+            radius: 20,
+            child: RestaurantLogo(name: profile.name, logoUrl: profile.logoUrl, size: 88, radius: 20),
+          ),
           const SizedBox(width: 20),
           Expanded(
             child: Column(

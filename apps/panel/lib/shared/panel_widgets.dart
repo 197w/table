@@ -3,6 +3,43 @@ import 'dart:math' as math;
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+/// Naciśnięcie lekko zmniejsza element, więc panel od razu odpowiada na kliknięcie.
+/// Nasłuchuje wskaźnika obok własnych gestów dziecka, więc nie przejmuje kliknięć.
+class PanelPress extends StatefulWidget {
+  const PanelPress({super.key, required this.child, this.scale = 0.96});
+
+  final Widget child;
+  final double scale;
+
+  @override
+  State<PanelPress> createState() => _PanelPressState();
+}
+
+class _PanelPressState extends State<PanelPress> {
+  bool _pressed = false;
+
+  void _set(bool value) {
+    if (_pressed != value) setState(() => _pressed = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Przy włączonym ograniczeniu ruchu zostaje sam kolor, bez skalowania.
+    final still = MediaQuery.disableAnimationsOf(context);
+    return Listener(
+      onPointerDown: (_) => _set(true),
+      onPointerUp: (_) => _set(false),
+      onPointerCancel: (_) => _set(false),
+      child: AnimatedScale(
+        scale: _pressed && !still ? widget.scale : 1,
+        duration: const Duration(milliseconds: 140),
+        curve: AppMotion.easeOut,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
 /// Nagłówek strony panelu: tytuł, podtytuł i akcje po prawej.
 class PageHeader extends StatelessWidget {
   const PageHeader({
@@ -53,7 +90,7 @@ class PageHeader extends StatelessWidget {
                   ),
                   for (var i = 0; i < actions.length; i++) ...[
                     if (i > 0) const SizedBox(width: 8),
-                    actions[i],
+                    PanelPress(child: actions[i]),
                   ],
                 ],
               ),
@@ -168,6 +205,29 @@ class PanelCard extends StatelessWidget {
   }
 }
 
+/// Cienki obrys na zdjęciu, żeby jasne logo nie zlewało się z tłem.
+/// Czysta biel albo czerń przy 10%, nigdy kolor z palety.
+class ImageOutline extends StatelessWidget {
+  const ImageOutline({super.key, required this.child, required this.radius});
+
+  final Widget child;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = AppColors.palette.brightness == Brightness.dark;
+    return Container(
+      foregroundDecoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(
+          color: (dark ? Colors.white : Colors.black).withValues(alpha: 0.1),
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
 /// Kolorowa kostka z ikoną, jak w kaflach liczb i nagłówkach kart.
 class IconBadge extends StatelessWidget {
   const IconBadge(this.icon, {super.key, required this.color, this.size = 34});
@@ -243,8 +303,13 @@ class StatTile extends StatelessWidget {
     final good = up == moreIsBetter;
 
     return Card(
-      // Kafelek leży na karcie, więc jest o ton jaśniejszy od niej.
+      // Kafelek leży na karcie, więc jest o ton jaśniejszy od niej
+      // i ma mniejszy promień, żeby narożniki nie były współśrodkowe.
       color: AppColors.surfaceRaised,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: AppColors.ringStrong),
+      ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         child: Column(
@@ -341,9 +406,11 @@ class SegmentedTabs<T> extends StatelessWidget {
               cursor: SystemMouseCursors.click,
               child: GestureDetector(
                 onTap: () => onChanged(value),
-                child: AnimatedContainer(
+                child: PanelPress(
+                  scale: 0.96,
+                  child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
-                  curve: AppMotion.standard,
+                  curve: AppMotion.easeOut,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 14,
                     vertical: 7,
@@ -380,6 +447,7 @@ class SegmentedTabs<T> extends StatelessWidget {
                           ? AppColors.text
                           : AppColors.textMuted,
                     ),
+                  ),
                   ),
                 ),
               ),
