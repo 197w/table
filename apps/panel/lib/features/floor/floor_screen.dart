@@ -1633,21 +1633,44 @@ class _RotationFieldState extends State<_RotationField> {
           icon: const Glyph(AppIcons.undo, size: 16),
           onPressed: () => _set(widget.value - 15),
         ),
+        const SizedBox(width: 6),
+        // Liczba stoi na środku pola, a stopnie przy prawej krawędzi,
+        // tak samo jak „cm” w polach wymiarów.
         SizedBox(
-          width: 76,
-          child: TextField(
-            controller: _controller,
-            keyboardType: TextInputType.number,
-            textAlign: TextAlign.center,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(3)],
-            style: const TextStyle(fontFeatures: _tabular),
-            decoration: const InputDecoration(isDense: true, suffixText: '°'),
-            onChanged: (v) {
-              final degrees = parseInt(v);
-              if (degrees != null) _set(degrees);
-            },
+          width: 84,
+          height: 40,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              TextField(
+                controller: _controller,
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                textAlignVertical: TextAlignVertical.center,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(3)],
+                style: const TextStyle(fontFeatures: _tabular),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                onChanged: (v) {
+                  final degrees = parseInt(v);
+                  if (degrees != null) _set(degrees);
+                },
+              ),
+              Positioned(
+                right: 10,
+                child: IgnorePointer(
+                  child: Text(
+                    '°',
+                    style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
+        const SizedBox(width: 6),
         IconButton(
           tooltip: 'Obróć o 15° w prawo',
           icon: const Glyph(AppIcons.refresh, size: 16),
