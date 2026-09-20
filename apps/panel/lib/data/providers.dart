@@ -85,6 +85,40 @@ final selectedRestaurantIdProvider =
       SelectedRestaurantNotifier.new,
     );
 
+/// Zwinięte menu boczne: zostają same ikony. Wybór pamiętamy na komputerze.
+class SidebarCollapsedNotifier extends Notifier<bool> {
+  static const _key = 'panel_menu_zwiniete';
+
+  @override
+  bool build() {
+    _load();
+    return false;
+  }
+
+  Future<void> _load() async {
+    try {
+      final saved = await SharedPreferencesAsync().getBool(_key);
+      if (saved != null) state = saved;
+    } catch (_) {
+      // Bez zapisu menu zaczyna rozwinięte.
+    }
+  }
+
+  Future<void> toggle() async {
+    state = !state;
+    try {
+      await SharedPreferencesAsync().setBool(_key, state);
+    } catch (_) {
+      // Wybór działa do zamknięcia panelu.
+    }
+  }
+}
+
+final sidebarCollapsedProvider =
+    NotifierProvider<SidebarCollapsedNotifier, bool>(
+      SidebarCollapsedNotifier.new,
+    );
+
 /// Wybrany lokal. Bez zapamiętanego wyboru pierwszy z listy.
 final currentRestaurantProvider = Provider<PanelRestaurant?>((ref) {
   final list = ref.watch(restaurantsProvider).value ?? const [];
