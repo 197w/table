@@ -28,8 +28,8 @@ abstract final class PanelTheme {
       ),
       // Karty odrywają się od tła cieniem, a nie samym pierścieniem.
       cardTheme: base.cardTheme.copyWith(
-        elevation: dark ? 14 : 10,
-        shadowColor: shadow.withValues(alpha: dark ? 0.7 : 0.18),
+        elevation: dark ? 14 : 16,
+        shadowColor: shadow.withValues(alpha: dark ? 0.7 : 0.3),
         shape: RoundedRectangleBorder(
           borderRadius: const BorderRadius.all(Radius.circular(22)),
           side: BorderSide(color: p.ringStrong),
@@ -80,7 +80,7 @@ abstract final class PanelTheme {
           minimumSize: const Size(36, 36),
           shape: RoundedRectangleBorder(
             borderRadius: radius10,
-            side: BorderSide(color: p.ring),
+            side: BorderSide(color: dark ? p.ring : p.ringStrong),
           ),
         ),
       ),

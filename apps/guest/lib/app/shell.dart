@@ -1,18 +1,30 @@
 import 'dart:io' show Platform;
 import 'dart:ui' show ImageFilter;
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+import '../core/live_activity.dart';
+import '../data/providers.dart';
+
 /// Dolna nawigacja: Odkrywaj, Rezerwacje, Ustawienia.
-class AppShell extends StatelessWidget {
+class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Lista rezerwacji żyje przez cały czas działania aplikacji, żeby kafel
+    // na ekranie blokady pojawił się we właściwej chwili.
+    ref.listen(myReservationsProvider, (_, next) {
+      final list = next.value;
+      if (list != null) LiveActivity.instance.sync(list);
+    });
+    ref.watch(myReservationsProvider);
+
     // Szklany pasek tylko na iOS i iPadOS. Android zostaje przy pełnym tle.
     final glass = Platform.isIOS;
 

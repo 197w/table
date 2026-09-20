@@ -99,7 +99,14 @@ class PageHeader extends StatelessWidget {
           ),
         ),
         // Cienka linia oddziela nagłówek z filtrami od treści strony.
-        Divider(height: 1, thickness: 1, color: AppColors.ring),
+        // W jasnym motywie sam pierścień ginie na białym tle.
+        Divider(
+          height: 1,
+          thickness: 1,
+          color: AppColors.palette.brightness == Brightness.dark
+              ? AppColors.ring
+              : AppColors.ringStrong,
+        ),
         const SizedBox(height: 20),
       ],
     );
@@ -299,8 +306,12 @@ class StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final flat = change == null || change!.abs() < 0.05;
     final up = (change ?? 0) >= 0;
     final good = up == moreIsBetter;
+    final changeColor = flat
+        ? AppColors.textMuted
+        : (good ? AppColors.accent : AppColors.error);
 
     return Card(
       // Kafelek leży na karcie, więc jest o ton jaśniejszy od niej
@@ -352,17 +363,19 @@ class StatTile extends StatelessWidget {
                   ),
                 ),
                 if (change != null) ...[
-                  Glyph(
-                    up ? AppIcons.caretUp : AppIcons.caretDown,
-                    size: 12,
-                    color: good ? AppColors.accent : AppColors.error,
-                  ),
-                  const SizedBox(width: 4),
+                  if (!flat) ...[
+                    Glyph(
+                      up ? AppIcons.caretUp : AppIcons.caretDown,
+                      size: 12,
+                      color: changeColor,
+                    ),
+                    const SizedBox(width: 4),
+                  ],
                   Text(
-                    '${Fmt.rating(change!.abs())}%',
+                    flat ? 'bez zmian' : '${Fmt.rating(change!.abs())}%',
                     style: text.bodySmall?.copyWith(
-                      color: good ? AppColors.accent : AppColors.error,
-                      fontWeight: FontWeight.w600,
+                      color: changeColor,
+                      fontWeight: flat ? null : FontWeight.w600,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
