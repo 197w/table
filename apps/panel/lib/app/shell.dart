@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
@@ -92,7 +90,7 @@ class _Sidebar extends ConsumerWidget {
   final String location;
 
   /// Szerokość paska: zwiniętego i rozwiniętego.
-  static const _narrow = 80.0;
+  static const _narrow = 76.0;
   static const _wide = 256.0;
   static const _pad = 14.0;
 
@@ -103,19 +101,28 @@ class _Sidebar extends ConsumerWidget {
     final collapsed = ref.watch(sidebarCollapsedProvider);
 
     // Jedna wartość prowadzi całą zmianę: 1 to menu rozwinięte, 0 zwinięte.
-    // Wszystko, co widać, liczy się z niej, więc nic nie przeskakuje w trakcie.
+    // Wysokości są stałe w obu stanach, więc ikony nie ruszają się w pionie.
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(end: collapsed ? 0 : 1),
-      duration: const Duration(milliseconds: 220),
-      curve: AppMotion.easeOut,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
       builder: (context, t, _) {
         final width = _narrow + (_wide - _narrow) * t;
         final inner = width - _pad * 2;
-        return Container(
-          width: width,
-          color: PanelDepth.sidebar,
-          padding: const EdgeInsets.fromLTRB(_pad, 20, _pad, 14),
-          child: _content(context, ref, inner: inner, fade: t, current: current, list: list),
+        return RepaintBoundary(
+          child: Container(
+            width: width,
+            color: PanelDepth.sidebar,
+            padding: const EdgeInsets.fromLTRB(_pad, 20, _pad, 14),
+            child: _content(
+              context,
+              ref,
+              inner: inner,
+              fade: t,
+              current: current,
+              list: list,
+            ),
+          ),
         );
       },
     );
@@ -136,17 +143,19 @@ class _Sidebar extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Tooltip(
-          message: fade < 0.5 ? 'Rozwiń menu' : 'Zwiń menu',
-          child: PanelPress(
-            child: IconButton(
-              icon: const Glyph(AppIcons.menu, size: 18),
-              onPressed: () =>
-                  ref.read(sidebarCollapsedProvider.notifier).toggle(),
-            ),
+        SizedBox(
+          width: inner,
+          height: 40,
+          child: _IconRow(
+            icon: AppIcons.menu,
+            label: fade < 0.5 ? 'Rozwiń menu' : 'Zwiń menu',
+            width: inner,
+            fade: fade,
+            muted: true,
+            onTap: () => ref.read(sidebarCollapsedProvider.notifier).toggle(),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         if (current != null)
           _RestaurantSwitcher(
             current: current,
@@ -154,17 +163,17 @@ class _Sidebar extends ConsumerWidget {
             width: inner,
             fade: fade,
           ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         Expanded(
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
               for (final (title, items) in _groups) ...[
-                // Nagłówek grupy trzyma stałą wysokość, żeby ikony nie skakały w pionie.
-                // Przy zwijaniu napis gaśnie, a na jego miejsce wchodzi kreska.
+                // Nagłówek grupy trzyma stałą wysokość: napis gaśnie,
+                // a na jego miejscu zostaje kreska.
                 SizedBox(
                   width: inner,
-                  height: 34,
+                  height: 30,
                   child: Stack(
                     alignment: Alignment.centerLeft,
                     children: [
@@ -175,7 +184,7 @@ class _Sidebar extends ConsumerWidget {
                       Opacity(
                         opacity: fade,
                         child: Padding(
-                          padding: const EdgeInsets.only(left: 10, top: 8),
+                          padding: const EdgeInsets.only(left: 10, top: 6),
                           child: Text(
                             title.toUpperCase(),
                             maxLines: 1,
@@ -192,11 +201,12 @@ class _Sidebar extends ConsumerWidget {
                   ),
                 ),
                 for (final item in items)
-                  _SidebarButton(
-                    item: item,
-                    selected: location.startsWith(item.route),
+                  _IconRow(
+                    icon: item.icon,
+                    label: item.label,
                     width: inner,
                     fade: fade,
+                    selected: location.startsWith(item.route),
                     onTap: () => context.go(item.route),
                   ),
               ],
@@ -204,64 +214,45 @@ class _Sidebar extends ConsumerWidget {
           ),
         ),
         SizedBox(width: inner, child: Divider(color: AppColors.ring)),
-        const SizedBox(height: 10),
-        // Przyciski trzymają się lewej strony, więc zostają w miejscu przy zwijaniu.
+        const SizedBox(height: 6),
+        // Motyw i wylogowanie to takie same wiersze jak sekcje,
+        // więc dół menu ma tę samą wysokość w obu stanach.
+        _IconRow(
+          icon: theme.icon,
+          label: 'Motyw: ${theme.label}',
+          width: inner,
+          fade: fade,
+          muted: true,
+          onTap: () {
+            final values = AppThemeSetting.values;
+            ref
+                .read(themeSettingProvider.notifier)
+                .set(values[(theme.index + 1) % values.length]);
+          },
+        ),
+        _IconRow(
+          icon: AppIcons.signOut,
+          label: 'Wyloguj się',
+          width: inner,
+          fade: fade,
+          muted: true,
+          onTap: () => ref.read(repositoryProvider).signOut(),
+        ),
         SizedBox(
           width: inner,
-          child: Wrap(
-            spacing: 4,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              PanelPress(
-                child: IconButton(
-                  tooltip: 'Motyw: ${theme.label}',
-                  icon: Glyph(theme.icon, size: 18),
-                  onPressed: () {
-                    final values = AppThemeSetting.values;
-                    ref
-                        .read(themeSettingProvider.notifier)
-                        .set(values[(theme.index + 1) % values.length]);
-                  },
-                ),
+          height: 26,
+          child: Opacity(
+            opacity: fade,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 10),
+              child: Text(
+                email ?? '',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
+                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
               ),
-              PanelPress(
-                child: IconButton(
-                  tooltip: 'Wyloguj się',
-                  icon: const Glyph(AppIcons.signOut, size: 18),
-                  onPressed: () => ref.read(repositoryProvider).signOut(),
-                ),
-              ),
-              if (fade > 0)
-                SizedBox(
-                  width: math.max(0, inner - 88),
-                  child: Opacity(
-                    opacity: fade,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          email ?? '',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          softWrap: false,
-                          style: text.bodySmall,
-                        ),
-                        if (current != null)
-                          Text(
-                            current.role.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            softWrap: false,
-                            style: text.bodySmall?.copyWith(
-                              color: AppColors.textMuted,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
+            ),
           ),
         ),
       ],
@@ -269,32 +260,39 @@ class _Sidebar extends ConsumerWidget {
   }
 }
 
-class _SidebarButton extends StatelessWidget {
-  const _SidebarButton({
-    required this.item,
-    required this.selected,
+/// Wiersz menu: ikona w kwadracie, który przy zwijaniu przesuwa się na środek
+/// paska, i podpis, który gaśnie. Wysokość jest stała, więc nic nie skacze.
+class _IconRow extends StatelessWidget {
+  const _IconRow({
+    required this.icon,
+    required this.label,
     required this.width,
     required this.fade,
     required this.onTap,
+    this.selected = false,
+    this.muted = false,
   });
 
-  final _NavItem item;
-  final bool selected;
-
-  /// Szerokość przycisku w trakcie zwijania.
+  final AppIconData icon;
+  final String label;
   final double width;
 
   /// 1 to menu rozwinięte, 0 zwinięte.
   final double fade;
+  final bool selected;
+  final bool muted;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    // Kwadrat z ikoną wędruje od lewej krawędzi do środka wąskiego paska.
+    final slot = 40 + (width - 40) * (1 - fade);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Tooltip(
-        message: fade < 0.5 ? item.label : '',
+        message: fade < 0.5 ? label : '',
         child: PanelPress(
           child: Material(
             color: selected ? AppColors.surface : Colors.transparent,
@@ -311,17 +309,18 @@ class _SidebarButton extends StatelessWidget {
               highlightColor: Colors.transparent,
               child: SizedBox(
                 width: width,
-                height: 42,
+                height: 40,
                 child: Row(
                   children: [
-                    // Ikona zawsze w tym samym miejscu od lewej krawędzi.
                     SizedBox(
-                      width: 38,
+                      width: slot,
                       child: Center(
                         child: Glyph(
-                          item.icon,
+                          icon,
                           size: 19,
-                          color: selected ? AppColors.accent : AppColors.textMuted,
+                          color: selected
+                              ? AppColors.accent
+                              : (muted ? AppColors.textDisabled : AppColors.textMuted),
                         ),
                       ),
                     ),
@@ -330,12 +329,14 @@ class _SidebarButton extends StatelessWidget {
                         child: Opacity(
                           opacity: fade,
                           child: Text(
-                            item.label,
+                            label,
                             maxLines: 1,
                             overflow: TextOverflow.clip,
                             softWrap: false,
                             style: text.labelLarge?.copyWith(
-                              color: selected ? AppColors.text : AppColors.textMuted,
+                              color: selected
+                                  ? AppColors.text
+                                  : (muted ? AppColors.textMuted : AppColors.textMuted),
                               fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                             ),
                           ),
@@ -374,33 +375,39 @@ class _RestaurantSwitcher extends ConsumerWidget {
     final text = Theme.of(context).textTheme;
     final canSwitch = restaurants.length > 1;
 
+    final slot = 44 + (width - 44) * (1 - fade);
     final body = Tooltip(
       message: fade < 0.5 ? '${current.name} · ${current.city}' : '',
       child: Container(
         width: width,
-        padding: const EdgeInsets.fromLTRB(6, 10, 6, 10),
+        height: 56,
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: AppColors.surface.withValues(alpha: 0.4 + 0.6 * fade),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.ring),
+          border: Border.all(color: AppColors.ring.withValues(alpha: fade)),
         ),
         child: Row(
           children: [
-            ImageOutline(
-              radius: 8,
-              child: RestaurantLogo(
-                name: current.name,
-                logoUrl: current.logoUrl,
-                size: 34,
-                radius: 8,
+            SizedBox(
+              width: slot,
+              child: Center(
+                child: ImageOutline(
+                  radius: 9,
+                  child: RestaurantLogo(
+                    name: current.name,
+                    logoUrl: current.logoUrl,
+                    size: 40,
+                    radius: 9,
+                  ),
+                ),
               ),
             ),
-            if (fade > 0) ...[
-              const SizedBox(width: 10),
+            if (fade > 0)
               Expanded(
                 child: Opacity(
                   opacity: fade,
                   child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
@@ -431,12 +438,14 @@ class _RestaurantSwitcher extends ConsumerWidget {
                   ),
                 ),
               ),
-              if (canSwitch)
-                Opacity(
-                  opacity: fade,
+            if (fade > 0)
+              Opacity(
+                opacity: canSwitch ? fade : 0,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
                   child: Glyph(AppIcons.caretDown, size: 16, color: AppColors.textMuted),
                 ),
-            ],
+              ),
           ],
         ),
       ),
