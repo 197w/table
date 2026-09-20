@@ -491,7 +491,10 @@ class _RankedMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Znak siedzi w rogu karty: promień 8 = promień karty 22 minus odstęp 14.
-    final mark = RestaurantLogo(name: name, logoUrl: logoUrl, size: 48, radius: 8);
+    final mark = ImageOutline(
+      radius: 8,
+      child: RestaurantLogo(name: name, logoUrl: logoUrl, size: 48, radius: 8),
+    );
     if (position == null) return mark;
     return Stack(
       clipBehavior: Clip.none,

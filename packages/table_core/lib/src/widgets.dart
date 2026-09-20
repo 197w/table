@@ -212,6 +212,29 @@ class Tag extends StatelessWidget {
   }
 }
 
+/// Cienki obrys na zdjęciu, żeby jasne logo nie zlewało się z tłem.
+/// Czysta biel albo czerń przy 10%, nigdy kolor z palety.
+class ImageOutline extends StatelessWidget {
+  const ImageOutline({super.key, required this.child, required this.radius});
+
+  final Widget child;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = AppColors.palette.brightness == Brightness.dark;
+    return Container(
+      foregroundDecoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(
+          color: (dark ? Colors.white : Colors.black).withValues(alpha: 0.1),
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
 /// Zastępczy obrazek lokalu w stylu pikselowego logo.
 class RestaurantMark extends StatelessWidget {
   const RestaurantMark({

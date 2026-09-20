@@ -90,7 +90,10 @@ class _Body extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
           child: Row(
             children: [
-              RestaurantLogo(name: r.name, logoUrl: r.logoUrl, size: 64),
+              ImageOutline(
+                radius: 16,
+                child: RestaurantLogo(name: r.name, logoUrl: r.logoUrl, size: 64),
+              ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(

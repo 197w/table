@@ -165,7 +165,10 @@ class _BodyState extends ConsumerState<_Body> {
       children: [
         Row(
           children: [
-            RestaurantMark(name: d.restaurantName, size: 56, radius: 14),
+            ImageOutline(
+              radius: 14,
+              child: RestaurantMark(name: d.restaurantName, size: 56, radius: 14),
+            ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(

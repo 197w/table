@@ -81,7 +81,10 @@ class _GiftCardPurchaseScreenState extends ConsumerState<GiftCardPurchaseScreen>
           if (restaurant != null)
             Row(
               children: [
-                RestaurantLogo(name: restaurant.name, logoUrl: restaurant.logoUrl, size: 44, radius: 12),
+                ImageOutline(
+                  radius: 12,
+                  child: RestaurantLogo(name: restaurant.name, logoUrl: restaurant.logoUrl, size: 44, radius: 12),
+                ),
                 const SizedBox(width: 12),
                 Expanded(child: Text(restaurant.name, style: text.titleLarge)),
               ],
@@ -400,7 +403,10 @@ class _GiftCardFace extends StatelessWidget {
           children: [
             Row(
               children: [
-                RestaurantLogo(name: card.restaurantName, logoUrl: card.logoUrl, size: 36, radius: 10),
+                ImageOutline(
+                  radius: 10,
+                  child: RestaurantLogo(name: card.restaurantName, logoUrl: card.logoUrl, size: 36, radius: 10),
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(

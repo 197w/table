@@ -18,6 +18,7 @@ import '../features/settings/account_screens.dart';
 import '../features/settings/general_settings_screen.dart';
 import '../features/settings/help_screens.dart';
 import '../features/settings/notification_settings_screen.dart';
+import 'guest_theme.dart';
 import '../features/settings/settings_screen.dart';
 import 'shell.dart';
 
@@ -79,7 +80,7 @@ class _TableAppState extends ConsumerState<TableApp>
       key: ValueKey(brightness),
       title: 'Table',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.build(palette),
+      theme: GuestTheme.build(palette),
       locale: const Locale('pl', 'PL'),
       supportedLocales: const [Locale('pl', 'PL')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
