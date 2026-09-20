@@ -27,7 +27,7 @@ import UIKit
   /// Rozszerzenie z widżetem ma własną, identyczną kopię tego typu:
   /// to osobny moduł, a ActivityKit dopasowuje je po nazwie i kształcie.
   /// Zmieniasz tu cokolwiek, zmień też ios/TableActivityWidget/TableReservationAttributes.swift.
-  @available(iOS 16.1, *)
+  @available(iOS 16.2, *)
   struct TableReservationAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
       /// Godzina rezerwacji.
@@ -69,7 +69,9 @@ enum LiveActivityBridge {
 
   private static func handle(call: FlutterMethodCall, result: @escaping FlutterResult) {
     #if canImport(ActivityKit)
-      guard #available(iOS 16.1, *) else {
+      // Cały most wymaga iOS 16.2: wcześniejsze wersje mają inne, przestarzałe API
+      // kafli i nie znają daty ważności. Na starszym systemie aplikacja działa bez kafla.
+      guard #available(iOS 16.2, *) else {
         result(false)
         return
       }
@@ -107,7 +109,7 @@ enum LiveActivityBridge {
   }
 
   #if canImport(ActivityKit)
-    @available(iOS 16.1, *)
+    @available(iOS 16.2, *)
     private static func show(
       id: String,
       name: String,
@@ -115,14 +117,14 @@ enum LiveActivityBridge {
       startsAt: Date,
       details: String
     ) -> Bool {
+      let state = TableReservationAttributes.ContentState(startsAt: startsAt, details: details)
+      // Kafel znika godzinę po godzinie rezerwacji.
+      let content = ActivityContent(state: state, staleDate: startsAt.addingTimeInterval(3600))
+
       // Kafel dla tej rezerwacji już wisi: tylko odświeżamy jego treść.
       for activity in Activity<TableReservationAttributes>.activities
       where activity.attributes.reservationId == id {
-        Task {
-          await activity.update(
-            using: TableReservationAttributes.ContentState(startsAt: startsAt, details: details)
-          )
-        }
+        Task { await activity.update(content) }
         return true
       }
 
@@ -134,26 +136,20 @@ enum LiveActivityBridge {
         address: address,
         reservationId: id
       )
-      let state = TableReservationAttributes.ContentState(startsAt: startsAt, details: details)
 
       do {
-        if #available(iOS 16.2, *) {
-          // Kafel znika godzinę po godzinie rezerwacji.
-          _ = try Activity.request(
-            attributes: attributes,
-            content: ActivityContent(state: state, staleDate: startsAt.addingTimeInterval(3600)),
-            pushType: nil
-          )
-        } else {
-          _ = try Activity.request(attributes: attributes, contentState: state)
-        }
+        _ = try Activity.request(
+          attributes: attributes,
+          content: content,
+          pushType: nil
+        )
         return true
       } catch {
         return false
       }
     }
 
-    @available(iOS 16.1, *)
+    @available(iOS 16.2, *)
     private static func end(reservationId: String?) {
       for activity in Activity<TableReservationAttributes>.activities {
         if let reservationId, activity.attributes.reservationId != reservationId { continue }

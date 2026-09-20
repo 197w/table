@@ -5,7 +5,7 @@ import Foundation
 
   /// Dane kafla rezerwacji na ekranie blokady.
   /// Ten plik należy do obu celów: aplikacji i rozszerzenia z widżetem.
-  @available(iOS 16.1, *)
+  @available(iOS 16.2, *)
   struct TableReservationAttributes: ActivityAttributes {
     /// Część, która może się zmieniać w trakcie trwania kafla.
     struct ContentState: Codable, Hashable {

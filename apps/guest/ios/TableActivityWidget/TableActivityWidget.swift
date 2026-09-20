@@ -6,7 +6,7 @@ import WidgetKit
 
   /// Kafel rezerwacji na ekranie blokady: nazwa lokalu po lewej, godzina po prawej,
   /// a pod spodem przycisk „Nawiguj”.
-  @available(iOS 16.1, *)
+  @available(iOS 16.2, *)
   struct TableActivityWidget: Widget {
     var body: some WidgetConfiguration {
       ActivityConfiguration(for: TableReservationAttributes.self) { context in
@@ -39,7 +39,7 @@ import WidgetKit
     }
   }
 
-  @available(iOS 16.1, *)
+  @available(iOS 16.2, *)
   private struct LockScreenView: View {
     let context: ActivityViewContext<TableReservationAttributes>
 
@@ -68,7 +68,7 @@ import WidgetKit
   }
 
   /// Otwiera Mapy Apple z trasą do lokalu. Link działa wprost z ekranu blokady.
-  @available(iOS 16.1, *)
+  @available(iOS 16.2, *)
   private struct NavigateButton: View {
     let address: String
 
