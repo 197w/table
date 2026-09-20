@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
@@ -38,6 +40,7 @@ class DiscoverScreen extends ConsumerWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               const SliverToBoxAdapter(child: _Header()),
+              const SliverToBoxAdapter(child: _SearchField()),
               SliverToBoxAdapter(
                 child: _FilterBar(
                   filter: filter,
@@ -148,6 +151,88 @@ class _Header extends ConsumerWidget {
         style: text.headlineMedium,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+}
+
+/// Wyszukiwarka lokali: sama ikona i słowo „Wyszukaj”, bez ramki i tła.
+class _SearchField extends ConsumerStatefulWidget {
+  const _SearchField();
+
+  @override
+  ConsumerState<_SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends ConsumerState<_SearchField> {
+  final _controller = TextEditingController();
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.text = ref.read(searchQueryProvider);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  // Szukamy dopiero, gdy gość przestanie pisać, żeby nie pytać bazy o każdą literę.
+  void _onChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      ref.read(searchQueryProvider.notifier).set(value);
+    });
+    setState(() {});
+  }
+
+  void _clear() {
+    _debounce?.cancel();
+    _controller.clear();
+    ref.read(searchQueryProvider.notifier).set('');
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 12, 0),
+      child: Row(
+        children: [
+          Glyph(AppIcons.search, size: 20, color: AppColors.textMuted),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              textInputAction: TextInputAction.search,
+              onChanged: _onChanged,
+              onSubmitted: (v) => ref.read(searchQueryProvider.notifier).set(v),
+              style: text.titleMedium,
+              cursorColor: AppColors.accent,
+              decoration: InputDecoration(
+                isDense: true,
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+                hintText: 'Wyszukaj',
+                hintStyle: text.titleMedium?.copyWith(color: AppColors.textMuted),
+              ),
+            ),
+          ),
+          if (_controller.text.isNotEmpty)
+            IconButton(
+              tooltip: 'Wyczyść',
+              icon: Glyph(AppIcons.close, size: 18, color: AppColors.textMuted),
+              onPressed: _clear,
+            ),
+        ],
       ),
     );
   }

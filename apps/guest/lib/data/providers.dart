@@ -125,9 +125,22 @@ final cuisinesProvider = Provider<List<({String slug, int count})>>((ref) {
   return list;
 });
 
+/// Fraza wpisana w wyszukiwarce. Pusta oznacza zwykłą listę lokali w pobliżu.
+class SearchQueryNotifier extends Notifier<String> {
+  @override
+  String build() => '';
+
+  void set(String value) => state = value.trim();
+}
+
+final searchQueryProvider = NotifierProvider<SearchQueryNotifier, String>(
+  SearchQueryNotifier.new,
+);
+
 final searchResultsProvider = FutureProvider<List<RestaurantSummary>>((
   ref,
 ) async {
+  final query = ref.watch(searchQueryProvider);
   final filter = ref.watch(discoverFilterProvider);
   final repository = ref.watch(repositoryProvider);
   final locationFuture = ref.watch(locationProvider.future);
@@ -151,9 +164,11 @@ final searchResultsProvider = FutureProvider<List<RestaurantSummary>>((
   return repository.search(
     lat: lat,
     lng: lng,
-    city: city?.name,
+    // Z wpisaną frazą szukamy w całym kraju, więc miasto nie zawęża wyników.
+    city: query.isEmpty ? city?.name : null,
     cuisine: filter.cuisine,
     sort: filter.sort.name,
+    query: query.isEmpty ? null : query,
   );
 });
 

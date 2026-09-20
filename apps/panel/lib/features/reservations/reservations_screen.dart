@@ -150,6 +150,24 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
               ),
               const SizedBox(width: 12),
               PanelPill('Na żywo', dotColor: AppColors.accentFill),
+              const SizedBox(width: 8),
+              // Ratunek, gdyby odświeżanie na żywo przestało działać.
+              Tooltip(
+                message: 'Odśwież teraz',
+                child: PanelPress(
+                  child: IconButton(
+                    icon: const Glyph(AppIcons.refresh, size: 16),
+                    onPressed: () {
+                      ref
+                        ..invalidate(reservationsProvider(query))
+                        ..invalidate(tablesProvider(restaurant.id))
+                        ..invalidate(zonesProvider(restaurant.id))
+                        ..invalidate(elementsProvider(restaurant.id));
+                      showMessage(context, 'Odświeżono rezerwacje.');
+                    },
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -1110,14 +1128,6 @@ class _PlanPanel extends StatelessWidget {
                 else
                   Text(Fmt.capitalize(zone.name), style: text.titleMedium),
                 const Spacer(),
-                Glyph(AppIcons.clock, size: 15, color: AppColors.textMuted),
-                const SizedBox(width: 6),
-                Text(
-                  selected == null
-                      ? (isToday ? 'zajętość teraz' : 'zajętość o ${Fmt.time(at)}')
-                      : 'zajętość o ${Fmt.time(at)}, godzina wybranej rezerwacji',
-                  style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-                ),
               ],
             ),
           ),

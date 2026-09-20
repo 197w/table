@@ -80,6 +80,7 @@ class Repository {
     String? city,
     String? cuisine,
     String sort = 'ranking',
+    String? query,
   }) {
     return _guard(() async {
       final rows = await _db.rpc<List<dynamic>>(
@@ -91,6 +92,7 @@ class Repository {
           'p_cuisine': cuisine,
           'p_sort': sort,
           'p_city': city,
+          'p_query': query,
         },
       );
       return rows
