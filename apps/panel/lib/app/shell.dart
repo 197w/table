@@ -260,6 +260,13 @@ class _Sidebar extends ConsumerWidget {
   }
 }
 
+/// Szerokość treści w zwiniętym pasku: 76 minus odstępy po bokach.
+const kRailInner = 48.0;
+
+/// Szerokość kwadratu z ikoną przy danym stanie menu (1 rozwinięte, 0 zwinięte).
+/// Obie krańcowe wartości są stałe, więc ikona jedzie w jedną stronę i nie wraca.
+double railSlot(double fade) => kRailInner + (40 - kRailInner) * fade;
+
 /// Wiersz menu: ikona w kwadracie, który przy zwijaniu przesuwa się na środek
 /// paska, i podpis, który gaśnie. Wysokość jest stała, więc nic nie skacze.
 class _IconRow extends StatelessWidget {
@@ -286,8 +293,10 @@ class _IconRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    // Kwadrat z ikoną wędruje od lewej krawędzi do środka wąskiego paska.
-    final slot = 40 + (width - 40) * (1 - fade);
+    // Kwadrat z ikoną wędruje między dwiema stałymi szerokościami.
+    // Liczenie go od bieżącej szerokości paska dawało wychylenie i powrót,
+    // bo obie wartości zmieniały się naraz.
+    final slot = railSlot(fade);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
@@ -375,7 +384,8 @@ class _RestaurantSwitcher extends ConsumerWidget {
     final text = Theme.of(context).textTheme;
     final canSwitch = restaurants.length > 1;
 
-    final slot = 44 + (width - 44) * (1 - fade);
+    // Stałe krańce, żeby logo nie wychylało się w bok w trakcie animacji.
+    final slot = kRailInner + (44 - kRailInner) * fade;
     final body = Tooltip(
       message: fade < 0.5 ? '${current.name} · ${current.city}' : '',
       child: Container(
