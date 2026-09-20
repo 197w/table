@@ -144,7 +144,8 @@ class PanelRepository {
           .from('floor_zones')
           .select()
           .eq('restaurant_id', restaurantId)
-          .order('position');
+          .order('position')
+          .order('name');
       return rows.map(FloorZone.fromJson).toList();
     });
   }

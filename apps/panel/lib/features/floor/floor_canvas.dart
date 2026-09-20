@@ -525,6 +525,30 @@ class _TablePainter extends CustomPainter {
       old.dimmed != dimmed;
 }
 
+/// Strefy w stałej kolejności: najpierw te dodane wcześniej, potem alfabetycznie.
+/// Strefy, których nie ma w tabeli stref, a mają stoliki, dopisujemy na końcu.
+List<FloorZone> orderedZones(List<FloorZone> zones, List<DiningTable> tables) {
+  final list = [...zones]
+    ..sort((a, b) {
+      if (a.position != b.position) return a.position.compareTo(b.position);
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+  for (final t in tables) {
+    if (!list.any((z) => z.name == t.zone)) {
+      list.add(
+        FloorZone(
+          id: null,
+          name: t.zone,
+          widthCm: 1000,
+          heightCm: 700,
+          position: list.length,
+        ),
+      );
+    }
+  }
+  return list;
+}
+
 /// Czy dwa stoliki nachodzą na siebie. Obrót przybliżamy prostokątem opisanym.
 bool tablesOverlap(DiningTable a, DiningTable b) {
   if (a.zone != b.zone) return false;

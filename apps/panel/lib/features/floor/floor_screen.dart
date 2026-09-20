@@ -138,12 +138,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     List<DiningTable> tables,
     List<FloorElement> elements,
   ) {
-    final all = [...zones];
-    for (final t in tables) {
-      if (!all.any((z) => z.name == t.zone)) {
-        all.add(FloorZone(id: null, name: t.zone, widthCm: 1000, heightCm: 700, position: all.length));
-      }
-    }
+    final all = orderedZones(zones, tables);
     setState(() {
       _zones = all;
       _tables = [...tables];
@@ -515,12 +510,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     );
 
     // Stoliki ze strefą, której nie ma w tabeli stref, pokazujemy w strefie o domyślnych wymiarach.
-    final zoneList = [...zones];
-    for (final t in tables) {
-      if (!zoneList.any((z) => z.name == t.zone)) {
-        zoneList.add(FloorZone(id: null, name: t.zone, widthCm: 1000, heightCm: 700, position: zoneList.length));
-      }
-    }
+    final zoneList = orderedZones(zones, tables);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

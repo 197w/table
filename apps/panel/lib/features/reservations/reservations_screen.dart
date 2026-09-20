@@ -42,6 +42,9 @@ class ReservationsScreen extends ConsumerStatefulWidget {
 class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
   String? _selectedId;
   String? _zoneName;
+
+  /// Wybrana grupa łączenia stolików, na przykład „bar”. Null oznacza całą salę.
+  String? _group;
   _Filter _filter = _Filter.all;
 
   Future<void> _pickDay(DateTime current) async {
@@ -182,13 +185,36 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                 onRetry: () => ref.invalidate(reservationsProvider(query)),
               ),
               data: (all) {
-                final visible = all.where(_filter.matches).toList();
                 final tablesAsync = ref.watch(tablesProvider(restaurant.id));
                 final tables = tablesAsync.value ?? const <DiningTable>[];
                 final zones =
                     ref.watch(zonesProvider(restaurant.id)).value ?? const <FloorZone>[];
                 final elements =
                     ref.watch(elementsProvider(restaurant.id)).value ?? const <FloorElement>[];
+
+                // Strefa pokazywana na planie i grupy łączenia jej stolików.
+                final zoneList = orderedZones(zones, tables);
+                final zoneName = zoneList.any((z) => z.name == _zoneName)
+                    ? _zoneName
+                    : (zoneList.isEmpty ? null : zoneList.first.name);
+                final groups =
+                    <String>{
+                      for (final t in tables)
+                        if (t.zone == zoneName && t.joinGroup != null) t.joinGroup!,
+                    }.toList()
+                      ..sort();
+                final group = groups.contains(_group) ? _group : null;
+                final groupTableIds = <String>{
+                  for (final t in tables)
+                    if (group != null && t.joinGroup == group && t.id != null) t.id!,
+                };
+
+                final visible = all
+                    .where(_filter.matches)
+                    .where(
+                      (r) => group == null || r.tableIds.any(groupTableIds.contains),
+                    )
+                    .toList();
                 final side = SizedBox(
                   width: 440,
                   child: selected != null
@@ -268,9 +294,15 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                         elements: elements,
                         reservations: all,
                         day: day,
-                        zoneName: _zoneName,
+                        zoneName: zoneName,
                         selected: selected,
-                        onZone: (z) => setState(() => _zoneName = z),
+                        onZone: (z) => setState(() {
+                          _zoneName = z;
+                          _group = null;
+                        }),
+                        group: group,
+                        groups: groups,
+                        onGroup: (g) => setState(() => _group = g),
                         onSelectReservation: (id) => setState(() => _selectedId = id),
                       ),
                     ),
@@ -1076,6 +1108,9 @@ class _PlanPanel extends StatelessWidget {
     required this.zoneName,
     required this.selected,
     required this.onZone,
+    required this.group,
+    required this.groups,
+    required this.onGroup,
     required this.onSelectReservation,
   });
 
@@ -1087,6 +1122,11 @@ class _PlanPanel extends StatelessWidget {
   final String? zoneName;
   final PanelReservation? selected;
   final ValueChanged<String> onZone;
+
+  /// Wybrana grupa łączenia, na przykład „bar”. Null oznacza całą salę.
+  final String? group;
+  final List<String> groups;
+  final ValueChanged<String?> onGroup;
   final ValueChanged<String> onSelectReservation;
 
   @override
@@ -1098,14 +1138,7 @@ class _PlanPanel extends StatelessWidget {
     final at = selected?.startsAt ??
         (isToday ? now : DateTime(day.year, day.month, day.day, 18));
 
-    final list = [...zones];
-    for (final t in tables) {
-      if (!list.any((z) => z.name == t.zone)) {
-        list.add(
-          FloorZone(id: null, name: t.zone, widthCm: 1000, heightCm: 700, position: list.length),
-        );
-      }
-    }
+    final list = orderedZones(zones, tables);
     if (list.isEmpty) return const SizedBox.shrink();
     final zone = list.firstWhere((z) => z.name == zoneName, orElse: () => list.first);
     final inZone = tables.where((t) => t.zone == zone.name).toList();
@@ -1131,6 +1164,23 @@ class _PlanPanel extends StatelessWidget {
               ],
             ),
           ),
+          // Grupy łączenia są opcjonalne, więc wiersz pojawia się tylko wtedy,
+          // gdy lokal przypisał je stolikom w tej strefie.
+          if (groups.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: SegmentedTabs<String?>(
+                  options: [
+                    (null, 'Cała sala'),
+                    for (final g in groups) (g, Fmt.capitalize(g)),
+                  ],
+                  selected: group,
+                  onChanged: onGroup,
+                ),
+              ),
+            ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
@@ -1141,13 +1191,25 @@ class _PlanPanel extends StatelessWidget {
                 // Kratka pomaga przy rozstawianiu, więc jest tylko w zakładce „Edycja sali”.
                 showGrid: false,
                 selectedId: null,
-                lookOf: (t) => liveTableLook(
-                  t,
-                  reservations,
-                  at,
-                  seatedCountsNow: seatedCountsNow,
-                  highlighted: selected?.tableIds.contains(t.id) ?? false,
-                ),
+                lookOf: (t) {
+                  final look = liveTableLook(
+                    t,
+                    reservations,
+                    at,
+                    seatedCountsNow: seatedCountsNow,
+                    highlighted: selected?.tableIds.contains(t.id) ?? false,
+                  );
+                  // Przy wybranej grupie reszta sali schodzi na drugi plan.
+                  if (group == null || t.joinGroup == group) return look;
+                  return TableLook(
+                    fill: look.fill,
+                    stroke: look.stroke,
+                    strokeWidth: look.strokeWidth,
+                    caption: look.caption,
+                    captionColor: look.captionColor,
+                    dimmed: true,
+                  );
+                },
                 onTapTable: (t) {
                   final state = tableState(
                     t,
