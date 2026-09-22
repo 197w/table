@@ -212,6 +212,91 @@ class PanelCard extends StatelessWidget {
   }
 }
 
+/// Przycisk z samą ikoną do akcji w nagłówku, na przykład „Nowa rezerwacja”.
+/// W ciemnym motywie jest biały z białą poświatą: ikona główna w kolorze marki,
+/// pozostałe szare. W jasnym motywie główny jest miętowy, a reszta obrysowana.
+class GlowButton extends StatelessWidget {
+  const GlowButton({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.primary = false,
+    this.iconSize = 18,
+  });
+
+  final AppIconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  /// Najważniejsza akcja na ekranie.
+  final bool primary;
+  final double iconSize;
+
+  /// Szara ikona na białym przycisku w ciemnym motywie.
+  static const _grey = Color(0xFF7A7A7A);
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = AppColors.palette.brightness == Brightness.dark;
+    const radius = BorderRadius.all(Radius.circular(12));
+
+    final Color background;
+    final Color iconColor;
+    final List<BoxShadow> glow;
+    BorderSide side = BorderSide.none;
+    if (dark) {
+      background = Colors.white;
+      // Na białym tle jasna mięta ginie, więc marka występuje w ciemniejszym odcieniu.
+      iconColor = primary ? AppPalette.light.accent : _grey;
+      glow = [
+        BoxShadow(color: Colors.white.withValues(alpha: 0.28), blurRadius: 16),
+      ];
+    } else if (primary) {
+      background = AppColors.accentFill;
+      iconColor = AppColors.onAccent;
+      glow = [
+        BoxShadow(
+          color: AppColors.accentFill.withValues(alpha: 0.45),
+          blurRadius: 12,
+          offset: const Offset(0, 3),
+        ),
+      ];
+    } else {
+      background = AppColors.background;
+      iconColor = AppColors.textMuted;
+      side = BorderSide(color: AppColors.ringStrong);
+      glow = [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.08),
+          blurRadius: 6,
+          offset: const Offset(0, 2),
+        ),
+      ];
+    }
+
+    return Tooltip(
+      message: tooltip,
+      child: DecoratedBox(
+        decoration: BoxDecoration(borderRadius: radius, boxShadow: glow),
+        child: Material(
+          color: background,
+          shape: RoundedRectangleBorder(borderRadius: radius, side: side),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onPressed,
+            child: SizedBox(
+              width: 44,
+              height: 40,
+              child: Center(child: Glyph(icon, size: iconSize, color: iconColor)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Kolorowa kostka z ikoną, jak w kaflach liczb i nagłówkach kart.
 class IconBadge extends StatelessWidget {
   const IconBadge(this.icon, {super.key, required this.color, this.size = 34});

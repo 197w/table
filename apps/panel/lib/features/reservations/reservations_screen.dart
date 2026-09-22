@@ -115,33 +115,22 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
               day: day,
               onSelect: (d) => ref.read(selectedDayProvider.notifier).set(d),
             ),
-            IconButton(
+            GlowButton(
+              icon: AppIcons.calendar,
               tooltip: 'Wybierz dzień',
-              icon: const Glyph(AppIcons.calendar, size: 18),
               onPressed: () => _pickDay(day),
             ),
             const SizedBox(width: 8),
-            Tooltip(
-              message: 'Gość z ulicy',
-              child: OutlinedButton(
-                onPressed: () => _create(restaurant.id, ReservationSource.walkIn),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(44, 40),
-                  padding: EdgeInsets.zero,
-                ),
-                child: const Glyph(AppIcons.doorOpen, size: 18),
-              ),
+            GlowButton(
+              icon: AppIcons.doorOpen,
+              tooltip: 'Gość z ulicy',
+              onPressed: () => _create(restaurant.id, ReservationSource.walkIn),
             ),
-            Tooltip(
-              message: 'Nowa rezerwacja',
-              child: FilledButton(
-                onPressed: () => _create(restaurant.id, ReservationSource.phone),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(44, 40),
-                  padding: EdgeInsets.zero,
-                ),
-                child: const Glyph(AppIcons.plus, size: 18),
-              ),
+            GlowButton(
+              icon: AppIcons.plus,
+              tooltip: 'Nowa rezerwacja',
+              primary: true,
+              onPressed: () => _create(restaurant.id, ReservationSource.phone),
             ),
           ],
           below: Row(
@@ -155,20 +144,19 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
               PanelPill('Na żywo', dotColor: AppColors.accentFill),
               const SizedBox(width: 8),
               // Ratunek, gdyby odświeżanie na żywo przestało działać.
-              Tooltip(
-                message: 'Odśwież teraz',
-                child: PanelPress(
-                  child: IconButton(
-                    icon: const Glyph(AppIcons.refresh, size: 16),
-                    onPressed: () {
-                      ref
-                        ..invalidate(reservationsProvider(query))
-                        ..invalidate(tablesProvider(restaurant.id))
-                        ..invalidate(zonesProvider(restaurant.id))
-                        ..invalidate(elementsProvider(restaurant.id));
-                      showMessage(context, 'Odświeżono rezerwacje.');
-                    },
-                  ),
+              PanelPress(
+                child: GlowButton(
+                  icon: AppIcons.refresh,
+                  iconSize: 16,
+                  tooltip: 'Odśwież teraz',
+                  onPressed: () {
+                    ref
+                      ..invalidate(reservationsProvider(query))
+                      ..invalidate(tablesProvider(restaurant.id))
+                      ..invalidate(zonesProvider(restaurant.id))
+                      ..invalidate(elementsProvider(restaurant.id));
+                    showMessage(context, 'Odświeżono rezerwacje.');
+                  },
                 ),
               ),
             ],
