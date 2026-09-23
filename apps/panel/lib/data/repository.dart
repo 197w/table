@@ -282,6 +282,86 @@ class PanelRepository {
     });
   }
 
+  /// Dni wyjątkowe od dziś w przód.
+  Future<List<OpeningException>> exceptions(String restaurantId) {
+    return _guard(() async {
+      final today = DateTime.now();
+      final from =
+          '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+      final rows = await _db
+          .from('opening_exceptions')
+          .select()
+          .eq('restaurant_id', restaurantId)
+          .gte('day', from)
+          .order('day');
+      return rows.map(OpeningException.fromJson).toList();
+    });
+  }
+
+  Future<void> saveException(String restaurantId, OpeningException e) {
+    return _guard(
+      () => _db.from('opening_exceptions').upsert({
+        'restaurant_id': restaurantId,
+        'day': _dayOnly(e.day),
+        'closed': e.closed,
+        'opens': e.closed ? null : e.opens,
+        'closes': e.closed ? null : e.closes,
+        'note': (e.note == null || e.note!.trim().isEmpty) ? null : e.note!.trim(),
+      }),
+    );
+  }
+
+  Future<void> deleteException(String restaurantId, DateTime day) {
+    return _guard(
+      () => _db
+          .from('opening_exceptions')
+          .delete()
+          .eq('restaurant_id', restaurantId)
+          .eq('day', _dayOnly(day)),
+    );
+  }
+
+  static String _dayOnly(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// Odwołuje wskazane rezerwacje z podanym powodem. Zwraca, ile się udało.
+  Future<int> cancelReservations(
+    String restaurantId,
+    List<String> ids, {
+    String? reason,
+  }) {
+    return _guard(
+      () => _db.rpc<int>(
+        'panel_cancel_reservations',
+        params: {'p_restaurant_id': restaurantId, 'p_ids': ids, 'p_reason': reason},
+      ),
+    );
+  }
+
+  /// Włącza albo wyłącza stolik. Zwraca liczbę nadchodzących rezerwacji na nim.
+  Future<int> setTableActive(String tableId, bool active) {
+    return _guard(
+      () => _db.rpc<int>(
+        'panel_set_table_active',
+        params: {'p_table_id': tableId, 'p_active': active},
+      ),
+    );
+  }
+
+  /// Przenosi nadchodzące rezerwacje ze stolika na inne wolne stoliki.
+  Future<({int moved, int failed})> reassignTable(String tableId) {
+    return _guard(() async {
+      final result = await _db.rpc<Map<String, dynamic>>(
+        'panel_reassign_table',
+        params: {'p_table_id': tableId},
+      );
+      return (
+        moved: (result['moved'] as num).toInt(),
+        failed: (result['failed'] as num).toInt(),
+      );
+    });
+  }
+
   Future<void> setHours(String restaurantId, List<OpeningHours> hours) {
     return _guard(
       () => _db.rpc<void>(
@@ -475,18 +555,22 @@ class PanelRepository {
   Future<void> saveStaffMember({
     required String restaurantId,
     String? id,
-    required String name,
-    String? position,
-    String? phone,
+    required String firstName,
+    required String lastName,
+    required StaffPosition position,
+    required String phone,
     required int color,
     bool active = true,
   }) {
-    String? clean(String? v) => (v == null || v.trim().isEmpty) ? null : v.trim();
     final row = {
       'restaurant_id': restaurantId,
-      'name': name.trim(),
-      'position': clean(position),
-      'phone': clean(phone),
+      'first_name': firstName.trim(),
+      'last_name': lastName.trim(),
+      // Pełne imię i nazwa stanowiska zostają też w starych polach dla list i starszych wersji panelu.
+      'name': '${firstName.trim()} ${lastName.trim()}',
+      'position_id': position.id,
+      'position': position.name,
+      'phone': phone.trim(),
       'color': color,
       'active': active,
     };
@@ -499,6 +583,41 @@ class PanelRepository {
 
   Future<void> deleteStaffMember(String id) {
     return _guard(() => _db.from('staff_members').delete().eq('id', id));
+  }
+
+  /// Stanowiska systemowe i własne stanowiska lokalu.
+  Future<List<StaffPosition>> positions(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db
+          .from('staff_positions')
+          .select()
+          .or('restaurant_id.is.null,restaurant_id.eq.$restaurantId')
+          .order('sort')
+          .order('name');
+      return rows.map(StaffPosition.fromJson).toList();
+    });
+  }
+
+  Future<void> savePosition({
+    required String restaurantId,
+    String? id,
+    required String name,
+    required List<StaffPermission> permissions,
+  }) {
+    final row = {
+      'restaurant_id': restaurantId,
+      'name': name.trim(),
+      'permissions': [for (final p in permissions) p.key],
+    };
+    return _guard(
+      () => id == null
+          ? _db.from('staff_positions').insert(row)
+          : _db.from('staff_positions').update(row).eq('id', id),
+    );
+  }
+
+  Future<void> deletePosition(String id) {
+    return _guard(() => _db.from('staff_positions').delete().eq('id', id));
   }
 
   Future<List<Availability>> availability({

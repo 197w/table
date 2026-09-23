@@ -76,15 +76,18 @@ class _TableAppState extends ConsumerState<TableApp>
 
     // Ekrany czytają kolory z palety, więc klucz odbudowuje całe drzewo przy zmianie motywu.
     // Zmiana jest natychmiastowa, bez smużenia kolorów, a stan nawigacji trzyma router.
-    return MaterialApp.router(
-      key: ValueKey(brightness),
-      title: 'Table',
-      debugShowCheckedModeBanner: false,
-      theme: GuestTheme.build(palette),
-      locale: const Locale('pl', 'PL'),
-      supportedLocales: const [Locale('pl', 'PL')],
-      localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      routerConfig: _router,
+    // Zmiana motywu przechodzi płynnie: ThemeFade wygasza zdjęcie starego wyglądu.
+    return ThemeFade(
+      child: MaterialApp.router(
+        key: ValueKey(brightness),
+        title: 'Table',
+        debugShowCheckedModeBanner: false,
+        theme: GuestTheme.build(palette),
+        locale: const Locale('pl', 'PL'),
+        supportedLocales: const [Locale('pl', 'PL')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        routerConfig: _router,
+      ),
     );
   }
 }

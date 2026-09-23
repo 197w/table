@@ -311,3 +311,13 @@ final occasionStatsProvider = FutureProvider.autoDispose
     .family<List<OccasionStat>, StatsQuery>(
       (ref, q) => (ref..cacheFor()).watch(repositoryProvider).occasionStats(q.restaurantId, q.days),
     );
+
+final positionsProvider = FutureProvider.autoDispose
+    .family<List<StaffPosition>, String>(
+      (ref, id) => (ref..cacheFor()).watch(repositoryProvider).positions(id),
+    );
+
+final exceptionsProvider = FutureProvider.autoDispose
+    .family<List<OpeningException>, String>(
+      (ref, id) => (ref..cacheFor()).watch(repositoryProvider).exceptions(id),
+    );

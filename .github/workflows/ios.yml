@@ -1,0 +1,45 @@
+# Budowanie aplikacji dla gości na iOS, bez podpisu. Wyłapuje błędy Swifta i projektu Xcode,
+# których nie widać na Windowsie.
+#
+# Maszyna macOS w prywatnym repozytorium zużywa minuty 10 razy szybciej niż Linux,
+# dlatego to budowanie rusza tylko przy zmianach, które mogą zepsuć iOS: kodzie natywnym
+# i zależnościach. Zwykłe zmiany w Dart nie psują kompilacji Xcode. Ręcznie można je
+# uruchomić zawsze w zakładce Actions.
+name: Budowanie iOS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/guest/ios/**'
+      - 'apps/guest/pubspec.yaml'
+      - 'packages/table_core/pubspec.yaml'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guest-ios:
+    name: Gość na iOS
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # Bez env.json aplikacja się kompiluje, a brak konfiguracji wyszedłby dopiero po uruchomieniu.
+      - name: Budowanie bez podpisu
+        working-directory: apps/guest
+        run: flutter build ios --release --no-codesign

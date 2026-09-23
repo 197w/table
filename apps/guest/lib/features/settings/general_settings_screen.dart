@@ -71,8 +71,10 @@ class ThemeSettingsScreen extends ConsumerWidget {
                   icon: option.icon,
                   title: option.label,
                   selected: option == setting,
-                  onTap: () =>
-                      ref.read(themeSettingProvider.notifier).set(option),
+                  onTap: () => ThemeFade.run(
+                    context,
+                    () => ref.read(themeSettingProvider.notifier).set(option),
+                  ),
                 ),
             ],
           ),

@@ -167,6 +167,7 @@ class FloorCanvas extends StatelessWidget {
     this.chairEditKey,
     this.onDragChair,
     this.onDragChairEnd,
+    this.onTapTableAt,
   });
 
   final FloorZone zone;
@@ -194,6 +195,10 @@ class FloorCanvas extends StatelessWidget {
   /// Przesunięcie krzesła w cm, w układzie blatu (przed obrotem).
   final void Function(DiningTable table, int index, Offset deltaCm)? onDragChair;
   final ValueChanged<DiningTable>? onDragChairEnd;
+
+  /// Kliknięcie stolika razem z jego położeniem na ekranie, na przykład do menu obok stolika.
+  /// Gdy jest ustawione, zastępuje [onTapTable].
+  final void Function(DiningTable table, Rect globalRect)? onTapTableAt;
 
   static String keyOf(DiningTable t) => t.id ?? t.draftKey ?? t.label;
 
@@ -347,9 +352,18 @@ class FloorCanvas extends StatelessWidget {
               height: math.max(t.widthCm, t.heightCm) * scale,
               child: MouseRegion(
                 cursor: onDragTable != null ? SystemMouseCursors.move : SystemMouseCursors.click,
-                child: GestureDetector(
+                child: Builder(
+                  builder: (hitContext) => GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () => onTapTable(t),
+                  onTap: () {
+                    final at = onTapTableAt;
+                    final box = hitContext.findRenderObject() as RenderBox?;
+                    if (at != null && box != null && box.hasSize) {
+                      at(t, box.localToGlobal(Offset.zero) & box.size);
+                    } else {
+                      onTapTable(t);
+                    }
+                  },
                   onPanStart: onDragTable == null ? null : (_) => onTapTable(t),
                   onPanUpdate: onDragTable == null ? null : (d) => onDragTable!(t, d.delta / scale),
                   onPanEnd: onDragEnd == null ? null : (_) => onDragEnd!(t),
@@ -385,6 +399,7 @@ class FloorCanvas extends StatelessWidget {
                       ),
                     ),
                   ),
+                ),
                 ),
               ),
             ),

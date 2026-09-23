@@ -57,6 +57,160 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
     if (picked != null) ref.read(selectedDayProvider.notifier).set(picked);
   }
 
+  /// Menu obok klikniętego stolika: podgląd rezerwacji oraz wyłączenie albo włączenie.
+  /// Menu staje z prawej strony stolika, a gdy tam brakuje miejsca, z lewej.
+  Future<void> _tableMenu(
+    String restaurantId,
+    DayQuery query,
+    DiningTable table,
+    Rect rect,
+    PanelReservation? reservation,
+  ) async {
+    final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
+    const menuWidth = 260.0;
+    const gap = 10.0;
+    final size = overlay.size;
+    final x = rect.right + gap + menuWidth <= size.width
+        ? rect.right + gap
+        : (rect.left - gap - menuWidth).clamp(8.0, size.width - menuWidth - 8);
+    final y = rect.top.clamp(8.0, size.height - 8);
+    final noun = table.isSeat ? 'miejsce' : 'stolik';
+    final text = Theme.of(context).textTheme;
+
+    final choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(x, y, size.width - x - menuWidth, size.height - y),
+      constraints: const BoxConstraints(minWidth: menuWidth, maxWidth: menuWidth),
+      color: AppColors.surfaceRaised,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: AppColors.ringStrong),
+      ),
+      items: [
+        PopupMenuItem<String>(
+          enabled: false,
+          height: 34,
+          child: Text(
+            '${table.isSeat ? 'Miejsce' : 'Stolik'} ${table.label}'
+            '${table.active ? '' : ' · wyłączony'}',
+            style: text.labelMedium?.copyWith(color: AppColors.textMuted),
+          ),
+        ),
+        if (reservation != null)
+          PopupMenuItem<String>(
+            value: 'show',
+            child: Row(
+              children: [
+                Glyph(AppIcons.calendarCheck, size: 16, color: AppColors.textMuted),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '${reservation.guestName}, ${Fmt.time(reservation.startsAt)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        PopupMenuItem<String>(
+          value: 'toggle',
+          child: Row(
+            children: [
+              Glyph(
+                table.active ? AppIcons.prohibit : AppIcons.checkCircle,
+                size: 16,
+                color: table.active ? AppColors.error : AppColors.accent,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                table.active ? 'Wyłącz $noun' : 'Włącz $noun',
+                style: TextStyle(color: table.active ? AppColors.error : AppColors.text),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    if (!mounted || choice == null) return;
+
+    if (choice == 'show' && reservation != null) {
+      setState(() => _selectedId = reservation.id);
+      return;
+    }
+
+    final repo = ref.read(repositoryProvider);
+    try {
+      final remaining = await repo.setTableActive(table.id!, !table.active);
+      ref
+        ..invalidate(tablesProvider(restaurantId))
+        ..invalidate(reservationsProvider(query));
+      if (!mounted) return;
+      final name = '${table.isSeat ? 'Miejsce' : 'Stolik'} ${table.label}';
+      if (!table.active) {
+        showMessage(context, '$name znowu przyjmuje rezerwacje.');
+        return;
+      }
+      if (remaining == 0) {
+        showMessage(context, '$name wyłączony. System nie dobierze go do nowych rezerwacji.');
+        return;
+      }
+
+      // Wyłączony stolik ma jeszcze nadchodzące rezerwacje: proponujemy przeniesienie.
+      final where = table.isSeat ? 'tym miejscu' : 'tym stoliku';
+      final move = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('$name wyłączony'),
+          content: SizedBox(
+            width: 420,
+            child: Text(
+              'Na $where ${_countReservations(remaining)}. '
+              'Możemy je przenieść na inne wolne stoliki na te same godziny.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+              child: const Text('Przeniosę ręcznie'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Przenieś automatycznie'),
+            ),
+          ],
+        ),
+      );
+      if (move != true || !mounted) return;
+      final result = await repo.reassignTable(table.id!);
+      ref.invalidate(reservationsProvider(query));
+      if (!mounted) return;
+      showMessage(
+        context,
+        result.failed == 0
+            ? 'Przeniesiono ${_countReservations(result.moved, withVerb: false)}.'
+            : 'Przeniesiono ${result.moved}. Dla ${result.failed} nie ma wolnego stolika, '
+                  'przenieś je ręcznie w szczegółach rezerwacji.',
+      );
+    } catch (e) {
+      if (mounted) showMessage(context, errorText(e));
+    }
+  }
+
+  /// „jest 1 nadchodząca rezerwacja”, „są 3 nadchodzące rezerwacje”, „jest 5 nadchodzących rezerwacji”.
+  static String _countReservations(int n, {bool withVerb = true}) {
+    final few = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14);
+    final phrase = n == 1
+        ? '1 nadchodzącą rezerwację'
+        : few
+        ? '$n nadchodzące rezerwacje'
+        : '$n nadchodzących rezerwacji';
+    if (!withVerb) return phrase;
+    if (n == 1) return 'jest jeszcze 1 nadchodząca rezerwacja';
+    return few ? 'są jeszcze $phrase' : 'jest jeszcze $phrase';
+  }
+
   Future<void> _create(String restaurantId, ReservationSource source) async {
     final id = await showDialog<String>(
       context: context,
@@ -294,6 +448,8 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                         groups: groups,
                         onGroup: (g) => setState(() => _group = g),
                         onSelectReservation: (id) => setState(() => _selectedId = id),
+                        onTableMenu: (table, rect, reservation) =>
+                            _tableMenu(restaurant.id, query, table, rect, reservation),
                       ),
                     ),
                     const SizedBox(width: 20),
@@ -1158,6 +1314,7 @@ class _PlanPanel extends StatelessWidget {
     required this.groups,
     required this.onGroup,
     required this.onSelectReservation,
+    required this.onTableMenu,
   });
 
   final List<FloorZone> zones;
@@ -1174,6 +1331,9 @@ class _PlanPanel extends StatelessWidget {
   final List<String> groups;
   final ValueChanged<String?> onGroup;
   final ValueChanged<String> onSelectReservation;
+
+  /// Kliknięcie stolika: jego położenie na ekranie i rezerwacja, która na nim jest albo będzie.
+  final void Function(DiningTable table, Rect rect, PanelReservation? reservation) onTableMenu;
 
   @override
   Widget build(BuildContext context) {
@@ -1265,6 +1425,15 @@ class _PlanPanel extends StatelessWidget {
                   );
                   final r = state.current ?? state.next;
                   if (r != null) onSelectReservation(r.id);
+                },
+                onTapTableAt: (t, rect) {
+                  final state = tableState(
+                    t,
+                    reservations,
+                    at,
+                    seatedCountsNow: seatedCountsNow,
+                  );
+                  onTableMenu(t, rect, state.current ?? state.next);
                 },
               ),
             ),

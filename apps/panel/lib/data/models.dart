@@ -810,12 +810,22 @@ class StaffMember {
     required this.name,
     required this.color,
     required this.active,
+    this.firstName,
+    this.lastName,
+    this.positionId,
     this.position,
     this.phone,
   });
 
   final String id;
+
+  /// Imię i nazwisko razem, do list i kalendarza.
   final String name;
+  final String? firstName;
+  final String? lastName;
+  final String? positionId;
+
+  /// Nazwa stanowiska zapisana przy pracowniku. Aktualną nazwę bierzemy ze stanowisk.
   final String? position;
   final String? phone;
 
@@ -827,6 +837,9 @@ class StaffMember {
     return StaffMember(
       id: json['id'] as String,
       name: json['name'] as String,
+      firstName: json['first_name'] as String?,
+      lastName: json['last_name'] as String?,
+      positionId: json['position_id'] as String?,
       position: json['position'] as String?,
       phone: json['phone'] as String?,
       color: _toInt(json['color']),
@@ -928,4 +941,100 @@ enum LiveStatus {
 
   /// Brak połączenia: lista może być nieaktualna.
   offline,
+}
+
+/// Uprawnienie stanowiska. Działa, gdy pracownicy dostaną własne konta w panelu.
+enum StaffPermission {
+  reservations('reservations', 'Rezerwacje', 'Przyjmowanie, zmiana i odwoływanie rezerwacji'),
+  floor('floor', 'Plan sali', 'Podgląd sali i wyłączanie stolików'),
+  floorEdit('floor_edit', 'Edycja sali', 'Zmiana układu stolików i stref'),
+  menu('menu', 'Menu', 'Zmiana dań i cen'),
+  orders('orders', 'Zamówienia', 'Nabijanie zamówień przy stoliku', soon: true),
+  kitchen('kitchen', 'Kuchnia', 'Ekran zamówień na kuchni', soon: true),
+  deliveries('deliveries', 'Dostawy', 'Aplikacja dla kurierów', soon: true),
+  giftCards('gift_cards', 'Karty podarunkowe', 'Realizacja kart gości'),
+  reviews('reviews', 'Opinie', 'Odpowiadanie na opinie'),
+  stats('stats', 'Statystyki', 'Podgląd wyników lokalu'),
+  staff('staff', 'Pracownicy', 'Pracownicy i grafik');
+
+  const StaffPermission(this.key, this.label, this.description, {this.soon = false});
+
+  final String key;
+  final String label;
+  final String description;
+
+  /// Funkcja, której jeszcze nie ma w panelu.
+  final bool soon;
+
+  static StaffPermission? fromKey(String key) {
+    for (final p in values) {
+      if (p.key == key) return p;
+    }
+    return null;
+  }
+}
+
+/// Stanowisko pracownika. Systemowe (Kelner, Kucharz, Dostawca) ma każdy lokal
+/// i nie da się ich usunąć, bo korzystają z nich pakiety. Własne dodaje właściciel.
+class StaffPosition {
+  const StaffPosition({
+    required this.id,
+    required this.name,
+    required this.permissions,
+    this.restaurantId,
+    this.systemKey,
+  });
+
+  final String id;
+  final String? restaurantId;
+
+  /// waiter, cook albo courier przy stanowiskach systemowych.
+  final String? systemKey;
+  final String name;
+  final List<StaffPermission> permissions;
+
+  bool get isSystem => systemKey != null;
+
+  factory StaffPosition.fromJson(Map<String, dynamic> json) {
+    return StaffPosition(
+      id: json['id'] as String,
+      restaurantId: json['restaurant_id'] as String?,
+      systemKey: json['system_key'] as String?,
+      name: json['name'] as String,
+      permissions: [
+        for (final k in (json['permissions'] as List? ?? const []))
+          ?StaffPermission.fromKey(k as String),
+      ],
+    );
+  }
+}
+
+/// Dzień, w którym lokal jest zamknięty albo pracuje w innych godzinach niż zwykle.
+class OpeningException {
+  const OpeningException({
+    required this.day,
+    required this.closed,
+    this.opens,
+    this.closes,
+    this.note,
+  });
+
+  final DateTime day;
+  final bool closed;
+
+  /// Godziny w formacie HH:MM, gdy lokal pracuje inaczej niż zwykle.
+  final String? opens;
+  final String? closes;
+  final String? note;
+
+  factory OpeningException.fromJson(Map<String, dynamic> json) {
+    String? hm(Object? v) => v == null ? null : (v as String).substring(0, 5);
+    return OpeningException(
+      day: DateTime.parse(json['day'] as String),
+      closed: json['closed'] != false,
+      opens: hm(json['opens']),
+      closes: hm(json['closes']),
+      note: json['note'] as String?,
+    );
+  }
 }

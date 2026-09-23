@@ -7,6 +7,7 @@ import 'package:table_core/table_core.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
+import 'schedule_conflicts.dart';
 
 const _weekdays = [
   'Poniedziałek',
@@ -68,10 +69,20 @@ class ProfileScreen extends ConsumerWidget {
                   const SizedBox(width: 20),
                   Expanded(
                     flex: 2,
-                    child: _HoursForm(
-                      key: ValueKey('godziny-${profile.id}'),
-                      profile: profile,
-                      editable: restaurant.canManage,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _HoursForm(
+                          key: ValueKey('godziny-${profile.id}'),
+                          profile: profile,
+                          editable: restaurant.canManage,
+                        ),
+                        const SizedBox(height: 20),
+                        _ExceptionsCard(
+                          profile: profile,
+                          editable: restaurant.canManage,
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -407,9 +418,27 @@ class _HoursFormState extends ConsumerState<_HoursForm> {
     }
     setState(() => _busy = true);
     try {
-      await ref.read(repositoryProvider).setHours(widget.profile.id, hours);
+      final repo = ref.read(repositoryProvider);
+      await repo.setHours(widget.profile.id, hours);
       ref.invalidate(profileProvider(widget.profile.id));
-      if (mounted) showMessage(context, 'Godziny otwarcia zapisane.');
+      if (!mounted) return;
+      showMessage(context, 'Godziny otwarcia zapisane.');
+
+      // Rezerwacje przyjęte według starych godzin mogą teraz wypadać poza nimi.
+      final conflicts = await findScheduleConflicts(
+        ref,
+        widget.profile.id,
+        weekly: hours,
+        exceptions: await repo.exceptions(widget.profile.id),
+      );
+      if (!mounted) return;
+      await resolveScheduleConflicts(
+        context,
+        ref,
+        widget.profile.id,
+        conflicts,
+        reason: 'Odwołana przez lokal: zmiana godzin otwarcia',
+      );
     } catch (e) {
       if (mounted) showMessage(context, errorText(e));
     } finally {
@@ -481,6 +510,266 @@ class _HoursFormState extends ConsumerState<_HoursForm> {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Dni, w których lokal jest zamknięty albo pracuje w innych godzinach niż zwykle.
+/// W te dni aplikacja pokazuje gościom tylko pasujące terminy.
+class _ExceptionsCard extends ConsumerWidget {
+  const _ExceptionsCard({required this.profile, required this.editable});
+
+  final RestaurantProfile profile;
+  final bool editable;
+
+  Future<void> _add(BuildContext context, WidgetRef ref) async {
+    final saved = await showDialog<OpeningException>(
+      context: context,
+      builder: (_) => const _ExceptionDialog(),
+    );
+    if (saved == null || !context.mounted) return;
+    final repo = ref.read(repositoryProvider);
+    try {
+      await repo.saveException(profile.id, saved);
+      ref.invalidate(exceptionsProvider(profile.id));
+      if (!context.mounted) return;
+      showMessage(context, 'Dzień wyjątkowy zapisany.');
+
+      final conflicts = await findScheduleConflicts(
+        ref,
+        profile.id,
+        weekly: profile.hours,
+        exceptions: await repo.exceptions(profile.id),
+      );
+      if (!context.mounted) return;
+      final day = Fmt.dayShort(saved.day);
+      final note = saved.note?.trim();
+      await resolveScheduleConflicts(
+        context,
+        ref,
+        profile.id,
+        [
+          for (final r in conflicts)
+            if (_sameDay(r.startsAt.toLocal(), saved.day)) r,
+        ],
+        reason: saved.closed
+            ? 'Odwołana przez lokal: zamknięte $day${note == null || note.isEmpty ? '' : ' ($note)'}'
+            : 'Odwołana przez lokal: zmiana godzin $day',
+      );
+    } catch (e) {
+      if (context.mounted) showMessage(context, errorText(e));
+    }
+  }
+
+  Future<void> _delete(BuildContext context, WidgetRef ref, OpeningException e) async {
+    try {
+      await ref.read(repositoryProvider).deleteException(profile.id, e.day);
+      ref.invalidate(exceptionsProvider(profile.id));
+    } catch (err) {
+      if (context.mounted) showMessage(context, errorText(err));
+    }
+  }
+
+  static bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final async = ref.watch(exceptionsProvider(profile.id));
+
+    return PanelCard(
+      title: 'Dni wyjątkowe',
+      trailing: editable
+          ? TextButton.icon(
+              onPressed: () => _add(context, ref),
+              icon: const Glyph(AppIcons.plus, size: 16),
+              label: const Text('Dodaj dzień'),
+            )
+          : null,
+      child: async.when(
+        loading: () => const SizedBox(height: 60, child: LoadingView()),
+        error: (e, _) => Text(errorText(e)),
+        data: (items) {
+          if (items.isEmpty) {
+            return Text(
+              'Święto, remont, impreza zamknięta? Dodaj dzień, a goście nie zarezerwują '
+              'stolika, kiedy lokal jest zamknięty.',
+              style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final e in items)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(Fmt.capitalize(Fmt.dayLong(e.day)), style: text.labelLarge),
+                            Text(
+                              [
+                                e.closed ? 'Zamknięte' : '${e.opens}–${e.closes}',
+                                if (e.note != null && e.note!.isNotEmpty) e.note!,
+                              ].join(' · '),
+                              style: text.bodySmall?.copyWith(
+                                color: e.closed ? AppColors.error : AppColors.textMuted,
+                                fontFeatures: const [FontFeature.tabularFigures()],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (editable)
+                        IconButton(
+                          tooltip: 'Usuń dzień wyjątkowy',
+                          icon: Glyph(AppIcons.trash, size: 16, color: AppColors.textMuted),
+                          onPressed: () => _delete(context, ref, e),
+                        ),
+                    ],
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Wybór dnia, zamknięcia albo innych godzin i krótkiej notatki.
+class _ExceptionDialog extends StatefulWidget {
+  const _ExceptionDialog();
+
+  @override
+  State<_ExceptionDialog> createState() => _ExceptionDialogState();
+}
+
+class _ExceptionDialogState extends State<_ExceptionDialog> {
+  DateTime? _day;
+  bool _closed = true;
+  TimeOfDay _opens = const TimeOfDay(hour: 12, minute: 0);
+  TimeOfDay _closes = const TimeOfDay(hour: 18, minute: 0);
+  final _note = TextEditingController();
+
+  @override
+  void dispose() {
+    _note.dispose();
+    super.dispose();
+  }
+
+  static String _format(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  Future<void> _pickDay() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _day ?? now,
+      firstDate: DateTime(now.year, now.month, now.day),
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (picked != null) setState(() => _day = picked);
+  }
+
+  void _save() {
+    final day = _day;
+    if (day == null) {
+      showMessage(context, 'Wybierz dzień.');
+      return;
+    }
+    if (!_closed && _closes.hour * 60 + _closes.minute <= _opens.hour * 60 + _opens.minute) {
+      showMessage(context, 'Zamknięcie musi być później niż otwarcie.');
+      return;
+    }
+    Navigator.pop(
+      context,
+      OpeningException(
+        day: day,
+        closed: _closed,
+        opens: _closed ? null : _format(_opens),
+        closes: _closed ? null : _format(_closes),
+        note: _note.text,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return AlertDialog(
+      title: const Text('Dzień wyjątkowy'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            OutlinedButton.icon(
+              onPressed: _pickDay,
+              icon: const Glyph(AppIcons.calendar, size: 16),
+              label: Text(
+                _day == null ? 'Wybierz dzień' : Fmt.capitalize(Fmt.dayLong(_day!)),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SegmentedTabs<bool>(
+                options: const [(true, 'Zamknięte'), (false, 'Inne godziny')],
+                selected: _closed,
+                onChanged: (v) => setState(() => _closed = v),
+              ),
+            ),
+            if (!_closed) ...[
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  _TimeButton(
+                    value: _format(_opens),
+                    onTap: () async {
+                      final t = await pickTime(context, initial: _opens);
+                      if (t != null) setState(() => _opens = t);
+                    },
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text('–', style: text.bodyMedium),
+                  ),
+                  _TimeButton(
+                    value: _format(_closes),
+                    onTap: () async {
+                      final t = await pickTime(context, initial: _closes);
+                      if (t != null) setState(() => _closes = t);
+                    },
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 14),
+            TextField(
+              controller: _note,
+              maxLength: 120,
+              decoration: const InputDecoration(
+                labelText: 'Notatka (opcjonalnie)',
+                hintText: 'Wigilia, remont kuchni, impreza zamknięta',
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+          child: const Text('Anuluj'),
+        ),
+        FilledButton(onPressed: _save, child: const Text('Zapisz')),
+      ],
     );
   }
 }

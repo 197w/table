@@ -69,7 +69,9 @@ class _PanelAppState extends ConsumerState<PanelApp>
         : AppPalette.light;
     AppColors.use(palette);
 
-    return MaterialApp.router(
+    // Zmiana motywu przechodzi płynnie: ThemeFade wygasza zdjęcie starego wyglądu.
+    return ThemeFade(
+      child: MaterialApp.router(
       key: ValueKey(brightness),
       title: 'Table · Panel restauracji',
       debugShowCheckedModeBanner: false,
@@ -78,6 +80,7 @@ class _PanelAppState extends ConsumerState<PanelApp>
       supportedLocales: const [Locale('pl', 'PL')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       routerConfig: _router,
+      ),
     );
   }
 }

@@ -73,6 +73,8 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     if (restaurant == null) return const LoadingView();
     final canEdit = restaurant.canManage;
     final staffAsync = ref.watch(staffProvider(restaurant.id));
+    final positions = ref.watch(positionsProvider(restaurant.id)).value ?? const <StaffPosition>[];
+    final positionNames = {for (final p in positions) p.id: p.name};
     final query = (restaurantId: restaurant.id, weekStart: _week);
     final availability = ref.watch(availabilityProvider(query)).value ?? const <Availability>[];
     final weekEnd = DateTime(_week.year, _week.month, _week.day + 6);
@@ -102,6 +104,14 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
             ),
             if (canEdit) ...[
               const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => _PositionsDialog(restaurantId: restaurant.id),
+                ),
+                icon: const Glyph(AppIcons.identification, size: 18),
+                label: const Text('Stanowiska'),
+              ),
               FilledButton.icon(
                 onPressed: () => _editMember(restaurant.id),
                 icon: const Glyph(AppIcons.plus, size: 18),
@@ -145,6 +155,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                         members: members,
                         availability: availability,
                         canEdit: canEdit,
+                        positionNames: positionNames,
                         onEditMember: (m) => _editMember(restaurant.id, m),
                         onAdd: (m, day) => _editAvailability(restaurant.id, m, day),
                         onEdit: (m, a) => _editAvailability(restaurant.id, m, a.day, a),
@@ -183,6 +194,7 @@ class _WeekGrid extends StatelessWidget {
     required this.members,
     required this.availability,
     required this.canEdit,
+    required this.positionNames,
     required this.onEditMember,
     required this.onAdd,
     required this.onEdit,
@@ -192,6 +204,10 @@ class _WeekGrid extends StatelessWidget {
   final List<StaffMember> members;
   final List<Availability> availability;
   final bool canEdit;
+
+  /// Aktualne nazwy stanowisk po identyfikatorze. Po zmianie nazwy stanowiska
+  /// lista pokazuje nową, a nie tę zapisaną przy pracowniku.
+  final Map<String, String> positionNames;
   final ValueChanged<StaffMember> onEditMember;
   final void Function(StaffMember member, DateTime day) onAdd;
   final void Function(StaffMember member, Availability entry) onEdit;
@@ -277,9 +293,12 @@ class _WeekGrid extends StatelessWidget {
                                     color: m.active ? AppColors.text : AppColors.textMuted,
                                   ),
                                 ),
-                                if (m.position != null || !m.active)
+                                if (positionNames[m.positionId] != null || m.position != null || !m.active)
                                   Text(
-                                    [if (m.position != null) m.position!, if (!m.active) 'nieaktywny'].join(' · '),
+                                    [
+                                      ?(positionNames[m.positionId] ?? m.position),
+                                      if (!m.active) 'nieaktywny',
+                                    ].join(' · '),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: text.bodySmall?.copyWith(color: AppColors.textMuted),
@@ -425,33 +444,51 @@ class _MemberDialog extends ConsumerStatefulWidget {
 }
 
 class _MemberDialogState extends ConsumerState<_MemberDialog> {
-  late final _name = TextEditingController(text: widget.member?.name ?? '');
-  late final _position = TextEditingController(text: widget.member?.position ?? '');
+  late final _firstName = TextEditingController(text: widget.member?.firstName ?? '');
+  late final _lastName = TextEditingController(text: widget.member?.lastName ?? '');
   late final _phone = TextEditingController(text: widget.member?.phone ?? '');
+  late String? _positionId = widget.member?.positionId;
   late int _color = widget.member?.color ?? 0;
   late bool _active = widget.member?.active ?? true;
   bool _busy = false;
 
   @override
   void dispose() {
-    _name.dispose();
-    _position.dispose();
+    _firstName.dispose();
+    _lastName.dispose();
     _phone.dispose();
     super.dispose();
   }
 
-  Future<void> _save() async {
-    if (_name.text.trim().isEmpty) {
-      showMessage(context, 'Wpisz imię pracownika.');
+  Future<void> _save(List<StaffPosition> positions) async {
+    final digits = _phone.text.replaceAll(RegExp(r'[^0-9]'), '');
+    StaffPosition? position;
+    for (final p in positions) {
+      if (p.id == _positionId) position = p;
+    }
+    final String? problem;
+    if (_firstName.text.trim().isEmpty || _lastName.text.trim().isEmpty) {
+      problem = 'Wpisz imię i nazwisko pracownika.';
+    } else if (digits.length < 9 || digits.length > 15) {
+      problem = 'Wpisz numer telefonu, co najmniej 9 cyfr.';
+    } else if (position == null) {
+      problem = 'Wybierz stanowisko.';
+    } else {
+      problem = null;
+    }
+    if (problem != null) {
+      showMessage(context, problem);
       return;
     }
+
     setState(() => _busy = true);
     try {
       await ref.read(repositoryProvider).saveStaffMember(
         restaurantId: widget.restaurantId,
         id: widget.member?.id,
-        name: _name.text,
-        position: _position.text,
+        firstName: _firstName.text,
+        lastName: _lastName.text,
+        position: position!,
         phone: _phone.text,
         color: _color,
         active: _active,
@@ -484,45 +521,71 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final positions =
+        ref.watch(positionsProvider(widget.restaurantId)).value ?? const <StaffPosition>[];
+    final selected = positions.any((p) => p.id == _positionId) ? _positionId : null;
+
     return AlertDialog(
       title: Text(widget.member == null ? 'Nowy pracownik' : 'Pracownik'),
       content: SizedBox(
-        width: 440,
+        width: 460,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(
-              controller: _name,
-              autofocus: widget.member == null,
-              maxLength: 80,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(labelText: 'Imię i nazwisko', counterText: ''),
-            ),
-            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   child: TextField(
-                    controller: _position,
+                    controller: _firstName,
+                    autofocus: widget.member == null,
                     maxLength: 40,
-                    decoration: const InputDecoration(
-                      labelText: 'Stanowisko',
-                      hintText: 'Kelner, kucharz, barman',
-                      counterText: '',
-                    ),
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(labelText: 'Imię', counterText: ''),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: TextField(
-                    controller: _phone,
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]'))],
-                    decoration: const InputDecoration(labelText: 'Telefon (opcjonalnie)'),
+                    controller: _lastName,
+                    maxLength: 60,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(labelText: 'Nazwisko', counterText: ''),
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _phone,
+              keyboardType: TextInputType.phone,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]')),
+                LengthLimitingTextInputFormatter(20),
+              ],
+              style: const TextStyle(fontFeatures: _tabular),
+              decoration: const InputDecoration(labelText: 'Numer telefonu'),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: selected,
+              decoration: const InputDecoration(labelText: 'Stanowisko'),
+              items: [
+                for (final p in positions)
+                  DropdownMenuItem(
+                    value: p.id,
+                    child: Row(
+                      children: [
+                        Text(p.name),
+                        if (p.isSystem) ...[
+                          const SizedBox(width: 8),
+                          Glyph(AppIcons.lock, size: 12, color: AppColors.textDisabled),
+                        ],
+                      ],
+                    ),
+                  ),
+              ],
+              onChanged: (v) => setState(() => _positionId = v),
             ),
             const SizedBox(height: 16),
             Text('Kolor w kalendarzu', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
@@ -570,6 +633,284 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: const Text('Usuń'),
           ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+          child: const Text('Anuluj'),
+        ),
+        FilledButton(
+          onPressed: _busy ? null : () => _save(positions),
+          child: const Text('Zapisz'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Lista stanowisk: systemowe są zablokowane, własne można dodawać, zmieniać i usuwać.
+class _PositionsDialog extends ConsumerWidget {
+  const _PositionsDialog({required this.restaurantId});
+
+  final String restaurantId;
+
+  Future<void> _edit(BuildContext context, WidgetRef ref, [StaffPosition? position]) async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => _PositionEditor(restaurantId: restaurantId, position: position),
+    );
+    if (saved == true) {
+      ref
+        ..invalidate(positionsProvider(restaurantId))
+        ..invalidate(staffProvider(restaurantId));
+    }
+  }
+
+  Future<void> _delete(BuildContext context, WidgetRef ref, StaffPosition position) async {
+    final ok = await confirm(
+      context,
+      title: 'Usunąć stanowisko „${position.name}”?',
+      message: 'Stanowiska przypisanego do pracowników nie da się usunąć. Najpierw zmień im stanowisko.',
+      action: 'Usuń',
+      destructive: true,
+    );
+    if (!ok) return;
+    try {
+      await ref.read(repositoryProvider).deletePosition(position.id);
+      ref.invalidate(positionsProvider(restaurantId));
+    } catch (e) {
+      if (!context.mounted) return;
+      final raw = e.toString().toLowerCase();
+      showMessage(
+        context,
+        raw.contains('foreign key') || raw.contains('violates')
+            ? 'To stanowisko ma przypisanych pracowników. Najpierw zmień im stanowisko.'
+            : errorText(e),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final async = ref.watch(positionsProvider(restaurantId));
+
+    return AlertDialog(
+      title: const Text('Stanowiska'),
+      content: SizedBox(
+        width: 520,
+        child: async.when(
+          loading: () => const SizedBox(height: 120, child: LoadingView()),
+          error: (e, _) => Text(errorText(e)),
+          data: (positions) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Kelner, Kucharz i Dostawca są dodane przez system i nie da się ich usunąć, '
+                'bo korzystają z nich pakiety Table. Własne stanowiska dodajesz poniżej. '
+                'Uprawnienia zaczną działać, gdy pracownicy dostaną własne konta w panelu.',
+                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 14),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 360),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: positions.length,
+                  separatorBuilder: (_, _) => Divider(height: 1, color: AppColors.ring),
+                  itemBuilder: (context, i) {
+                    final p = positions[i];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(p.name, style: text.labelLarge),
+                                    if (p.isSystem) ...[
+                                      const SizedBox(width: 8),
+                                      Glyph(AppIcons.lock, size: 12, color: AppColors.textDisabled),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'systemowe',
+                                        style: text.bodySmall?.copyWith(color: AppColors.textDisabled),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  p.permissions.isEmpty
+                                      ? 'Bez uprawnień'
+                                      : p.permissions.map((x) => x.label).join(' · '),
+                                  style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (!p.isSystem) ...[
+                            IconButton(
+                              tooltip: 'Zmień',
+                              icon: const Glyph(AppIcons.pencil, size: 16),
+                              onPressed: () => _edit(context, ref, p),
+                            ),
+                            const SizedBox(width: 6),
+                            IconButton(
+                              tooltip: 'Usuń',
+                              icon: Glyph(AppIcons.trash, size: 16, color: AppColors.error),
+                              onPressed: () => _delete(context, ref, p),
+                            ),
+                          ],
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+          child: const Text('Zamknij'),
+        ),
+        FilledButton.icon(
+          onPressed: () => _edit(context, ref),
+          icon: const Glyph(AppIcons.plus, size: 18),
+          label: const Text('Dodaj stanowisko'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Nazwa i uprawnienia własnego stanowiska.
+class _PositionEditor extends ConsumerStatefulWidget {
+  const _PositionEditor({required this.restaurantId, this.position});
+
+  final String restaurantId;
+  final StaffPosition? position;
+
+  @override
+  ConsumerState<_PositionEditor> createState() => _PositionEditorState();
+}
+
+class _PositionEditorState extends ConsumerState<_PositionEditor> {
+  late final _name = TextEditingController(text: widget.position?.name ?? '');
+  late final Set<StaffPermission> _permissions = {...?widget.position?.permissions};
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final name = _name.text.trim();
+    if (name.isEmpty) {
+      showMessage(context, 'Wpisz nazwę stanowiska.');
+      return;
+    }
+    const reserved = ['kelner', 'kucharz', 'dostawca'];
+    if (reserved.contains(name.toLowerCase())) {
+      showMessage(context, 'Stanowisko „$name” jest już dodane przez system.');
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await ref.read(repositoryProvider).savePosition(
+        restaurantId: widget.restaurantId,
+        id: widget.position?.id,
+        name: name,
+        permissions: [
+          for (final p in StaffPermission.values)
+            if (_permissions.contains(p)) p,
+        ],
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      final raw = e.toString().toLowerCase();
+      showMessage(
+        context,
+        raw.contains('duplicate') || raw.contains('unique')
+            ? 'Stanowisko o tej nazwie już istnieje.'
+            : errorText(e),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return AlertDialog(
+      title: Text(widget.position == null ? 'Nowe stanowisko' : 'Stanowisko'),
+      content: SizedBox(
+        width: 460,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _name,
+                autofocus: widget.position == null,
+                maxLength: 40,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: 'Nazwa',
+                  hintText: 'Barman, Kierownik zmiany, Hostessa',
+                  counterText: '',
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text('Uprawnienia', style: text.titleSmall),
+              const SizedBox(height: 4),
+              for (final p in StaffPermission.values)
+                CheckboxListTile(
+                  value: _permissions.contains(p),
+                  onChanged: (v) => setState(() {
+                    if (v == true) {
+                      _permissions.add(p);
+                    } else {
+                      _permissions.remove(p);
+                    }
+                  }),
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  dense: true,
+                  activeColor: AppColors.accentFill,
+                  checkColor: AppColors.onAccent,
+                  title: Row(
+                    children: [
+                      Text(p.label, style: text.bodyMedium),
+                      if (p.soon) ...[
+                        const SizedBox(width: 8),
+                        Tag('WKRÓTCE', color: AppColors.textMuted),
+                      ],
+                    ],
+                  ),
+                  subtitle: Text(
+                    p.description,
+                    style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, false),
           style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),

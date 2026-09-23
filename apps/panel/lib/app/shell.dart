@@ -234,9 +234,12 @@ class _Sidebar extends ConsumerWidget {
           muted: true,
           onTap: () {
             final values = AppThemeSetting.values;
-            ref
-                .read(themeSettingProvider.notifier)
-                .set(values[(theme.index + 1) % values.length]);
+            ThemeFade.run(
+              context,
+              () => ref
+                  .read(themeSettingProvider.notifier)
+                  .set(values[(theme.index + 1) % values.length]),
+            );
           },
         ),
         _IconRow(

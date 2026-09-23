@@ -1,0 +1,45 @@
+# Analiza kodu i testy przy każdym wysłaniu zmian. Działa na Linuksie, więc jest tania.
+name: Analiza i testy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter:
+    name: Analiza i testy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          channel: stable
+          cache: true
+
+      # Jeden pubspec.lock w katalogu głównym rozwiązuje cały workspace.
+      - run: flutter pub get
+
+      - name: Wspólny pakiet
+        working-directory: packages/table_core
+        run: flutter analyze
+
+      - name: Aplikacja dla gości
+        working-directory: apps/guest
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: Panel restauracji
+        working-directory: apps/panel
+        run: |
+          flutter analyze
+          flutter test

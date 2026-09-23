@@ -7,6 +7,7 @@ export 'src/env.dart';
 export 'src/failure.dart';
 export 'src/formatters.dart';
 export 'src/theme.dart';
+export 'src/theme_fade.dart';
 export 'src/theme_setting.dart';
 export 'src/units.dart';
 export 'src/widgets.dart';
