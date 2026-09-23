@@ -8,6 +8,7 @@ import '../data/providers.dart';
 import 'app.dart';
 import '../shared/panel_widgets.dart';
 import 'panel_theme.dart';
+import 'updater.dart';
 
 /// Układ panelu: boczne menu z wyborem lokalu i treść sekcji.
 class PanelShell extends ConsumerWidget {
@@ -224,6 +225,21 @@ class _Sidebar extends ConsumerWidget {
         ),
         SizedBox(width: inner, child: Divider(color: AppColors.ring)),
         const SizedBox(height: 6),
+        // Nowa wersja znaleziona w trakcie pracy: instaluje się dopiero po kliknięciu,
+        // żeby nie przerwać obsługi w środku serwisu.
+        if (ref.watch(availableUpdateProvider) case final release?)
+          _IconRow(
+            icon: AppIcons.arrowsClockwise,
+            label: 'Nowa wersja ${release.version}',
+            width: inner,
+            fade: fade,
+            selected: true,
+            onTap: () => showDialog<void>(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => _UpdateDialog(release: release),
+            ),
+          ),
         // Motyw i wylogowanie to takie same wiersze jak sekcje,
         // więc dół menu ma tę samą wysokość w obu stanach.
         _IconRow(
@@ -258,7 +274,10 @@ class _Sidebar extends ConsumerWidget {
             child: Padding(
               padding: const EdgeInsets.only(left: 10),
               child: Text(
-                email ?? '',
+                [
+                  ?email,
+                  if (ref.watch(panelVersionProvider).value case final v?) 'wersja $v',
+                ].join(' · '),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 softWrap: false,
@@ -538,6 +557,88 @@ class _PlanBadge extends StatelessWidget {
           color: isPro ? AppColors.accent : AppColors.textMuted,
         ),
       ),
+    );
+  }
+}
+
+/// Instalacja nowej wersji na prośbę obsługi: opis zmian, postęp pobierania, restart.
+class _UpdateDialog extends StatefulWidget {
+  const _UpdateDialog({required this.release});
+
+  final PanelRelease release;
+
+  @override
+  State<_UpdateDialog> createState() => _UpdateDialogState();
+}
+
+class _UpdateDialogState extends State<_UpdateDialog> {
+  bool _busy = false;
+  double? _progress;
+
+  Future<void> _install() async {
+    setState(() => _busy = true);
+    try {
+      await PanelUpdater.install(
+        widget.release,
+        onProgress: (p) {
+          if (mounted) setState(() => _progress = p);
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      showMessage(context, errorText(e));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final notes = widget.release.notes.trim();
+    return AlertDialog(
+      title: Text('Nowa wersja ${widget.release.version}'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              notes.isEmpty ? 'Poprawki i nowości w panelu.' : notes,
+              style: text.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Panel zamknie się na kilka sekund i uruchomi ponownie. '
+              'Niezapisane zmiany, na przykład w Edycji sali, przepadną.',
+              style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+            ),
+            if (_busy) ...[
+              const SizedBox(height: 16),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: _progress,
+                  minHeight: 6,
+                  color: AppColors.accentFill,
+                  backgroundColor: AppColors.surfaceRaised,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+          child: const Text('Później'),
+        ),
+        FilledButton(
+          onPressed: _busy ? null : _install,
+          child: const Text('Zainstaluj teraz'),
+        ),
+      ],
     );
   }
 }

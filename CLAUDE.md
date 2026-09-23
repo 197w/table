@@ -26,6 +26,18 @@ Z użytkownikiem rozmawiamy po polsku. Teksty w aplikacjach i komentarze w kodzi
   Drugie konto: `reve@table.test`, właściciel REVE Restaurant (Pro, Białystok, dane adresowe do uzupełnienia).
   Hasła zna użytkownik, nie zapisujemy ich w repozytorium.
 
+## Wydawanie panelu na Windows
+
+- Wspólnik dostaje panel przez instalator i aktualizuje go automatycznie.
+- Wydanie: tag `panel-vX.Y.Z` albo ręcznie workflow „Wydanie panelu na Windows” w GitHub Actions.
+  Buduje instalator (Inno Setup, `apps/panel/windows/installer/table_panel.iss`) i wrzuca go z `latest.json`
+  do publicznego katalogu `panel-releases/windows` w Supabase.
+- Panel zainstalowany w `%LOCALAPPDATA%\Programs\Table Panel` sprawdza `latest.json` przy starcie
+  (aktualizuje się od razu) i co 4 godziny (wiersz „Nowa wersja” w menu). Uruchomiony z folderu projektu
+  nigdy się nie aktualizuje.
+- Sekrety repozytorium: `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` i `SUPABASE_SERVICE_ROLE_KEY` (ten ostatni wpisuje użytkownik).
+- Link do pierwszej instalacji: `<SUPABASE_URL>/storage/v1/object/public/panel-releases/windows/TablePanelSetup.exe`.
+
 ## Uruchamianie
 
 `env.json` leży w katalogu głównym repozytorium i nie trafia do Gita.
@@ -46,7 +58,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0019, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0020, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
   Gdy użytkownik napisze „kod”, podaj najnowszy `otp` z tej tabeli (jego numer kończy się na 098).

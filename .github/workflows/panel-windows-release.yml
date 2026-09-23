@@ -1,0 +1,146 @@
+# Wydanie panelu na Windows: buduje panel, pakuje go w instalator i publikuje w Supabase,
+# skąd zainstalowane panele same pobierają aktualizację.
+#
+# Uruchomienie:
+#   - tag panel-vX.Y.Z (np. git tag panel-v0.2.0 && git push origin panel-v0.2.0), albo
+#   - ręcznie w zakładce Actions („Run workflow”), z numerem wersji i opisem zmian.
+#
+# Sekrety repozytorium:
+#   SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY – to samo co w env.json, trafia do programu.
+#   SUPABASE_SERVICE_ROLE_KEY – tylko do wysłania plików do katalogu panel-releases.
+name: Wydanie panelu na Windows
+
+on:
+  push:
+    tags: ['panel-v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Numer wersji, np. 0.2.0'
+        required: true
+      notes:
+        description: 'Co nowego (widać w panelu przy aktualizacji)'
+        required: false
+        default: ''
+
+concurrency:
+  group: panel-windows-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Instalator i publikacja
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+      SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      # Wartości z formularza idą przez zmienne środowiskowe, nigdy wprost do skryptu.
+      INPUT_VERSION: ${{ inputs.version }}
+      INPUT_NOTES: ${{ inputs.notes }}
+      TAG_NAME: ${{ github.ref_name }}
+      EVENT_NAME: ${{ github.event_name }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Numer wersji i opis
+        id: v
+        run: |
+          if ($env:EVENT_NAME -eq 'push') {
+            $version = $env:TAG_NAME -replace '^panel-v', ''
+            $notes = ''
+          } else {
+            $version = $env:INPUT_VERSION.Trim()
+            $notes = $env:INPUT_NOTES
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Numer wersji musi wyglądać jak 0.2.0, a jest: '$version'"
+          }
+          if (-not $env:SUPABASE_URL -or -not $env:SUPABASE_PUBLISHABLE_KEY) {
+            throw 'Brakuje sekretów SUPABASE_URL i SUPABASE_PUBLISHABLE_KEY w ustawieniach repozytorium.'
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Set-Content -Path release-notes.txt -Value $notes -Encoding utf8
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Budowanie panelu
+        working-directory: apps/panel
+        run: |
+          flutter build windows --release `
+            --build-name ${{ steps.v.outputs.version }} `
+            --build-number ${{ github.run_number }} `
+            --dart-define=SUPABASE_URL=$env:SUPABASE_URL `
+            --dart-define=SUPABASE_PUBLISHABLE_KEY=$env:SUPABASE_PUBLISHABLE_KEY
+          # Biblioteki Visual C++ obok programu, żeby działał bez osobnej instalacji pakietu.
+          $release = 'build\windows\x64\runner\Release'
+          Copy-Item "$env:WINDIR\System32\msvcp140.dll", "$env:WINDIR\System32\vcruntime140.dll", "$env:WINDIR\System32\vcruntime140_1.dll" $release
+
+      - name: Instalator
+        working-directory: apps/panel
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          & $iscc `
+            "/DAppVersion=${{ steps.v.outputs.version }}" `
+            "/DSourceDir=$PWD\build\windows\x64\runner\Release" `
+            "/DOutputDir=$PWD\build\installer" `
+            windows\installer\table_panel.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup nie zbudował instalatora.' }
+
+      - name: Opis wersji
+        working-directory: apps/panel
+        run: |
+          $version = '${{ steps.v.outputs.version }}'
+          $file = "build\installer\TablePanelSetup-$version.exe"
+          $sha = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
+          $base = "$env:SUPABASE_URL/storage/v1/object/public/panel-releases/windows"
+          $notes = (Get-Content -Raw ..\..\release-notes.txt).Trim()
+          [ordered]@{
+            version = $version
+            url = "$base/TablePanelSetup-$version.exe"
+            sha256 = $sha
+            notes = $notes
+          } | ConvertTo-Json | Set-Content -Path build\installer\latest.json -Encoding utf8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TablePanelSetup-${{ steps.v.outputs.version }}
+          path: apps/panel/build/installer/
+
+      - name: Publikacja w Supabase
+        working-directory: apps/panel/build/installer
+        run: |
+          if (-not $env:SERVICE_KEY) {
+            throw 'Brakuje sekretu SUPABASE_SERVICE_ROLE_KEY. Instalator jest w artefaktach tego uruchomienia, ale panele go nie dostaną.'
+          }
+          $version = '${{ steps.v.outputs.version }}'
+          $target = "$env:SUPABASE_URL/storage/v1/object/panel-releases/windows"
+          function Send-File($local, $remote, $type, $cache) {
+            curl.exe --fail-with-body -sS -X POST "$target/$remote" `
+              -H "Authorization: Bearer $env:SERVICE_KEY" `
+              -H "apikey: $env:SERVICE_KEY" `
+              -H "Content-Type: $type" `
+              -H "Cache-Control: $cache" `
+              -H "x-upsert: true" `
+              --data-binary "@$local"
+            if ($LASTEXITCODE -ne 0) { throw "Nie udało się wysłać $remote" }
+          }
+          # Najpierw instalatory, na końcu opis wersji: panel nie zobaczy wersji, której pliku jeszcze nie ma.
+          Send-File "TablePanelSetup-$version.exe" "TablePanelSetup-$version.exe" 'application/octet-stream' 'max-age=31536000'
+          Send-File "TablePanelSetup-$version.exe" 'TablePanelSetup.exe' 'application/octet-stream' 'max-age=60'
+          Send-File 'latest.json' 'latest.json' 'application/json' 'max-age=60'
+          Write-Output "Opublikowano wersję $version."
+          Write-Output "Link do pierwszej instalacji: $env:SUPABASE_URL/storage/v1/object/public/panel-releases/windows/TablePanelSetup.exe"
