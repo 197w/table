@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../app/reservation_alerts.dart';
 import 'models.dart';
 import 'repository.dart';
 
@@ -151,31 +152,92 @@ final selectedDayProvider = NotifierProvider<SelectedDayNotifier, DateTime>(
 
 typedef DayQuery = ({String restaurantId, DateTime day});
 
-/// Licznik zmian rezerwacji lokalu na żywo. Jedno połączenie na lokal,
-/// niezależnie od tego, ile dni jest otwartych w panelu.
-class ReservationsLive extends Notifier<int> {
+/// Stan na żywo: numer kolejnej zmiany rezerwacji i stan połączenia.
+typedef LiveState = ({int version, LiveStatus status});
+
+/// Rezerwacje lokalu na żywo. Jedno połączenie na lokal, niezależnie od tego,
+/// ile dni jest otwartych w panelu. Boczne menu trzyma je przy życiu, więc
+/// o nowej rezerwacji z aplikacji panel da znać na każdej zakładce.
+class ReservationsLive extends Notifier<LiveState> {
   ReservationsLive(this.restaurantId);
 
   final String restaurantId;
 
   @override
-  int build() {
-    final stop = ref
-        .watch(repositoryProvider)
-        .watchReservations(restaurantId, () => state = state + 1);
-    ref.onDispose(stop);
-    return 0;
+  LiveState build() {
+    // Kanał może jeszcze coś zgłosić, gdy panel już go zamyka. Wtedy nic nie zmieniamy.
+    var alive = true;
+    final stop = ref.watch(repositoryProvider).watchReservations(
+      restaurantId,
+      onChange: (inserted) {
+        if (!alive) return;
+        state = (version: state.version + 1, status: state.status);
+        if (inserted != null) {
+          ReservationAlerts.instance.onInserted(
+            inserted,
+            muted: ref.read(alertsMutedProvider),
+          );
+        }
+      },
+      onStatus: (status) {
+        if (!alive) return;
+        // Po powrocie połączenia odświeżamy listę, bo zmiany z przerwy nie przyszły.
+        final reconnected = state.status == LiveStatus.offline && status == LiveStatus.live;
+        state = (
+          version: reconnected ? state.version + 1 : state.version,
+          status: status,
+        );
+      },
+    );
+    ref.onDispose(() {
+      alive = false;
+      stop();
+    });
+    return (version: 0, status: LiveStatus.connecting);
   }
 }
 
 final reservationsLiveProvider = NotifierProvider.autoDispose
-    .family<ReservationsLive, int, String>(ReservationsLive.new);
+    .family<ReservationsLive, LiveState, String>(ReservationsLive.new);
+
+/// Wyciszony dźwięk i powiadomienia o nowych rezerwacjach. Pamiętane na komputerze.
+class AlertsMutedNotifier extends Notifier<bool> {
+  static const _key = 'panel_dzwiek_wyciszony';
+
+  @override
+  bool build() {
+    _load();
+    return false;
+  }
+
+  Future<void> _load() async {
+    try {
+      final saved = await SharedPreferencesAsync().getBool(_key);
+      if (saved != null) state = saved;
+    } catch (_) {
+      // Bez zapisu dźwięk jest włączony.
+    }
+  }
+
+  Future<void> toggle() async {
+    state = !state;
+    try {
+      await SharedPreferencesAsync().setBool(_key, state);
+    } catch (_) {
+      // Wybór działa do zamknięcia panelu.
+    }
+  }
+}
+
+final alertsMutedProvider = NotifierProvider<AlertsMutedNotifier, bool>(
+  AlertsMutedNotifier.new,
+);
 
 /// Rezerwacje jednego dnia. Odświeżają się same, gdy ktoś zmieni rezerwację lokalu.
 final reservationsProvider = FutureProvider.autoDispose
     .family<List<PanelReservation>, DayQuery>((ref, q) {
       ref.cacheFor();
-      ref.watch(reservationsLiveProvider(q.restaurantId));
+      ref.watch(reservationsLiveProvider(q.restaurantId).select((s) => s.version));
       final repo = ref.watch(repositoryProvider);
       return repo.reservations(
         restaurantId: q.restaurantId,

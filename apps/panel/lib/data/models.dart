@@ -917,3 +917,15 @@ class GiftCard {
     );
   }
 }
+
+/// Stan połączenia na żywo z bazą rezerwacji.
+enum LiveStatus {
+  /// Łączymy się albo wracamy po zerwaniu.
+  connecting,
+
+  /// Zmiany rezerwacji przychodzą same.
+  live,
+
+  /// Brak połączenia: lista może być nieaktualna.
+  offline,
+}

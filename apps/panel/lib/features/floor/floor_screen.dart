@@ -15,6 +15,23 @@ const _tabular = [FontFeature.tabularFigures()];
 
 enum _Mode { live, edit }
 
+/// Czy w Edycji sali są niezapisane zmiany. Czyta to router przy wyjściu z sekcji.
+bool _floorUnsaved = false;
+
+/// Pyta o odrzucenie zmian, gdy obsługa wychodzi z Edycji sali bez zapisu.
+Future<bool> confirmLeaveFloor(BuildContext context) async {
+  if (!_floorUnsaved) return true;
+  final ok = await confirm(
+    context,
+    title: 'Wyjść bez zapisu?',
+    message: 'Układ sali ma niezapisane zmiany. Po wyjściu przepadną.',
+    action: 'Wyjdź bez zapisu',
+    destructive: true,
+  );
+  if (ok) _floorUnsaved = false;
+  return ok;
+}
+
 class FloorScreen extends ConsumerStatefulWidget {
   const FloorScreen({super.key});
 
@@ -121,6 +138,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
 
   @override
   void dispose() {
+    _floorUnsaved = false;
     _clock?.cancel();
     _canvasFocus.dispose();
     super.dispose();
@@ -500,6 +518,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     if (!zonesAsync.hasValue || !tablesAsync.hasValue) return const LoadingView();
 
     final editing = _mode == _Mode.edit;
+    _floorUnsaved = editing && _dirty;
     final zones = editing ? _zones : zonesAsync.value!;
     final tables = editing ? _tables : tablesAsync.value!;
     final elements = editing ? _elements : (elementsAsync.value ?? const <FloorElement>[]);

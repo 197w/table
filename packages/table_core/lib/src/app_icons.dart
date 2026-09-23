@@ -65,6 +65,7 @@ abstract final class AppIcons {
   static const arrowUpRight = AppIconData('assets/icons/arrow-up-right.svg');
   static const arrowsClockwise = AppIconData('assets/icons/arrows-clockwise.svg');
   static const bell = AppIconData('assets/icons/bell.svg');
+  static const bellSlash = AppIconData('assets/icons/bell-slash.svg');
   static const bookOpen = AppIconData('assets/icons/book-open-text.svg');
   static const bowlFood = AppIconData('assets/icons/bowl-food.svg');
   static const bug = AppIconData('assets/icons/bug.svg');

@@ -114,9 +114,14 @@ class PanelRepository {
     );
   }
 
-  /// Wywołuje [onChange] przy każdej zmianie rezerwacji lokalu.
-  /// Zwraca funkcję, która kończy nasłuchiwanie.
-  void Function() watchReservations(String restaurantId, void Function() onChange) {
+  /// Wywołuje [onChange] przy każdej zmianie rezerwacji lokalu. Przy nowej rezerwacji
+  /// dostaje jej wiersz, przy zmianie istniejącej null. [onStatus] mówi, czy połączenie
+  /// działa. Zwraca funkcję, która kończy nasłuchiwanie.
+  void Function() watchReservations(
+    String restaurantId, {
+    required void Function(Map<String, dynamic>? inserted) onChange,
+    required void Function(LiveStatus status) onStatus,
+  }) {
     final channel = _db
         .channel('panel-rezerwacje-$restaurantId')
         .onPostgresChanges(
@@ -128,9 +133,18 @@ class PanelRepository {
             column: 'restaurant_id',
             value: restaurantId,
           ),
-          callback: (_) => onChange(),
+          callback: (payload) => onChange(
+            payload.eventType == PostgresChangeEvent.insert ? payload.newRecord : null,
+          ),
         )
-        .subscribe();
+        .subscribe((status, _) {
+          onStatus(switch (status) {
+            RealtimeSubscribeStatus.subscribed => LiveStatus.live,
+            RealtimeSubscribeStatus.channelError ||
+            RealtimeSubscribeStatus.timedOut ||
+            RealtimeSubscribeStatus.closed => LiveStatus.offline,
+          });
+        });
     return () => unawaited(_db.removeChannel(channel));
   }
 

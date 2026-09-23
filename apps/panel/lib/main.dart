@@ -8,6 +8,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'app/app.dart';
 import 'app/panel_theme.dart';
+import 'app/reservation_alerts.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,6 +29,8 @@ Future<void> main() async {
       await windowManager.focus();
     },
   );
+
+  await ReservationAlerts.setup();
 
   if (!Env.isConfigured) {
     runApp(const _MissingConfigApp());

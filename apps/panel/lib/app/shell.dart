@@ -19,6 +19,12 @@ class PanelShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final restaurants = ref.watch(restaurantsProvider);
+    // Połączenie na żywo z rezerwacjami działa na każdej zakładce,
+    // żeby dźwięk nowej rezerwacji z aplikacji było słychać zawsze.
+    final current = ref.watch(currentRestaurantProvider);
+    if (current != null && current.isPro) {
+      ref.watch(reservationsLiveProvider(current.id).select((s) => s.status));
+    }
 
     return Scaffold(
       body: Row(

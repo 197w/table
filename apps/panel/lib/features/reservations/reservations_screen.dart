@@ -141,7 +141,7 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                 onChanged: (f) => setState(() => _filter = f),
               ),
               const SizedBox(width: 12),
-              PanelPill('Na żywo', dotColor: AppColors.accentFill),
+              _LivePill(restaurantId: restaurant.id),
               const SizedBox(width: 8),
               // Ratunek, gdyby odświeżanie na żywo przestało działać.
               PanelPress(
@@ -159,6 +159,8 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                   },
                 ),
               ),
+              const SizedBox(width: 8),
+              const _AlertsToggle(),
             ],
           ),
         ),
@@ -303,6 +305,62 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Pigułka ze stanem połączenia na żywo. Gdy połączenie padnie,
+/// obsługa od razu widzi, że lista może być nieaktualna.
+class _LivePill extends ConsumerWidget {
+  const _LivePill({required this.restaurantId});
+
+  final String restaurantId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final status = ref.watch(
+      reservationsLiveProvider(restaurantId).select((s) => s.status),
+    );
+    final (label, color, hint) = switch (status) {
+      LiveStatus.live => (
+        'Na żywo',
+        AppColors.accentFill,
+        'Rezerwacje odświeżają się same.',
+      ),
+      LiveStatus.connecting => (
+        'Łączenie…',
+        AppColors.warning,
+        'Łączymy się z rezerwacjami na żywo.',
+      ),
+      LiveStatus.offline => (
+        'Brak połączenia',
+        AppColors.error,
+        'Dane mogą być nieaktualne. Sprawdź internet albo odśwież ręcznie.',
+      ),
+    };
+    return Tooltip(
+      message: hint,
+      child: PanelPill(label, dotColor: color),
+    );
+  }
+}
+
+/// Włącza i wycisza dźwięk oraz powiadomienie o nowej rezerwacji z aplikacji.
+class _AlertsToggle extends ConsumerWidget {
+  const _AlertsToggle();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final muted = ref.watch(alertsMutedProvider);
+    return PanelPress(
+      child: GlowButton(
+        icon: muted ? AppIcons.bellSlash : AppIcons.bell,
+        iconSize: 16,
+        tooltip: muted
+            ? 'Dźwięk nowych rezerwacji wyciszony. Kliknij, żeby włączyć.'
+            : 'Dźwięk przy nowej rezerwacji z aplikacji. Kliknij, żeby wyciszyć.',
+        onPressed: () => ref.read(alertsMutedProvider.notifier).toggle(),
+      ),
     );
   }
 }

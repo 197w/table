@@ -21,6 +21,8 @@ dependencies:
   window_manager: any
   file_selector: any
   intl: any
+  audioplayers: ^6.8.1
+  local_notifier: ^0.1.6
 
 dev_dependencies:
   flutter_test:
@@ -30,6 +32,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/sounds/
 
 # Ikona panelu: niebieska wersja logo z design/logo/table-b-1024px.png.
 # Generowanie: dart run flutter_launcher_icons

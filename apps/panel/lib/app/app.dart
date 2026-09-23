@@ -89,8 +89,20 @@ GoRouter _buildRouter(Listenable refresh) {
     redirect: (context, state) {
       final loggedIn = Supabase.instance.client.auth.currentSession != null;
       final onLogin = state.uri.path == PanelRoutes.login;
-      if (!loggedIn && !onLogin) return PanelRoutes.login;
-      if (loggedIn && onLogin) return PanelRoutes.reservations;
+      // Po wygaśnięciu sesji zapamiętujemy, gdzie była obsługa, i po zalogowaniu tam wracamy.
+      if (!loggedIn && !onLogin) {
+        return Uri(
+          path: PanelRoutes.login,
+          queryParameters: {'dalej': state.uri.toString()},
+        ).toString();
+      }
+      if (loggedIn && onLogin) {
+        final next = state.uri.queryParameters['dalej'];
+        final safe = next != null &&
+            next.startsWith('/') &&
+            !next.startsWith(PanelRoutes.login);
+        return safe ? next : PanelRoutes.reservations;
+      }
       return null;
     },
     routes: [
@@ -104,7 +116,13 @@ GoRouter _buildRouter(Listenable refresh) {
             PanelShell(location: state.uri.path, child: child),
         routes: [
           _page(PanelRoutes.reservations, const ReservationsScreen()),
-          _page(PanelRoutes.floor, const FloorScreen()),
+          GoRoute(
+            path: PanelRoutes.floor,
+            // Wyjście z edycji z niezapisanymi zmianami wymaga potwierdzenia.
+            onExit: (context, state) => confirmLeaveFloor(context),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: FloorScreen()),
+          ),
           _page(PanelRoutes.staff, const StaffScreen()),
           _page(PanelRoutes.giftCards, const GiftCardsScreen()),
           _page(PanelRoutes.menu, const MenuScreen()),
