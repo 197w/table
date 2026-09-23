@@ -163,14 +163,43 @@ class ReservationsLive extends Notifier<LiveState> {
 
   final String restaurantId;
 
+  /// Kolejne próby ponownego połączenia. Przerwy rosną, żeby nie zasypać serwera.
+  static const _retryDelays = [2, 5, 10, 20, 30];
+
+  /// Numer próby i ostatnia wersja dla lokalu. Przeżywają ponowne połączenie,
+  /// bo przy nim cały obiekt buduje się od nowa.
+  static final _attempts = <String, int>{};
+  static final _versions = <String, int>{};
+
   @override
   LiveState build() {
     // Kanał może jeszcze coś zgłosić, gdy panel już go zamyka. Wtedy nic nie zmieniamy.
     var alive = true;
+    Timer? retry;
+    Timer? watchdog;
+
+    // Po zerwaniu połączenia (uśpiony komputer, chwilowy brak internetu) kanał nie zawsze
+    // wraca sam. Wtedy zamykamy go i zakładamy nowy po krótkiej przerwie.
+    void reconnectLater() {
+      if (retry != null) return;
+      final attempt = _attempts[restaurantId] ?? 0;
+      final seconds = _retryDelays[attempt.clamp(0, _retryDelays.length - 1)];
+      _attempts[restaurantId] = attempt + 1;
+      retry = Timer(Duration(seconds: seconds), () {
+        if (alive) ref.invalidateSelf();
+      });
+    }
+
+    // Każde zbudowanie od nowa to nowa wersja, więc lista rezerwacji odświeży się
+    // także po ponownym połączeniu i dociągnie zmiany z przerwy.
+    final version = (_versions[restaurantId] ?? 0) + 1;
+    _versions[restaurantId] = version;
+
     final stop = ref.watch(repositoryProvider).watchReservations(
       restaurantId,
       onChange: (inserted) {
         if (!alive) return;
+        _versions[restaurantId] = state.version + 1;
         state = (version: state.version + 1, status: state.status);
         if (inserted != null) {
           ReservationAlerts.instance.onInserted(
@@ -183,17 +212,33 @@ class ReservationsLive extends Notifier<LiveState> {
         if (!alive) return;
         // Po powrocie połączenia odświeżamy listę, bo zmiany z przerwy nie przyszły.
         final reconnected = state.status == LiveStatus.offline && status == LiveStatus.live;
-        state = (
-          version: reconnected ? state.version + 1 : state.version,
-          status: status,
-        );
+        final next = reconnected ? state.version + 1 : state.version;
+        _versions[restaurantId] = next;
+        state = (version: next, status: status);
+        if (status == LiveStatus.live) {
+          _attempts[restaurantId] = 0;
+          watchdog?.cancel();
+        } else if (status == LiveStatus.offline) {
+          reconnectLater();
+        }
       },
     );
+
+    // Łączenie, które trwa za długo, traktujemy jak zerwane połączenie.
+    watchdog = Timer(const Duration(seconds: 20), () {
+      if (alive && state.status == LiveStatus.connecting) {
+        state = (version: state.version, status: LiveStatus.offline);
+        reconnectLater();
+      }
+    });
+
     ref.onDispose(() {
       alive = false;
+      retry?.cancel();
+      watchdog?.cancel();
       stop();
     });
-    return (version: 0, status: LiveStatus.connecting);
+    return (version: version, status: LiveStatus.connecting);
   }
 }
 

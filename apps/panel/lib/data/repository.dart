@@ -13,6 +13,9 @@ class PanelRepository {
 
   final SupabaseClient _db;
 
+  /// Numer kolejnego kanału na żywo.
+  static int _channelSeq = 0;
+
   // -------------------------------------------------------------
   // Logowanie
   // -------------------------------------------------------------
@@ -122,8 +125,10 @@ class PanelRepository {
     required void Function(Map<String, dynamic>? inserted) onChange,
     required void Function(LiveStatus status) onStatus,
   }) {
+    // Każde połączenie ma własną nazwę: przy ponownym łączeniu stary kanał jeszcze się zamyka,
+    // a nowy nie może trafić na jego nazwę.
     final channel = _db
-        .channel('panel-rezerwacje-$restaurantId')
+        .channel('panel-rezerwacje-$restaurantId-${_channelSeq++}')
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
