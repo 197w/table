@@ -250,7 +250,7 @@ class GlowButton extends StatelessWidget {
       // Na białym tle jasna mięta ginie, więc marka występuje w ciemniejszym odcieniu.
       iconColor = primary ? AppPalette.light.accent : _grey;
       glow = [
-        BoxShadow(color: Colors.white.withValues(alpha: 0.28), blurRadius: 16),
+        BoxShadow(color: Colors.white.withValues(alpha: 0.16), blurRadius: 14),
       ];
     } else if (primary) {
       background = AppColors.accentFill;
@@ -493,9 +493,10 @@ class SegmentedTabs<T> extends StatelessWidget {
                   decoration: BoxDecoration(
                     // Ten sam kolor z inną przezroczystością, żeby przejście
                     // nie przechodziło przez szarość ani czerń.
-                    color: AppColors.surface.withValues(
-                      alpha: value == selected ? 1 : 0,
-                    ),
+                    color: (AppColors.palette.brightness == Brightness.dark
+                            ? const Color(0xFF26262B)
+                            : AppColors.surface)
+                        .withValues(alpha: value == selected ? 1 : 0),
                     borderRadius: BorderRadius.circular(9),
                     boxShadow: [
                       BoxShadow(

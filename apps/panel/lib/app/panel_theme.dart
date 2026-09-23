@@ -1,6 +1,31 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+/// Ciemna paleta panelu. Mniej poziomów szarości niż w aplikacji dla gości:
+/// tło i menu mają jeden kolor, karty są o krok jaśniejsze, a elementy na kartach
+/// o kolejny. Obrysy to biel z małą przezroczystością, bo cienie na czerni nie działają.
+abstract final class PanelPalette {
+  static const dark = AppPalette(
+    brightness: Brightness.dark,
+    background: Color(0xFF09090B),
+    surface: Color(0xFF111113),
+    surfaceRaised: Color(0xFF19191C),
+    outline: Color(0xFF27272A),
+    text: Color(0xFFEDEDEF),
+    textMuted: Color(0xFF8F8F98),
+    textDisabled: Color(0xFF55555D),
+    accent: Color(0xFF00F8B9),
+    accentFill: Color(0xFF00F8B9),
+    onAccent: Color(0xFF09090B),
+    onAccentStrong: Color(0xFF09090B),
+    accentTint: Color(0x1A00F8B9),
+    warning: Color(0xFFFFB547),
+    error: Color(0xFFFF6B6B),
+    ring: Color(0x12FFFFFF),
+    ringStrong: Color(0x1FFFFFFF),
+  );
+}
+
 /// Motyw Table dopasowany do komputera: niższe przyciski o szerokości treści,
 /// gęstsze pola formularzy i wyraźny kursor nad elementami klikalnymi.
 abstract final class PanelTheme {
@@ -26,13 +51,14 @@ abstract final class PanelTheme {
         headlineSmall: base.textTheme.headlineSmall?.copyWith(letterSpacing: -0.4),
         titleLarge: base.textTheme.titleLarge?.copyWith(letterSpacing: -0.2),
       ),
-      // Karty odrywają się od tła cieniem, a nie samym pierścieniem.
+      // W jasnym motywie karty odrywa cień. W ciemnym cień robi tylko brudną obwódkę,
+      // więc kartę wyznacza jaśniejsze tło i cienki obrys.
       cardTheme: base.cardTheme.copyWith(
-        elevation: dark ? 14 : 16,
-        shadowColor: shadow.withValues(alpha: dark ? 0.7 : 0.3),
+        elevation: dark ? 0 : 16,
+        shadowColor: dark ? Colors.transparent : shadow.withValues(alpha: 0.3),
         shape: RoundedRectangleBorder(
           borderRadius: const BorderRadius.all(Radius.circular(22)),
-          side: BorderSide(color: p.ringStrong),
+          side: BorderSide(color: dark ? p.ring : p.ringStrong),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
@@ -55,8 +81,8 @@ abstract final class PanelTheme {
           foregroundColor: p.text,
           backgroundColor: dark ? p.surface : p.background,
           side: BorderSide(color: p.ringStrong),
-          elevation: 2,
-          shadowColor: shadow.withValues(alpha: dark ? 0.5 : 0.12),
+          elevation: dark ? 0 : 2,
+          shadowColor: dark ? Colors.transparent : shadow.withValues(alpha: 0.12),
           minimumSize: size,
           padding: padding,
           shape: const StadiumBorder(),
@@ -152,24 +178,29 @@ abstract final class PanelDepth {
   static Color get _shadow =>
       _dark ? const Color(0xFF000000) : const Color(0xFF0C2A22);
 
-  /// Tło menu: najgłębsza warstwa panelu.
+  /// Tło menu. W ciemnym motywie to samo co treść, a oddziela je cienka linia.
   static Color get sidebar => _dark
-      ? Color.lerp(AppColors.background, Colors.black, 0.6)!
+      ? AppColors.background
       : Color.lerp(AppColors.background, Colors.black, 0.06)!;
 
   /// Tło treści: jednolite, ciemniejsze od kart.
-  static Color get content => _dark
-      ? Color.lerp(AppColors.background, Colors.black, 0.4)!
-      : AppColors.background;
+  static Color get content => AppColors.background;
 
-  /// Cień rzucany przez menu na treść.
-  static List<BoxShadow> get sidebarEdge => [
-    BoxShadow(
-      color: _shadow.withValues(alpha: _dark ? 0.55 : 0.12),
-      blurRadius: 18,
-      offset: const Offset(2, 0),
-    ),
-  ];
+  /// Cień rzucany przez menu na treść. W ciemnym motywie zamiast cienia jest linia.
+  static List<BoxShadow> get sidebarEdge => _dark
+      ? const []
+      : [
+          BoxShadow(
+            color: _shadow.withValues(alpha: 0.12),
+            blurRadius: 18,
+            offset: const Offset(2, 0),
+          ),
+        ];
+
+  /// Linia między menu a treścią w ciemnym motywie.
+  static Border? get sidebarBorder => _dark
+      ? Border(right: BorderSide(color: AppColors.ring))
+      : null;
 
   /// Cień pod wyróżnionym elementem, na przykład wybraną sekcją menu.
   static List<BoxShadow> get raised => [

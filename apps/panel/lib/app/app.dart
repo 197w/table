@@ -65,7 +65,7 @@ class _PanelAppState extends ConsumerState<PanelApp>
         WidgetsBinding.instance.platformDispatcher.platformBrightness,
     };
     final palette = brightness == Brightness.dark
-        ? AppPalette.dark
+        ? PanelPalette.dark
         : AppPalette.light;
     AppColors.use(palette);
 

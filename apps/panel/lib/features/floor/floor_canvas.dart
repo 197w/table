@@ -128,21 +128,22 @@ Offset _rotate(Offset p, double degrees) {
 bool get _lightTheme => AppColors.palette.brightness == Brightness.light;
 
 /// Obrys stolików i ścian strefy. W jasnym motywie pierścienie są zbyt blade, więc linia jest ciemniejsza.
-Color get planLine => _lightTheme ? const Color(0x8A000000) : AppColors.ringStrong;
+Color get planLine => _lightTheme ? const Color(0x8A000000) : const Color(0x4DFFFFFF);
 
 /// Kratka co 50 cm.
-Color get planGrid => _lightTheme ? const Color(0x21000000) : AppColors.ring;
+Color get planGrid => _lightTheme ? const Color(0x21000000) : const Color(0x0DFFFFFF);
 
 /// Krzesła.
-Color get planChair => _lightTheme ? const Color(0xFFB3B9B6) : AppColors.ringStrong;
+Color get planChair => _lightTheme ? const Color(0xFFB3B9B6) : const Color(0xFF3A3A41);
 
 /// Obrys wyłączonego stolika.
-Color get planLineMuted => _lightTheme ? const Color(0x4D000000) : AppColors.ring;
+Color get planLineMuted => _lightTheme ? const Color(0x4D000000) : const Color(0x24FFFFFF);
 
 /// Kolor stałych elementów sali: jasnoszary w obu motywach.
+/// W ciemnym motywie przygaszony, żeby na czarnej podłodze nie świecił jak plama.
 Color elementFill(BuildContext context) =>
     Theme.of(context).brightness == Brightness.dark
-    ? const Color(0xFF5A5E5C)
+    ? const Color(0xFF45454C)
     : const Color(0xFFD6D9D7);
 
 /// Strefa sali narysowana w skali: stałe elementy, stoliki z krzesłami i miejsca do rezerwacji.
@@ -224,10 +225,12 @@ class FloorCanvas extends StatelessWidget {
                 children: [
                   Positioned.fill(
                     child: DecoratedBox(
+                      // W ciemnym motywie podłoga sali jest ciemniejsza od karty,
+                      // więc plan wygląda jak wgłębienie, a nie kolejne pudełko.
                       decoration: BoxDecoration(
-                        color: AppColors.surface,
+                        color: _lightTheme ? AppColors.surface : AppColors.background,
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: planLine),
+                        border: Border.all(color: _lightTheme ? planLine : AppColors.ring),
                       ),
                       child: showGrid
                           ? CustomPaint(

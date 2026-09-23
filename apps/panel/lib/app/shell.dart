@@ -112,7 +112,10 @@ class _Sidebar extends ConsumerWidget {
         return RepaintBoundary(
           child: Container(
             width: width,
-            color: PanelDepth.sidebar,
+            decoration: BoxDecoration(
+              color: PanelDepth.sidebar,
+              border: PanelDepth.sidebarBorder,
+            ),
             padding: const EdgeInsets.fromLTRB(_pad, 20, _pad, 14),
             child: _content(
               context,

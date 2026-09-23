@@ -77,6 +77,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 
 - Czcionka Geist (400/500/600, bez 700). Skala tekstu w `AppTheme`.
 - Kolory: tło #161616 (ciemny), akcent #00F8B9. W jasnym motywie tekst akcentu #007A5C, wypełnienia #00F8B9.
+- Panel w ciemnym motywie ma własną, chłodniejszą paletę `PanelPalette.dark` (`apps/panel/lib/app/panel_theme.dart`):
+  tło #09090B, karty #111113, elementy na kartach #19191C, obrysy zamiast cieni. Aplikacja dla gości zostaje przy `AppPalette.dark`.
 - Pierścienie zamiast twardych obramowań, zgodne promienie (karta 22 = element 8 + odstęp 14), `PressScale` 0.96.
 - Liczby tabelaryczne w cenach, godzinach i telefonach.
 - Wszystkie powiadomienia przez push, SMS tylko do logowania. Push jeszcze niepodłączony (wymaga Firebase i konta Apple Developer).
