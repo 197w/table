@@ -17,7 +17,8 @@ Z użytkownikiem rozmawiamy po polsku. Teksty w aplikacjach i komentarze w kodzi
   Ikony panelu: w `apps/panel`: `dart run flutter_launcher_icons`.
 - **Aplikacja dla gości: każda aktualizacja na oba systemy:**
   - Android: Galaxy S23 podłączony do Windowsa.
-  - iOS: symulator iOS na MacBooku Air M2 (nie na prywatnym iPhonie użytkownika).
+  - iOS: iPhone 14 użytkownika przez MacBooka Air M2 (od 19.09.2026 na jego prośbę). Darmowe konto Apple,
+    więc wersja na telefonie działa 7 dni od podpisu.
   - Projekt Xcode gościa ma `DEVELOPMENT_TEAM = KHS3GJSPNL` (Personal Team użytkownika). Nie usuwać tej linii.
 - **Panel restauracji: każda aktualizacja na oba systemy:** Windows na tym komputerze, macOS na MacBooku.
 - Sesja Claude na Macu robi `git pull` i uruchamia aplikacje. Flutter na obu komputerach w wersji 3.47.4.
