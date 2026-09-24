@@ -24,7 +24,10 @@ Z użytkownikiem rozmawiamy po polsku. Teksty w aplikacjach i komentarze w kodzi
 - Sesja Claude na Macu robi `git pull` i uruchamia aplikacje. Flutter na obu komputerach w wersji 3.47.4.
 - Konto testowe panelu: `panel@table.test`, właściciel Pierogarni Na Mostku (Pro) i Gruzińskiej Chaty (Free).
   Drugie konto: `reve@table.test`, właściciel REVE Restaurant (Pro, Białystok, dane adresowe do uzupełnienia).
-  Hasła zna użytkownik, nie zapisujemy ich w repozytorium.
+  Właściciele REVE z prawdziwymi kontami: `wiktorgodlewski977@gmail.com` (użytkownik) i
+  `krystian.pryszczepko@gmail.com` (wspólnik). Konta zakłada użytkownik w Supabase (Authentication → Users),
+  a do lokalu przypisujemy je wierszem w `restaurant_staff`.
+  Hasła zna użytkownik. Nie zapisujemy ich w repozytorium i nie podajemy w rozmowie.
 
 ## Wydawanie panelu na Windows
 
