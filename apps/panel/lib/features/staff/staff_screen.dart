@@ -285,13 +285,26 @@ class _WeekGrid extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text(
-                                  m.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: text.labelLarge?.copyWith(
-                                    color: m.active ? AppColors.text : AppColors.textMuted,
-                                  ),
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        m.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: text.labelLarge?.copyWith(
+                                          color: m.active ? AppColors.text : AppColors.textMuted,
+                                        ),
+                                      ),
+                                    ),
+                                    if (m.userId != null) ...[
+                                      const SizedBox(width: 6),
+                                      Tooltip(
+                                        message: 'Loguje się do panelu',
+                                        child: Glyph(AppIcons.link, size: 12, color: AppColors.textMuted),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                                 if (positionNames[m.positionId] != null || m.position != null || !m.active)
                                   Text(
@@ -450,6 +463,10 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
   late String? _positionId = widget.member?.positionId;
   late int _color = widget.member?.color ?? 0;
   late bool _active = widget.member?.active ?? true;
+  final _email = TextEditingController();
+
+  /// Stan konta po zmianie w tym oknie. Pracownik przekazany do okna go jeszcze nie zna.
+  bool? _linked;
   bool _busy = false;
 
   @override
@@ -457,7 +474,54 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
     _firstName.dispose();
     _lastName.dispose();
     _phone.dispose();
+    _email.dispose();
     super.dispose();
+  }
+
+  /// Łączy pracownika z kontem albo je odłącza. Konto dostaje uprawnienia stanowiska.
+  Future<void> _account({required bool link}) async {
+    final member = widget.member!;
+    final email = _email.text.trim();
+    if (link && !email.contains('@')) {
+      showMessage(context, 'Wpisz adres e-mail, którym pracownik loguje się do Table.');
+      return;
+    }
+    if (!link) {
+      final ok = await confirm(
+        context,
+        title: 'Odłączyć konto?',
+        message: '${member.name} nie zaloguje się już do panelu tego lokalu. Dane w grafiku zostają.',
+        action: 'Odłącz',
+        destructive: true,
+      );
+      if (!ok || !mounted) return;
+    }
+    setState(() => _busy = true);
+    try {
+      final repo = ref.read(repositoryProvider);
+      if (link) {
+        await repo.linkStaffAccount(member.id, email);
+      } else {
+        await repo.unlinkStaffAccount(member.id);
+      }
+      ref
+        ..invalidate(staffAccountsProvider(widget.restaurantId))
+        ..invalidate(staffProvider(widget.restaurantId));
+      _email.clear();
+      _linked = link;
+      if (mounted) {
+        showMessage(
+          context,
+          link
+              ? '${member.name} zaloguje się do panelu jako $email.'
+              : 'Konto odłączone.',
+        );
+      }
+    } catch (e) {
+      if (mounted) showMessage(context, errorText(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _save(List<StaffPosition> positions) async {
@@ -622,6 +686,19 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
                   Switch(value: _active, onChanged: (v) => setState(() => _active = v)),
                 ],
               ),
+              if (ref.watch(currentRestaurantProvider)?.canManage ?? false) ...[
+                const SizedBox(height: 10),
+                Divider(height: 1, color: AppColors.ring),
+                const SizedBox(height: 14),
+                _AccountSection(
+                  email: ref.watch(staffAccountsProvider(widget.restaurantId)).value?[widget.member!.id],
+                  linked: _linked ?? widget.member!.userId != null,
+                  controller: _email,
+                  busy: _busy,
+                  onLink: () => _account(link: true),
+                  onUnlink: () => _account(link: false),
+                ),
+              ],
             ],
           ],
         ),
@@ -642,6 +719,83 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
           onPressed: _busy ? null : () => _save(positions),
           child: const Text('Zapisz'),
         ),
+      ],
+    );
+  }
+}
+
+/// Konto pracownika w panelu. Pracownik z kontem loguje się własnym e-mailem
+/// i widzi to, na co pozwala jego stanowisko, np. Kelner nabija zamówienia.
+class _AccountSection extends StatelessWidget {
+  const _AccountSection({
+    required this.email,
+    required this.linked,
+    required this.controller,
+    required this.busy,
+    required this.onLink,
+    required this.onUnlink,
+  });
+
+  final String? email;
+  final bool linked;
+  final TextEditingController controller;
+  final bool busy;
+  final VoidCallback onLink;
+  final VoidCallback onUnlink;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Konto w panelu', style: text.titleSmall),
+        const SizedBox(height: 4),
+        if (linked)
+          Row(
+            children: [
+              Glyph(AppIcons.link, size: 16, color: AppColors.accent),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  email == null ? 'Konto połączone' : 'Loguje się jako $email',
+                  style: text.bodyMedium,
+                ),
+              ),
+              TextButton(
+                onPressed: busy ? null : onUnlink,
+                style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                child: const Text('Odłącz'),
+              ),
+            ],
+          )
+        else ...[
+          Text(
+            'Bez konta pracownik nie loguje się do panelu. Wpisz e-mail jego konta Table, '
+            'a dostanie uprawnienia swojego stanowiska. Konta zakłada na razie administrator Table.',
+            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  decoration: const InputDecoration(labelText: 'E-mail konta', isDense: true),
+                  onSubmitted: (_) => onLink(),
+                ),
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton.icon(
+                onPressed: busy ? null : onLink,
+                icon: const Glyph(AppIcons.link, size: 16),
+                label: const Text('Połącz'),
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }

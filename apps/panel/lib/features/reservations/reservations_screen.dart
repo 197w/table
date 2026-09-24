@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+import 'package:go_router/go_router.dart';
+
+import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
@@ -57,88 +60,9 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
     if (picked != null) ref.read(selectedDayProvider.notifier).set(picked);
   }
 
-  /// Menu obok klikniętego stolika: podgląd rezerwacji oraz wyłączenie albo włączenie.
-  /// Menu staje z prawej strony stolika, a gdy tam brakuje miejsca, z lewej.
-  Future<void> _tableMenu(
-    String restaurantId,
-    DayQuery query,
-    DiningTable table,
-    Rect rect,
-    PanelReservation? reservation,
-  ) async {
-    final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
-    const menuWidth = 260.0;
-    const gap = 10.0;
-    final size = overlay.size;
-    final x = rect.right + gap + menuWidth <= size.width
-        ? rect.right + gap
-        : (rect.left - gap - menuWidth).clamp(8.0, size.width - menuWidth - 8);
-    final y = rect.top.clamp(8.0, size.height - 8);
-    final noun = table.isSeat ? 'miejsce' : 'stolik';
-    final text = Theme.of(context).textTheme;
-
-    final choice = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromLTRB(x, y, size.width - x - menuWidth, size.height - y),
-      constraints: const BoxConstraints(minWidth: menuWidth, maxWidth: menuWidth),
-      color: AppColors.surfaceRaised,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: AppColors.ringStrong),
-      ),
-      items: [
-        PopupMenuItem<String>(
-          enabled: false,
-          height: 34,
-          child: Text(
-            '${table.isSeat ? 'Miejsce' : 'Stolik'} ${table.label}'
-            '${table.active ? '' : ' · wyłączony'}',
-            style: text.labelMedium?.copyWith(color: AppColors.textMuted),
-          ),
-        ),
-        if (reservation != null)
-          PopupMenuItem<String>(
-            value: 'show',
-            child: Row(
-              children: [
-                Glyph(AppIcons.calendarCheck, size: 16, color: AppColors.textMuted),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '${reservation.guestName}, ${Fmt.time(reservation.startsAt)}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        PopupMenuItem<String>(
-          value: 'toggle',
-          child: Row(
-            children: [
-              Glyph(
-                table.active ? AppIcons.prohibit : AppIcons.checkCircle,
-                size: 16,
-                color: table.active ? AppColors.error : AppColors.accent,
-              ),
-              const SizedBox(width: 10),
-              Text(
-                table.active ? 'Wyłącz $noun' : 'Włącz $noun',
-                style: TextStyle(color: table.active ? AppColors.error : AppColors.text),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-    if (!mounted || choice == null) return;
-
-    if (choice == 'show' && reservation != null) {
-      setState(() => _selectedId = reservation.id);
-      return;
-    }
-
+  /// Wyłącza albo włącza stolik z menu na planie sali. Gdy wyłączony stolik ma jeszcze
+  /// rezerwacje, proponuje przeniesienie ich na inne wolne stoliki.
+  Future<void> _toggleTable(String restaurantId, DayQuery query, DiningTable table) async {
     final repo = ref.read(repositoryProvider);
     try {
       final remaining = await repo.setTableActive(table.id!, !table.active);
@@ -448,8 +372,16 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                         groups: groups,
                         onGroup: (g) => setState(() => _group = g),
                         onSelectReservation: (id) => setState(() => _selectedId = id),
-                        onTableMenu: (table, rect, reservation) =>
-                            _tableMenu(restaurant.id, query, table, rect, reservation),
+                        onToggleTable: (table) => _toggleTable(restaurant.id, query, table),
+                        orders: ref.watch(canTakeOrdersProvider(restaurant.id))
+                            ? ref.watch(openOrdersProvider(restaurant.id)).value ?? const []
+                            : null,
+                        onOrder: (table) => context.go(
+                          Uri(
+                            path: PanelRoutes.orders,
+                            queryParameters: {'stolik': table.id},
+                          ).toString(),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 20),
@@ -1300,7 +1232,7 @@ class _Callout extends StatelessWidget {
 // Plan sali obok listy rezerwacji
 // ---------------------------------------------------------------
 
-class _PlanPanel extends StatelessWidget {
+class _PlanPanel extends StatefulWidget {
   const _PlanPanel({
     required this.zones,
     required this.tables,
@@ -1314,7 +1246,9 @@ class _PlanPanel extends StatelessWidget {
     required this.groups,
     required this.onGroup,
     required this.onSelectReservation,
-    required this.onTableMenu,
+    required this.onToggleTable,
+    required this.orders,
+    required this.onOrder,
   });
 
   final List<FloorZone> zones;
@@ -1331,24 +1265,68 @@ class _PlanPanel extends StatelessWidget {
   final List<String> groups;
   final ValueChanged<String?> onGroup;
   final ValueChanged<String> onSelectReservation;
+  final ValueChanged<DiningTable> onToggleTable;
 
-  /// Kliknięcie stolika: jego położenie na ekranie i rezerwacja, która na nim jest albo będzie.
-  final void Function(DiningTable table, Rect rect, PanelReservation? reservation) onTableMenu;
+  /// Otwarte rachunki. Null, gdy konto nie ma uprawnienia do zamówień.
+  final List<PanelOrder>? orders;
+  final ValueChanged<DiningTable> onOrder;
+
+  @override
+  State<_PlanPanel> createState() => _PlanPanelState();
+}
+
+/// Otwarte menu stolika: stolik, jego miejsce na planie i rezerwacja, która na nim jest albo będzie.
+typedef _TableMenuState = ({DiningTable table, Rect rect, PanelReservation? reservation});
+
+class _PlanPanelState extends State<_PlanPanel> {
+  /// Obszar planu. Menu stolika wyświetla się tylko w nim, obok klikniętego stolika.
+  final _planKey = GlobalKey();
+  _TableMenuState? _menu;
+
+  @override
+  void didUpdateWidget(covariant _PlanPanel old) {
+    super.didUpdateWidget(old);
+    // Po zmianie strefy albo dnia stolik z menu nie jest już tam, gdzie był.
+    if (old.zoneName != widget.zoneName || old.day != widget.day || old.group != widget.group) {
+      _menu = null;
+    }
+  }
+
+  void _open(DiningTable table, Rect globalRect, PanelReservation? reservation) {
+    final box = _planKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final topLeft = box.globalToLocal(globalRect.topLeft);
+    setState(() => _menu = (table: table, rect: topLeft & globalRect.size, reservation: reservation));
+  }
+
+  void _close() {
+    if (_menu != null) setState(() => _menu = null);
+  }
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final w = widget;
+    final selected = w.selected;
+    final day = w.day;
+    final group = w.group;
+    final reservations = w.reservations;
     final now = DateTime.now();
     final isToday = day == dateOnly(now);
     // Bez wybranej rezerwacji plan pokazuje bieżącą chwilę, a w innym dniu wieczór.
     final at = selected?.startsAt ??
         (isToday ? now : DateTime(day.year, day.month, day.day, 18));
 
-    final list = orderedZones(zones, tables);
+    final list = orderedZones(w.zones, w.tables);
     if (list.isEmpty) return const SizedBox.shrink();
-    final zone = list.firstWhere((z) => z.name == zoneName, orElse: () => list.first);
-    final inZone = tables.where((t) => t.zone == zone.name).toList();
+    final zone = list.firstWhere((z) => z.name == w.zoneName, orElse: () => list.first);
+    final inZone = w.tables.where((t) => t.zone == zone.name).toList();
     final seatedCountsNow = selected == null && isToday;
+    final menu = _menu;
+    PanelOrder? menuOrder;
+    for (final o in w.orders ?? const <PanelOrder>[]) {
+      if (menu != null && o.tableId == menu.table.id) menuOrder = o;
+    }
 
     return Card(
       child: Column(
@@ -1362,7 +1340,7 @@ class _PlanPanel extends StatelessWidget {
                   SegmentedTabs<String>(
                     options: [for (final z in list) (z.name, Fmt.capitalize(z.name))],
                     selected: zone.name,
-                    onChanged: onZone,
+                    onChanged: w.onZone,
                   )
                 else
                   Text(Fmt.capitalize(zone.name), style: text.titleMedium),
@@ -1372,7 +1350,7 @@ class _PlanPanel extends StatelessWidget {
           ),
           // Grupy łączenia są opcjonalne, więc wiersz pojawia się tylko wtedy,
           // gdy lokal przypisał je stolikom w tej strefie.
-          if (groups.isNotEmpty)
+          if (w.groups.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: Align(
@@ -1380,20 +1358,29 @@ class _PlanPanel extends StatelessWidget {
                 child: SegmentedTabs<String?>(
                   options: [
                     (null, 'Cała sala'),
-                    for (final g in groups) (g, Fmt.capitalize(g)),
+                    for (final g in w.groups) (g, Fmt.capitalize(g)),
                   ],
                   selected: group,
-                  onChanged: onGroup,
+                  onChanged: w.onGroup,
                 ),
               ),
             ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-              child: FloorCanvas(
+              child: Stack(
+                key: _planKey,
+                clipBehavior: Clip.hardEdge,
+                children: [
+                  // Plan i menu stolika są jednym obszarem: kliknięcie w plan nie liczy się
+                  // jako kliknięcie obok menu, więc drugi klik w ten sam stolik je zamyka.
+                  Positioned.fill(
+                    child: TapRegion(
+                      groupId: _planKey,
+                      child: FloorCanvas(
                 zone: zone,
                 tables: inZone,
-                elements: elements.where((e) => e.zone == zone.name).toList(),
+                elements: w.elements.where((e) => e.zone == zone.name).toList(),
                 // Kratka pomaga przy rozstawianiu, więc jest tylko w zakładce „Edycja sali”.
                 showGrid: false,
                 selectedId: null,
@@ -1403,7 +1390,7 @@ class _PlanPanel extends StatelessWidget {
                     reservations,
                     at,
                     seatedCountsNow: seatedCountsNow,
-                    highlighted: selected?.tableIds.contains(t.id) ?? false,
+                    highlighted: (selected?.tableIds.contains(t.id) ?? false) || t.id == menu?.table.id,
                   );
                   // Przy wybranej grupie reszta sali schodzi na drugi plan.
                   if (group == null || t.joinGroup == group) return look;
@@ -1424,21 +1411,247 @@ class _PlanPanel extends StatelessWidget {
                     seatedCountsNow: seatedCountsNow,
                   );
                   final r = state.current ?? state.next;
-                  if (r != null) onSelectReservation(r.id);
+                  if (r != null) w.onSelectReservation(r.id);
                 },
+                onTapEmpty: _close,
                 onTapTableAt: (t, rect) {
+                  // Drugie kliknięcie tego samego stolika zamyka menu.
+                  if (menu?.table.id == t.id) {
+                    _close();
+                    return;
+                  }
                   final state = tableState(
                     t,
                     reservations,
                     at,
                     seatedCountsNow: seatedCountsNow,
                   );
-                  onTableMenu(t, rect, state.current ?? state.next);
+                  _open(t, rect, state.current ?? state.next);
                 },
+              ),
+                    ),
+                  ),
+                  if (menu != null)
+                    Positioned.fill(
+                      child: CustomSingleChildLayout(
+                        delegate: _BesideTable(menu.rect),
+                        child: _TableMenu(
+                          key: ValueKey(menu.table.id),
+                          groupId: _planKey,
+                          table: menu.table,
+                          reservation: menu.reservation,
+                          order: menuOrder,
+                          canOrder: w.orders != null,
+                          onClose: _close,
+                          onShow: (r) {
+                            _close();
+                            w.onSelectReservation(r.id);
+                          },
+                          onOrder: () {
+                            _close();
+                            w.onOrder(menu.table);
+                          },
+                          onToggle: () {
+                            _close();
+                            w.onToggleTable(menu.table);
+                          },
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Stawia menu po prawej stronie stolika, a gdy tam brakuje miejsca, po lewej.
+/// Menu nigdy nie wychodzi poza plan sali.
+class _BesideTable extends SingleChildLayoutDelegate {
+  _BesideTable(this.table);
+
+  final Rect table;
+
+  static const _gap = 8.0;
+  static const _margin = 6.0;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      BoxConstraints.loose(constraints.biggest).deflate(const EdgeInsets.all(_margin));
+
+  @override
+  Offset getPositionForChild(Size size, Size child) {
+    final right = table.right + _gap;
+    final left = table.left - _gap - child.width;
+    final double x;
+    if (right + child.width <= size.width - _margin) {
+      x = right;
+    } else if (left >= _margin) {
+      x = left;
+    } else {
+      x = (size.width - child.width - _margin).clamp(_margin, double.infinity);
+    }
+    // Góra menu na wysokości górnej krawędzi stolika, ale w granicach planu.
+    final maxY = size.height - child.height - _margin;
+    final y = table.top.clamp(_margin, maxY < _margin ? _margin : maxY);
+    return Offset(x, y);
+  }
+
+  @override
+  bool shouldRelayout(_BesideTable old) => old.table != table;
+}
+
+/// Menu stolika na planie sali: rezerwacja, zamówienie i wyłączenie stolika.
+class _TableMenu extends StatelessWidget {
+  const _TableMenu({
+    super.key,
+    required this.groupId,
+    required this.table,
+    required this.reservation,
+    required this.order,
+    required this.canOrder,
+    required this.onClose,
+    required this.onShow,
+    required this.onOrder,
+    required this.onToggle,
+  });
+
+  /// Obszar planu sali: kliknięcia w nim nie zamykają menu, robi to sam plan.
+  final Object groupId;
+  final DiningTable table;
+  final PanelReservation? reservation;
+  final PanelOrder? order;
+  final bool canOrder;
+  final VoidCallback onClose;
+  final ValueChanged<PanelReservation> onShow;
+  final VoidCallback onOrder;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final noun = table.isSeat ? 'miejsce' : 'stolik';
+    final reservation = this.reservation;
+    final order = this.order;
+
+    // Menu wysuwa się krótko ze stolika, bez przesadnej animacji.
+    return CallbackShortcuts(
+      bindings: {const SingleActivator(LogicalKeyboardKey.escape): onClose},
+      child: Focus(
+        autofocus: true,
+        child: TapRegion(
+          groupId: groupId,
+          onTapOutside: (_) => onClose(),
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: 1),
+            duration: const Duration(milliseconds: 140),
+            curve: AppMotion.easeOut,
+            builder: (context, t, child) => Opacity(
+              opacity: t,
+              child: Transform.scale(scale: 0.96 + 0.04 * t, alignment: Alignment.topLeft, child: child),
+            ),
+            child: Container(
+              width: 250,
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceRaised,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.ringStrong),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 18,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Material(
+                type: MaterialType.transparency,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
+                      child: Text(
+                        '${table.isSeat ? 'Miejsce' : 'Stolik'} ${table.label}'
+                        '${table.active ? '' : ' · wyłączony'}',
+                        style: text.labelMedium?.copyWith(color: AppColors.textMuted),
+                      ),
+                    ),
+                    if (reservation != null)
+                      _MenuRow(
+                        icon: AppIcons.calendarCheck,
+                        label: '${reservation.guestName}, ${Fmt.time(reservation.startsAt)}',
+                        onTap: () => onShow(reservation),
+                      ),
+                    if (canOrder)
+                      _MenuRow(
+                        icon: AppIcons.receipt,
+                        label: order == null
+                            ? 'Nowe zamówienie'
+                            : 'Zamówienie · ${Fmt.price(order.totalGrosze)}',
+                        onTap: onOrder,
+                      ),
+                    _MenuRow(
+                      icon: table.active ? AppIcons.prohibit : AppIcons.checkCircle,
+                      iconColor: table.active ? AppColors.error : AppColors.accent,
+                      label: table.active ? 'Wyłącz $noun' : 'Włącz $noun',
+                      labelColor: table.active ? AppColors.error : null,
+                      onTap: onToggle,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MenuRow extends StatelessWidget {
+  const _MenuRow({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.iconColor,
+    this.labelColor,
+  });
+
+  final AppIconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color? iconColor;
+  final Color? labelColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: SizedBox(
+        height: 42,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            children: [
+              Glyph(icon, size: 16, color: iconColor ?? AppColors.textMuted),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: labelColor),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -374,12 +374,47 @@ class _MenuSectionView extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(item.name, style: text.titleSmall),
+                        Text(
+                          item.name,
+                          style: text.titleSmall?.copyWith(
+                            color: item.available ? null : AppColors.textMuted,
+                          ),
+                        ),
+                        if (!item.available)
+                          Text(
+                            'Chwilowo niedostępne',
+                            style: text.bodySmall?.copyWith(color: AppColors.error),
+                          ),
                         if (item.description != null)
                           Text(
                             item.description!,
                             style: text.bodySmall?.copyWith(
                               color: AppColors.textMuted,
+                            ),
+                          ),
+                        // Warianty z cenami, np. „Mała 25 zł · Duża 39 zł”.
+                        if (item.variants.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              item.variants
+                                  .map((v) => '${v.name} ${Fmt.price(v.priceGrosze)}')
+                                  .join(' · '),
+                              style: text.bodySmall?.copyWith(
+                                color: AppColors.textMuted,
+                                fontFeatures: const [FontFeature.tabularFigures()],
+                              ),
+                            ),
+                          ),
+                        if (item.addons.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              'Dodatki: ${item.addons.map((a) => '${a.name.toLowerCase()} +${Fmt.price(a.priceGrosze)}').join(', ')}',
+                              style: text.bodySmall?.copyWith(
+                                color: AppColors.textMuted,
+                                fontFeatures: const [FontFeature.tabularFigures()],
+                              ),
                             ),
                           ),
                         if (item.allergens.isNotEmpty)
@@ -397,8 +432,11 @@ class _MenuSectionView extends StatelessWidget {
                   ),
                   const SizedBox(width: 16),
                   Text(
-                    Fmt.price(item.priceGrosze),
+                    item.variants.isEmpty
+                        ? Fmt.price(item.priceGrosze)
+                        : 'od ${Fmt.price(item.priceGrosze)}',
                     style: text.titleSmall?.copyWith(
+                      color: item.available ? null : AppColors.textMuted,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),

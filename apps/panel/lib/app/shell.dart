@@ -75,6 +75,7 @@ class _NavItem {
 const _groups = <(String, List<_NavItem>)>[
   ('Sala', [
     _NavItem(PanelRoutes.reservations, 'Rezerwacje', AppIcons.calendarDots),
+    _NavItem(PanelRoutes.orders, 'Zamówienia', AppIcons.receipt),
     _NavItem(PanelRoutes.floor, 'Edycja sali', AppIcons.squaresFour),
   ]),
   ('Zespół', [
@@ -123,7 +124,14 @@ class _Sidebar extends ConsumerWidget {
               color: PanelDepth.sidebar,
               border: PanelDepth.sidebarBorder,
             ),
-            padding: const EdgeInsets.fromLTRB(_pad, 20, _pad, 14),
+            // Obrys po prawej (ciemny motyw) zajmuje piksel: odejmujemy go od odstępu,
+            // żeby w zwiniętym pasku ikony miały pełne 48 px i nic nie wystawało.
+            padding: EdgeInsets.fromLTRB(
+              _pad,
+              20,
+              _pad - (PanelDepth.sidebarBorder?.dimensions.horizontal ?? 0),
+              14,
+            ),
             child: _content(
               context,
               ref,
@@ -149,6 +157,8 @@ class _Sidebar extends ConsumerWidget {
     final text = Theme.of(context).textTheme;
     final theme = ref.watch(themeSettingProvider);
     final email = ref.watch(repositoryProvider).email;
+    // Zamówienia widzi tylko konto z uprawnieniem, np. Kelner albo kierownik.
+    final canOrder = current != null && ref.watch(canTakeOrdersProvider(current.id));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -211,6 +221,7 @@ class _Sidebar extends ConsumerWidget {
                   ),
                 ),
                 for (final item in items)
+                  if (item.route != PanelRoutes.orders || canOrder)
                   _IconRow(
                     icon: item.icon,
                     label: item.label,

@@ -61,7 +61,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0020, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0023, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
   Gdy użytkownik napisze „kod”, podaj najnowszy `otp` z tej tabeli (jego numer kończy się na 098).
@@ -74,7 +74,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`Glyph` zamiast `Icon`, stałe `AppIcons`, SVG w `assets/icons`, nowe: `npx better-icons get ph:<nazwa>`).
 - `apps/guest/lib`: `app` (router, dolne menu, preferencje), `core` (mapy, lokalizacja), `data`, `features`.
 - `apps/panel/lib`: `app` (router, boczne menu, motyw na komputer), `data` (modele, `PanelRepository`, providery),
-  `features` (auth, reservations, floor, menu, profile, reviews, stats), `shared/panel_widgets.dart`.
+  `features` (auth, reservations, orders, floor, menu, profile, reviews, staff, stats), `shared/panel_widgets.dart`.
 
 ## Panel restauracji
 
@@ -88,6 +88,17 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Rezerwacje odświeżają się na żywo (Supabase Realtime na tabeli `reservations`).
 - Plan sali: strefy w `floor_zones`, stoliki w `dining_tables` z pozycją środka w cm (`x_cm`, `y_cm`),
   obrotem i kształtem. Stolika z przyszłymi rezerwacjami nie da się usunąć (trigger), trzeba go wyłączyć.
+- Kliknięcie stolika na planie w „Rezerwacjach” otwiera menu tylko w obszarze planu, obok stolika i jego krzeseł.
+- Stanowiska (`staff_positions`) mają uprawnienia, np. Kelner: rezerwacje, plan, zamówienia, karty. Pracownika łączy się
+  z kontem w oknie pracownika („Konto w panelu”, `panel_link_staff_account`). Konto obsługi ma wtedy uprawnienia
+  stanowiska (`private.has_permission`, `panel_my_permissions`). Kierownik i właściciel mają wszystkie.
+- Zamówienia (`orders`, `order_items`, tylko Pro): zakładka „Zamówienia” widoczna z uprawnieniem `orders`.
+  Rachunek otwiera się przy pierwszej pozycji, jeden otwarty na stolik. Cenę, nazwę i VAT liczy baza z menu
+  (`panel_add_order_item`), zapis tylko przez funkcje `panel_*`. Stany pozycji: new → sent (kuchnia) → served.
+  Pozycję wysłaną na kuchnię anuluje tylko kierownik. Zamknięcie rachunku kończy rezerwację gości przy stoliku.
+  Paragon fiskalny jeszcze na kasie, integrację z drukarką fiskalną robimy później.
+- Menu: warianty (np. rozmiary, każdy z ceną), płatne dodatki, stawka VAT i „dostępne teraz”. Przy wariantach
+  `price_grosze` to najniższa cena wariantu. „Skończyło się” może ustawić też kelner i kuchnia (`panel_set_menu_item_available`).
 
 ## Zasady projektu
 
@@ -106,5 +117,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 
 ## Sprawdzanie
 
-- `flutter analyze` bez uwag w każdej zmienionej aplikacji i pakiecie, `flutter test` w `apps/guest`,
-  przed każdą instalacją.
+- `flutter analyze` bez uwag w każdej zmienionej aplikacji i pakiecie, `flutter test` w `apps/guest`
+  i `apps/panel`, przed każdą instalacją.
+- Zrzut okna panelu (PrintWindow) bywa biały przy Impellerze albo wygaszonym monitorze. Wtedy wygląd sprawdzamy
+  testem z `matchesGoldenFile` i prawdziwą czcionką Geist, poza repozytorium.

@@ -92,6 +92,7 @@ abstract final class AppIcons {
   static const compass = AppIconData('assets/icons/compass.svg');
   static const compassFill = AppIconData('assets/icons/compass-fill.svg');
   static const confetti = AppIconData('assets/icons/confetti.svg');
+  static const cookingPot = AppIconData('assets/icons/cooking-pot.svg');
   static const copy = AppIconData('assets/icons/copy.svg');
   static const deviceMobile = AppIconData('assets/icons/device-mobile.svg');
   static const doorOpen = AppIconData('assets/icons/door-open.svg');
@@ -109,6 +110,7 @@ abstract final class AppIcons {
 
   /// Trzy kreski: zwijanie i rozwijanie bocznego menu.
   static const menu = AppIconData('assets/icons/list.svg');
+  static const link = AppIconData('assets/icons/link-simple.svg');
   static const lock = AppIconData('assets/icons/lock-simple.svg');
   static const mapPin = AppIconData('assets/icons/map-pin.svg');
   static const megaphone = AppIconData('assets/icons/megaphone.svg');
@@ -124,9 +126,11 @@ abstract final class AppIcons {
   static const plus = AppIconData('assets/icons/plus.svg');
   static const prohibit = AppIconData('assets/icons/prohibit.svg');
   static const question = AppIconData('assets/icons/question.svg');
+  static const receipt = AppIconData('assets/icons/receipt.svg');
   static const rectangle = AppIconData('assets/icons/rectangle.svg');
   static const refresh = AppIconData('assets/icons/arrow-clockwise.svg');
   static const search = AppIconData('assets/icons/magnifying-glass.svg');
+  static const send = AppIconData('assets/icons/paper-plane-tilt.svg');
   static const signOut = AppIconData('assets/icons/sign-out.svg');
   static const sliders = AppIconData('assets/icons/sliders-horizontal.svg');
   static const sort = AppIconData('assets/icons/arrows-down-up.svg');

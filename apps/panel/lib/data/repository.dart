@@ -389,7 +389,8 @@ class PanelRepository {
           .from('menu_sections')
           .select(
             'id, name, position, '
-            'menu_items(id, section_id, name, description, price_grosze, allergens, position)',
+            'menu_items(id, section_id, name, description, price_grosze, allergens, position, '
+            'variants, addons, vat_rate, available)',
           )
           .eq('restaurant_id', restaurantId)
           .order('position');
@@ -437,6 +438,10 @@ class PanelRepository {
     required int priceGrosze,
     required List<String> allergens,
     required int position,
+    List<MenuOption> variants = const [],
+    List<MenuOption> addons = const [],
+    int vatRate = 8,
+    bool available = true,
   }) {
     final row = {
       'section_id': sectionId,
@@ -445,6 +450,10 @@ class PanelRepository {
       'price_grosze': priceGrosze,
       'allergens': allergens,
       'position': position,
+      'variants': [for (final v in variants) v.toJson()],
+      'addons': [for (final a in addons) a.toJson()],
+      'vat_rate': vatRate,
+      'available': available,
     };
     return _guard(
       () => id == null
@@ -455,6 +464,168 @@ class PanelRepository {
 
   Future<void> deleteItem(String itemId) {
     return _guard(() => _db.from('menu_items').delete().eq('id', itemId));
+  }
+
+  /// „Skończyło się”: może to zrobić także kelner i kuchnia, nie tylko kierownik.
+  Future<void> setItemAvailable(String itemId, bool available) {
+    return _guard(
+      () => _db.rpc<void>(
+        'panel_set_menu_item_available',
+        params: {'p_item_id': itemId, 'p_available': available},
+      ),
+    );
+  }
+
+  // -------------------------------------------------------------
+  // Zamówienia
+  // -------------------------------------------------------------
+
+  /// Uprawnienia zalogowanego konta w lokalu, np. {'orders', 'floor'}.
+  Future<Set<String>> myPermissions(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>(
+        'panel_my_permissions',
+        params: {'p_restaurant_id': restaurantId},
+      );
+      return {for (final e in rows) e.toString()};
+    });
+  }
+
+  /// Otwarte rachunki lokalu razem z pozycjami.
+  Future<List<PanelOrder>> openOrders(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db
+          .from('orders')
+          .select('id, table_id, reservation_id, note, opened_at, order_items(*)')
+          .eq('restaurant_id', restaurantId)
+          .eq('status', 'open')
+          .order('opened_at');
+      return rows.map(PanelOrder.fromJson).toList();
+    });
+  }
+
+  /// Wywołuje [onChange] przy każdej zmianie rachunków i ich pozycji w lokalu.
+  void Function() watchOrders(
+    String restaurantId, {
+    required void Function() onChange,
+    required void Function(LiveStatus status) onStatus,
+  }) {
+    final filter = PostgresChangeFilter(
+      type: PostgresChangeFilterType.eq,
+      column: 'restaurant_id',
+      value: restaurantId,
+    );
+    final channel = _db
+        .channel('panel-zamowienia-$restaurantId-${_channelSeq++}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'orders',
+          filter: filter,
+          callback: (_) => onChange(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'order_items',
+          filter: filter,
+          callback: (_) => onChange(),
+        )
+        .subscribe((status, _) {
+          onStatus(switch (status) {
+            RealtimeSubscribeStatus.subscribed => LiveStatus.live,
+            RealtimeSubscribeStatus.channelError ||
+            RealtimeSubscribeStatus.timedOut ||
+            RealtimeSubscribeStatus.closed => LiveStatus.offline,
+          });
+        });
+    return () => unawaited(_db.removeChannel(channel));
+  }
+
+  /// Otwiera rachunek przy stoliku albo zwraca już otwarty.
+  Future<String> openOrder(String restaurantId, String tableId) {
+    return _guard(
+      () => _db.rpc<String>(
+        'panel_open_order',
+        params: {'p_restaurant_id': restaurantId, 'p_table_id': tableId},
+      ),
+    );
+  }
+
+  Future<void> addOrderItem({
+    required String orderId,
+    required String menuItemId,
+    String? variant,
+    List<String> addons = const [],
+    int quantity = 1,
+    String? note,
+    int course = 1,
+  }) {
+    return _guard(
+      () => _db.rpc<String>(
+        'panel_add_order_item',
+        params: {
+          'p_order_id': orderId,
+          'p_menu_item_id': menuItemId,
+          'p_variant': variant,
+          'p_addons': addons,
+          'p_quantity': quantity,
+          'p_note': note,
+          'p_course': course,
+        },
+      ),
+    );
+  }
+
+  /// Zmienia ilość, uwagę albo stan pozycji. Anulowana nowa pozycja znika z rachunku.
+  Future<void> updateOrderItem(
+    String itemId, {
+    int? quantity,
+    String? note,
+    OrderItemStatus? status,
+  }) {
+    return _guard(
+      () => _db.rpc<void>(
+        'panel_update_order_item',
+        params: {
+          'p_item_id': itemId,
+          'p_quantity': quantity,
+          'p_note': note,
+          'p_status': status?.db,
+        },
+      ),
+    );
+  }
+
+  /// Wysyła nowe pozycje na kuchnię. Zwraca ich liczbę.
+  Future<int> sendOrder(String orderId) {
+    return _guard(
+      () => _db.rpc<int>('panel_send_order', params: {'p_order_id': orderId}),
+    );
+  }
+
+  Future<void> closeOrder(String orderId, PaymentMethod method) {
+    return _guard(
+      () => _db.rpc<void>(
+        'panel_close_order',
+        params: {'p_order_id': orderId, 'p_payment_method': method.db},
+      ),
+    );
+  }
+
+  Future<void> cancelOrder(String orderId) {
+    return _guard(
+      () => _db.rpc<void>('panel_cancel_order', params: {'p_order_id': orderId}),
+    );
+  }
+
+  Future<void> moveOrder(String orderId, String tableId) {
+    return _guard(
+      () => _db.rpc<void>(
+        'panel_move_order',
+        params: {'p_order_id': orderId, 'p_table_id': tableId},
+      ),
+    );
   }
 
   // -------------------------------------------------------------
@@ -588,6 +759,39 @@ class PanelRepository {
 
   Future<void> deleteStaffMember(String id) {
     return _guard(() => _db.from('staff_members').delete().eq('id', id));
+  }
+
+  /// Adresy e-mail kont połączonych z pracownikami, według numeru pracownika.
+  Future<Map<String, String>> staffAccounts(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>(
+        'panel_staff_accounts',
+        params: {'p_restaurant_id': restaurantId},
+      );
+      return {
+        for (final e in rows.cast<Map<String, dynamic>>())
+          e['member_id'] as String: e['email'] as String,
+      };
+    });
+  }
+
+  /// Łączy pracownika z kontem założonym wcześniej w Supabase. Konto dostaje dostęp do lokalu.
+  Future<void> linkStaffAccount(String memberId, String email) {
+    return _guard(
+      () => _db.rpc<void>(
+        'panel_link_staff_account',
+        params: {'p_member_id': memberId, 'p_email': email.trim()},
+      ),
+    );
+  }
+
+  Future<void> unlinkStaffAccount(String memberId) {
+    return _guard(
+      () => _db.rpc<void>(
+        'panel_unlink_staff_account',
+        params: {'p_member_id': memberId},
+      ),
+    );
   }
 
   /// Stanowiska systemowe i własne stanowiska lokalu.

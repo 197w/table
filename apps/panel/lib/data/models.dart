@@ -595,6 +595,27 @@ class RestaurantProfile {
   }
 }
 
+/// Wariant (np. rozmiar) albo płatny dodatek pozycji menu.
+class MenuOption {
+  const MenuOption(this.name, this.priceGrosze);
+
+  final String name;
+  final int priceGrosze;
+
+  Map<String, dynamic> toJson() => {'name': name, 'price_grosze': priceGrosze};
+
+  factory MenuOption.fromJson(Map<String, dynamic> json) =>
+      MenuOption(json['name'] as String, _toInt(json['price_grosze']));
+
+  static List<MenuOption> listFrom(Object? value) => [
+    for (final e in value as List? ?? const []) MenuOption.fromJson(e as Map<String, dynamic>),
+  ];
+}
+
+/// Stawki VAT w gastronomii: 8% na jedzenie na miejscu, 5% na wynos,
+/// 23% na alkohol i napoje słodzone.
+const vatRates = [8, 5, 23, 0];
+
 class MenuItem {
   const MenuItem({
     required this.id,
@@ -604,15 +625,37 @@ class MenuItem {
     required this.allergens,
     required this.position,
     this.description,
+    this.variants = const [],
+    this.addons = const [],
+    this.vatRate = 8,
+    this.available = true,
   });
 
   final String id;
   final String sectionId;
   final String name;
   final String? description;
+
+  /// Cena bez wariantów. Przy wariantach najniższa z ich cen.
   final int priceGrosze;
   final List<String> allergens;
   final int position;
+
+  /// Warianty, np. rozmiary. Gdy są, gość i kelner wybierają jeden z nich.
+  final List<MenuOption> variants;
+  final List<MenuOption> addons;
+  final int vatRate;
+
+  /// Chwilowo niedostępne, np. skończyło się na dziś.
+  final bool available;
+
+  /// Pozycja wymaga wyboru przed nabiciem na rachunek.
+  bool get hasOptions => variants.isNotEmpty || addons.isNotEmpty;
+
+  /// Najniższa cena, od której zaczyna się pozycja.
+  int get fromPrice => variants.isEmpty
+      ? priceGrosze
+      : variants.map((v) => v.priceGrosze).reduce((a, b) => a < b ? a : b);
 
   factory MenuItem.fromJson(Map<String, dynamic> json) {
     return MenuItem(
@@ -623,6 +666,10 @@ class MenuItem {
       priceGrosze: _toInt(json['price_grosze']),
       allergens: _toStrings(json['allergens']),
       position: _toInt(json['position']),
+      variants: MenuOption.listFrom(json['variants']),
+      addons: MenuOption.listFrom(json['addons']),
+      vatRate: _toInt(json['vat_rate'], 8),
+      available: json['available'] != false,
     );
   }
 }
@@ -815,6 +862,7 @@ class StaffMember {
     this.positionId,
     this.position,
     this.phone,
+    this.userId,
   });
 
   final String id;
@@ -833,6 +881,9 @@ class StaffMember {
   final int color;
   final bool active;
 
+  /// Konto, którym pracownik loguje się do panelu. Null, gdy nie ma konta.
+  final String? userId;
+
   factory StaffMember.fromJson(Map<String, dynamic> json) {
     return StaffMember(
       id: json['id'] as String,
@@ -844,6 +895,7 @@ class StaffMember {
       phone: json['phone'] as String?,
       color: _toInt(json['color']),
       active: json['active'] != false,
+      userId: json['user_id'] as String?,
     );
   }
 }
@@ -949,7 +1001,7 @@ enum StaffPermission {
   floor('floor', 'Plan sali', 'Podgląd sali i wyłączanie stolików'),
   floorEdit('floor_edit', 'Edycja sali', 'Zmiana układu stolików i stref'),
   menu('menu', 'Menu', 'Zmiana dań i cen'),
-  orders('orders', 'Zamówienia', 'Nabijanie zamówień przy stoliku', soon: true),
+  orders('orders', 'Zamówienia', 'Nabijanie zamówień przy stoliku i rachunki'),
   kitchen('kitchen', 'Kuchnia', 'Ekran zamówień na kuchni', soon: true),
   deliveries('deliveries', 'Dostawy', 'Aplikacja dla kurierów', soon: true),
   giftCards('gift_cards', 'Karty podarunkowe', 'Realizacja kart gości'),
@@ -1035,6 +1087,161 @@ class OpeningException {
       opens: hm(json['opens']),
       closes: hm(json['closes']),
       note: json['note'] as String?,
+    );
+  }
+}
+
+// ---------------------------------------------------------------
+// Zamówienia
+// ---------------------------------------------------------------
+
+enum OrderItemStatus {
+  fresh('new', 'Do wysłania'),
+  sent('sent', 'Na kuchni'),
+  served('served', 'Wydane'),
+  cancelled('cancelled', 'Anulowane');
+
+  const OrderItemStatus(this.db, this.label);
+  final String db;
+  final String label;
+
+  static OrderItemStatus fromDb(Object? value) =>
+      values.firstWhere((s) => s.db == value, orElse: () => fresh);
+}
+
+enum PaymentMethod {
+  cash('cash', 'Gotówka'),
+  card('card', 'Karta'),
+  giftCard('gift_card', 'Karta podarunkowa'),
+  other('other', 'Inne');
+
+  const PaymentMethod(this.db, this.label);
+  final String db;
+  final String label;
+}
+
+/// Pozycja na rachunku. Nazwa, wariant i cena są zapisane w chwili nabicia,
+/// więc późniejsza zmiana menu nie zmienia rachunku.
+class OrderItem {
+  const OrderItem({
+    required this.id,
+    required this.orderId,
+    required this.name,
+    required this.unitPriceGrosze,
+    required this.vatRate,
+    required this.quantity,
+    required this.course,
+    required this.status,
+    required this.createdAt,
+    this.menuItemId,
+    this.variant,
+    this.addons = const [],
+    this.note,
+    this.sentAt,
+  });
+
+  final String id;
+  final String orderId;
+  final String? menuItemId;
+  final String name;
+  final String? variant;
+  final List<MenuOption> addons;
+
+  /// Cena jednej sztuki razem z dodatkami.
+  final int unitPriceGrosze;
+  final int vatRate;
+  final int quantity;
+  final String? note;
+
+  /// Kolejność wydawania: 1 przystawki, 2 dania główne i tak dalej.
+  final int course;
+  final OrderItemStatus status;
+  final DateTime createdAt;
+  final DateTime? sentAt;
+
+  int get totalGrosze => unitPriceGrosze * quantity;
+
+  /// Wariant i dodatki w jednym wierszu, np. „Duża, + skwarki”.
+  String? get details {
+    final parts = [
+      ?variant,
+      for (final a in addons) '+ ${a.name.toLowerCase()}',
+    ];
+    return parts.isEmpty ? null : parts.join(', ');
+  }
+
+  factory OrderItem.fromJson(Map<String, dynamic> json) {
+    return OrderItem(
+      id: json['id'] as String,
+      orderId: json['order_id'] as String,
+      menuItemId: json['menu_item_id'] as String?,
+      name: json['name'] as String,
+      variant: json['variant'] as String?,
+      addons: MenuOption.listFrom(json['addons']),
+      unitPriceGrosze: _toInt(json['unit_price_grosze']),
+      vatRate: _toInt(json['vat_rate'], 8),
+      quantity: _toInt(json['quantity'], 1),
+      note: json['note'] as String?,
+      course: _toInt(json['course'], 1),
+      status: OrderItemStatus.fromDb(json['status']),
+      createdAt: _toDate(json['created_at']),
+      sentAt: _toDateOrNull(json['sent_at']),
+    );
+  }
+}
+
+/// Otwarty rachunek przy stoliku.
+class PanelOrder {
+  const PanelOrder({
+    required this.id,
+    required this.openedAt,
+    required this.items,
+    this.tableId,
+    this.reservationId,
+    this.note,
+  });
+
+  final String id;
+  final String? tableId;
+  final String? reservationId;
+  final String? note;
+  final DateTime openedAt;
+  final List<OrderItem> items;
+
+  /// Pozycje, które liczą się do rachunku.
+  List<OrderItem> get active =>
+      items.where((i) => i.status != OrderItemStatus.cancelled).toList();
+
+  int get totalGrosze => active.fold(0, (sum, i) => sum + i.totalGrosze);
+
+  /// Liczba nowych pozycji, które czekają na wysłanie na kuchnię.
+  int get unsent => items.where((i) => i.status == OrderItemStatus.fresh).length;
+
+  /// Kwota brutto w podziale na stawki VAT, do podsumowania rachunku.
+  Map<int, int> get byVat {
+    final map = <int, int>{};
+    for (final i in active) {
+      map[i.vatRate] = (map[i.vatRate] ?? 0) + i.totalGrosze;
+    }
+    return map;
+  }
+
+  factory PanelOrder.fromJson(Map<String, dynamic> json) {
+    final items =
+        (json['order_items'] as List? ?? const [])
+            .map((e) => OrderItem.fromJson(e as Map<String, dynamic>))
+            .toList()
+          ..sort((a, b) {
+            final byCourse = a.course.compareTo(b.course);
+            return byCourse != 0 ? byCourse : a.createdAt.compareTo(b.createdAt);
+          });
+    return PanelOrder(
+      id: json['id'] as String,
+      tableId: json['table_id'] as String?,
+      reservationId: json['reservation_id'] as String?,
+      note: json['note'] as String?,
+      openedAt: _toDate(json['opened_at']),
+      items: items,
     );
   }
 }

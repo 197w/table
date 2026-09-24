@@ -105,6 +105,14 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     await _run(() => ref.read(repositoryProvider).deleteItem(item.id), restaurantId, 'Pozycja usunięta.');
   }
 
+  Future<void> _toggleAvailable(String restaurantId, MenuItem item) {
+    return _run(
+      () => ref.read(repositoryProvider).setItemAvailable(item.id, !item.available),
+      restaurantId,
+      item.available ? '„${item.name}” oznaczone jako niedostępne.' : '„${item.name}” znowu dostępne.',
+    );
+  }
+
   Future<void> _moveItem(String restaurantId, MenuSection section, int index, int delta) {
     final ids = [for (final i in section.items) i.id];
     final moved = ids.removeAt(index);
@@ -125,7 +133,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
       children: [
         PageHeader(
           title: 'Menu',
-          subtitle: 'Ceny i alergeny widoczne dla gości na stronie lokalu.',
+          subtitle: 'Ceny, warianty i alergeny widoczne dla gości i przy nabijaniu zamówień.',
           actions: [
             if (editable && async.hasValue)
               FilledButton.icon(
@@ -224,6 +232,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                                         item: current.items[i],
                                         editable: editable,
                                         onEdit: () => _editItem(restaurant.id, current, current.items[i]),
+                                        onToggleAvailable: () => _toggleAvailable(restaurant.id, current.items[i]),
                                         onDelete: () => _deleteItem(restaurant.id, current.items[i]),
                                         onUp: i == 0 ? null : () => _moveItem(restaurant.id, current, i, -1),
                                         onDown: i == current.items.length - 1
@@ -335,6 +344,7 @@ class _ItemRow extends StatelessWidget {
     required this.item,
     required this.editable,
     required this.onEdit,
+    required this.onToggleAvailable,
     required this.onDelete,
     required this.onUp,
     required this.onDown,
@@ -343,6 +353,7 @@ class _ItemRow extends StatelessWidget {
   final MenuItem item;
   final bool editable;
   final VoidCallback onEdit;
+  final VoidCallback onToggleAvailable;
   final VoidCallback onDelete;
   final VoidCallback? onUp;
   final VoidCallback? onDown;
@@ -359,12 +370,42 @@ class _ItemRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.name, style: text.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        item.name,
+                        style: text.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: item.available ? null : AppColors.textMuted,
+                        ),
+                      ),
+                    ),
+                    if (!item.available) ...[
+                      const SizedBox(width: 8),
+                      Tag('NIEDOSTĘPNE', color: AppColors.error),
+                    ],
+                  ],
+                ),
                 if (item.description != null)
                   Text(
                     item.description!,
                     style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
                   ),
+                if (item.variants.isNotEmpty || item.addons.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    [
+                      for (final v in item.variants) '${v.name} ${Fmt.price(v.priceGrosze)}',
+                      if (item.addons.isNotEmpty)
+                        'dodatki: ${item.addons.map((a) => a.name.toLowerCase()).join(', ')}',
+                    ].join(' · '),
+                    style: text.bodySmall?.copyWith(
+                      color: AppColors.textMuted,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
                 if (item.allergens.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Wrap(
@@ -381,11 +422,21 @@ class _ItemRow extends StatelessWidget {
           ),
           const SizedBox(width: 16),
           Text(
-            Fmt.price(item.priceGrosze),
+            item.variants.isEmpty ? Fmt.price(item.priceGrosze) : 'od ${Fmt.price(item.fromPrice)}',
             style: text.titleSmall?.copyWith(
               fontWeight: FontWeight.w600,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: item.available ? 'Skończyło się: oznacz jako niedostępne' : 'Znowu dostępne',
+            icon: Glyph(
+              item.available ? AppIcons.eye : AppIcons.eyeSlash,
+              size: 16,
+              color: item.available ? AppColors.textMuted : AppColors.error,
+            ),
+            onPressed: onToggleAvailable,
           ),
           if (editable) ...[
             const SizedBox(width: 8),
@@ -508,6 +559,10 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
     text: widget.item == null ? '' : groszeToText(widget.item!.priceGrosze),
   );
   late final Set<String> _allergens = {...?widget.item?.allergens};
+  late final _variants = [for (final v in widget.item?.variants ?? const <MenuOption>[]) _OptionRow(v)];
+  late final _addons = [for (final a in widget.item?.addons ?? const <MenuOption>[]) _OptionRow(a)];
+  late int _vat = widget.item?.vatRate ?? 8;
+  late bool _available = widget.item?.available ?? true;
   bool _busy = false;
 
   @override
@@ -515,15 +570,50 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
     _name.dispose();
     _description.dispose();
     _price.dispose();
+    for (final r in [..._variants, ..._addons]) {
+      r.dispose();
+    }
     super.dispose();
   }
 
+  /// Wiersze z opcjami zamienione na listę. Null i komunikat, gdy któryś jest źle wpisany.
+  List<MenuOption>? _read(List<_OptionRow> rows, String what) {
+    final list = <MenuOption>[];
+    final names = <String>{};
+    for (final r in rows) {
+      final name = r.name.text.trim();
+      final price = parseGrosze(r.price.text);
+      if (name.isEmpty && r.price.text.trim().isEmpty) continue;
+      if (name.isEmpty) {
+        showMessage(context, 'Wpisz nazwę każdej opcji w sekcji „$what”.');
+        return null;
+      }
+      if (price == null) {
+        showMessage(context, 'Wpisz cenę opcji „$name”, na przykład 32 albo 32,50.');
+        return null;
+      }
+      if (!names.add(name.toLowerCase())) {
+        showMessage(context, 'Opcja „$name” powtarza się w sekcji „$what”.');
+        return null;
+      }
+      list.add(MenuOption(name, price));
+    }
+    return list;
+  }
+
   Future<void> _save() async {
-    final price = parseGrosze(_price.text);
     if (_name.text.trim().isEmpty) {
       showMessage(context, 'Wpisz nazwę dania.');
       return;
     }
+    final variants = _read(_variants, 'Warianty');
+    if (variants == null) return;
+    final addons = _read(_addons, 'Dodatki');
+    if (addons == null) return;
+    // Przy wariantach cena pozycji to najniższa z nich: tak gość widzi „od 25 zł”.
+    final price = variants.isEmpty
+        ? parseGrosze(_price.text)
+        : variants.map((v) => v.priceGrosze).reduce((a, b) => a < b ? a : b);
     if (price == null) {
       showMessage(context, 'Wpisz cenę, na przykład 32 albo 32,50.');
       return;
@@ -538,6 +628,10 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
         priceGrosze: price,
         allergens: _allergens.toList(),
         position: widget.item?.position ?? widget.section.items.length,
+        variants: variants,
+        addons: addons,
+        vatRate: _vat,
+        available: _available,
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -555,6 +649,8 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
       content: SizedBox(
         width: 520,
         child: SingleChildScrollView(
+          // Odstęp u góry, żeby etykiety pól nie chowały się pod tytułem okna.
+          padding: const EdgeInsets.only(top: 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -573,12 +669,22 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
                   const SizedBox(width: 12),
                   SizedBox(
                     width: 130,
-                    child: TextField(
-                      controller: _price,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
-                      decoration: const InputDecoration(labelText: 'Cena', suffixText: 'zł'),
-                    ),
+                    // Przy wariantach cenę ma każdy wariant osobno.
+                    child: _variants.isEmpty
+                        ? TextField(
+                            controller: _price,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+                            decoration: const InputDecoration(labelText: 'Cena', suffixText: 'zł'),
+                          )
+                        : const TextField(
+                            enabled: false,
+                            decoration: InputDecoration(
+                              labelText: 'Cena',
+                              hintText: 'z wariantów',
+                              floatingLabelBehavior: FloatingLabelBehavior.always,
+                            ),
+                          ),
                   ),
                 ],
               ),
@@ -591,6 +697,64 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
                 decoration: const InputDecoration(labelText: 'Opis (opcjonalnie)'),
               ),
               const SizedBox(height: 8),
+              _OptionsEditor(
+                title: 'Warianty',
+                hint: 'Np. rozmiary: Mała 25 zł, Duża 39 zł. Gość i kelner wybierają jeden.',
+                addLabel: 'Dodaj wariant',
+                namePlaceholder: 'Duża',
+                rows: _variants,
+                onChanged: () => setState(() {}),
+              ),
+              const SizedBox(height: 16),
+              _OptionsEditor(
+                title: 'Dodatki',
+                hint: 'Płatne dodatki doliczane do ceny, np. „Ser +4 zł”. Można wybrać kilka.',
+                addLabel: 'Dodaj dodatek',
+                namePlaceholder: 'Ser',
+                rows: _addons,
+                onChanged: () => setState(() {}),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Stawka VAT', style: text.titleSmall),
+                        Text(
+                          '8% jedzenie na miejscu, 23% alkohol',
+                          style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SegmentedTabs<int>(
+                    options: [for (final r in vatRates) (r, '$r%')],
+                    selected: _vat,
+                    onChanged: (v) => setState(() => _vat = v),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Dostępne teraz', style: text.titleSmall),
+                        Text(
+                          'Wyłącz, gdy danie się skończy. Goście zobaczą je jako niedostępne.',
+                          style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(value: _available, onChanged: (v) => setState(() => _available = v)),
+                ],
+              ),
+              const SizedBox(height: 18),
               Text('Alergeny', style: text.titleSmall),
               const SizedBox(height: 8),
               Wrap(
@@ -623,6 +787,104 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
           child: const Text('Anuluj'),
         ),
         FilledButton(onPressed: _busy ? null : _save, child: const Text('Zapisz')),
+      ],
+    );
+  }
+}
+
+/// Jeden wiersz wariantu albo dodatku w oknie pozycji.
+class _OptionRow {
+  _OptionRow([MenuOption? option])
+    : name = TextEditingController(text: option?.name ?? ''),
+      price = TextEditingController(text: option == null ? '' : groszeToText(option.priceGrosze));
+
+  final TextEditingController name;
+  final TextEditingController price;
+
+  void dispose() {
+    name.dispose();
+    price.dispose();
+  }
+}
+
+/// Lista wariantów albo dodatków: nazwa i cena w każdym wierszu.
+class _OptionsEditor extends StatelessWidget {
+  const _OptionsEditor({
+    required this.title,
+    required this.hint,
+    required this.addLabel,
+    required this.namePlaceholder,
+    required this.rows,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String hint;
+  final String addLabel;
+  final String namePlaceholder;
+  final List<_OptionRow> rows;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(title, style: text.titleSmall)),
+            if (rows.length < 20)
+              TextButton.icon(
+                onPressed: () {
+                  rows.add(_OptionRow());
+                  onChanged();
+                },
+                icon: const Glyph(AppIcons.plus, size: 14),
+                label: Text(addLabel),
+              ),
+          ],
+        ),
+        Text(hint, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+        for (final row in rows) ...[
+          const SizedBox(height: 8),
+          Row(
+            key: ObjectKey(row),
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: row.name,
+                  maxLength: 40,
+                  decoration: InputDecoration(
+                    hintText: namePlaceholder,
+                    isDense: true,
+                    counterText: '',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                width: 110,
+                child: TextField(
+                  controller: row.price,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+                  decoration: const InputDecoration(hintText: '0', suffixText: 'zł', isDense: true),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Usuń',
+                icon: Glyph(AppIcons.close, size: 16, color: AppColors.textMuted),
+                onPressed: () {
+                  rows.remove(row);
+                  onChanged();
+                  // Pola znikną dopiero po przebudowie, więc kontrolery zwalniamy po klatce.
+                  WidgetsBinding.instance.addPostFrameCallback((_) => row.dispose());
+                },
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }

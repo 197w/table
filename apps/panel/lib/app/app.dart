@@ -10,6 +10,7 @@ import '../features/auth/login_screen.dart';
 import '../features/floor/floor_screen.dart';
 import '../features/gift_cards/gift_cards_screen.dart';
 import '../features/menu/menu_screen.dart';
+import '../features/orders/orders_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/reservations/reservations_screen.dart';
 import '../features/reviews/reviews_screen.dart';
@@ -126,6 +127,13 @@ GoRouter _buildRouter(Listenable refresh) {
             pageBuilder: (context, state) =>
                 const NoTransitionPage(child: FloorScreen()),
           ),
+          GoRoute(
+            path: PanelRoutes.orders,
+            // ?stolik=<id> otwiera od razu rachunek stolika klikniętego na planie sali.
+            pageBuilder: (context, state) => NoTransitionPage(
+              child: OrdersScreen(tableId: state.uri.queryParameters['stolik']),
+            ),
+          ),
           _page(PanelRoutes.staff, const StaffScreen()),
           _page(PanelRoutes.giftCards, const GiftCardsScreen()),
           _page(PanelRoutes.menu, const MenuScreen()),
@@ -148,6 +156,7 @@ abstract final class PanelRoutes {
   static const login = '/logowanie';
   static const reservations = '/rezerwacje';
   static const floor = '/sala';
+  static const orders = '/zamowienia';
   static const staff = '/pracownicy';
   static const giftCards = '/karty';
   static const menu = '/menu';

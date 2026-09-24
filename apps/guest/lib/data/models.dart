@@ -114,6 +114,19 @@ class OpeningHours {
   }
 }
 
+/// Wariant (np. rozmiar) albo płatny dodatek dania.
+class MenuOption {
+  const MenuOption(this.name, this.priceGrosze);
+
+  final String name;
+  final int priceGrosze;
+
+  static List<MenuOption> listFrom(Object? value) => [
+    for (final e in (value as List? ?? const []).cast<Map<String, dynamic>>())
+      MenuOption(e['name'] as String, _toInt(e['price_grosze'])),
+  ];
+}
+
 class MenuItem {
   const MenuItem({
     required this.id,
@@ -122,14 +135,26 @@ class MenuItem {
     required this.allergens,
     required this.position,
     this.description,
+    this.variants = const [],
+    this.addons = const [],
+    this.available = true,
   });
 
   final String id;
   final String name;
   final String? description;
+
+  /// Cena dania. Przy wariantach najniższa z ich cen.
   final int priceGrosze;
   final List<String> allergens;
   final int position;
+
+  /// Warianty, np. rozmiary, każdy z własną ceną.
+  final List<MenuOption> variants;
+  final List<MenuOption> addons;
+
+  /// Lokal oznaczył danie jako chwilowo niedostępne.
+  final bool available;
 
   factory MenuItem.fromJson(Map<String, dynamic> json) {
     return MenuItem(
@@ -139,6 +164,9 @@ class MenuItem {
       priceGrosze: _toInt(json['price_grosze']),
       allergens: (json['allergens'] as List? ?? const []).cast<String>(),
       position: _toInt(json['position']),
+      variants: MenuOption.listFrom(json['variants']),
+      addons: MenuOption.listFrom(json['addons']),
+      available: json['available'] != false,
     );
   }
 }

@@ -196,8 +196,8 @@ class FloorCanvas extends StatelessWidget {
   final void Function(DiningTable table, int index, Offset deltaCm)? onDragChair;
   final ValueChanged<DiningTable>? onDragChairEnd;
 
-  /// Kliknięcie stolika razem z jego położeniem na ekranie, na przykład do menu obok stolika.
-  /// Gdy jest ustawione, zastępuje [onTapTable].
+  /// Kliknięcie stolika razem z jego położeniem na ekranie (blat z krzesłami),
+  /// na przykład do menu obok stolika. Gdy jest ustawione, zastępuje [onTapTable].
   final void Function(DiningTable table, Rect globalRect)? onTapTableAt;
 
   static String keyOf(DiningTable t) => t.id ?? t.draftKey ?? t.label;
@@ -359,7 +359,16 @@ class FloorCanvas extends StatelessWidget {
                     final at = onTapTableAt;
                     final box = hitContext.findRenderObject() as RenderBox?;
                     if (at != null && box != null && box.hasSize) {
-                      at(t, box.localToGlobal(Offset.zero) & box.size);
+                      // Obszar razem z krzesłami, żeby menu obok stolika ich nie zasłaniało.
+                      final top = box.localToGlobal(Offset.zero) & box.size;
+                      at(
+                        t,
+                        Rect.fromCenter(
+                          center: top.center,
+                          width: math.max(top.width, extent),
+                          height: math.max(top.height, extent),
+                        ),
+                      );
                     } else {
                       onTapTable(t);
                     }

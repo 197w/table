@@ -1,0 +1,1624 @@
+import 'dart:async';
+
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:table_core/table_core.dart';
+
+import '../../data/models.dart';
+import '../../data/providers.dart';
+import '../../shared/panel_widgets.dart';
+import '../floor/floor_canvas.dart';
+
+const _tabular = [FontFeature.tabularFigures()];
+
+/// Zamówienia przy stoliku: kelner wybiera stolik, nabija pozycje z menu,
+/// wysyła je na kuchnię i zamyka rachunek. Układ jest pod dotyk, żeby działał też na tablecie.
+class OrdersScreen extends ConsumerStatefulWidget {
+  const OrdersScreen({super.key, this.tableId});
+
+  /// Stolik otwarty od razu, np. po kliknięciu „Zamówienie” na planie sali.
+  final String? tableId;
+
+  @override
+  ConsumerState<OrdersScreen> createState() => _OrdersScreenState();
+}
+
+class _OrdersScreenState extends ConsumerState<OrdersScreen> {
+  late String? _tableId = widget.tableId;
+  String? _sectionId;
+  String _query = '';
+  final _search = TextEditingController();
+
+  /// Kolejka zmian rachunku. Kelner stuka szybko, a każde stuknięcie musi trafić do bazy
+  /// po kolei, bez gubienia i bez podwójnego otwierania rachunku.
+  Future<void> _queue = Future.value();
+
+  @override
+  void didUpdateWidget(covariant OrdersScreen old) {
+    super.didUpdateWidget(old);
+    if (widget.tableId != null && widget.tableId != old.tableId) {
+      setState(() => _tableId = widget.tableId);
+    }
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  /// Dokłada zmianę na koniec kolejki i odświeża rachunki, gdy przejdzie.
+  Future<void> _enqueue(String restaurantId, Future<void> Function() action) {
+    final next = _queue.then((_) async {
+      try {
+        await action();
+      } catch (e) {
+        if (mounted) showMessage(context, errorText(e));
+      } finally {
+        if (mounted) ref.invalidate(openOrdersProvider(restaurantId));
+      }
+    });
+    _queue = next;
+    return next;
+  }
+
+  /// Otwarty rachunek stolika. Gdy lista z bazy jeszcze go nie zna, pyta bazę:
+  /// otwarcie zwraca istniejący rachunek, więc dwa szybkie stuknięcia nie otworzą dwóch.
+  Future<String> _orderIdFor(String restaurantId, String tableId) async {
+    final order = _orderOf(restaurantId, tableId);
+    if (order != null) return order.id;
+    return ref.read(repositoryProvider).openOrder(restaurantId, tableId);
+  }
+
+  Future<void> _add(
+    String restaurantId,
+    DiningTable table,
+    MenuItem item, {
+    bool withOptions = false,
+  }) async {
+    if (!item.available) {
+      showMessage(context, '„${item.name}” jest chwilowo niedostępne.');
+      return;
+    }
+    final _Choice choice;
+    if (item.hasOptions || withOptions) {
+      final picked = await showDialog<_Choice>(
+        context: context,
+        builder: (_) => _AddItemDialog(item: item),
+      );
+      if (picked == null || !mounted) return;
+      choice = picked;
+    } else {
+      choice = const _Choice();
+    }
+    HapticFeedback.selectionClick();
+    final repo = ref.read(repositoryProvider);
+    unawaited(
+      _enqueue(restaurantId, () async {
+        final orderId = await _orderIdFor(restaurantId, table.id!);
+        await repo.addOrderItem(
+          orderId: orderId,
+          menuItemId: item.id,
+          variant: choice.variant,
+          addons: choice.addons,
+          quantity: choice.quantity,
+          note: choice.note,
+        );
+      }),
+    );
+  }
+
+  PanelOrder? _orderOf(String restaurantId, String tableId) {
+    final orders = ref.read(openOrdersProvider(restaurantId)).value ?? const [];
+    for (final o in orders) {
+      if (o.tableId == tableId) return o;
+    }
+    return null;
+  }
+
+  Future<void> _send(String restaurantId, PanelOrder order) async {
+    var count = 0;
+    await _enqueue(restaurantId, () async {
+      count = await ref.read(repositoryProvider).sendOrder(order.id);
+    });
+    if (mounted && count > 0) {
+      showMessage(context, count == 1 ? 'Wysłano 1 pozycję na kuchnię.' : 'Wysłano na kuchnię: $count.');
+    }
+  }
+
+  Future<void> _close(String restaurantId, DiningTable table, PanelOrder order) async {
+    final method = await showDialog<PaymentMethod>(
+      context: context,
+      builder: (_) => _CloseOrderDialog(table: table, order: order),
+    );
+    if (method == null || !mounted) return;
+    var ok = false;
+    await _enqueue(restaurantId, () async {
+      await ref.read(repositoryProvider).closeOrder(order.id, method);
+      ok = true;
+    });
+    if (!ok || !mounted) return;
+    // Zamknięty rachunek kończy też wizytę z rezerwacji, więc plan sali musi się odświeżyć.
+    ref.invalidate(reservationsProvider((restaurantId: restaurantId, day: dateOnly(DateTime.now()))));
+    showMessage(context, 'Rachunek zamknięty: ${Fmt.price(order.totalGrosze)}, ${method.label.toLowerCase()}.');
+  }
+
+  Future<void> _cancel(String restaurantId, DiningTable table, PanelOrder order) async {
+    final sent = order.items.any((i) => i.status != OrderItemStatus.fresh);
+    final ok = await confirm(
+      context,
+      title: 'Anulować rachunek?',
+      message: sent
+          ? 'Część pozycji jest już na kuchni. Anulować taki rachunek może tylko kierownik albo właściciel.'
+          : 'Wszystkie pozycje znikną z rachunku stolika ${table.label}.',
+      action: 'Anuluj rachunek',
+      destructive: true,
+    );
+    if (!ok) return;
+    await _enqueue(restaurantId, () => ref.read(repositoryProvider).cancelOrder(order.id));
+  }
+
+  Future<void> _move(
+    String restaurantId,
+    DiningTable from,
+    PanelOrder order,
+    List<DiningTable> tables,
+    List<PanelOrder> orders,
+  ) async {
+    final busy = {for (final o in orders) ?o.tableId};
+    final target = await showDialog<DiningTable>(
+      context: context,
+      builder: (_) => _MoveDialog(
+        from: from,
+        tables: tables.where((t) => t.id != from.id && !busy.contains(t.id)).toList(),
+      ),
+    );
+    if (target == null || !mounted) return;
+    var ok = false;
+    await _enqueue(restaurantId, () async {
+      await ref.read(repositoryProvider).moveOrder(order.id, target.id!);
+      ok = true;
+    });
+    if (!ok || !mounted) return;
+    setState(() => _tableId = target.id);
+    showMessage(context, 'Rachunek przeniesiony na stolik ${target.label}.');
+  }
+
+  Future<void> _itemMenu(String restaurantId, DiningTable? table, MenuItem item, Offset at) async {
+    final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(at & const Size(1, 1), Offset.zero & overlay.size),
+      color: AppColors.surfaceRaised,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: AppColors.ringStrong),
+      ),
+      items: [
+        if (table != null && item.available)
+          const PopupMenuItem(value: 'note', child: Text('Dodaj z uwagą…')),
+        PopupMenuItem(
+          value: 'toggle',
+          child: Text(item.available ? 'Skończyło się (niedostępne)' : 'Znowu dostępne'),
+        ),
+      ],
+    );
+    if (!mounted || choice == null) return;
+    if (choice == 'note' && table != null) {
+      await _add(restaurantId, table, item, withOptions: true);
+      return;
+    }
+    try {
+      await ref.read(repositoryProvider).setItemAvailable(item.id, !item.available);
+      ref.invalidate(menuProvider(restaurantId));
+      if (mounted) {
+        showMessage(
+          context,
+          item.available ? '„${item.name}” oznaczone jako niedostępne.' : '„${item.name}” znowu dostępne.',
+        );
+      }
+    } catch (e) {
+      if (mounted) showMessage(context, errorText(e));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final restaurant = ref.watch(currentRestaurantProvider);
+    if (restaurant == null) return const LoadingView();
+
+    if (!restaurant.isPro) {
+      return const Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PageHeader(title: 'Zamówienia'),
+          Expanded(child: ProGate(feature: 'Zamówienia przy stoliku')),
+        ],
+      );
+    }
+
+    final permissions = ref.watch(myPermissionsProvider(restaurant.id));
+    if (!permissions.hasValue) {
+      return permissions.hasError
+          ? ErrorView(
+              error: permissions.error!,
+              onRetry: () => ref.invalidate(myPermissionsProvider(restaurant.id)),
+            )
+          : const LoadingView();
+    }
+    if (!permissions.value!.contains('orders')) {
+      return const Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PageHeader(title: 'Zamówienia'),
+          Expanded(
+            child: MessageView(
+              icon: AppIcons.lock,
+              title: 'Brak dostępu do zamówień',
+              message:
+                  'Zamówienia nabija obsługa na stanowisku z uprawnieniem „Zamówienia”, na przykład Kelner. '
+                  'Stanowiska ustawia właściciel w zakładce „Pracownicy”.',
+            ),
+          ),
+        ],
+      );
+    }
+
+    final tablesAsync = ref.watch(tablesProvider(restaurant.id));
+    final zones = ref.watch(zonesProvider(restaurant.id)).value ?? const <FloorZone>[];
+    final menuAsync = ref.watch(menuProvider(restaurant.id));
+    final ordersAsync = ref.watch(openOrdersProvider(restaurant.id));
+    final live = ref.watch(ordersLiveProvider(restaurant.id).select((s) => s.status));
+    final today = ref.watch(
+      reservationsProvider((restaurantId: restaurant.id, day: dateOnly(DateTime.now()))),
+    ).value ?? const <PanelReservation>[];
+
+    final tables = tablesAsync.value ?? const <DiningTable>[];
+    final orders = ordersAsync.value ?? const <PanelOrder>[];
+    DiningTable? table;
+    for (final t in tables) {
+      if (t.id == _tableId) table = t;
+    }
+    PanelOrder? order;
+    for (final o in orders) {
+      if (table != null && o.tableId == table.id) order = o;
+    }
+    PanelReservation? reservation;
+    for (final r in today) {
+      if (order?.reservationId == r.id) reservation = r;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        PageHeader(
+          title: 'Zamówienia',
+          subtitle: 'Wybierz stolik, nabij pozycje z menu i wyślij je na kuchnię.',
+          actions: [
+            switch (live) {
+              LiveStatus.live => const PanelPill('Na żywo', dotColor: Color(0xFF2FB673)),
+              LiveStatus.connecting => const PanelPill('Łączenie…', dotColor: Color(0xFFD99A15)),
+              LiveStatus.offline => PanelPill('Brak połączenia', dotColor: AppColors.error),
+            },
+          ],
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(32, 0, 32, 24),
+            child: tablesAsync.when(
+              skipLoadingOnReload: true,
+              loading: () => const LoadingView(),
+              error: (e, _) => ErrorView(
+                error: e,
+                onRetry: () => ref.invalidate(tablesProvider(restaurant.id)),
+              ),
+              data: (_) {
+                if (tables.isEmpty) {
+                  return const MessageView(
+                    icon: AppIcons.squaresFour,
+                    title: 'Sala jest pusta',
+                    message: 'Rozstaw stoliki w zakładce „Edycja sali”, a tutaj nabijesz do nich zamówienia.',
+                  );
+                }
+                return LayoutBuilder(
+                  builder: (context, c) {
+                    // Na wąskim oknie kolumny stolików i rachunku się zwężają, żeby menu miało miejsce.
+                    final wide = c.maxWidth >= 1150;
+                    final tablesWidth = wide ? 260.0 : 190.0;
+                    final orderWidth = wide ? 400.0 : 330.0;
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          width: tablesWidth,
+                          child: _TablesPanel(
+                            zones: zones,
+                            tables: tables,
+                            orders: orders,
+                            selectedId: table?.id,
+                            onSelect: (t) => setState(() => _tableId = t.id),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _MenuPanel(
+                            async: menuAsync,
+                            sectionId: _sectionId,
+                            query: _query,
+                            search: _search,
+                            enabled: table != null,
+                            onSection: (id) => setState(() => _sectionId = id),
+                            onQuery: (q) => setState(() => _query = q.trim().toLowerCase()),
+                            onRetry: () => ref.invalidate(menuProvider(restaurant.id)),
+                            onTap: (item) => table == null
+                                ? showMessage(context, 'Najpierw wybierz stolik z listy po lewej.')
+                                : _add(restaurant.id, table, item),
+                            onMenu: (item, at) => _itemMenu(restaurant.id, table, item, at),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        SizedBox(
+                          width: orderWidth,
+                          child: table == null
+                              ? const Card(
+                                  child: MessageView(
+                                    icon: AppIcons.receipt,
+                                    title: 'Wybierz stolik',
+                                    message: 'Stoliki z otwartym rachunkiem mają kwotę przy numerze.',
+                                  ),
+                                )
+                              : _OrderPanel(
+                                  table: table,
+                                  order: order,
+                                  reservation: reservation,
+                                  onQuantity: (item, q) => _enqueue(
+                                    restaurant.id,
+                                    () => q < 1
+                                        ? ref
+                                              .read(repositoryProvider)
+                                              .updateOrderItem(item.id, status: OrderItemStatus.cancelled)
+                                        : ref.read(repositoryProvider).updateOrderItem(item.id, quantity: q),
+                                  ),
+                                  onNote: (item) async {
+                                    final note = await showDialog<String>(
+                                      context: context,
+                                      builder: (_) => _NoteDialog(initial: item.note ?? ''),
+                                    );
+                                    if (note == null) return;
+                                    await _enqueue(
+                                      restaurant.id,
+                                      () => ref.read(repositoryProvider).updateOrderItem(item.id, note: note),
+                                    );
+                                  },
+                                  onStatus: (item, status) async {
+                                    if (status == OrderItemStatus.cancelled) {
+                                      final ok = await confirm(
+                                        context,
+                                        title: 'Anulować „${item.name}”?',
+                                        message:
+                                            'Pozycja jest już na kuchni. Anulować ją może tylko kierownik albo właściciel.',
+                                        action: 'Anuluj pozycję',
+                                        destructive: true,
+                                      );
+                                      if (!ok) return;
+                                    }
+                                    await _enqueue(
+                                      restaurant.id,
+                                      () => ref.read(repositoryProvider).updateOrderItem(item.id, status: status),
+                                    );
+                                  },
+                                  onSend: order == null ? null : () => _send(restaurant.id, order!),
+                                  onClose: order == null ? null : () => _close(restaurant.id, table!, order!),
+                                  onCancel: order == null ? null : () => _cancel(restaurant.id, table!, order!),
+                                  onMove: order == null
+                                      ? null
+                                      : () => _move(restaurant.id, table!, order!, tables, orders),
+                                ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Numery stolików rosną jak liczby: 2 przed 10, a „B1” za „12”.
+int compareLabels(String a, String b) {
+  final na = int.tryParse(a);
+  final nb = int.tryParse(b);
+  if (na != null && nb != null) return na.compareTo(nb);
+  if (na != null) return -1;
+  if (nb != null) return 1;
+  return a.toLowerCase().compareTo(b.toLowerCase());
+}
+
+// ---------------------------------------------------------------
+// Stoliki
+// ---------------------------------------------------------------
+
+class _TablesPanel extends StatelessWidget {
+  const _TablesPanel({
+    required this.zones,
+    required this.tables,
+    required this.orders,
+    required this.selectedId,
+    required this.onSelect,
+  });
+
+  final List<FloorZone> zones;
+  final List<DiningTable> tables;
+  final List<PanelOrder> orders;
+  final String? selectedId;
+  final ValueChanged<DiningTable> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final byTable = {for (final o in orders) ?o.tableId: o};
+    final zoneList = orderedZones(zones, tables);
+
+    return Card(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+        children: [
+          for (final zone in zoneList) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 10, 8, 6),
+              child: Text(
+                zone.name.toUpperCase(),
+                style: text.labelSmall?.copyWith(
+                  color: AppColors.textDisabled,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            for (final t in tables.where((t) => t.zone == zone.name).toList()
+              ..sort((a, b) => compareLabels(a.label, b.label)))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: _TableTile(
+                  table: t,
+                  order: byTable[t.id],
+                  selected: t.id == selectedId,
+                  onTap: () => onSelect(t),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TableTile extends StatelessWidget {
+  const _TableTile({
+    required this.table,
+    required this.order,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final DiningTable table;
+  final PanelOrder? order;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final open = order != null;
+    final unsent = order?.unsent ?? 0;
+
+    return PanelPress(
+      scale: 0.98,
+      child: Material(
+        color: selected ? AppColors.surfaceRaised : Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: selected ? AppColors.accent : Colors.transparent),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          splashColor: Colors.transparent,
+          child: SizedBox(
+            height: 52,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                children: [
+                  // Kostka z numerem: zielona, gdy przy stoliku jest otwarty rachunek.
+                  Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: open ? AppColors.accentTint : AppColors.surfaceRaised,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: open ? AppColors.accent : AppColors.ringStrong),
+                    ),
+                    child: Text(
+                      table.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.clip,
+                      style: text.labelLarge?.copyWith(
+                        color: open ? AppColors.accent : AppColors.text,
+                        fontSize: table.label.length > 3 ? 11 : null,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      open ? Fmt.price(order!.totalGrosze) : '${table.seats} os.',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: (open ? text.labelLarge : text.bodyMedium)?.copyWith(
+                        color: open ? AppColors.text : AppColors.textMuted,
+                        fontFeatures: _tabular,
+                      ),
+                    ),
+                  ),
+                  if (unsent > 0)
+                    Tooltip(
+                      message: 'Nowe pozycje czekają na wysłanie na kuchnię',
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD99A15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '$unsent',
+                          style: text.labelSmall?.copyWith(
+                            color: Colors.black,
+                            fontWeight: FontWeight.w600,
+                            fontFeatures: _tabular,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------
+// Menu do nabijania
+// ---------------------------------------------------------------
+
+class _MenuPanel extends StatelessWidget {
+  const _MenuPanel({
+    required this.async,
+    required this.sectionId,
+    required this.query,
+    required this.search,
+    required this.enabled,
+    required this.onSection,
+    required this.onQuery,
+    required this.onRetry,
+    required this.onTap,
+    required this.onMenu,
+  });
+
+  final AsyncValue<List<MenuSection>> async;
+  final String? sectionId;
+  final String query;
+  final TextEditingController search;
+
+  /// Bez wybranego stolika pozycje są przygaszone.
+  final bool enabled;
+  final ValueChanged<String> onSection;
+  final ValueChanged<String> onQuery;
+  final VoidCallback onRetry;
+  final ValueChanged<MenuItem> onTap;
+  final void Function(MenuItem item, Offset globalPosition) onMenu;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: async.when(
+        skipLoadingOnReload: true,
+        loading: () => const LoadingView(),
+        error: (e, _) => ErrorView(error: e, onRetry: onRetry),
+        data: (sections) {
+          final withItems = sections.where((s) => s.items.isNotEmpty).toList();
+          if (withItems.isEmpty) {
+            return const MessageView(
+              icon: AppIcons.bookOpen,
+              title: 'Menu jest puste',
+              message: 'Kierownik dodaje dania w zakładce „Menu”. Potem pojawią się tutaj.',
+            );
+          }
+          final current = withItems.firstWhere(
+            (s) => s.id == sectionId,
+            orElse: () => withItems.first,
+          );
+          final items = query.isEmpty
+              ? current.items
+              : [
+                  for (final s in withItems)
+                    for (final i in s.items)
+                      if (i.name.toLowerCase().contains(query)) i,
+                ];
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+                child: TextField(
+                  controller: search,
+                  onChanged: onQuery,
+                  decoration: InputDecoration(
+                    hintText: 'Szukaj w menu',
+                    isDense: true,
+                    prefixIcon: Padding(
+                      padding: const EdgeInsets.only(left: 12, right: 8),
+                      child: Glyph(AppIcons.search, size: 18, color: AppColors.textMuted),
+                    ),
+                    prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+                    suffixIcon: query.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Wyczyść',
+                            icon: const Glyph(AppIcons.close, size: 16),
+                            onPressed: () {
+                              search.clear();
+                              onQuery('');
+                            },
+                          ),
+                  ),
+                ),
+              ),
+              if (query.isEmpty)
+                SizedBox(
+                  height: 54,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                    children: [
+                      SegmentedTabs<String>(
+                        options: [for (final s in withItems) (s.id, s.name)],
+                        selected: current.id,
+                        onChanged: onSection,
+                      ),
+                    ],
+                  ),
+                ),
+              Divider(height: 1, color: AppColors.ring),
+              Expanded(
+                child: items.isEmpty
+                    ? const MessageView(
+                        icon: AppIcons.search,
+                        title: 'Nic nie pasuje',
+                        message: 'Spróbuj innej nazwy dania.',
+                      )
+                    : GridView.builder(
+                        padding: const EdgeInsets.all(14),
+                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 210,
+                          mainAxisExtent: 104,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                        ),
+                        itemCount: items.length,
+                        itemBuilder: (context, i) => _ItemTile(
+                          item: items[i],
+                          enabled: enabled,
+                          onTap: () => onTap(items[i]),
+                          onMenu: (at) => onMenu(items[i], at),
+                        ),
+                      ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ItemTile extends StatelessWidget {
+  const _ItemTile({
+    required this.item,
+    required this.enabled,
+    required this.onTap,
+    required this.onMenu,
+  });
+
+  final MenuItem item;
+  final bool enabled;
+  final VoidCallback onTap;
+  final ValueChanged<Offset> onMenu;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final off = !item.available;
+
+    return PanelPress(
+      child: Opacity(
+        opacity: off || !enabled ? 0.45 : 1,
+        child: Material(
+          color: AppColors.surfaceRaised,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: AppColors.ringStrong),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: GestureDetector(
+            // Prawy przycisk myszy albo przytrzymanie palcem: „skończyło się” i uwaga.
+            onSecondaryTapDown: (d) => onMenu(d.globalPosition),
+            onLongPressStart: (d) => onMenu(d.globalPosition),
+            child: InkWell(
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.labelLarge?.copyWith(height: 1.25),
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            off
+                                ? 'Niedostępne'
+                                : item.variants.isEmpty
+                                ? Fmt.price(item.priceGrosze)
+                                : 'od ${Fmt.price(item.fromPrice)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.bodyMedium?.copyWith(
+                              color: off ? AppColors.error : AppColors.textMuted,
+                              fontFeatures: _tabular,
+                            ),
+                          ),
+                        ),
+                        if (item.hasOptions && !off)
+                          Glyph(AppIcons.sliders, size: 14, color: AppColors.textMuted),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Wybór kelnera w oknie pozycji z wariantami i dodatkami.
+class _Choice {
+  const _Choice({this.variant, this.addons = const [], this.quantity = 1, this.note});
+
+  final String? variant;
+  final List<String> addons;
+  final int quantity;
+  final String? note;
+}
+
+class _AddItemDialog extends StatefulWidget {
+  const _AddItemDialog({required this.item});
+
+  final MenuItem item;
+
+  @override
+  State<_AddItemDialog> createState() => _AddItemDialogState();
+}
+
+class _AddItemDialogState extends State<_AddItemDialog> {
+  late String? _variant = widget.item.variants.length == 1 ? widget.item.variants.first.name : null;
+  final _addons = <String>{};
+  int _quantity = 1;
+  final _note = TextEditingController();
+
+  @override
+  void dispose() {
+    _note.dispose();
+    super.dispose();
+  }
+
+  int get _unitPrice {
+    final item = widget.item;
+    var price = item.priceGrosze;
+    if (item.variants.isNotEmpty) {
+      price = item.variants.firstWhere(
+        (v) => v.name == _variant,
+        orElse: () => MenuOption('', item.fromPrice),
+      ).priceGrosze;
+    }
+    for (final a in item.addons) {
+      if (_addons.contains(a.name)) price += a.priceGrosze;
+    }
+    return price;
+  }
+
+  void _submit() {
+    if (widget.item.variants.isNotEmpty && _variant == null) {
+      showMessage(context, 'Wybierz wariant.');
+      return;
+    }
+    Navigator.pop(
+      context,
+      _Choice(
+        variant: _variant,
+        // Dodatki w kolejności z menu, żeby rachunek i kuchnia widziały je tak samo.
+        addons: [
+          for (final a in widget.item.addons)
+            if (_addons.contains(a.name)) a.name,
+        ],
+        quantity: _quantity,
+        note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final item = widget.item;
+
+    return AlertDialog(
+      title: Text(item.name),
+      content: SizedBox(
+        width: 460,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (item.variants.isNotEmpty) ...[
+                Text('Wariant', style: text.titleSmall),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final v in item.variants)
+                      _OptionButton(
+                        label: v.name,
+                        price: Fmt.price(v.priceGrosze),
+                        selected: _variant == v.name,
+                        onTap: () => setState(() => _variant = v.name),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+              ],
+              if (item.addons.isNotEmpty) ...[
+                Text('Dodatki', style: text.titleSmall),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final a in item.addons)
+                      _OptionButton(
+                        label: a.name,
+                        price: '+${Fmt.price(a.priceGrosze)}',
+                        selected: _addons.contains(a.name),
+                        onTap: () => setState(
+                          () => _addons.contains(a.name) ? _addons.remove(a.name) : _addons.add(a.name),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+              ],
+              Row(
+                children: [
+                  Text('Ilość', style: text.titleSmall),
+                  const Spacer(),
+                  _Stepper(
+                    value: _quantity,
+                    onChanged: (v) => setState(() => _quantity = v.clamp(1, 99)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _note,
+                maxLength: 200,
+                decoration: const InputDecoration(
+                  labelText: 'Uwaga dla kuchni (opcjonalnie)',
+                  hintText: 'np. bez cebuli',
+                  counterText: '',
+                ),
+                onSubmitted: (_) => _submit(),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+          child: const Text('Anuluj'),
+        ),
+        // Cena pojawia się dopiero po wyborze wariantu, żeby kelner nie nabił złej kwoty.
+        FilledButton(
+          onPressed: item.variants.isNotEmpty && _variant == null ? null : _submit,
+          child: Text(
+            item.variants.isNotEmpty && _variant == null
+                ? 'Wybierz wariant'
+                : 'Dodaj · ${Fmt.price(_unitPrice * _quantity)}',
+            style: const TextStyle(fontFeatures: _tabular),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Duży przycisk wyboru pod palec: nazwa i cena.
+class _OptionButton extends StatelessWidget {
+  const _OptionButton({
+    required this.label,
+    required this.price,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final String price;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return PanelPress(
+      child: Material(
+        color: selected ? AppColors.accentTint : AppColors.surfaceRaised,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: selected ? AppColors.accent : AppColors.ringStrong),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          splashColor: Colors.transparent,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 110, minHeight: 52),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: text.labelLarge?.copyWith(color: selected ? AppColors.accent : AppColors.text),
+                  ),
+                  Text(
+                    price,
+                    style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Stepper extends StatelessWidget {
+  const _Stepper({
+    required this.value,
+    required this.onChanged,
+    this.min = 1,
+    this.compact = false,
+  });
+
+  final int value;
+  final int min;
+  final ValueChanged<int> onChanged;
+
+  /// Mniejsze przyciski do wierszy rachunku.
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final size = compact ? 32.0 : 44.0;
+    final constraints = BoxConstraints.tightFor(width: size, height: size);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: 'Mniej',
+          constraints: constraints,
+          padding: EdgeInsets.zero,
+          onPressed: value > min ? () => onChanged(value - 1) : null,
+          icon: Glyph(AppIcons.minus, size: compact ? 14 : 16),
+        ),
+        SizedBox(
+          width: compact ? 24 : 32,
+          child: Text(
+            '$value',
+            textAlign: TextAlign.center,
+            style: (compact ? text.labelLarge : text.titleMedium)?.copyWith(fontFeatures: _tabular),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Więcej',
+          constraints: constraints,
+          padding: EdgeInsets.zero,
+          onPressed: value < 99 ? () => onChanged(value + 1) : null,
+          icon: Glyph(AppIcons.plus, size: compact ? 14 : 16),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------
+// Rachunek stolika
+// ---------------------------------------------------------------
+
+class _OrderPanel extends StatelessWidget {
+  const _OrderPanel({
+    required this.table,
+    required this.order,
+    required this.reservation,
+    required this.onQuantity,
+    required this.onNote,
+    required this.onStatus,
+    required this.onSend,
+    required this.onClose,
+    required this.onCancel,
+    required this.onMove,
+  });
+
+  final DiningTable table;
+  final PanelOrder? order;
+  final PanelReservation? reservation;
+  final void Function(OrderItem item, int quantity) onQuantity;
+  final ValueChanged<OrderItem> onNote;
+  final void Function(OrderItem item, OrderItemStatus status) onStatus;
+  final VoidCallback? onSend;
+  final VoidCallback? onClose;
+  final VoidCallback? onCancel;
+  final VoidCallback? onMove;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final order = this.order;
+    final items = order?.items ?? const <OrderItem>[];
+    final groups = [
+      for (final status in [OrderItemStatus.fresh, OrderItemStatus.sent, OrderItemStatus.served])
+        (status, items.where((i) => i.status == status).toList()),
+    ].where((g) => g.$2.isNotEmpty).toList();
+    final unsent = order?.unsent ?? 0;
+    final total = order?.totalGrosze ?? 0;
+
+    return Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 8, 14),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${table.isSeat ? 'Miejsce' : 'Stolik'} ${table.label}',
+                        style: text.titleLarge,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        order == null
+                            ? 'Brak otwartego rachunku'
+                            : [
+                                'Rachunek od ${Fmt.time(order.openedAt)}',
+                                if (reservation != null) reservation!.guestName,
+                              ].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+                if (order != null)
+                  PopupMenuButton<String>(
+                    tooltip: 'Więcej',
+                    icon: Glyph(AppIcons.dotsVertical, size: 18, color: AppColors.textMuted),
+                    onSelected: (v) => v == 'move' ? onMove?.call() : onCancel?.call(),
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(value: 'move', child: Text('Przenieś na inny stolik')),
+                      PopupMenuItem(
+                        value: 'cancel',
+                        child: Text('Anuluj rachunek', style: TextStyle(color: AppColors.error)),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: AppColors.ring),
+          Expanded(
+            child: groups.isEmpty
+                ? const MessageView(
+                    icon: AppIcons.forkKnife,
+                    title: 'Rachunek jest pusty',
+                    message: 'Stuknij danie w menu. Rachunek otworzy się sam przy pierwszej pozycji.',
+                  )
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                    children: [
+                      for (final (status, list) in groups) ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
+                          child: Row(
+                            children: [
+                              Glyph(
+                                switch (status) {
+                                  OrderItemStatus.fresh => AppIcons.notePencil,
+                                  OrderItemStatus.sent => AppIcons.cookingPot,
+                                  _ => AppIcons.checkCircle,
+                                },
+                                size: 14,
+                                color: status == OrderItemStatus.fresh
+                                    ? const Color(0xFFD99A15)
+                                    : AppColors.textDisabled,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                status.label.toUpperCase(),
+                                style: text.labelSmall?.copyWith(
+                                  color: AppColors.textDisabled,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        for (final item in list)
+                          _OrderLine(
+                            item: item,
+                            onQuantity: (q) => onQuantity(item, q),
+                            onNote: () => onNote(item),
+                            onStatus: (s) => onStatus(item, s),
+                          ),
+                      ],
+                    ],
+                  ),
+          ),
+          Divider(height: 1, color: AppColors.ring),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Text('Razem', style: text.titleMedium),
+                    const Spacer(),
+                    Text(
+                      Fmt.price(total),
+                      style: text.headlineSmall?.copyWith(fontFeatures: _tabular),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 48,
+                  child: FilledButton.icon(
+                    onPressed: unsent > 0 ? onSend : null,
+                    icon: const Glyph(AppIcons.send, size: 18),
+                    label: Text(unsent > 0 ? 'Wyślij na kuchnię ($unsent)' : 'Wyślij na kuchnię'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: total > 0 ? onClose : null,
+                    icon: const Glyph(AppIcons.receipt, size: 18),
+                    label: const Text('Zamknij rachunek'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OrderLine extends StatelessWidget {
+  const _OrderLine({
+    required this.item,
+    required this.onQuantity,
+    required this.onNote,
+    required this.onStatus,
+  });
+
+  final OrderItem item;
+  final ValueChanged<int> onQuantity;
+  final VoidCallback onNote;
+  final ValueChanged<OrderItemStatus> onStatus;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final fresh = item.status == OrderItemStatus.fresh;
+    final details = item.details;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
+      decoration: BoxDecoration(
+        color: fresh ? AppColors.surfaceRaised : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      if (!fresh || item.quantity > 1)
+                        TextSpan(
+                          text: '${item.quantity}× ',
+                          style: TextStyle(color: AppColors.textMuted, fontFeatures: _tabular),
+                        ),
+                      TextSpan(text: item.name),
+                    ],
+                  ),
+                  style: text.labelLarge,
+                ),
+                if (details != null)
+                  Text(details, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+                if (item.note != null)
+                  Text(
+                    item.note!,
+                    style: text.bodySmall?.copyWith(
+                      color: const Color(0xFFD99A15),
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Cena nad przyciskami ilości, żeby nazwa dania miała całą szerokość wiersza.
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Text(
+                  Fmt.price(item.totalGrosze),
+                  style: text.labelLarge?.copyWith(fontFeatures: _tabular),
+                ),
+              ),
+              if (fresh) _Stepper(value: item.quantity, min: 0, compact: true, onChanged: onQuantity),
+            ],
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Więcej',
+            // Bez tła: przy każdej pozycji rachunku kostka byłaby zbyt ciężka.
+            style: IconButton.styleFrom(backgroundColor: Colors.transparent, side: BorderSide.none),
+            icon: Glyph(AppIcons.dotsVertical, size: 16, color: AppColors.textMuted),
+            onSelected: (v) => switch (v) {
+              'note' => onNote(),
+              'served' => onStatus(OrderItemStatus.served),
+              _ => onStatus(OrderItemStatus.cancelled),
+            },
+            itemBuilder: (_) => [
+              if (fresh) const PopupMenuItem(value: 'note', child: Text('Uwaga dla kuchni')),
+              if (item.status == OrderItemStatus.sent)
+                const PopupMenuItem(value: 'served', child: Text('Wydane')),
+              PopupMenuItem(
+                value: 'cancel',
+                child: Text(
+                  fresh ? 'Usuń z rachunku' : 'Anuluj pozycję',
+                  style: TextStyle(color: AppColors.error),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoteDialog extends StatefulWidget {
+  const _NoteDialog({required this.initial});
+
+  final String initial;
+
+  @override
+  State<_NoteDialog> createState() => _NoteDialogState();
+}
+
+class _NoteDialogState extends State<_NoteDialog> {
+  late final _controller = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Uwaga dla kuchni'),
+      content: SizedBox(
+        width: 380,
+        child: TextField(
+          controller: _controller,
+          autofocus: true,
+          maxLength: 200,
+          decoration: const InputDecoration(hintText: 'np. bez cebuli', counterText: ''),
+          onSubmitted: (v) => Navigator.pop(context, v.trim()),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+          child: const Text('Anuluj'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _controller.text.trim()),
+          child: const Text('Zapisz'),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------
+// Zamknięcie rachunku i przeniesienie
+// ---------------------------------------------------------------
+
+class _CloseOrderDialog extends StatefulWidget {
+  const _CloseOrderDialog({required this.table, required this.order});
+
+  final DiningTable table;
+  final PanelOrder order;
+
+  @override
+  State<_CloseOrderDialog> createState() => _CloseOrderDialogState();
+}
+
+class _CloseOrderDialogState extends State<_CloseOrderDialog> {
+  PaymentMethod? _method;
+  final _received = TextEditingController();
+
+  @override
+  void dispose() {
+    _received.dispose();
+    super.dispose();
+  }
+
+  /// VAT zawarty w kwocie brutto przy danej stawce.
+  static int _vatOf(int gross, int rate) => (gross * rate / (100 + rate)).round();
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final order = widget.order;
+    final total = order.totalGrosze;
+    final received = parseGrosze(_received.text);
+    final change = received == null ? null : received - total;
+    final vat = order.byVat.entries.toList()..sort((a, b) => b.key.compareTo(a.key));
+
+    return AlertDialog(
+      title: Text('Rachunek · stolik ${widget.table.label}'),
+      content: SizedBox(
+        width: 480,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final i in order.active)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 34,
+                        child: Text(
+                          '${i.quantity}×',
+                          style: text.bodyMedium?.copyWith(
+                            color: AppColors.textMuted,
+                            fontFeatures: _tabular,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          [i.name, ?i.details].join(' · '),
+                          style: text.bodyMedium,
+                        ),
+                      ),
+                      Text(
+                        Fmt.price(i.totalGrosze),
+                        style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 8),
+              Divider(height: 1, color: AppColors.ring),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Text('Do zapłaty', style: text.titleMedium),
+                  const Spacer(),
+                  Text(Fmt.price(total), style: text.headlineSmall?.copyWith(fontFeatures: _tabular)),
+                ],
+              ),
+              for (final e in vat)
+                Row(
+                  children: [
+                    Text(
+                      'w tym VAT ${e.key}%',
+                      style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                    ),
+                    const Spacer(),
+                    Text(
+                      Fmt.price(_vatOf(e.value, e.key)),
+                      style: text.bodySmall?.copyWith(
+                        color: AppColors.textMuted,
+                        fontFeatures: _tabular,
+                      ),
+                    ),
+                  ],
+                ),
+              const SizedBox(height: 18),
+              Text('Forma płatności', style: text.titleSmall),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final m in PaymentMethod.values)
+                    _OptionButton(
+                      label: m.label,
+                      price: switch (m) {
+                        PaymentMethod.cash => 'wydaj resztę',
+                        PaymentMethod.card => 'terminal',
+                        PaymentMethod.giftCard => 'z aplikacji Table',
+                        PaymentMethod.other => 'np. przelew',
+                      },
+                      selected: _method == m,
+                      onTap: () => setState(() => _method = m),
+                    ),
+                ],
+              ),
+              if (_method == PaymentMethod.cash) ...[
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 160,
+                      child: TextField(
+                        controller: _received,
+                        autofocus: true,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+                        decoration: const InputDecoration(labelText: 'Otrzymano', suffixText: 'zł'),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    if (change != null)
+                      Text(
+                        change >= 0 ? 'Reszta ${Fmt.price(change)}' : 'Brakuje ${Fmt.price(-change)}',
+                        style: text.titleMedium?.copyWith(
+                          color: change >= 0 ? AppColors.accent : AppColors.error,
+                          fontFeatures: _tabular,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 16),
+              Text(
+                'Paragon fiskalny wydrukuj na kasie. Połączenie z drukarką fiskalną dodamy w kolejnej wersji.',
+                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+          child: const Text('Wróć'),
+        ),
+        FilledButton(
+          onPressed: _method == null ? null : () => Navigator.pop(context, _method),
+          child: const Text('Zamknij rachunek'),
+        ),
+      ],
+    );
+  }
+}
+
+class _MoveDialog extends StatelessWidget {
+  const _MoveDialog({required this.from, required this.tables});
+
+  final DiningTable from;
+
+  /// Stoliki bez otwartego rachunku.
+  final List<DiningTable> tables;
+
+  @override
+  Widget build(BuildContext context) {
+    final sorted = [...tables]..sort((a, b) => compareLabels(a.label, b.label));
+    return AlertDialog(
+      title: Text('Przenieś rachunek ze stolika ${from.label}'),
+      content: SizedBox(
+        width: 420,
+        child: sorted.isEmpty
+            ? const Text('Wszystkie stoliki mają otwarte rachunki.')
+            : Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final t in sorted)
+                    _OptionButton(
+                      label: t.label,
+                      price: '${Fmt.capitalize(t.zone)} · ${t.seats} os.',
+                      selected: false,
+                      onTap: () => Navigator.pop(context, t),
+                    ),
+                ],
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+          child: const Text('Anuluj'),
+        ),
+      ],
+    );
+  }
+}

@@ -366,3 +366,108 @@ final exceptionsProvider = FutureProvider.autoDispose
     .family<List<OpeningException>, String>(
       (ref, id) => (ref..cacheFor()).watch(repositoryProvider).exceptions(id),
     );
+
+final staffAccountsProvider = FutureProvider.autoDispose
+    .family<Map<String, String>, String>(
+      (ref, id) => (ref..cacheFor()).watch(repositoryProvider).staffAccounts(id),
+    );
+
+// ---------------------------------------------------------------
+// Uprawnienia i zamówienia
+// ---------------------------------------------------------------
+
+/// Uprawnienia zalogowanego konta w lokalu. Kierownik i właściciel mają wszystkie,
+/// obsługa te ze stanowiska, do którego przypisał ją właściciel.
+final myPermissionsProvider = FutureProvider.autoDispose.family<Set<String>, String>(
+  (ref, id) {
+    ref.cacheFor(const Duration(minutes: 30));
+    if (ref.watch(userIdProvider) == null) return Future.value(const {});
+    return ref.watch(repositoryProvider).myPermissions(id);
+  },
+);
+
+/// Czy zalogowane konto może nabijać zamówienia w lokalu.
+final canTakeOrdersProvider = Provider.autoDispose.family<bool, String>(
+  (ref, id) => ref.watch(myPermissionsProvider(id)).value?.contains('orders') ?? false,
+);
+
+/// Rachunki lokalu na żywo: numer zmiany i stan połączenia. Każda zmiana pozycji
+/// na dowolnym urządzeniu (komputer, tablet) od razu odświeża ekran zamówień.
+class OrdersLive extends Notifier<LiveState> {
+  OrdersLive(this.restaurantId);
+
+  final String restaurantId;
+
+  static const _retryDelays = [2, 5, 10, 20, 30];
+  static final _attempts = <String, int>{};
+  static final _versions = <String, int>{};
+
+  @override
+  LiveState build() {
+    var alive = true;
+    Timer? retry;
+
+    void reconnectLater() {
+      if (retry != null) return;
+      final attempt = _attempts[restaurantId] ?? 0;
+      _attempts[restaurantId] = attempt + 1;
+      retry = Timer(
+        Duration(seconds: _retryDelays[attempt.clamp(0, _retryDelays.length - 1)]),
+        () {
+          if (alive) ref.invalidateSelf();
+        },
+      );
+    }
+
+    final version = (_versions[restaurantId] ?? 0) + 1;
+    _versions[restaurantId] = version;
+
+    final stop = ref.watch(repositoryProvider).watchOrders(
+      restaurantId,
+      onChange: () {
+        if (!alive) return;
+        _versions[restaurantId] = state.version + 1;
+        state = (version: state.version + 1, status: state.status);
+      },
+      onStatus: (status) {
+        if (!alive) return;
+        final reconnected = state.status == LiveStatus.offline && status == LiveStatus.live;
+        final next = reconnected ? state.version + 1 : state.version;
+        _versions[restaurantId] = next;
+        state = (version: next, status: status);
+        if (status == LiveStatus.live) {
+          _attempts[restaurantId] = 0;
+        } else if (status == LiveStatus.offline) {
+          reconnectLater();
+        }
+      },
+    );
+
+    final watchdog = Timer(const Duration(seconds: 20), () {
+      if (alive && state.status == LiveStatus.connecting) {
+        state = (version: state.version, status: LiveStatus.offline);
+        reconnectLater();
+      }
+    });
+
+    ref.onDispose(() {
+      alive = false;
+      retry?.cancel();
+      watchdog.cancel();
+      stop();
+    });
+    return (version: version, status: LiveStatus.connecting);
+  }
+}
+
+final ordersLiveProvider = NotifierProvider.autoDispose
+    .family<OrdersLive, LiveState, String>(OrdersLive.new);
+
+/// Otwarte rachunki lokalu. Odświeżają się same przy każdej zmianie.
+final openOrdersProvider = FutureProvider.autoDispose.family<List<PanelOrder>, String>(
+  (ref, id) {
+    ref.cacheFor();
+    ref.watch(ordersLiveProvider(id).select((s) => s.version));
+    return ref.watch(repositoryProvider).openOrders(id);
+  },
+);
