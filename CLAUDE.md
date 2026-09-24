@@ -61,7 +61,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0023, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0024, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
   Gdy użytkownik napisze „kod”, podaj najnowszy `otp` z tej tabeli (jego numer kończy się na 098).
@@ -74,7 +74,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`Glyph` zamiast `Icon`, stałe `AppIcons`, SVG w `assets/icons`, nowe: `npx better-icons get ph:<nazwa>`).
 - `apps/guest/lib`: `app` (router, dolne menu, preferencje), `core` (mapy, lokalizacja), `data`, `features`.
 - `apps/panel/lib`: `app` (router, boczne menu, motyw na komputer), `data` (modele, `PanelRepository`, providery),
-  `features` (auth, reservations, orders, floor, menu, profile, reviews, staff, stats), `shared/panel_widgets.dart`.
+  `features` (auth, reservations, orders, kitchen, floor, menu, profile, reviews, staff, stats), `shared/panel_widgets.dart`.
 
 ## Panel restauracji
 
@@ -97,6 +97,10 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`panel_add_order_item`), zapis tylko przez funkcje `panel_*`. Stany pozycji: new → sent (kuchnia) → served.
   Pozycję wysłaną na kuchnię anuluje tylko kierownik. Zamknięcie rachunku kończy rezerwację gości przy stoliku.
   Paragon fiskalny jeszcze na kasie, integrację z drukarką fiskalną robimy później.
+- Ekran kuchni (`/kuchnia`, uprawnienie `kitchen`, np. Kucharz): bileciki z pozycjami wysłanymi na kuchnię,
+  pogrupowane po rachunku i chwili wysłania, najstarsze pierwsze. Po 10 min nagłówek żółty, po 20 czerwony.
+  Stuknięcie pozycji albo „Gotowe” wywołuje `panel_kitchen_set` (sent ↔ served), jest „Cofnij”.
+  Tryb pełnoekranowy chowa boczne menu (Esc wychodzi). Nowy bilecik dzwoni.
 - Menu: warianty (np. rozmiary, każdy z ceną), płatne dodatki, stawka VAT i „dostępne teraz”. Przy wariantach
   `price_grosze` to najniższa cena wariantu. „Skończyło się” może ustawić też kelner i kuchnia (`panel_set_menu_item_available`).
 

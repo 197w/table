@@ -1002,7 +1002,7 @@ enum StaffPermission {
   floorEdit('floor_edit', 'Edycja sali', 'Zmiana układu stolików i stref'),
   menu('menu', 'Menu', 'Zmiana dań i cen'),
   orders('orders', 'Zamówienia', 'Nabijanie zamówień przy stoliku i rachunki'),
-  kitchen('kitchen', 'Kuchnia', 'Ekran zamówień na kuchni', soon: true),
+  kitchen('kitchen', 'Kuchnia', 'Ekran zamówień na kuchni'),
   deliveries('deliveries', 'Dostawy', 'Aplikacja dla kurierów', soon: true),
   giftCards('gift_cards', 'Karty podarunkowe', 'Realizacja kart gości'),
   reviews('reviews', 'Opinie', 'Odpowiadanie na opinie'),
@@ -1243,5 +1243,50 @@ class PanelOrder {
       openedAt: _toDate(json['opened_at']),
       items: items,
     );
+  }
+}
+
+/// Bilecik na ekranie kuchni: pozycje jednego stolika wysłane za jednym razem.
+class KitchenTicket {
+  const KitchenTicket({
+    required this.orderId,
+    required this.sentAt,
+    required this.items,
+    this.tableId,
+  });
+
+  final String orderId;
+  final String? tableId;
+  final DateTime sentAt;
+  final List<OrderItem> items;
+
+  /// Klucz bilecika: rachunek i chwila wysłania.
+  String get key => '$orderId@${sentAt.millisecondsSinceEpoch}';
+
+  /// Wiersze pozycji z bazy (razem z `orders(table_id)`) pogrupowane w bileciki,
+  /// najstarsze pierwsze. Bileciki, w których wszystko już wydano, znikają.
+  static List<KitchenTicket> fromRows(List<Map<String, dynamic>> rows) {
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final row in rows) {
+      final sent = row['sent_at'] as String?;
+      if (sent == null) continue;
+      // Pozycje z jednego „Wyślij na kuchnię” mają ten sam czas wysłania.
+      groups.putIfAbsent('${row['order_id']}@$sent', () => []).add(row);
+    }
+    final tickets = [
+      for (final list in groups.values)
+        KitchenTicket(
+          orderId: list.first['order_id'] as String,
+          tableId: (list.first['orders'] as Map<String, dynamic>?)?['table_id'] as String?,
+          sentAt: _toDate(list.first['sent_at']),
+          items: list.map(OrderItem.fromJson).toList()
+            ..sort((a, b) {
+              final byCourse = a.course.compareTo(b.course);
+              return byCourse != 0 ? byCourse : a.createdAt.compareTo(b.createdAt);
+            }),
+        ),
+    ].where((t) => t.items.any((i) => i.status == OrderItemStatus.sent)).toList()
+      ..sort((a, b) => a.sentAt.compareTo(b.sentAt));
+    return tickets;
   }
 }

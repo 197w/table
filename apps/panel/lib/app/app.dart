@@ -9,6 +9,7 @@ import 'package:table_core/table_core.dart';
 import '../features/auth/login_screen.dart';
 import '../features/floor/floor_screen.dart';
 import '../features/gift_cards/gift_cards_screen.dart';
+import '../features/kitchen/kitchen_screen.dart';
 import '../features/menu/menu_screen.dart';
 import '../features/orders/orders_screen.dart';
 import '../features/profile/profile_screen.dart';
@@ -134,6 +135,7 @@ GoRouter _buildRouter(Listenable refresh) {
               child: OrdersScreen(tableId: state.uri.queryParameters['stolik']),
             ),
           ),
+          _page(PanelRoutes.kitchen, const KitchenScreen()),
           _page(PanelRoutes.staff, const StaffScreen()),
           _page(PanelRoutes.giftCards, const GiftCardsScreen()),
           _page(PanelRoutes.menu, const MenuScreen()),
@@ -157,6 +159,7 @@ abstract final class PanelRoutes {
   static const reservations = '/rezerwacje';
   static const floor = '/sala';
   static const orders = '/zamowienia';
+  static const kitchen = '/kuchnia';
   static const staff = '/pracownicy';
   static const giftCards = '/karty';
   static const menu = '/menu';

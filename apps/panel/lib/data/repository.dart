@@ -542,6 +542,31 @@ class PanelRepository {
     return () => unawaited(_db.removeChannel(channel));
   }
 
+  /// Bileciki na ekran kuchni: pozycje wysłane w ostatnich godzinach z otwartych rachunków.
+  Future<List<KitchenTicket>> kitchenTickets(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db
+          .from('order_items')
+          .select('*, orders!inner(table_id, status)')
+          .eq('restaurant_id', restaurantId)
+          .inFilter('status', ['sent', 'served'])
+          .eq('orders.status', 'open')
+          .gte('sent_at', DateTime.now().subtract(const Duration(hours: 12)).toUtc().toIso8601String())
+          .order('sent_at');
+      return KitchenTicket.fromRows(rows);
+    });
+  }
+
+  /// Kuchnia oznacza pozycje jako gotowe albo cofa to.
+  Future<int> kitchenSet(List<String> itemIds, {required bool done}) {
+    return _guard(
+      () => _db.rpc<int>(
+        'panel_kitchen_set',
+        params: {'p_item_ids': itemIds, 'p_done': done},
+      ),
+    );
+  }
+
   /// Otwiera rachunek przy stoliku albo zwraca już otwarty.
   Future<String> openOrder(String restaurantId, String tableId) {
     return _guard(

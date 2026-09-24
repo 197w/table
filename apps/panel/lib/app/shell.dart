@@ -27,6 +27,11 @@ class PanelShell extends ConsumerWidget {
       ref.watch(reservationsLiveProvider(current.id).select((s) => s.status));
     }
 
+    // Ekran kuchni na cały ekran: bez bocznego menu, same bileciki.
+    if (ref.watch(kitchenFullscreenProvider) && location.startsWith(PanelRoutes.kitchen)) {
+      return Scaffold(body: child);
+    }
+
     return Scaffold(
       body: Row(
         children: [
@@ -76,6 +81,7 @@ const _groups = <(String, List<_NavItem>)>[
   ('Sala', [
     _NavItem(PanelRoutes.reservations, 'Rezerwacje', AppIcons.calendarDots),
     _NavItem(PanelRoutes.orders, 'Zamówienia', AppIcons.receipt),
+    _NavItem(PanelRoutes.kitchen, 'Kuchnia', AppIcons.cookingPot),
     _NavItem(PanelRoutes.floor, 'Edycja sali', AppIcons.squaresFour),
   ]),
   ('Zespół', [
@@ -159,6 +165,7 @@ class _Sidebar extends ConsumerWidget {
     final email = ref.watch(repositoryProvider).email;
     // Zamówienia widzi tylko konto z uprawnieniem, np. Kelner albo kierownik.
     final canOrder = current != null && ref.watch(canTakeOrdersProvider(current.id));
+    final canKitchen = current != null && ref.watch(canUseKitchenProvider(current.id));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -221,7 +228,8 @@ class _Sidebar extends ConsumerWidget {
                   ),
                 ),
                 for (final item in items)
-                  if (item.route != PanelRoutes.orders || canOrder)
+                  if ((item.route != PanelRoutes.orders || canOrder) &&
+                      (item.route != PanelRoutes.kitchen || canKitchen))
                   _IconRow(
                     icon: item.icon,
                     label: item.label,

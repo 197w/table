@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../app/reservation_alerts.dart';
 import 'models.dart';
@@ -470,4 +471,70 @@ final openOrdersProvider = FutureProvider.autoDispose.family<List<PanelOrder>, S
     ref.watch(ordersLiveProvider(id).select((s) => s.version));
     return ref.watch(repositoryProvider).openOrders(id);
   },
+);
+
+/// Czy zalogowane konto widzi ekran kuchni.
+final canUseKitchenProvider = Provider.autoDispose.family<bool, String>(
+  (ref, id) => ref.watch(myPermissionsProvider(id)).value?.contains('kitchen') ?? false,
+);
+
+/// Bileciki na ekranie kuchni. Odświeżają się na żywo razem z rachunkami.
+final kitchenTicketsProvider = FutureProvider.autoDispose.family<List<KitchenTicket>, String>(
+  (ref, id) {
+    ref.cacheFor();
+    ref.watch(ordersLiveProvider(id).select((s) => s.version));
+    return ref.watch(repositoryProvider).kitchenTickets(id);
+  },
+);
+
+/// Ekran kuchni na cały ekran, bez bocznego menu. Wyjście przyciskiem albo klawiszem Esc.
+class KitchenFullscreenNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  Future<void> set(bool value) async {
+    state = value;
+    try {
+      await windowManager.setFullScreen(value);
+    } catch (_) {
+      // Bez trybu pełnoekranowego zostaje samo ukrycie menu.
+    }
+  }
+}
+
+final kitchenFullscreenProvider = NotifierProvider<KitchenFullscreenNotifier, bool>(
+  KitchenFullscreenNotifier.new,
+);
+
+/// Wyciszony dźwięk nowego zamówienia na kuchni. Pamiętany na komputerze.
+class KitchenMutedNotifier extends Notifier<bool> {
+  static const _key = 'panel_kuchnia_wyciszona';
+
+  @override
+  bool build() {
+    _load();
+    return false;
+  }
+
+  Future<void> _load() async {
+    try {
+      final saved = await SharedPreferencesAsync().getBool(_key);
+      if (saved != null) state = saved;
+    } catch (_) {
+      // Bez zapisu dźwięk jest włączony.
+    }
+  }
+
+  Future<void> toggle() async {
+    state = !state;
+    try {
+      await SharedPreferencesAsync().setBool(_key, state);
+    } catch (_) {
+      // Wybór działa do zamknięcia panelu.
+    }
+  }
+}
+
+final kitchenMutedProvider = NotifierProvider<KitchenMutedNotifier, bool>(
+  KitchenMutedNotifier.new,
 );
