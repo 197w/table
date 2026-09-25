@@ -434,7 +434,8 @@ class _KitchenBar extends ConsumerWidget {
         children: [
           Text('Kuchnia', style: text.headlineMedium?.copyWith(fontSize: 34)),
           const SizedBox(width: 20),
-          Flexible(
+          // Napis zajmuje całe wolne miejsce, więc przyciski i zegar stoją przy prawej krawędzi.
+          Expanded(
             child: Text(
               tickets == 0 ? 'Nic nie czeka' : '${_orders(tickets)} · ${_dishes(items)}',
               maxLines: 1,
@@ -446,7 +447,7 @@ class _KitchenBar extends ConsumerWidget {
               ),
             ),
           ),
-          const Spacer(),
+          const SizedBox(width: 16),
           if (undoLabel != null) ...[
             SizedBox(
               height: 52,
@@ -545,9 +546,9 @@ class _StatsBar extends StatelessWidget {
           average('dziś', stats.todaySeconds, stats.todayCount),
           const SizedBox(width: 28),
           average('ostatnia godzina', stats.hourSeconds, stats.hourCount),
-          const Spacer(),
-          // Ściąga skrótów dla kuchni obsługiwanej klawiaturą.
-          Flexible(
+          const SizedBox(width: 24),
+          // Ściąga skrótów dla kuchni obsługiwanej klawiaturą, dosunięta do prawej.
+          Expanded(
             child: Text(
               '1–9 bilecik · ↑↓ pozycja · Spacja zbij · Enter gotowe · Backspace cofnij · F ekran',
               maxLines: 1,
