@@ -82,6 +82,7 @@ const _groups = <(String, List<_NavItem>)>[
     _NavItem(PanelRoutes.reservations, 'Rezerwacje', AppIcons.calendarDots),
     _NavItem(PanelRoutes.orders, 'Zamówienia', AppIcons.receipt),
     _NavItem(PanelRoutes.kitchen, 'Kuchnia', AppIcons.cookingPot),
+    _NavItem(PanelRoutes.orderHistory, 'Historia zamówień', AppIcons.clock),
     _NavItem(PanelRoutes.floor, 'Edycja sali', AppIcons.squaresFour),
   ]),
   ('Zespół', [
@@ -228,7 +229,8 @@ class _Sidebar extends ConsumerWidget {
                   ),
                 ),
                 for (final item in items)
-                  if ((item.route != PanelRoutes.orders || canOrder) &&
+                  if (((item.route != PanelRoutes.orders && item.route != PanelRoutes.orderHistory) ||
+                          canOrder) &&
                       (item.route != PanelRoutes.kitchen || canKitchen))
                   _IconRow(
                     icon: item.icon,

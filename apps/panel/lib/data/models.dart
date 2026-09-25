@@ -629,6 +629,7 @@ class MenuItem {
     this.addons = const [],
     this.vatRate = 8,
     this.available = true,
+    this.showInKitchen = true,
   });
 
   final String id;
@@ -648,6 +649,9 @@ class MenuItem {
 
   /// Chwilowo niedostępne, np. skończyło się na dziś.
   final bool available;
+
+  /// Czy pozycja idzie na ekran kuchni. Napoje nalewane przez kelnera zwykle nie.
+  final bool showInKitchen;
 
   /// Pozycja wymaga wyboru przed nabiciem na rachunek.
   bool get hasOptions => variants.isNotEmpty || addons.isNotEmpty;
@@ -670,6 +674,7 @@ class MenuItem {
       addons: MenuOption.listFrom(json['addons']),
       vatRate: _toInt(json['vat_rate'], 8),
       available: json['available'] != false,
+      showInKitchen: json['show_in_kitchen'] != false,
     );
   }
 }
@@ -1098,6 +1103,7 @@ class OpeningException {
 enum OrderItemStatus {
   fresh('new', 'Do wysłania'),
   sent('sent', 'Na kuchni'),
+  ready('ready', 'Do wydania'),
   served('served', 'Wydane'),
   cancelled('cancelled', 'Anulowane');
 
@@ -1118,6 +1124,13 @@ enum PaymentMethod {
   const PaymentMethod(this.db, this.label);
   final String db;
   final String label;
+
+  static PaymentMethod? fromDb(Object? value) {
+    for (final m in values) {
+      if (m.db == value) return m;
+    }
+    return null;
+  }
 }
 
 /// Pozycja na rachunku. Nazwa, wariant i cena są zapisane w chwili nabicia,
@@ -1138,6 +1151,8 @@ class OrderItem {
     this.addons = const [],
     this.note,
     this.sentAt,
+    this.readyAt,
+    this.recalledAt,
   });
 
   final String id;
@@ -1158,6 +1173,12 @@ class OrderItem {
   final OrderItemStatus status;
   final DateTime createdAt;
   final DateTime? sentAt;
+
+  /// Kiedy kuchnia zbiła pozycję. Null dla pozycji, których kuchnia nie robi.
+  final DateTime? readyAt;
+
+  /// Kuchnia cofnęła zbitą pozycję i robi ją jeszcze raz.
+  final DateTime? recalledAt;
 
   int get totalGrosze => unitPriceGrosze * quantity;
 
@@ -1186,11 +1207,13 @@ class OrderItem {
       status: OrderItemStatus.fromDb(json['status']),
       createdAt: _toDate(json['created_at']),
       sentAt: _toDateOrNull(json['sent_at']),
+      readyAt: _toDateOrNull(json['ready_at']),
+      recalledAt: _toDateOrNull(json['recalled_at']),
     );
   }
 }
 
-/// Otwarty rachunek przy stoliku.
+/// Rachunek przy stoliku: otwarty albo zamknięty (historia).
 class PanelOrder {
   const PanelOrder({
     required this.id,
@@ -1199,6 +1222,10 @@ class PanelOrder {
     this.tableId,
     this.reservationId,
     this.note,
+    this.status = 'open',
+    this.closedAt,
+    this.paymentMethod,
+    this.giftCardGrosze,
   });
 
   final String id;
@@ -1207,6 +1234,22 @@ class PanelOrder {
   final String? note;
   final DateTime openedAt;
   final List<OrderItem> items;
+
+  /// open, paid albo cancelled.
+  final String status;
+  final DateTime? closedAt;
+
+  /// Jak gość zapłacił (resztę po karcie podarunkowej, jeśli z niej płacił).
+  final PaymentMethod? paymentMethod;
+
+  /// Kwota pobrana z karty podarunkowej.
+  final int? giftCardGrosze;
+
+  bool get isPaid => status == 'paid';
+  bool get isCancelled => status == 'cancelled';
+
+  /// Pozycje zbite przez kuchnię, które kelner ma zanieść.
+  int get ready => items.where((i) => i.status == OrderItemStatus.ready).length;
 
   /// Pozycje, które liczą się do rachunku.
   List<OrderItem> get active =>
@@ -1242,6 +1285,10 @@ class PanelOrder {
       note: json['note'] as String?,
       openedAt: _toDate(json['opened_at']),
       items: items,
+      status: json['status'] as String? ?? 'open',
+      closedAt: _toDateOrNull(json['closed_at']),
+      paymentMethod: PaymentMethod.fromDb(json['payment_method']),
+      giftCardGrosze: json['gift_card_grosze'] == null ? null : _toInt(json['gift_card_grosze']),
     );
   }
 }
@@ -1263,13 +1310,16 @@ class KitchenTicket {
   /// Klucz bilecika: rachunek i chwila wysłania.
   String get key => '$orderId@${sentAt.millisecondsSinceEpoch}';
 
-  /// Wiersze pozycji z bazy (razem z `orders(table_id)`) pogrupowane w bileciki,
-  /// najstarsze pierwsze. Bileciki, w których wszystko już wydano, znikają.
+  /// Wiersze pozycji z bazy (razem z `orders(table_id)` i `menu_items(show_in_kitchen)`)
+  /// pogrupowane w bileciki, najstarsze pierwsze. Bileciki, w których kuchnia zbiła już
+  /// wszystko, znikają. Pozycje ukryte przed kuchnią (np. napoje) się nie pokazują.
   static List<KitchenTicket> fromRows(List<Map<String, dynamic>> rows) {
     final groups = <String, List<Map<String, dynamic>>>{};
     for (final row in rows) {
       final sent = row['sent_at'] as String?;
       if (sent == null) continue;
+      final menu = row['menu_items'] as Map<String, dynamic>?;
+      if (menu?['show_in_kitchen'] == false) continue;
       // Pozycje z jednego „Wyślij na kuchnię” mają ten sam czas wysłania.
       groups.putIfAbsent('${row['order_id']}@$sent', () => []).add(row);
     }
@@ -1288,5 +1338,44 @@ class KitchenTicket {
     ].where((t) => t.items.any((i) => i.status == OrderItemStatus.sent)).toList()
       ..sort((a, b) => a.sentAt.compareTo(b.sentAt));
     return tickets;
+  }
+}
+
+/// Ustawienia ekranu kuchni: po ilu minutach bilecik żółknie i czerwienieje.
+class KitchenConfig {
+  const KitchenConfig({this.warnMinutes = 4, this.lateMinutes = 6});
+
+  final int warnMinutes;
+  final int lateMinutes;
+
+  factory KitchenConfig.fromJson(Map<String, dynamic> json) => KitchenConfig(
+    warnMinutes: _toInt(json['kitchen_warn_minutes'], 4),
+    lateMinutes: _toInt(json['kitchen_late_minutes'], 6),
+  );
+}
+
+/// Średni czas od wysłania na kuchnię do zbicia bilecika, w sekundach.
+class KitchenStats {
+  const KitchenStats({
+    this.todaySeconds,
+    this.todayCount = 0,
+    this.hourSeconds,
+    this.hourCount = 0,
+  });
+
+  final int? todaySeconds;
+  final int todayCount;
+  final int? hourSeconds;
+  final int hourCount;
+
+  factory KitchenStats.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const KitchenStats();
+    int? seconds(Object? v) => v == null ? null : _toInt(v);
+    return KitchenStats(
+      todaySeconds: seconds(json['today_seconds']),
+      todayCount: _toInt(json['today_count']),
+      hourSeconds: seconds(json['hour_seconds']),
+      hourCount: _toInt(json['hour_count']),
+    );
   }
 }

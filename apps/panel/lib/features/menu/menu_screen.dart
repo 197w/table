@@ -563,6 +563,7 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
   late final _addons = [for (final a in widget.item?.addons ?? const <MenuOption>[]) _OptionRow(a)];
   late int _vat = widget.item?.vatRate ?? 8;
   late bool _available = widget.item?.available ?? true;
+  late bool _showInKitchen = widget.item?.showInKitchen ?? true;
   bool _busy = false;
 
   @override
@@ -632,6 +633,7 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
         addons: addons,
         vatRate: _vat,
         available: _available,
+        showInKitchen: _showInKitchen,
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -752,6 +754,24 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
                     ),
                   ),
                   Switch(value: _available, onChanged: (v) => setState(() => _available = v)),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Pokazuj na kuchni', style: text.titleSmall),
+                        Text(
+                          'Wyłącz dla pozycji, których kuchnia nie robi, np. napojów z baru.',
+                          style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(value: _showInKitchen, onChanged: (v) => setState(() => _showInKitchen = v)),
                 ],
               ),
               const SizedBox(height: 18),

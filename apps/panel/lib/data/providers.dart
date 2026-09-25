@@ -538,3 +538,26 @@ class KitchenMutedNotifier extends Notifier<bool> {
 final kitchenMutedProvider = NotifierProvider<KitchenMutedNotifier, bool>(
   KitchenMutedNotifier.new,
 );
+
+/// Progi czasu na ekranie kuchni.
+final kitchenConfigProvider = FutureProvider.autoDispose.family<KitchenConfig, String>(
+  (ref, id) => (ref..cacheFor()).watch(repositoryProvider).kitchenConfig(id),
+);
+
+/// Średni czas przygotowania. Odświeża się, gdy kuchnia coś zbije.
+final kitchenStatsProvider = FutureProvider.autoDispose.family<KitchenStats, String>(
+  (ref, id) {
+    ref.cacheFor();
+    ref.watch(ordersLiveProvider(id).select((s) => s.version));
+    return ref.watch(repositoryProvider).kitchenStats(id);
+  },
+);
+
+/// Zamknięte rachunki jednego dnia.
+final orderHistoryProvider = FutureProvider.autoDispose.family<List<PanelOrder>, DayQuery>(
+  (ref, q) {
+    ref.cacheFor();
+    ref.watch(ordersLiveProvider(q.restaurantId).select((s) => s.version));
+    return ref.watch(repositoryProvider).orderHistory(q.restaurantId, q.day);
+  },
+);

@@ -128,20 +128,44 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   }
 
   Future<void> _close(String restaurantId, DiningTable table, PanelOrder order) async {
-    final method = await showDialog<PaymentMethod>(
+    final payment = await showDialog<_Payment>(
       context: context,
-      builder: (_) => _CloseOrderDialog(table: table, order: order),
+      builder: (_) => _CloseOrderDialog(restaurantId: restaurantId, table: table, order: order),
     );
-    if (method == null || !mounted) return;
+    if (payment == null || !mounted) return;
     var ok = false;
     await _enqueue(restaurantId, () async {
-      await ref.read(repositoryProvider).closeOrder(order.id, method);
+      await ref.read(repositoryProvider).closeOrder(
+        order.id,
+        payment.method,
+        giftCardId: payment.card?.id,
+        giftAmount: payment.giftAmount,
+      );
       ok = true;
     });
     if (!ok || !mounted) return;
     // Zamknięty rachunek kończy też wizytę z rezerwacji, więc plan sali musi się odświeżyć.
-    ref.invalidate(reservationsProvider((restaurantId: restaurantId, day: dateOnly(DateTime.now()))));
-    showMessage(context, 'Rachunek zamknięty: ${Fmt.price(order.totalGrosze)}, ${method.label.toLowerCase()}.');
+    ref
+      ..invalidate(reservationsProvider((restaurantId: restaurantId, day: dateOnly(DateTime.now()))))
+      ..invalidate(giftCardsProvider(restaurantId));
+    final gift = payment.giftAmount;
+    showMessage(
+      context,
+      gift == null
+          ? 'Rachunek zamknięty: ${Fmt.price(order.totalGrosze)}, ${payment.method.label.toLowerCase()}.'
+          : 'Rachunek zamknięty: ${Fmt.price(gift)} z karty podarunkowej'
+                '${gift < order.totalGrosze ? ', reszta: ${payment.method.label.toLowerCase()}' : ''}.',
+    );
+  }
+
+  /// Kelner zaniósł wszystko, co kuchnia zbiła.
+  Future<void> _serveAll(String restaurantId, List<OrderItem> items) {
+    return _enqueue(restaurantId, () async {
+      final repo = ref.read(repositoryProvider);
+      for (final i in items) {
+        await repo.updateOrderItem(i.id, status: OrderItemStatus.served);
+      }
+    });
   }
 
   Future<void> _cancel(String restaurantId, DiningTable table, PanelOrder order) async {
@@ -408,6 +432,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                                       () => ref.read(repositoryProvider).updateOrderItem(item.id, status: status),
                                     );
                                   },
+                                  onServeAll: (items) => _serveAll(restaurant.id, items),
                                   onSend: order == null ? null : () => _send(restaurant.id, order!),
                                   onClose: order == null ? null : () => _close(restaurant.id, table!, order!),
                                   onCancel: order == null ? null : () => _cancel(restaurant.id, table!, order!),
@@ -515,6 +540,7 @@ class _TableTile extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final open = order != null;
     final unsent = order?.unsent ?? 0;
+    final ready = order?.ready ?? 0;
 
     return PanelPress(
       scale: 0.98,
@@ -566,6 +592,28 @@ class _TableTile extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Zielony licznik: kuchnia zbiła dania, trzeba je zanieść.
+                  if (ready > 0) ...[
+                    Tooltip(
+                      message: 'Kuchnia skończyła: do wydania',
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.accentFill,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '$ready',
+                          style: text.labelSmall?.copyWith(
+                            color: AppColors.onAccent,
+                            fontWeight: FontWeight.w600,
+                            fontFeatures: _tabular,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (unsent > 0) const SizedBox(width: 4),
+                  ],
                   if (unsent > 0)
                     Tooltip(
                       message: 'Nowe pozycje czekają na wysłanie na kuchnię',
@@ -1090,6 +1138,7 @@ class _OrderPanel extends StatelessWidget {
     required this.onQuantity,
     required this.onNote,
     required this.onStatus,
+    required this.onServeAll,
     required this.onSend,
     required this.onClose,
     required this.onCancel,
@@ -1102,6 +1151,7 @@ class _OrderPanel extends StatelessWidget {
   final void Function(OrderItem item, int quantity) onQuantity;
   final ValueChanged<OrderItem> onNote;
   final void Function(OrderItem item, OrderItemStatus status) onStatus;
+  final ValueChanged<List<OrderItem>> onServeAll;
   final VoidCallback? onSend;
   final VoidCallback? onClose;
   final VoidCallback? onCancel;
@@ -1113,7 +1163,12 @@ class _OrderPanel extends StatelessWidget {
     final order = this.order;
     final items = order?.items ?? const <OrderItem>[];
     final groups = [
-      for (final status in [OrderItemStatus.fresh, OrderItemStatus.sent, OrderItemStatus.served])
+      for (final status in [
+        OrderItemStatus.ready,
+        OrderItemStatus.fresh,
+        OrderItemStatus.sent,
+        OrderItemStatus.served,
+      ])
         (status, items.where((i) => i.status == status).toList()),
     ].where((g) => g.$2.isNotEmpty).toList();
     final unsent = order?.unsent ?? 0;
@@ -1186,21 +1241,35 @@ class _OrderPanel extends StatelessWidget {
                                 switch (status) {
                                   OrderItemStatus.fresh => AppIcons.notePencil,
                                   OrderItemStatus.sent => AppIcons.cookingPot,
+                                  OrderItemStatus.ready => AppIcons.bell,
                                   _ => AppIcons.checkCircle,
                                 },
                                 size: 14,
-                                color: status == OrderItemStatus.fresh
-                                    ? const Color(0xFFD99A15)
-                                    : AppColors.textDisabled,
+                                color: switch (status) {
+                                  OrderItemStatus.fresh => const Color(0xFFD99A15),
+                                  OrderItemStatus.ready => AppColors.accent,
+                                  _ => AppColors.textDisabled,
+                                },
                               ),
                               const SizedBox(width: 6),
-                              Text(
-                                status.label.toUpperCase(),
-                                style: text.labelSmall?.copyWith(
-                                  color: AppColors.textDisabled,
-                                  fontWeight: FontWeight.w600,
+                              Expanded(
+                                child: Text(
+                                  status.label.toUpperCase(),
+                                  style: text.labelSmall?.copyWith(
+                                    color: status == OrderItemStatus.ready
+                                        ? AppColors.accent
+                                        : AppColors.textDisabled,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
+                              // Kuchnia zbiła dania: kelner jednym kliknięciem oznacza, że je zaniósł.
+                              if (status == OrderItemStatus.ready)
+                                TextButton.icon(
+                                  onPressed: () => onServeAll(list),
+                                  icon: const Glyph(AppIcons.check, size: 14),
+                                  label: const Text('Wydaj wszystko'),
+                                ),
                             ],
                           ),
                         ),
@@ -1275,14 +1344,20 @@ class _OrderLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final fresh = item.status == OrderItemStatus.fresh;
+    final ready = item.status == OrderItemStatus.ready;
     final details = item.details;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
       decoration: BoxDecoration(
-        color: fresh ? AppColors.surfaceRaised : Colors.transparent,
+        color: ready
+            ? AppColors.accentTint
+            : fresh
+            ? AppColors.surfaceRaised
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
+        border: ready ? Border.all(color: AppColors.accent.withValues(alpha: 0.5)) : null,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -1332,6 +1407,12 @@ class _OrderLine extends StatelessWidget {
               if (fresh) _Stepper(value: item.quantity, min: 0, compact: true, onChanged: onQuantity),
             ],
           ),
+          if (ready)
+            IconButton(
+              tooltip: 'Wydane',
+              onPressed: () => onStatus(OrderItemStatus.served),
+              icon: Glyph(AppIcons.check, size: 18, color: AppColors.accent),
+            ),
           PopupMenuButton<String>(
             tooltip: 'Więcej',
             // Bez tła: przy każdej pozycji rachunku kostka byłaby zbyt ciężka.
@@ -1344,7 +1425,7 @@ class _OrderLine extends StatelessWidget {
             },
             itemBuilder: (_) => [
               if (fresh) const PopupMenuItem(value: 'note', child: Text('Uwaga dla kuchni')),
-              if (item.status == OrderItemStatus.sent)
+              if (item.status == OrderItemStatus.sent || ready)
                 const PopupMenuItem(value: 'served', child: Text('Wydane')),
               PopupMenuItem(
                 value: 'cancel',
@@ -1412,37 +1493,109 @@ class _NoteDialogState extends State<_NoteDialog> {
 // Zamknięcie rachunku i przeniesienie
 // ---------------------------------------------------------------
 
-class _CloseOrderDialog extends StatefulWidget {
-  const _CloseOrderDialog({required this.table, required this.order});
+/// Wynik okna zamknięcia: forma płatności i ewentualnie karta podarunkowa z kwotą.
+/// Gdy karta pokrywa część rachunku, [method] mówi, jak gość dopłacił resztę.
+typedef _Payment = ({PaymentMethod method, GiftCard? card, int? giftAmount});
 
+class _CloseOrderDialog extends ConsumerStatefulWidget {
+  const _CloseOrderDialog({required this.restaurantId, required this.table, required this.order});
+
+  final String restaurantId;
   final DiningTable table;
   final PanelOrder order;
 
   @override
-  State<_CloseOrderDialog> createState() => _CloseOrderDialogState();
+  ConsumerState<_CloseOrderDialog> createState() => _CloseOrderDialogState();
 }
 
-class _CloseOrderDialogState extends State<_CloseOrderDialog> {
+class _CloseOrderDialogState extends ConsumerState<_CloseOrderDialog> {
   PaymentMethod? _method;
+
+  /// Jak gość dopłaca, gdy karta podarunkowa nie pokrywa całości.
+  PaymentMethod? _rest;
   final _received = TextEditingController();
+  final _code = TextEditingController();
+  GiftCard? _card;
+  String? _cardProblem;
+  bool _checking = false;
 
   @override
   void dispose() {
     _received.dispose();
+    _code.dispose();
     super.dispose();
   }
 
   /// VAT zawarty w kwocie brutto przy danej stawce.
   static int _vatOf(int gross, int rate) => (gross * rate / (100 + rate)).round();
 
+  /// Kwota pobierana z karty: całość albo tyle, ile na niej zostało.
+  int? get _giftAmount {
+    final card = _card;
+    if (_method != PaymentMethod.giftCard || card == null || !card.isUsable) return null;
+    return card.balanceGrosze < widget.order.totalGrosze ? card.balanceGrosze : widget.order.totalGrosze;
+  }
+
+  Future<void> _checkCard() async {
+    final code = _code.text.trim();
+    if (code.isEmpty) {
+      setState(() => _cardProblem = 'Wpisz kod z karty gościa.');
+      return;
+    }
+    setState(() {
+      _checking = true;
+      _cardProblem = null;
+      _card = null;
+    });
+    try {
+      final found = await ref.read(repositoryProvider).giftCards(widget.restaurantId, code: code);
+      if (!mounted) return;
+      final card = found.isEmpty ? null : found.first;
+      setState(() {
+        _card = card;
+        _cardProblem = card == null
+            ? 'Nie ma karty z takim kodem w tym lokalu.'
+            : card.status != 'active'
+            ? 'Ta karta jest unieważniona.'
+            : card.isExpired
+            ? 'Karta straciła ważność ${Fmt.dayShort(card.expiresAt)}.'
+            : card.balanceGrosze <= 0
+            ? 'Na karcie nie ma już środków.'
+            : null;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _cardProblem = errorText(e));
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+  }
+
+  _Payment? get _result {
+    final method = _method;
+    if (method == null) return null;
+    if (method != PaymentMethod.giftCard) return (method: method, card: null, giftAmount: null);
+    final gift = _giftAmount;
+    if (gift == null) return null;
+    if (gift >= widget.order.totalGrosze) {
+      return (method: PaymentMethod.giftCard, card: _card, giftAmount: gift);
+    }
+    final rest = _rest;
+    return rest == null ? null : (method: rest, card: _card, giftAmount: gift);
+  }
+
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final order = widget.order;
     final total = order.totalGrosze;
+    final gift = _giftAmount;
+    // Gotówka przy dopłacie po karcie: reszta liczona od dopłaty, nie od całego rachunku.
+    final cashDue = gift == null ? total : total - gift;
+    final cash = _method == PaymentMethod.cash || (gift != null && gift < total && _rest == PaymentMethod.cash);
     final received = parseGrosze(_received.text);
-    final change = received == null ? null : received - total;
+    final change = received == null ? null : received - cashDue;
     final vat = order.byVat.entries.toList()..sort((a, b) => b.key.compareTo(a.key));
+    final result = _result;
 
     return AlertDialog(
       title: Text('Rachunek · stolik ${widget.table.label}'),
@@ -1522,7 +1675,7 @@ class _CloseOrderDialogState extends State<_CloseOrderDialog> {
                       price: switch (m) {
                         PaymentMethod.cash => 'wydaj resztę',
                         PaymentMethod.card => 'terminal',
-                        PaymentMethod.giftCard => 'z aplikacji Table',
+                        PaymentMethod.giftCard => 'kod z karty',
                         PaymentMethod.other => 'np. przelew',
                       },
                       selected: _method == m,
@@ -1530,7 +1683,88 @@ class _CloseOrderDialogState extends State<_CloseOrderDialog> {
                     ),
                 ],
               ),
-              if (_method == PaymentMethod.cash) ...[
+              // Karta podarunkowa: kod wpisuje się od razu tutaj, bez przechodzenia do innej zakładki.
+              if (_method == PaymentMethod.giftCard) ...[
+                const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _code,
+                        autofocus: true,
+                        textCapitalization: TextCapitalization.characters,
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\- ]'))],
+                        decoration: InputDecoration(
+                          labelText: 'Kod karty podarunkowej',
+                          errorText: _cardProblem,
+                        ),
+                        onSubmitted: (_) => _checkCard(),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      height: 56,
+                      child: OutlinedButton(
+                        onPressed: _checking ? null : _checkCard,
+                        child: Text(_checking ? 'Sprawdzam…' : 'Sprawdź'),
+                      ),
+                    ),
+                  ],
+                ),
+                if (gift != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.accentTint,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Z karty ${_card!.code}: ${Fmt.price(gift)}',
+                          style: text.titleSmall?.copyWith(
+                            color: AppColors.accent,
+                            fontFeatures: _tabular,
+                          ),
+                        ),
+                        Text(
+                          'Na karcie zostanie ${Fmt.price(_card!.balanceGrosze - gift)}'
+                          '${_card!.testMode ? ' · karta testowa' : ''}',
+                          style: text.bodySmall?.copyWith(
+                            color: AppColors.textMuted,
+                            fontFeatures: _tabular,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (gift < total) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'Dopłata ${Fmt.price(total - gift)}: jak gość płaci resztę?',
+                      style: text.titleSmall?.copyWith(fontFeatures: _tabular),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final m in [PaymentMethod.cash, PaymentMethod.card, PaymentMethod.other])
+                          _OptionButton(
+                            label: m.label,
+                            price: Fmt.price(total - gift),
+                            selected: _rest == m,
+                            onTap: () => setState(() => _rest = m),
+                          ),
+                      ],
+                    ),
+                  ],
+                ],
+              ],
+              if (cash) ...[
                 const SizedBox(height: 14),
                 Row(
                   children: [
@@ -1538,7 +1772,6 @@ class _CloseOrderDialogState extends State<_CloseOrderDialog> {
                       width: 160,
                       child: TextField(
                         controller: _received,
-                        autofocus: true,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
                         decoration: const InputDecoration(labelText: 'Otrzymano', suffixText: 'zł'),
@@ -1573,7 +1806,7 @@ class _CloseOrderDialogState extends State<_CloseOrderDialog> {
           child: const Text('Wróć'),
         ),
         FilledButton(
-          onPressed: _method == null ? null : () => Navigator.pop(context, _method),
+          onPressed: result == null ? null : () => Navigator.pop(context, result),
           child: const Text('Zamknij rachunek'),
         ),
       ],

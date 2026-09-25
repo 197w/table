@@ -390,7 +390,7 @@ class PanelRepository {
           .select(
             'id, name, position, '
             'menu_items(id, section_id, name, description, price_grosze, allergens, position, '
-            'variants, addons, vat_rate, available)',
+            'variants, addons, vat_rate, available, show_in_kitchen)',
           )
           .eq('restaurant_id', restaurantId)
           .order('position');
@@ -442,6 +442,7 @@ class PanelRepository {
     List<MenuOption> addons = const [],
     int vatRate = 8,
     bool available = true,
+    bool showInKitchen = true,
   }) {
     final row = {
       'section_id': sectionId,
@@ -454,6 +455,7 @@ class PanelRepository {
       'addons': [for (final a in addons) a.toJson()],
       'vat_rate': vatRate,
       'available': available,
+      'show_in_kitchen': showInKitchen,
     };
     return _guard(
       () => id == null
@@ -547,13 +549,74 @@ class PanelRepository {
     return _guard(() async {
       final rows = await _db
           .from('order_items')
-          .select('*, orders!inner(table_id, status)')
+          .select('*, orders!inner(table_id, status), menu_items(show_in_kitchen)')
           .eq('restaurant_id', restaurantId)
-          .inFilter('status', ['sent', 'served'])
+          .inFilter('status', ['sent', 'ready', 'cancelled'])
           .eq('orders.status', 'open')
           .gte('sent_at', DateTime.now().subtract(const Duration(hours: 12)).toUtc().toIso8601String())
           .order('sent_at');
       return KitchenTicket.fromRows(rows);
+    });
+  }
+
+  /// Progi czasu na ekranie kuchni.
+  Future<KitchenConfig> kitchenConfig(String restaurantId) {
+    return _guard(() async {
+      final row = await _db
+          .from('restaurants')
+          .select('kitchen_warn_minutes, kitchen_late_minutes')
+          .eq('id', restaurantId)
+          .single();
+      return KitchenConfig.fromJson(row);
+    });
+  }
+
+  /// Zapisuje progi czasu i pozycje menu ukryte przed kuchnią.
+  Future<void> setKitchenConfig({
+    required String restaurantId,
+    required int warnMinutes,
+    required int lateMinutes,
+    required List<String> hiddenItemIds,
+  }) {
+    return _guard(
+      () => _db.rpc<void>(
+        'panel_set_kitchen_config',
+        params: {
+          'p_restaurant_id': restaurantId,
+          'p_warn_minutes': warnMinutes,
+          'p_late_minutes': lateMinutes,
+          'p_hidden_items': hiddenItemIds,
+        },
+      ),
+    );
+  }
+
+  /// Średni czas przygotowania zamówień: dziś i w ostatniej godzinie.
+  Future<KitchenStats> kitchenStats(String restaurantId) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>?>(
+        'panel_kitchen_stats',
+        params: {'p_restaurant_id': restaurantId},
+      );
+      return KitchenStats.fromJson(json);
+    });
+  }
+
+  /// Zamknięte rachunki (opłacone i anulowane) z jednego dnia, najnowsze pierwsze.
+  Future<List<PanelOrder>> orderHistory(String restaurantId, DateTime day) {
+    return _guard(() async {
+      final rows = await _db
+          .from('orders')
+          .select(
+            'id, table_id, reservation_id, note, status, opened_at, closed_at, '
+            'payment_method, gift_card_grosze, order_items(*)',
+          )
+          .eq('restaurant_id', restaurantId)
+          .inFilter('status', ['paid', 'cancelled'])
+          .gte('closed_at', day.toUtc().toIso8601String())
+          .lt('closed_at', DateTime(day.year, day.month, day.day + 1).toUtc().toIso8601String())
+          .order('closed_at', ascending: false);
+      return rows.map(PanelOrder.fromJson).toList();
     });
   }
 
@@ -629,11 +692,22 @@ class PanelRepository {
     );
   }
 
-  Future<void> closeOrder(String orderId, PaymentMethod method) {
+  /// Zamyka rachunek. Z [giftCardId] pobiera [giftAmount], resztę gość płaci metodą [method].
+  Future<void> closeOrder(
+    String orderId,
+    PaymentMethod method, {
+    String? giftCardId,
+    int? giftAmount,
+  }) {
     return _guard(
       () => _db.rpc<void>(
         'panel_close_order',
-        params: {'p_order_id': orderId, 'p_payment_method': method.db},
+        params: {
+          'p_order_id': orderId,
+          'p_payment_method': method.db,
+          'p_gift_card_id': giftCardId,
+          'p_gift_amount': giftAmount,
+        },
       ),
     );
   }

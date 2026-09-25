@@ -61,7 +61,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0024, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0026, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
   Gdy użytkownik napisze „kod”, podaj najnowszy `otp` z tej tabeli (jego numer kończy się na 098).
@@ -94,13 +94,20 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   stanowiska (`private.has_permission`, `panel_my_permissions`). Kierownik i właściciel mają wszystkie.
 - Zamówienia (`orders`, `order_items`, tylko Pro): zakładka „Zamówienia” widoczna z uprawnieniem `orders`.
   Rachunek otwiera się przy pierwszej pozycji, jeden otwarty na stolik. Cenę, nazwę i VAT liczy baza z menu
-  (`panel_add_order_item`), zapis tylko przez funkcje `panel_*`. Stany pozycji: new → sent (kuchnia) → served.
+  (`panel_add_order_item`), zapis tylko przez funkcje `panel_*`. Stany pozycji: new → sent (kuchnia) → ready
+  (kuchnia zbiła, „do wydania”) → served (kelner zaniósł). Pozycje z `menu_items.show_in_kitchen = false`
+  (np. napoje) po wysłaniu od razu są „do wydania”.
   Pozycję wysłaną na kuchnię anuluje tylko kierownik. Zamknięcie rachunku kończy rezerwację gości przy stoliku.
+  Zamknięcie rachunku (`panel_close_order`) przyjmuje kartę podarunkową z kwotą; gdy karta nie pokrywa
+  całości, reszta inną metodą. Historia zamkniętych rachunków: zakładka „Historia zamówień”.
   Paragon fiskalny jeszcze na kasie, integrację z drukarką fiskalną robimy później.
 - Ekran kuchni (`/kuchnia`, uprawnienie `kitchen`, np. Kucharz): bileciki z pozycjami wysłanymi na kuchnię,
-  pogrupowane po rachunku i chwili wysłania, najstarsze pierwsze. Po 10 min nagłówek żółty, po 20 czerwony.
-  Stuknięcie pozycji albo „Gotowe” wywołuje `panel_kitchen_set` (sent ↔ served), jest „Cofnij”.
-  Tryb pełnoekranowy chowa boczne menu (Esc wychodzi). Nowy bilecik dzwoni.
+  pogrupowane po rachunku i chwili wysłania, najstarsze pierwsze. Czas liczony od wysłania z sekundami;
+  kolory po progach z `restaurants.kitchen_warn_minutes`/`kitchen_late_minutes` (domyślnie 4 i 6 min).
+  Stuknięcie pozycji albo „Gotowe” wywołuje `panel_kitchen_set` (sent ↔ ready, `ready_at`); cofnięta pozycja
+  ma `recalled_at` i jest niebieska. Anulowane pozycje widać na czerwono. Sterowanie klawiaturą
+  (1–9, strzałki, Spacja, Enter, Backspace, F, M, Esc), dolny pasek ze średnim czasem (`panel_kitchen_stats`),
+  ustawienia (progi i pozycje ukryte, `panel_set_kitchen_config`). Pełny ekran chowa menu. Nowy bilecik dzwoni.
 - Menu: warianty (np. rozmiary, każdy z ceną), płatne dodatki, stawka VAT i „dostępne teraz”. Przy wariantach
   `price_grosze` to najniższa cena wariantu. „Skończyło się” może ustawić też kelner i kuchnia (`panel_set_menu_item_available`).
 
