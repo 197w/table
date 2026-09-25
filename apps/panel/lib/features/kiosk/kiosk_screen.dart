@@ -17,7 +17,7 @@ String _two(int n) => n.toString().padLeft(2, '0');
 String _hm(DateTime t) => '${_two(t.toLocal().hour)}:${_two(t.toLocal().minute)}';
 
 /// Ekran trybu obsługi: panel na wspólnym komputerze czeka na pracownika.
-/// Pracownik skanuje kod aplikacją Table Praca, zaczyna zmianę i panel otwiera się
+/// Pracownik skanuje kod aplikacją Table for workers, zaczyna zmianę i panel otwiera się
 /// z zakładkami jego stanowiska.
 class KioskLockScreen extends ConsumerStatefulWidget {
   const KioskLockScreen({super.key});
@@ -154,9 +154,9 @@ class _KioskLockScreenState extends ConsumerState<KioskLockScreen> {
                           ),
                           const SizedBox(height: 28),
                           for (final (i, step) in const [
-                            'Otwórz aplikację Table Praca na swoim telefonie.',
-                            'Stuknij „Zeskanuj kod” i skieruj aparat na kod obok.',
-                            'Zaczynasz zmianę, a panel otwiera się z Twoimi zakładkami.',
+                            'Otwórz aplikację Table for workers na swoim telefonie.',
+                            'Stuknij „Zeskanuj kod” i skieruj aparat na kod obok. Kod jest wspólny dla wszystkich.',
+                            'Zaczynasz zmianę. Żeby pracować na tym komputerze, stuknij „Otwórz panel”.',
                           ].indexed)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 18),

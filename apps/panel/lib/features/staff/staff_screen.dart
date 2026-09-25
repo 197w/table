@@ -661,7 +661,7 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
               const SizedBox(height: 10),
               Divider(height: 1, color: AppColors.ring),
               const SizedBox(height: 14),
-              // Pracownik nie ma konta w panelu: loguje się w aplikacji Table Praca numerem telefonu
+              // Pracownik nie ma konta w panelu: loguje się w aplikacji Table for workers numerem telefonu
               // i skanuje kod QR z panelu w trybie obsługi.
               Row(
                 children: [
@@ -669,7 +669,7 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Logowanie: aplikacja Table Praca, numer ${widget.member!.phone ?? 'z tego okna'}. '
+                      'Logowanie: aplikacja Table for workers, numer ${widget.member!.phone ?? 'z tego okna'}. '
                       'Zmianę zaczyna skanem kodu z panelu w trybie obsługi.',
                       style: text.bodySmall?.copyWith(color: AppColors.textMuted),
                     ),

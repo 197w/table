@@ -1386,7 +1386,7 @@ class KitchenStats {
   }
 }
 
-/// Pracownik zalogowany na panelu kodem QR z aplikacji Table Praca.
+/// Pracownik zalogowany na panelu kodem QR z aplikacji Table for workers.
 /// Panel pokazuje wtedy tylko zakładki z jego uprawnień.
 class ActingMember {
   const ActingMember({

@@ -6,6 +6,7 @@ import 'package:table_core/table_core.dart';
 
 import 'data.dart';
 import 'scan_screen.dart';
+import 'waiter_screens.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -55,20 +56,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (result == null || !mounted) return;
     _refresh();
     final at = result.startedAt;
-    await showDialog<void>(
+    // Kod jest wspólny dla całej zmiany. Panel na komputerze otwiera się dopiero na życzenie.
+    final open = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         icon: Glyph(AppIcons.checkCircle, size: 40, color: AppColors.accent),
-        title: Text(result.startedNow ? 'Zmiana rozpoczęta' : 'Panel odblokowany'),
+        title: Text(result.startedNow ? 'Zmiana rozpoczęta' : 'Zmiana trwa'),
         content: Text(
           result.startedNow
-              ? '${result.restaurant}, od ${at == null ? 'teraz' : _hm(at)}. Panel otworzył się na Twoje konto.'
-              : 'Twoja zmiana w ${result.restaurant} trwa${at == null ? '' : ' od ${_hm(at)}'}. '
-                    'Panel otworzył się na Twoje konto.',
+              ? '${result.restaurant}, od ${at == null ? 'teraz' : _hm(at)}.'
+              : 'Twoja zmiana w ${result.restaurant} trwa${at == null ? '' : ' od ${_hm(at)}'}.',
         ),
-        actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Otwórz panel na komputerze')),
+          FilledButton(
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Gotowe'),
+          ),
+        ],
       ),
     );
+    if (open != true || !mounted) return;
+    try {
+      await ref.read(staffRepositoryProvider).openPanel(result.token);
+      if (mounted) showMessage(context, 'Panel na komputerze otworzył się na Twoje konto.');
+    } catch (e) {
+      if (mounted) showMessage(context, errorText(e));
+    }
   }
 
   Future<void> _end(Job job) async {
@@ -102,7 +117,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Table Praca'),
+        title: const Text('Table for workers'),
         actions: [
           IconButton(tooltip: 'Odśwież', onPressed: _refresh, icon: const Glyph(AppIcons.refresh, size: 20)),
           IconButton(
@@ -138,7 +153,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 Text('Cześć, ${list.first.memberName.split(' ').first}!', style: text.headlineSmall),
                 const SizedBox(height: 16),
                 for (final job in list) ...[
-                  _JobCard(job: job, onEnd: () => _end(job)),
+                  _JobCard(
+                    job: job,
+                    onEnd: () => _end(job),
+                    onOrders: () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(builder: (_) => WaiterTablesScreen(job: job)),
+                    ),
+                  ),
                   const SizedBox(height: 12),
                 ],
                 const SizedBox(height: 4),
@@ -165,10 +187,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 }
 
 class _JobCard extends StatelessWidget {
-  const _JobCard({required this.job, required this.onEnd});
+  const _JobCard({required this.job, required this.onEnd, required this.onOrders});
 
   final Job job;
   final VoidCallback onEnd;
+  final VoidCallback onOrders;
 
   @override
   Widget build(BuildContext context) {
@@ -213,9 +236,18 @@ class _JobCard extends StatelessWidget {
                   : 'Od ${_hm(started)} · ${_hours(running!)} h\nW tym tygodniu: ${_hours(Duration(seconds: job.weekSeconds))} h',
               style: text.bodyLarge?.copyWith(fontFeatures: _tabular),
             ),
+            // Kelner nabija zamówienia z telefonu, ale tylko w trakcie zmiany.
+            if (job.canTakeOrders) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: job.working ? onOrders : null,
+                icon: const Glyph(AppIcons.receipt, size: 20),
+                label: Text(job.working ? 'Zamówienia' : 'Zamówienia po rozpoczęciu zmiany'),
+              ),
+            ],
             // Przyciski w motywie Table zajmują całą szerokość, więc kończenie zmiany ma własny wiersz.
             if (job.working) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               OutlinedButton(onPressed: onEnd, child: const Text('Zakończ zmianę')),
             ],
           ],

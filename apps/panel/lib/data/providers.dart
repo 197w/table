@@ -622,7 +622,7 @@ final effectivePermissionsProvider = Provider.autoDispose.family<Set<String>?, S
 
 typedef ShiftQuery = ({String restaurantId, DateTime from, DateTime to});
 
-/// Zmiany na żywo: skan w aplikacji Table Praca od razu widać w panelu.
+/// Zmiany na żywo: skan w aplikacji Table for workers od razu widać w panelu.
 class ShiftsLive extends Notifier<int> {
   ShiftsLive(this.restaurantId);
 

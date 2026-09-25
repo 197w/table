@@ -5,9 +5,10 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
 - `apps/guest`: aplikacja dla gości na telefony (Android i iOS), identyfikator `pl.table.app`.
 - `apps/panel`: panel restauracji na komputery (Windows i macOS), identyfikator macOS `pl.table.panel`.
   Na tablety przejdziemy, gdy panel na komputerach będzie ustalony. Nigdy na telefony.
-- `apps/staff`: Table Praca, aplikacja dla pracowników lokalu na telefony (Android `pl.table.table_staff`,
-  iOS `pl.table.tableStaff`). Logowanie numerem telefonu (SMS), skan kodu QR z panelu zaczyna zmianę
-  i odblokowuje panel, historia godzin. Każda aktualizacja na S23 i iPhone'a, tak jak aplikacja dla gości.
+- `apps/staff`: Table for workers, aplikacja dla pracowników lokalu na telefony (Android `pl.table.table_staff`,
+  iOS `pl.table.tableStaff`). Logowanie numerem telefonu (SMS), skan wspólnego kodu QR z panelu zaczyna zmianę,
+  „Otwórz panel na komputerze” odblokowuje panel na swoje konto, kelner nabija zamówienia (stoliki, menu,
+  wysyłka na kuchnię, wydanie, zamknięcie rachunku), historia godzin. Każda aktualizacja na S23 i iPhone'a, tak jak aplikacja dla gości.
 - `packages/table_core`: wspólny motyw, czcionka Geist, ikony Phosphor, formatery, widżety i konfiguracja.
 
 Z użytkownikiem rozmawiamy po polsku. Teksty w aplikacjach i komentarze w kodzie też są po polsku.
@@ -65,7 +66,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0027, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0028, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
   Gdy użytkownik napisze „kod”, podaj najnowszy `otp` z tej tabeli (jego numer kończy się na 098).
@@ -77,7 +78,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`PressScale`, `LoadingView`, `MessageView`, `ErrorView`, `Tag`, `DropdownPill`...), `app_icons.dart`
   (`Glyph` zamiast `Icon`, stałe `AppIcons`, SVG w `assets/icons`, nowe: `npx better-icons get ph:<nazwa>`).
 - `apps/guest/lib`: `app` (router, dolne menu, preferencje), `core` (mapy, lokalizacja), `data`, `features`.
-- `apps/staff/lib`: `data.dart` (repozytorium i providery), `login_screen.dart`, `home_screen.dart`, `scan_screen.dart`
+- `apps/staff/lib`: `data.dart` (repozytorium i providery), `orders_data.dart`, `login_screen.dart`, `home_screen.dart`,
+  `scan_screen.dart`, `waiter_screens.dart`
   (mobile_scanner). Podpis iOS: `DEVELOPMENT_TEAM` w `ios/Flutter/*.xcconfig`, nie w pbxproj.
 - `apps/panel/lib`: `app` (router, boczne menu, motyw na komputer), `data` (modele, `PanelRepository`, providery),
   `features` (auth, onboarding, kiosk, reservations, orders, kitchen, floor, menu, profile, reviews, staff, stats),
@@ -92,8 +94,11 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   nie zweryfikuje (weryfikacja: `update restaurants set listed = true`, poprawić też położenie `location`).
   Ja nadal nie zakładam kont ani nie wymyślam haseł: konto zakłada sama restauracja albo użytkownik.
 - Pracownicy nie mają kont w panelu. Właściciel dodaje ich w „Pracownicy” z numerem telefonu. Pracownik loguje się
-  tym numerem w Table Praca i skanuje kod QR z panelu w trybie obsługi (`panel_new_login_token`, `staff_scan`).
-  Skan zaczyna zmianę (`staff_shifts`) i odblokowuje panel na uprawnienia stanowiska (`ActingMember`).
+  tym numerem w Table for workers i skanuje kod QR z panelu w trybie obsługi (`panel_new_login_token`, `staff_scan`).
+  Kod jest wspólny: każdy skan zaczyna zmianę tej osoby (`staff_shifts`). Panel odblokowuje osobny krok
+  `staff_open_panel` (raz na kod) na uprawnienia stanowiska (`ActingMember`). Konto telefonu pracownika dostaje
+  rolę obsługi (`restaurant_staff`, trigger `staff_members_account`), więc zamówienia w aplikacji używają tych
+  samych funkcji `panel_*` z `p_member_id` (wymagana trwająca zmiana).
   Tryb obsługi włącza kierownik w menu bocznym, wyjście z niego wymaga hasła konta restauracji.
   Zamówienia zapisują pracownika (`opened_by_member`, `created_by_member`). Czas pracy: „Pracownicy” → „Czas pracy”.
 - Menu boczne pokazuje tylko zakładki z uprawnień (`effectivePermissionsProvider`, `permissionForRoute`),

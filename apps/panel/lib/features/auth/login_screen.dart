@@ -217,7 +217,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         const SizedBox(height: 24),
                         Text(
                           'Pracownicy nie zakładają kont w panelu. Właściciel dodaje ich w zakładce „Pracownicy”, '
-                          'a oni logują się kodem QR w aplikacji Table Praca.',
+                          'a oni logują się kodem QR w aplikacji Table for workers.',
                           style: text.bodySmall?.copyWith(
                             color: AppColors.textDisabled,
                           ),

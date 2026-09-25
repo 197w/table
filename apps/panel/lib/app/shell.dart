@@ -352,7 +352,7 @@ class _Sidebar extends ConsumerWidget {
             onTap: () => ref.read(actingMemberProvider.notifier).set(null),
           ),
         ] else ...[
-          // Wspólny komputer w lokalu: pracownicy logują się kodem QR z aplikacji Table Praca.
+          // Wspólny komputer w lokalu: pracownicy logują się kodem QR z aplikacji Table for workers.
           if (!kiosk && (current?.canManage ?? false))
             _IconRow(
               icon: AppIcons.lock,
@@ -401,7 +401,7 @@ Future<void> _startKiosk(BuildContext context, WidgetRef ref) async {
     context,
     title: 'Włączyć tryb obsługi?',
     message:
-        'Panel pokaże kod QR. Pracownik skanuje go aplikacją Table Praca, zaczyna zmianę '
+        'Panel pokaże kod QR. Pracownik skanuje go aplikacją Table for workers, zaczyna zmianę '
         'i widzi tylko zakładki swojego stanowiska. Wyjście z trybu wymaga hasła konta restauracji.',
     action: 'Włącz',
   );

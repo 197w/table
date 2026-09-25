@@ -653,7 +653,7 @@ class PanelRepository {
   // Czas pracy i logowanie pracowników kodem QR
   // -------------------------------------------------------------
 
-  /// Nowy kod QR do zeskanowania aplikacją Table Praca.
+  /// Nowy kod QR do zeskanowania aplikacją Table for workers.
   Future<String> newLoginToken(String restaurantId) {
     return _guard(
       () => _db.rpc<String>('panel_new_login_token', params: {'p_restaurant_id': restaurantId}),

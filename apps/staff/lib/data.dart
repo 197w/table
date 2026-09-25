@@ -23,6 +23,7 @@ class Job {
     required this.restaurantName,
     required this.memberName,
     required this.weekSeconds,
+    this.permissions = const {},
     this.position,
     this.shiftStartedAt,
   });
@@ -32,6 +33,11 @@ class Job {
   final String restaurantName;
   final String memberName;
   final String? position;
+
+  /// Uprawnienia stanowiska, np. „orders” odblokowuje nabijanie zamówień w aplikacji.
+  final Set<String> permissions;
+
+  bool get canTakeOrders => permissions.contains('orders');
 
   /// Początek trwającej zmiany. Null: jestem poza pracą.
   final DateTime? shiftStartedAt;
@@ -47,6 +53,7 @@ class Job {
     restaurantName: j['restaurant_name'] as String,
     memberName: j['member_name'] as String,
     position: j['position_name'] as String?,
+    permissions: {for (final p in j['permissions'] as List? ?? const []) p.toString()},
     shiftStartedAt: _date(j['shift_started_at']),
     weekSeconds: _toInt(j['week_seconds']),
   );
@@ -73,11 +80,20 @@ class Shift {
 
 /// Wynik skanu kodu z panelu.
 class ScanResult {
-  const ScanResult({required this.restaurant, required this.member, required this.startedNow, this.startedAt});
+  const ScanResult({
+    required this.restaurant,
+    required this.member,
+    required this.startedNow,
+    required this.token,
+    this.startedAt,
+  });
 
   final String restaurant;
   final String member;
   final bool startedNow;
+
+  /// Kod z panelu. Z nim można jeszcze otworzyć panel na swoje konto.
+  final String token;
   final DateTime? startedAt;
 }
 
@@ -115,9 +131,14 @@ class StaffRepository {
       restaurant: j['restaurant'] as String,
       member: j['member'] as String,
       startedNow: j['started_now'] == true,
+      token: j['token'] as String? ?? '',
       startedAt: _date(j['shift_started_at']),
     );
   });
+
+  /// Otwiera panel na komputerze, z którego zeskanowano kod, na uprawnienia pracownika.
+  Future<void> openPanel(String token) =>
+      _guard(() => _db.rpc<void>('staff_open_panel', params: {'p_token': token}));
 
   Future<void> endShift(String memberId) =>
       _guard(() => _db.rpc<void>('staff_end_shift', params: {'p_member_id': memberId}));

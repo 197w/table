@@ -83,7 +83,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               child: Glyph(AppIcons.userCheck, size: 28, color: AppColors.accent),
             ),
             const SizedBox(height: 24),
-            Text('Table Praca', style: text.headlineMedium),
+            Text('Table for workers', style: text.headlineMedium),
             const SizedBox(height: 8),
             Text(
               sent

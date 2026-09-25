@@ -9,7 +9,7 @@ import 'data.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
 
-/// Table Praca: aplikacja dla pracowników lokalu. Zmianę zaczyna się skanem kodu QR
+/// Table for workers: aplikacja dla pracowników lokalu. Zmianę zaczyna się skanem kodu QR
 /// z panelu restauracji, tutaj też widać przepracowane godziny.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,7 +37,7 @@ class StaffApp extends ConsumerWidget {
 
     return MaterialApp(
       key: ValueKey(brightness),
-      title: 'Table Praca',
+      title: 'Table for workers',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.build(palette),
       locale: const Locale('pl', 'PL'),
