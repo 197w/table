@@ -1,4 +1,4 @@
-# Budowanie aplikacji dla gości na iOS, bez podpisu. Wyłapuje błędy Swifta i projektu Xcode,
+# Budowanie aplikacji dla gości i Table Praca na iOS, bez podpisu. Wyłapuje błędy Swifta i projektu Xcode,
 # których nie widać na Windowsie.
 #
 # Maszyna macOS w prywatnym repozytorium zużywa minuty 10 razy szybciej niż Linux,
@@ -13,6 +13,8 @@ on:
     paths:
       - 'apps/guest/ios/**'
       - 'apps/guest/pubspec.yaml'
+      - 'apps/staff/ios/**'
+      - 'apps/staff/pubspec.yaml'
       - 'packages/table_core/pubspec.yaml'
       - 'pubspec.yaml'
       - 'pubspec.lock'
@@ -42,4 +44,23 @@ jobs:
       # Bez env.json aplikacja się kompiluje, a brak konfiguracji wyszedłby dopiero po uruchomieniu.
       - name: Budowanie bez podpisu
         working-directory: apps/guest
+        run: flutter build ios --release --no-codesign
+
+  staff-ios:
+    name: Table Praca na iOS
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Budowanie bez podpisu
+        working-directory: apps/staff
         run: flutter build ios --release --no-codesign

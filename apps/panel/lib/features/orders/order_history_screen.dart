@@ -25,7 +25,10 @@ enum _Filter {
 
 /// Historia zamówień: zamknięte rachunki z wybranego dnia, z podsumowaniem obrotu.
 class OrderHistoryScreen extends ConsumerStatefulWidget {
-  const OrderHistoryScreen({super.key});
+  const OrderHistoryScreen({super.key, this.embedded = false});
+
+  /// Wewnątrz zakładki „Statystyki”: bez własnego nagłówka strony.
+  final bool embedded;
 
   @override
   ConsumerState<OrderHistoryScreen> createState() => _OrderHistoryScreenState();
@@ -70,22 +73,6 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
         ],
       );
     }
-    if (!ref.watch(canTakeOrdersProvider(restaurant.id))) {
-      return const Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          PageHeader(title: 'Historia zamówień'),
-          Expanded(
-            child: MessageView(
-              icon: AppIcons.lock,
-              title: 'Brak dostępu do zamówień',
-              message: 'Historię widzi stanowisko z uprawnieniem „Zamówienia”, na przykład Kelner.',
-            ),
-          ),
-        ],
-      );
-    }
-
     final today = dateOnly(DateTime.now());
     final query = (restaurantId: restaurant.id, day: _day);
     final async = ref.watch(orderHistoryProvider(query));
@@ -96,6 +83,35 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (widget.embedded)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(32, 0, 32, 16),
+            child: Row(
+              children: [
+                SegmentedTabs<_Filter>(
+                  options: [for (final f in _Filter.values) (f, f.label)],
+                  selected: _filter,
+                  onChanged: (f) => setState(() => _filter = f),
+                ),
+                const Spacer(),
+                Text(
+                  '${Fmt.capitalize(Fmt.dayLong(_day))}${_day == today ? ' · dziś' : ''}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(width: 12),
+                GlowButton(icon: AppIcons.caretLeft, tooltip: 'Poprzedni dzień', onPressed: () => _shift(-1)),
+                const SizedBox(width: 8),
+                GlowButton(
+                  icon: AppIcons.caretRight,
+                  tooltip: 'Następny dzień',
+                  onPressed: _day == today ? null : () => _shift(1),
+                ),
+                const SizedBox(width: 8),
+                GlowButton(icon: AppIcons.calendar, tooltip: 'Wybierz dzień', onPressed: _pickDay),
+              ],
+            ),
+          )
+        else
         PageHeader(
           title: 'Historia zamówień',
           subtitle: '${Fmt.capitalize(Fmt.dayLong(_day))}${_day == today ? ' · dziś' : ''}',

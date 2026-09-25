@@ -43,3 +43,9 @@ jobs:
         run: |
           flutter analyze
           flutter test
+
+      - name: Table Praca (pracownicy)
+        working-directory: apps/staff
+        run: |
+          flutter analyze
+          flutter test

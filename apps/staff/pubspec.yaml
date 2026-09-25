@@ -1,0 +1,37 @@
+name: table_staff
+description: "Table Praca: aplikacja dla pracowników lokalu (czas pracy, logowanie do panelu kodem QR)."
+publish_to: "none"
+version: 0.1.0+1
+resolution: workspace
+
+environment:
+  sdk: ^3.12.0
+  flutter: ">=3.47.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  table_core:
+    path: ../../packages/table_core
+  material_ui: ^1.2.0
+  supabase_flutter: ^2.17.2
+  flutter_riverpod: ^3.4.3
+  intl: any
+  mobile_scanner: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "../../design/logo/table-b-1024px.png"
+  remove_alpha_ios: true
+  adaptive_icon_background: "#09090B"
+  adaptive_icon_foreground: "../../design/logo/table-b-1024px.png"

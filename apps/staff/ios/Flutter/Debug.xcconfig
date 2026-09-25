@@ -1,0 +1,3 @@
+#include "Generated.xcconfig"
+// Personal Team użytkownika: podpis aplikacji na jego iPhonie (darmowe konto Apple).
+DEVELOPMENT_TEAM = KHS3GJSPNL

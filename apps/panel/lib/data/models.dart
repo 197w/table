@@ -49,6 +49,7 @@ class PanelRestaurant {
     required this.isPro,
     required this.role,
     this.logoUrl,
+    this.listed = true,
   });
 
   final String id;
@@ -57,6 +58,9 @@ class PanelRestaurant {
   final bool isPro;
   final StaffRole role;
   final String? logoUrl;
+
+  /// Goście widzą lokal w aplikacji. Nowy lokal czeka na weryfikację przez Table.
+  final bool listed;
 
   /// Kierownik i właściciel zmieniają salę, menu, dane lokalu i odpowiadają na opinie.
   bool get canManage => role != StaffRole.staff;
@@ -69,6 +73,7 @@ class PanelRestaurant {
       isPro: json['plan'] == 'pro',
       role: StaffRole.fromDb(json['role']),
       logoUrl: json['logo_url'] as String?,
+      listed: json['listed'] != false,
     );
   }
 }
@@ -1012,7 +1017,8 @@ enum StaffPermission {
   giftCards('gift_cards', 'Karty podarunkowe', 'Realizacja kart gości'),
   reviews('reviews', 'Opinie', 'Odpowiadanie na opinie'),
   stats('stats', 'Statystyki', 'Podgląd wyników lokalu'),
-  staff('staff', 'Pracownicy', 'Pracownicy i grafik');
+  staff('staff', 'Pracownicy', 'Pracownicy, grafik i czas pracy'),
+  profile('profile', 'Dane lokalu', 'Adres, godziny otwarcia i logo');
 
   const StaffPermission(this.key, this.label, this.description, {this.soon = false});
 
@@ -1376,6 +1382,151 @@ class KitchenStats {
       todayCount: _toInt(json['today_count']),
       hourSeconds: seconds(json['hour_seconds']),
       hourCount: _toInt(json['hour_count']),
+    );
+  }
+}
+
+/// Pracownik zalogowany na panelu kodem QR z aplikacji Table Praca.
+/// Panel pokazuje wtedy tylko zakładki z jego uprawnień.
+class ActingMember {
+  const ActingMember({
+    required this.memberId,
+    required this.name,
+    required this.permissions,
+    this.position,
+    this.shiftStartedAt,
+  });
+
+  final String memberId;
+  final String name;
+  final String? position;
+  final Set<String> permissions;
+  final DateTime? shiftStartedAt;
+
+  factory ActingMember.fromJson(Map<String, dynamic> json) => ActingMember(
+    memberId: json['member_id'] as String,
+    name: json['name'] as String,
+    position: json['position'] as String?,
+    permissions: {for (final p in json['permissions'] as List? ?? const []) p.toString()},
+    shiftStartedAt: _toDateOrNull(json['shift_started_at']),
+  );
+}
+
+/// Zmiana pracownika: od zeskanowania kodu do końca pracy.
+class StaffShift {
+  const StaffShift({
+    required this.id,
+    required this.memberId,
+    required this.startedAt,
+    this.endedAt,
+    this.source = 'scan',
+  });
+
+  final String id;
+  final String memberId;
+  final DateTime startedAt;
+  final DateTime? endedAt;
+
+  /// scan: kod QR, panel: wpisana ręcznie przez kierownika.
+  final String source;
+
+  bool get isOpen => endedAt == null;
+
+  Duration get duration => (endedAt ?? DateTime.now()).difference(startedAt);
+
+  factory StaffShift.fromJson(Map<String, dynamic> json) => StaffShift(
+    id: json['id'] as String,
+    memberId: json['member_id'] as String,
+    startedAt: _toDate(json['started_at']),
+    endedAt: _toDateOrNull(json['ended_at']),
+    source: json['source'] as String? ?? 'scan',
+  );
+}
+
+/// Punkt wykresu sprzedaży: dzień, godzina albo dzień tygodnia.
+class SalesPoint {
+  const SalesPoint(this.key, this.revenue, this.orders);
+
+  final int key;
+  final int revenue;
+  final int orders;
+}
+
+/// Sprzedaż w wybranym okresie z porównaniem do okresu wcześniej.
+class SalesStats {
+  const SalesStats({
+    required this.revenue,
+    required this.orders,
+    required this.items,
+    required this.giftCards,
+    required this.cancelled,
+    required this.prevRevenue,
+    required this.prevOrders,
+    required this.daily,
+    required this.hourly,
+    required this.weekdays,
+    required this.topItems,
+    required this.payments,
+    required this.vat,
+    required this.staff,
+    this.avgTableMinutes,
+    this.kitchenSeconds,
+  });
+
+  final int revenue;
+  final int orders;
+  final int items;
+  final int giftCards;
+  final int cancelled;
+  final int prevRevenue;
+  final int prevOrders;
+  final int? avgTableMinutes;
+  final int? kitchenSeconds;
+  final List<(DateTime, int, int)> daily;
+  final List<SalesPoint> hourly;
+  final List<SalesPoint> weekdays;
+
+  /// Nazwa, sztuki, przychód.
+  final List<(String, int, int)> topItems;
+
+  /// Forma płatności, kwota, liczba rachunków.
+  final List<(PaymentMethod?, int, int)> payments;
+
+  /// Stawka VAT i kwota brutto.
+  final List<(int, int)> vat;
+
+  /// Pracownik, przychód, liczba rachunków.
+  final List<(String, int, int)> staff;
+
+  int get averageCheck => orders == 0 ? 0 : revenue ~/ orders;
+
+  factory SalesStats.fromJson(Map<String, dynamic> j) {
+    List<Map<String, dynamic>> list(String k) => (j[k] as List? ?? const []).cast<Map<String, dynamic>>();
+    int? opt(Object? v) => v == null ? null : _toInt(v);
+    return SalesStats(
+      revenue: _toInt(j['revenue']),
+      orders: _toInt(j['orders']),
+      items: _toInt(j['items']),
+      giftCards: _toInt(j['gift_cards']),
+      cancelled: _toInt(j['cancelled']),
+      prevRevenue: _toInt(j['prev_revenue']),
+      prevOrders: _toInt(j['prev_orders']),
+      avgTableMinutes: opt(j['avg_table_minutes']),
+      kitchenSeconds: opt(j['kitchen_seconds']),
+      daily: [
+        for (final d in list('daily'))
+          (DateTime.parse(d['day'] as String), _toInt(d['revenue']), _toInt(d['orders'])),
+      ],
+      hourly: [for (final h in list('hourly')) SalesPoint(_toInt(h['hour']), _toInt(h['revenue']), _toInt(h['orders']))],
+      weekdays: [
+        for (final w in list('weekdays')) SalesPoint(_toInt(w['weekday']), _toInt(w['revenue']), _toInt(w['orders'])),
+      ],
+      topItems: [for (final t in list('top_items')) (t['name'] as String, _toInt(t['quantity']), _toInt(t['revenue']))],
+      payments: [
+        for (final p in list('payments')) (PaymentMethod.fromDb(p['method']), _toInt(p['amount']), _toInt(p['orders'])),
+      ],
+      vat: [for (final v in list('vat')) (_toInt(v['rate']), _toInt(v['gross']))],
+      staff: [for (final s in list('staff')) (s['name'] as String, _toInt(s['revenue']), _toInt(s['orders']))],
     );
   }
 }

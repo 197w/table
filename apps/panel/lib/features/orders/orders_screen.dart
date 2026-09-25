@@ -68,7 +68,9 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   Future<String> _orderIdFor(String restaurantId, String tableId) async {
     final order = _orderOf(restaurantId, tableId);
     if (order != null) return order.id;
-    return ref.read(repositoryProvider).openOrder(restaurantId, tableId);
+    return ref
+        .read(repositoryProvider)
+        .openOrder(restaurantId, tableId, memberId: ref.read(actingMemberProvider)?.memberId);
   }
 
   Future<void> _add(
@@ -104,6 +106,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
           addons: choice.addons,
           quantity: choice.quantity,
           note: choice.note,
+          memberId: ref.read(actingMemberProvider)?.memberId,
         );
       }),
     );
@@ -140,6 +143,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         payment.method,
         giftCardId: payment.card?.id,
         giftAmount: payment.giftAmount,
+        memberId: ref.read(actingMemberProvider)?.memberId,
       );
       ok = true;
     });
@@ -262,33 +266,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       );
     }
 
-    final permissions = ref.watch(myPermissionsProvider(restaurant.id));
-    if (!permissions.hasValue) {
-      return permissions.hasError
-          ? ErrorView(
-              error: permissions.error!,
-              onRetry: () => ref.invalidate(myPermissionsProvider(restaurant.id)),
-            )
-          : const LoadingView();
-    }
-    if (!permissions.value!.contains('orders')) {
-      return const Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          PageHeader(title: 'Zamówienia'),
-          Expanded(
-            child: MessageView(
-              icon: AppIcons.lock,
-              title: 'Brak dostępu do zamówień',
-              message:
-                  'Zamówienia nabija obsługa na stanowisku z uprawnieniem „Zamówienia”, na przykład Kelner. '
-                  'Stanowiska ustawia właściciel w zakładce „Pracownicy”.',
-            ),
-          ),
-        ],
-      );
-    }
-
+    // Dostęp do zakładki sprawdza boczne menu (PanelShell) według uprawnień stanowiska.
     final tablesAsync = ref.watch(tablesProvider(restaurant.id));
     final zones = ref.watch(zonesProvider(restaurant.id)).value ?? const <FloorZone>[];
     final menuAsync = ref.watch(menuProvider(restaurant.id));

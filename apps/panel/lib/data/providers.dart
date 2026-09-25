@@ -389,7 +389,7 @@ final myPermissionsProvider = FutureProvider.autoDispose.family<Set<String>, Str
 
 /// Czy zalogowane konto może nabijać zamówienia w lokalu.
 final canTakeOrdersProvider = Provider.autoDispose.family<bool, String>(
-  (ref, id) => ref.watch(myPermissionsProvider(id)).value?.contains('orders') ?? false,
+  (ref, id) => ref.watch(effectivePermissionsProvider(id))?.contains('orders') ?? false,
 );
 
 /// Rachunki lokalu na żywo: numer zmiany i stan połączenia. Każda zmiana pozycji
@@ -475,7 +475,7 @@ final openOrdersProvider = FutureProvider.autoDispose.family<List<PanelOrder>, S
 
 /// Czy zalogowane konto widzi ekran kuchni.
 final canUseKitchenProvider = Provider.autoDispose.family<bool, String>(
-  (ref, id) => ref.watch(myPermissionsProvider(id)).value?.contains('kitchen') ?? false,
+  (ref, id) => ref.watch(effectivePermissionsProvider(id))?.contains('kitchen') ?? false,
 );
 
 /// Bileciki na ekranie kuchni. Odświeżają się na żywo razem z rachunkami.
@@ -561,3 +561,90 @@ final orderHistoryProvider = FutureProvider.autoDispose.family<List<PanelOrder>,
     return ref.watch(repositoryProvider).orderHistory(q.restaurantId, q.day);
   },
 );
+
+// ---------------------------------------------------------------
+// Tryb obsługi: panel na wspólnym komputerze, pracownicy logują się kodem QR
+// ---------------------------------------------------------------
+
+/// Tryb obsługi włączony na tym komputerze. Panel pokazuje wtedy ekran z kodem QR,
+/// a po zeskanowaniu tylko zakładki pracownika. Wybór pamiętamy na komputerze.
+class KioskModeNotifier extends Notifier<bool> {
+  static const _key = 'panel_tryb_obslugi';
+
+  @override
+  bool build() {
+    _load();
+    return false;
+  }
+
+  Future<void> _load() async {
+    try {
+      final saved = await SharedPreferencesAsync().getBool(_key);
+      if (saved != null) state = saved;
+    } catch (_) {
+      // Bez zapisu panel startuje w zwykłym trybie.
+    }
+  }
+
+  Future<void> set(bool value) async {
+    state = value;
+    if (!value) ref.read(actingMemberProvider.notifier).set(null);
+    try {
+      await SharedPreferencesAsync().setBool(_key, value);
+    } catch (_) {
+      // Wybór działa do zamknięcia panelu.
+    }
+  }
+}
+
+final kioskModeProvider = NotifierProvider<KioskModeNotifier, bool>(KioskModeNotifier.new);
+
+/// Pracownik zalogowany teraz na panelu kodem QR. Null: ekran z kodem albo zwykły tryb.
+class ActingMemberNotifier extends Notifier<ActingMember?> {
+  @override
+  ActingMember? build() => null;
+
+  void set(ActingMember? member) => state = member;
+}
+
+final actingMemberProvider = NotifierProvider<ActingMemberNotifier, ActingMember?>(
+  ActingMemberNotifier.new,
+);
+
+/// Uprawnienia, według których panel pokazuje zakładki. W trybie obsługi są to uprawnienia
+/// zalogowanego pracownika, poza nim uprawnienia konta (kierownik i właściciel mają wszystkie).
+final effectivePermissionsProvider = Provider.autoDispose.family<Set<String>?, String>((ref, id) {
+  if (ref.watch(kioskModeProvider)) {
+    return ref.watch(actingMemberProvider)?.permissions ?? const {};
+  }
+  return ref.watch(myPermissionsProvider(id)).value;
+});
+
+typedef ShiftQuery = ({String restaurantId, DateTime from, DateTime to});
+
+/// Zmiany na żywo: skan w aplikacji Table Praca od razu widać w panelu.
+class ShiftsLive extends Notifier<int> {
+  ShiftsLive(this.restaurantId);
+
+  final String restaurantId;
+
+  @override
+  int build() {
+    final stop = ref.watch(repositoryProvider).watchShifts(restaurantId, () => state++);
+    ref.onDispose(stop);
+    return 0;
+  }
+}
+
+final shiftsLiveProvider = NotifierProvider.autoDispose.family<ShiftsLive, int, String>(ShiftsLive.new);
+
+final shiftsProvider = FutureProvider.autoDispose.family<List<StaffShift>, ShiftQuery>((ref, q) {
+  ref.cacheFor();
+  ref.watch(shiftsLiveProvider(q.restaurantId));
+  return ref.watch(repositoryProvider).shifts(q.restaurantId, from: q.from, to: q.to);
+});
+
+final salesStatsProvider = FutureProvider.autoDispose.family<SalesStats, StatsQuery>((ref, q) {
+  ref.cacheFor();
+  return ref.watch(repositoryProvider).salesStats(q.restaurantId, q.days);
+});

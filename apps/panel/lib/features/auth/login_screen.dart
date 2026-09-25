@@ -15,15 +15,55 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _repeat = TextEditingController();
   bool _obscure = true;
   bool _busy = false;
   String? _emailError;
+
+  /// Zakładanie konta restauracji zamiast logowania.
+  bool _signUp = false;
 
   @override
   void dispose() {
     _email.dispose();
     _password.dispose();
+    _repeat.dispose();
     super.dispose();
+  }
+
+  /// Konto restauracji na mail firmowy. Po potwierdzeniu maila właściciel tworzy lokal.
+  Future<void> _register() async {
+    if (_busy) return;
+    setState(
+      () => _emailError = _validEmail(_email.text) ? null : 'Wpisz firmowy adres e-mail.',
+    );
+    if (_emailError != null) return;
+    if (_password.text.length < 8) {
+      showMessage(context, 'Hasło musi mieć co najmniej 8 znaków.');
+      return;
+    }
+    if (_password.text != _repeat.text) {
+      showMessage(context, 'Hasła się różnią.');
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final repo = ref.read(repositoryProvider);
+      await repo.signUp(email: _email.text, password: _password.text);
+      TextInput.finishAutofillContext();
+      // Bez potwierdzania maila konto jest od razu zalogowane i panel przechodzi do tworzenia lokalu.
+      if (repo.session == null && mounted) {
+        setState(() => _signUp = false);
+        showMessage(
+          context,
+          'Wysłaliśmy link na ${_email.text.trim()}. Kliknij go, a potem zaloguj się tutaj.',
+        );
+      }
+    } catch (e) {
+      if (mounted) showMessage(context, errorText(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   bool _validEmail(String value) =>
@@ -92,10 +132,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       children: [
                         const _Brand(),
                         const SizedBox(height: 40),
-                        Text('Zaloguj się do panelu', style: text.headlineMedium),
+                        Text(
+                          _signUp ? 'Załóż konto restauracji' : 'Zaloguj się do panelu',
+                          style: text.headlineMedium,
+                        ),
                         const SizedBox(height: 6),
                         Text(
-                          'Rezerwacje, plan sali, menu i opinie Twojego lokalu.',
+                          _signUp
+                              ? 'Użyj maila firmowego. Po potwierdzeniu utworzysz lokal i dodasz pracowników.'
+                              : 'Rezerwacje, zamówienia, sala, menu i zespół Twojego lokalu.',
                           style: text.bodyMedium?.copyWith(
                             color: AppColors.textMuted,
                           ),
@@ -108,7 +153,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           autofillHints: const [AutofillHints.email],
                           textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
-                            labelText: 'E-mail',
+                            labelText: _signUp ? 'E-mail firmowy' : 'E-mail',
                             errorText: _emailError,
                           ),
                         ),
@@ -116,8 +161,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         TextField(
                           controller: _password,
                           obscureText: _obscure,
-                          autofillHints: const [AutofillHints.password],
-                          onSubmitted: (_) => _signIn(),
+                          autofillHints: [_signUp ? AutofillHints.newPassword : AutofillHints.password],
+                          onSubmitted: (_) => _signUp ? null : _signIn(),
                           decoration: InputDecoration(
                             labelText: 'Hasło',
                             suffixIcon: IconButton(
@@ -131,9 +176,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                           ),
                         ),
+                        if (_signUp) ...[
+                          const SizedBox(height: 14),
+                          TextField(
+                            controller: _repeat,
+                            obscureText: _obscure,
+                            autofillHints: const [AutofillHints.newPassword],
+                            onSubmitted: (_) => _register(),
+                            decoration: const InputDecoration(labelText: 'Powtórz hasło'),
+                          ),
+                        ],
                         const SizedBox(height: 22),
                         FilledButton(
-                          onPressed: _busy ? null : _signIn,
+                          onPressed: _busy ? null : (_signUp ? _register : _signIn),
                           style: FilledButton.styleFrom(
                             minimumSize: const Size.fromHeight(46),
                           ),
@@ -145,17 +200,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     color: AppColors.textMuted,
                                   ),
                                 )
-                              : const Text('Zaloguj się'),
+                              : Text(_signUp ? 'Załóż konto' : 'Zaloguj się'),
                         ),
                         const SizedBox(height: 8),
+                        if (!_signUp)
+                          TextButton(
+                            onPressed: _busy ? null : _resetPassword,
+                            child: const Text('Nie pamiętam hasła'),
+                          ),
                         TextButton(
-                          onPressed: _busy ? null : _resetPassword,
-                          child: const Text('Nie pamiętam hasła'),
+                          onPressed: _busy ? null : () => setState(() => _signUp = !_signUp),
+                          child: Text(
+                            _signUp ? 'Mam już konto: zaloguj się' : 'Nowa restauracja? Załóż konto',
+                          ),
                         ),
                         const SizedBox(height: 24),
                         Text(
-                          'Konto lokalu założysz na stronie internetowej Table. '
-                          'Pracowników dodaje właściciel lokalu.',
+                          'Pracownicy nie zakładają kont w panelu. Właściciel dodaje ich w zakładce „Pracownicy”, '
+                          'a oni logują się kodem QR w aplikacji Table Praca.',
                           style: text.bodySmall?.copyWith(
                             color: AppColors.textDisabled,
                           ),

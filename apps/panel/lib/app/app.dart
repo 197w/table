@@ -11,7 +11,6 @@ import '../features/floor/floor_screen.dart';
 import '../features/gift_cards/gift_cards_screen.dart';
 import '../features/kitchen/kitchen_screen.dart';
 import '../features/menu/menu_screen.dart';
-import '../features/orders/order_history_screen.dart';
 import '../features/orders/orders_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/reservations/reservations_screen.dart';
@@ -137,7 +136,6 @@ GoRouter _buildRouter(Listenable refresh) {
             ),
           ),
           _page(PanelRoutes.kitchen, const KitchenScreen()),
-          _page(PanelRoutes.orderHistory, const OrderHistoryScreen()),
           _page(PanelRoutes.staff, const StaffScreen()),
           _page(PanelRoutes.giftCards, const GiftCardsScreen()),
           _page(PanelRoutes.menu, const MenuScreen()),
@@ -162,13 +160,32 @@ abstract final class PanelRoutes {
   static const floor = '/sala';
   static const orders = '/zamowienia';
   static const kitchen = '/kuchnia';
-  static const orderHistory = '/historia-zamowien';
   static const staff = '/pracownicy';
   static const giftCards = '/karty';
   static const menu = '/menu';
   static const profile = '/lokal';
   static const reviews = '/opinie';
   static const stats = '/statystyki';
+}
+
+/// Uprawnienie potrzebne do zakładki. Null: zakładka dostępna dla każdego.
+String? permissionForRoute(String location) {
+  const map = {
+    PanelRoutes.reservations: 'reservations',
+    PanelRoutes.orders: 'orders',
+    PanelRoutes.kitchen: 'kitchen',
+    PanelRoutes.floor: 'floor_edit',
+    PanelRoutes.staff: 'staff',
+    PanelRoutes.profile: 'profile',
+    PanelRoutes.menu: 'menu',
+    PanelRoutes.giftCards: 'gift_cards',
+    PanelRoutes.reviews: 'reviews',
+    PanelRoutes.stats: 'stats',
+  };
+  for (final e in map.entries) {
+    if (location.startsWith(e.key)) return e.value;
+  }
+  return null;
 }
 
 class _AuthRefresh extends ChangeNotifier {

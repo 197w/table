@@ -8,4 +8,5 @@ environment:
 workspace:
   - apps/guest
   - apps/panel
+  - apps/staff
   - packages/table_core

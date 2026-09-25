@@ -30,6 +30,42 @@ class PanelRepository {
     );
   }
 
+  /// Konto restauracji zakładane mailem firmowym. Supabase wysyła link potwierdzający.
+  Future<void> signUp({required String email, required String password}) {
+    return _guard(() => _db.auth.signUp(email: email.trim(), password: password));
+  }
+
+  /// Tworzy lokal dla zalogowanego konta firmowego. Goście zobaczą go po weryfikacji.
+  Future<String> createRestaurant({
+    required String name,
+    required String nip,
+    required String city,
+    required String address,
+    required String phone,
+    required String cuisine,
+  }) {
+    return _guard(
+      () => _db.rpc<String>(
+        'panel_create_restaurant',
+        params: {
+          'p_name': name.trim(),
+          'p_nip': nip,
+          'p_city': city.trim(),
+          'p_address': address.trim(),
+          'p_phone': phone.trim(),
+          'p_cuisine': cuisine,
+        },
+      ),
+    );
+  }
+
+  /// Sprawdza hasło konta restauracji, np. przed wyjściem z trybu obsługi.
+  Future<void> confirmPassword(String password) {
+    final email = _db.auth.currentUser?.email;
+    if (email == null) return Future.error(const AppFailure('Zaloguj się ponownie.'));
+    return _guard(() => _db.auth.signInWithPassword(email: email, password: password));
+  }
+
   Future<void> sendPasswordReset(String email) {
     return _guard(() => _db.auth.resetPasswordForEmail(email.trim()));
   }
@@ -602,6 +638,100 @@ class PanelRepository {
     });
   }
 
+  /// Sprzedaż z ostatnich [days] dni.
+  Future<SalesStats> salesStats(String restaurantId, int days) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>(
+        'panel_sales_stats',
+        params: {'p_restaurant_id': restaurantId, 'p_days': days},
+      );
+      return SalesStats.fromJson(json);
+    });
+  }
+
+  // -------------------------------------------------------------
+  // Czas pracy i logowanie pracowników kodem QR
+  // -------------------------------------------------------------
+
+  /// Nowy kod QR do zeskanowania aplikacją Table Praca.
+  Future<String> newLoginToken(String restaurantId) {
+    return _guard(
+      () => _db.rpc<String>('panel_new_login_token', params: {'p_restaurant_id': restaurantId}),
+    );
+  }
+
+  /// Pracownik, który zeskanował kod, albo null, gdy jeszcze nikt.
+  Future<ActingMember?> loginTokenStatus(String token) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>?>(
+        'panel_login_token_status',
+        params: {'p_token': token},
+      );
+      if (json == null || json['claimed'] != true) return null;
+      return ActingMember.fromJson(json);
+    });
+  }
+
+  /// Zmiany pracowników lokalu, które zaczęły się w okresie albo nadal trwają.
+  Future<List<StaffShift>> shifts(String restaurantId, {required DateTime from, required DateTime to}) {
+    return _guard(() async {
+      final rows = await _db
+          .from('staff_shifts')
+          .select()
+          .eq('restaurant_id', restaurantId)
+          .or('ended_at.is.null,started_at.gte.${from.toUtc().toIso8601String()}')
+          .lt('started_at', to.toUtc().toIso8601String())
+          .order('started_at');
+      return rows.map(StaffShift.fromJson).toList();
+    });
+  }
+
+  Future<void> endShift(String memberId) {
+    return _guard(() => _db.rpc<void>('staff_end_shift', params: {'p_member_id': memberId}));
+  }
+
+  Future<void> saveShift({
+    String? id,
+    required String memberId,
+    required DateTime startedAt,
+    DateTime? endedAt,
+  }) {
+    return _guard(
+      () => _db.rpc<void>(
+        'panel_save_shift',
+        params: {
+          'p_id': id,
+          'p_member_id': memberId,
+          'p_started_at': startedAt.toUtc().toIso8601String(),
+          'p_ended_at': endedAt?.toUtc().toIso8601String(),
+        },
+      ),
+    );
+  }
+
+  Future<void> deleteShift(String id) {
+    return _guard(() => _db.rpc<void>('panel_delete_shift', params: {'p_id': id}));
+  }
+
+  /// Wywołuje [onChange] przy każdej zmianie czasu pracy w lokalu.
+  void Function() watchShifts(String restaurantId, void Function() onChange) {
+    final channel = _db
+        .channel('panel-zmiany-$restaurantId-${_channelSeq++}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'staff_shifts',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'restaurant_id',
+            value: restaurantId,
+          ),
+          callback: (_) => onChange(),
+        )
+        .subscribe();
+    return () => unawaited(_db.removeChannel(channel));
+  }
+
   /// Zamknięte rachunki (opłacone i anulowane) z jednego dnia, najnowsze pierwsze.
   Future<List<PanelOrder>> orderHistory(String restaurantId, DateTime day) {
     return _guard(() async {
@@ -630,12 +760,13 @@ class PanelRepository {
     );
   }
 
-  /// Otwiera rachunek przy stoliku albo zwraca już otwarty.
-  Future<String> openOrder(String restaurantId, String tableId) {
+  /// Otwiera rachunek przy stoliku albo zwraca już otwarty. [memberId] to pracownik
+  /// zalogowany kodem QR, zapisany jako ten, kto rachunek otworzył.
+  Future<String> openOrder(String restaurantId, String tableId, {String? memberId}) {
     return _guard(
       () => _db.rpc<String>(
         'panel_open_order',
-        params: {'p_restaurant_id': restaurantId, 'p_table_id': tableId},
+        params: {'p_restaurant_id': restaurantId, 'p_table_id': tableId, 'p_member_id': memberId},
       ),
     );
   }
@@ -648,6 +779,7 @@ class PanelRepository {
     int quantity = 1,
     String? note,
     int course = 1,
+    String? memberId,
   }) {
     return _guard(
       () => _db.rpc<String>(
@@ -660,6 +792,7 @@ class PanelRepository {
           'p_quantity': quantity,
           'p_note': note,
           'p_course': course,
+          'p_member_id': memberId,
         },
       ),
     );
@@ -698,6 +831,7 @@ class PanelRepository {
     PaymentMethod method, {
     String? giftCardId,
     int? giftAmount,
+    String? memberId,
   }) {
     return _guard(
       () => _db.rpc<void>(
@@ -707,6 +841,7 @@ class PanelRepository {
           'p_payment_method': method.db,
           'p_gift_card_id': giftCardId,
           'p_gift_amount': giftAmount,
+          'p_member_id': memberId,
         },
       ),
     );

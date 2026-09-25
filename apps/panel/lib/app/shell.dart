@@ -5,6 +5,8 @@ import 'package:table_core/table_core.dart';
 
 import '../data/models.dart';
 import '../data/providers.dart';
+import '../features/kiosk/kiosk_screen.dart';
+import '../features/onboarding/create_restaurant_screen.dart';
 import 'app.dart';
 import '../shared/panel_widgets.dart';
 import 'panel_theme.dart';
@@ -27,9 +29,14 @@ class PanelShell extends ConsumerWidget {
       ref.watch(reservationsLiveProvider(current.id).select((s) => s.status));
     }
 
+    // Tryb obsługi bez zalogowanego pracownika: cały ekran to kod QR do zeskanowania.
+    if (current != null && ref.watch(kioskModeProvider) && ref.watch(actingMemberProvider) == null) {
+      return const Scaffold(body: KioskLockScreen());
+    }
+
     // Ekran kuchni na cały ekran: bez bocznego menu, same bileciki.
     if (ref.watch(kitchenFullscreenProvider) && location.startsWith(PanelRoutes.kitchen)) {
-      return Scaffold(body: child);
+      return Scaffold(body: _RouteGuard(location: location, child: child));
     }
 
     return Scaffold(
@@ -49,22 +56,60 @@ class PanelShell extends ConsumerWidget {
                   error: e,
                   onRetry: () => ref.invalidate(restaurantsProvider),
                 ),
+                // Nowe konto restauracji zaczyna od utworzenia lokalu.
                 data: (list) => list.isEmpty
-                    ? MessageView(
-                        icon: AppIcons.storefront,
-                        title: 'To konto nie ma jeszcze lokalu',
-                        message:
-                            'Poproś właściciela lokalu o dodanie Cię do zespołu albo napisz do nas, '
-                            'żeby dodać restaurację do Table.',
-                        actionLabel: 'Wyloguj się',
-                        onAction: () => ref.read(repositoryProvider).signOut(),
-                      )
-                    : child,
+                    ? const CreateRestaurantScreen()
+                    : _RouteGuard(location: location, child: child),
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Pokazuje zakładkę tylko wtedy, gdy stanowisko ma do niej uprawnienie.
+/// W przeciwnym razie przenosi do pierwszej dostępnej zakładki.
+class _RouteGuard extends ConsumerWidget {
+  const _RouteGuard({required this.location, required this.child});
+
+  final String location;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final current = ref.watch(currentRestaurantProvider);
+    if (current == null) return child;
+    final permissions = ref.watch(effectivePermissionsProvider(current.id));
+    if (permissions == null) return const LoadingView();
+    final required = permissionForRoute(location);
+    if (required == null || permissions.contains(required)) return child;
+
+    String? first;
+    for (final (_, items) in _groups) {
+      for (final item in items) {
+        final need = permissionForRoute(item.route);
+        if (first == null && (need == null || permissions.contains(need))) first = item.route;
+      }
+    }
+    if (first != null) {
+      final target = first;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) context.go(target);
+      });
+      return const LoadingView();
+    }
+    return MessageView(
+      icon: AppIcons.lock,
+      title: 'Brak dostępu do panelu',
+      message:
+          'Twoje stanowisko nie ma jeszcze żadnych uprawnień. Poproś kierownika o ich ustawienie '
+          'w zakładce „Pracownicy” → „Stanowiska”.',
+      actionLabel: ref.watch(kioskModeProvider) ? 'Wyloguj' : 'Wyloguj się',
+      onAction: () => ref.watch(kioskModeProvider)
+          ? ref.read(actingMemberProvider.notifier).set(null)
+          : ref.read(repositoryProvider).signOut(),
     );
   }
 }
@@ -82,7 +127,6 @@ const _groups = <(String, List<_NavItem>)>[
     _NavItem(PanelRoutes.reservations, 'Rezerwacje', AppIcons.calendarDots),
     _NavItem(PanelRoutes.orders, 'Zamówienia', AppIcons.receipt),
     _NavItem(PanelRoutes.kitchen, 'Kuchnia', AppIcons.cookingPot),
-    _NavItem(PanelRoutes.orderHistory, 'Historia zamówień', AppIcons.clock),
     _NavItem(PanelRoutes.floor, 'Edycja sali', AppIcons.squaresFour),
   ]),
   ('Zespół', [
@@ -164,9 +208,17 @@ class _Sidebar extends ConsumerWidget {
     final text = Theme.of(context).textTheme;
     final theme = ref.watch(themeSettingProvider);
     final email = ref.watch(repositoryProvider).email;
-    // Zamówienia widzi tylko konto z uprawnieniem, np. Kelner albo kierownik.
-    final canOrder = current != null && ref.watch(canTakeOrdersProvider(current.id));
-    final canKitchen = current != null && ref.watch(canUseKitchenProvider(current.id));
+    // Zakładki według uprawnień: stanowisko pracownika albo pełny dostęp kierownika.
+    final permissions = current == null
+        ? const <String>{}
+        : ref.watch(effectivePermissionsProvider(current.id)) ?? const <String>{};
+    bool allowed(String route) {
+      final need = permissionForRoute(route);
+      return need == null || permissions.contains(need);
+    }
+
+    final kiosk = ref.watch(kioskModeProvider);
+    final acting = ref.watch(actingMemberProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -184,7 +236,10 @@ class _Sidebar extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 10),
-        if (current != null)
+        // W trybie obsługi zamiast wyboru lokalu widać, kto jest zalogowany.
+        if (acting != null)
+          _MemberCard(member: acting, width: inner, fade: fade)
+        else if (current != null)
           _RestaurantSwitcher(
             current: current,
             restaurants: list,
@@ -196,7 +251,8 @@ class _Sidebar extends ConsumerWidget {
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              for (final (title, items) in _groups) ...[
+              for (final (title, items) in _groups)
+                if (items.any((i) => allowed(i.route))) ...[
                 // Nagłówek grupy trzyma stałą wysokość: napis gaśnie,
                 // a na jego miejscu zostaje kreska.
                 SizedBox(
@@ -229,9 +285,7 @@ class _Sidebar extends ConsumerWidget {
                   ),
                 ),
                 for (final item in items)
-                  if (((item.route != PanelRoutes.orders && item.route != PanelRoutes.orderHistory) ||
-                          canOrder) &&
-                      (item.route != PanelRoutes.kitchen || canKitchen))
+                  if (allowed(item.route))
                   _IconRow(
                     icon: item.icon,
                     label: item.label,
@@ -279,14 +333,44 @@ class _Sidebar extends ConsumerWidget {
             );
           },
         ),
-        _IconRow(
-          icon: AppIcons.signOut,
-          label: 'Wyloguj się',
-          width: inner,
-          fade: fade,
-          muted: true,
-          onTap: () => ref.read(repositoryProvider).signOut(),
-        ),
+        if (acting != null) ...[
+          // Pracownik kończy pracę na panelu: wraca ekran z kodem QR.
+          _IconRow(
+            icon: AppIcons.timer,
+            label: 'Zakończ zmianę',
+            width: inner,
+            fade: fade,
+            muted: true,
+            onTap: () => _endShift(context, ref, acting),
+          ),
+          _IconRow(
+            icon: AppIcons.signOut,
+            label: 'Wyloguj (${acting.name.split(' ').first})',
+            width: inner,
+            fade: fade,
+            muted: true,
+            onTap: () => ref.read(actingMemberProvider.notifier).set(null),
+          ),
+        ] else ...[
+          // Wspólny komputer w lokalu: pracownicy logują się kodem QR z aplikacji Table Praca.
+          if (!kiosk && (current?.canManage ?? false))
+            _IconRow(
+              icon: AppIcons.lock,
+              label: 'Tryb obsługi',
+              width: inner,
+              fade: fade,
+              muted: true,
+              onTap: () => _startKiosk(context, ref),
+            ),
+          _IconRow(
+            icon: AppIcons.signOut,
+            label: 'Wyloguj się',
+            width: inner,
+            fade: fade,
+            muted: true,
+            onTap: () => ref.read(repositoryProvider).signOut(),
+          ),
+        ],
         SizedBox(
           width: inner,
           height: 26,
@@ -308,6 +392,107 @@ class _Sidebar extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+Future<void> _startKiosk(BuildContext context, WidgetRef ref) async {
+  final ok = await confirm(
+    context,
+    title: 'Włączyć tryb obsługi?',
+    message:
+        'Panel pokaże kod QR. Pracownik skanuje go aplikacją Table Praca, zaczyna zmianę '
+        'i widzi tylko zakładki swojego stanowiska. Wyjście z trybu wymaga hasła konta restauracji.',
+    action: 'Włącz',
+  );
+  if (ok) await ref.read(kioskModeProvider.notifier).set(true);
+}
+
+Future<void> _endShift(BuildContext context, WidgetRef ref, ActingMember member) async {
+  final ok = await confirm(
+    context,
+    title: 'Zakończyć zmianę?',
+    message: '${member.name} kończy pracę teraz. Czas pracy zapisze się w zakładce „Pracownicy”.',
+    action: 'Zakończ zmianę',
+  );
+  if (!ok) return;
+  try {
+    await ref.read(repositoryProvider).endShift(member.memberId);
+    ref.read(actingMemberProvider.notifier).set(null);
+  } catch (e) {
+    if (context.mounted) showMessage(context, errorText(e));
+  }
+}
+
+/// Zalogowany pracownik w trybie obsługi: imię, stanowisko i od kiedy pracuje.
+class _MemberCard extends StatelessWidget {
+  const _MemberCard({required this.member, required this.width, required this.fade});
+
+  final ActingMember member;
+  final double width;
+  final double fade;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final initials = member.name
+        .split(' ')
+        .where((p) => p.isNotEmpty)
+        .take(2)
+        .map((p) => p[0].toUpperCase())
+        .join();
+    final since = member.shiftStartedAt?.toLocal();
+    return SizedBox(
+      width: width,
+      height: 52,
+      child: Row(
+        children: [
+          SizedBox(
+            width: railSlot(fade),
+            child: Center(
+              child: Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.accentTint,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.accent),
+                ),
+                child: Text(initials, style: text.labelLarge?.copyWith(color: AppColors.accent)),
+              ),
+            ),
+          ),
+          if (fade > 0)
+            Expanded(
+              child: Opacity(
+                opacity: labelFade(fade),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 10),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(member.name, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
+                          style: text.labelLarge),
+                      Text(
+                        [
+                          ?member.position,
+                          if (since != null)
+                            'od ${since.hour.toString().padLeft(2, '0')}:${since.minute.toString().padLeft(2, '0')}',
+                        ].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                        style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

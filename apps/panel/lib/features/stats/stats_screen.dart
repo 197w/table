@@ -7,6 +7,8 @@ import 'package:table_core/table_core.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
+import '../orders/order_history_screen.dart';
+import 'sales_view.dart';
 
 enum _Metric {
   covers('Goście'),
@@ -44,6 +46,9 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
   int _days = 30;
   _Metric? _metric;
 
+  /// 0: sprzedaż, 1: rezerwacje i goście, 2: historia zamówień.
+  int _tab = 0;
+
   @override
   Widget build(BuildContext context) {
     final restaurant = ref.watch(currentRestaurantProvider);
@@ -61,15 +66,37 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       children: [
         PageHeader(
           title: 'Statystyki',
-          subtitle: 'Dane z aplikacji Table. Dzień liczony według czasu lokalu.',
+          subtitle: switch (_tab) {
+            0 => 'Sprzedaż z rachunków zamkniętych w panelu. Dzień liczony według czasu lokalu.',
+            1 => 'Rezerwacje i ruch z aplikacji Table.',
+            _ => 'Zamknięte i anulowane rachunki z wybranego dnia.',
+          },
           actions: [
-            SegmentedTabs<int>(
-              options: const [(7, '7 dni'), (30, '30 dni'), (90, '90 dni')],
-              selected: _days,
-              onChanged: (d) => setState(() => _days = d),
-            ),
+            if (_tab != 2)
+              SegmentedTabs<int>(
+                options: const [(7, '7 dni'), (30, '30 dni'), (90, '90 dni')],
+                selected: _days,
+                onChanged: (d) => setState(() => _days = d),
+              ),
           ],
+          below: Align(
+            alignment: Alignment.centerLeft,
+            child: SegmentedTabs<int>(
+              options: const [(0, 'Sprzedaż'), (1, 'Rezerwacje i goście'), (2, 'Historia zamówień')],
+              selected: _tab,
+              onChanged: (t) => setState(() => _tab = t),
+            ),
+          ),
         ),
+        if (_tab == 0)
+          Expanded(
+            child: restaurant.isPro
+                ? SalesView(restaurantId: restaurant.id, days: _days)
+                : const ProGate(feature: 'Sprzedaż i zamówienia'),
+          )
+        else if (_tab == 2)
+          const Expanded(child: OrderHistoryScreen(embedded: true))
+        else
         Expanded(
           child: async.when(
             skipLoadingOnReload: true,

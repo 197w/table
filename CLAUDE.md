@@ -1,10 +1,13 @@
 # Table
 
-Rezerwacje stolików i ranking kuchni. Repozytorium ma dwie aplikacje Flutter i wspólny pakiet:
+Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i wspólny pakiet:
 
 - `apps/guest`: aplikacja dla gości na telefony (Android i iOS), identyfikator `pl.table.app`.
 - `apps/panel`: panel restauracji na komputery (Windows i macOS), identyfikator macOS `pl.table.panel`.
   Na tablety przejdziemy, gdy panel na komputerach będzie ustalony. Nigdy na telefony.
+- `apps/staff`: Table Praca, aplikacja dla pracowników lokalu na telefony (Android `pl.table.table_staff`,
+  iOS `pl.table.tableStaff`). Logowanie numerem telefonu (SMS), skan kodu QR z panelu zaczyna zmianę
+  i odblokowuje panel, historia godzin. Każda aktualizacja na S23 i iPhone'a, tak jak aplikacja dla gości.
 - `packages/table_core`: wspólny motyw, czcionka Geist, ikony Phosphor, formatery, widżety i konfiguracja.
 
 Z użytkownikiem rozmawiamy po polsku. Teksty w aplikacjach i komentarze w kodzie też są po polsku.
@@ -49,6 +52,7 @@ Z użytkownikiem rozmawiamy po polsku. Teksty w aplikacjach i komentarze w kodzi
 cd apps/guest && flutter run -d <telefon albo symulator> --dart-define-from-file=../../env.json
 cd apps/panel && flutter run -d windows --dart-define-from-file=../../env.json
 cd apps/panel && flutter run -d macos --dart-define-from-file=../../env.json
+cd apps/staff && flutter run -d <telefon> --dart-define-from-file=../../env.json
 ```
 
 Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dewelopera. macOS wymaga Xcode.
@@ -61,7 +65,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0026, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0027, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
   Gdy użytkownik napisze „kod”, podaj najnowszy `otp` z tej tabeli (jego numer kończy się na 098).
@@ -73,14 +77,28 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`PressScale`, `LoadingView`, `MessageView`, `ErrorView`, `Tag`, `DropdownPill`...), `app_icons.dart`
   (`Glyph` zamiast `Icon`, stałe `AppIcons`, SVG w `assets/icons`, nowe: `npx better-icons get ph:<nazwa>`).
 - `apps/guest/lib`: `app` (router, dolne menu, preferencje), `core` (mapy, lokalizacja), `data`, `features`.
+- `apps/staff/lib`: `data.dart` (repozytorium i providery), `login_screen.dart`, `home_screen.dart`, `scan_screen.dart`
+  (mobile_scanner). Podpis iOS: `DEVELOPMENT_TEAM` w `ios/Flutter/*.xcconfig`, nie w pbxproj.
 - `apps/panel/lib`: `app` (router, boczne menu, motyw na komputer), `data` (modele, `PanelRepository`, providery),
-  `features` (auth, reservations, orders, kitchen, floor, menu, profile, reviews, staff, stats), `shared/panel_widgets.dart`.
+  `features` (auth, onboarding, kiosk, reservations, orders, kitchen, floor, menu, profile, reviews, staff, stats),
+  `shared/panel_widgets.dart`.
 
 ## Panel restauracji
 
 - Logowanie e-mailem i hasłem. Obowiązkowe 2FA dodajemy przed wydaniem.
-- Konto restauracji zakłada się wyłącznie na stronie internetowej, którą robimy na samym końcu.
-  W panelu nie ma rejestracji. Do tego czasu konta testowe zakładamy ręcznie w bazie.
+- Restauracja zakłada konto w panelu mailem firmowym („Nowa restauracja? Załóż konto”), potwierdza mail
+  i tworzy lokal (`panel_create_restaurant`: nazwa, NIP, miasto, adres, telefon, kuchnia; plan Free).
+  Nowy lokal ma `restaurants.listed = false`: działa w panelu, ale goście go nie widzą, dopóki Table go
+  nie zweryfikuje (weryfikacja: `update restaurants set listed = true`, poprawić też położenie `location`).
+  Ja nadal nie zakładam kont ani nie wymyślam haseł: konto zakłada sama restauracja albo użytkownik.
+- Pracownicy nie mają kont w panelu. Właściciel dodaje ich w „Pracownicy” z numerem telefonu. Pracownik loguje się
+  tym numerem w Table Praca i skanuje kod QR z panelu w trybie obsługi (`panel_new_login_token`, `staff_scan`).
+  Skan zaczyna zmianę (`staff_shifts`) i odblokowuje panel na uprawnienia stanowiska (`ActingMember`).
+  Tryb obsługi włącza kierownik w menu bocznym, wyjście z niego wymaga hasła konta restauracji.
+  Zamówienia zapisują pracownika (`opened_by_member`, `created_by_member`). Czas pracy: „Pracownicy” → „Czas pracy”.
+- Menu boczne pokazuje tylko zakładki z uprawnień (`effectivePermissionsProvider`, `permissionForRoute`),
+  a wejście na inną zakładkę przenosi do pierwszej dozwolonej. Uprawnienie `profile` to „Dane lokalu”.
+- Statystyki mają zakładki: Sprzedaż (`panel_sales_stats`), Rezerwacje i goście, Historia zamówień.
 - Role w `restaurant_staff`: owner, manager, staff. Kierownik i właściciel zmieniają salę, menu, dane lokalu
   i odpowiadają na opinie. Obsługa prowadzi rezerwacje. Uprawnień pilnuje baza (RLS i funkcje `panel_*`).
 - Rezerwacje i plan sali tylko w planie Pro. Plan Free widzi opinie, menu, lokal i statystyki wyświetleń.
@@ -128,7 +146,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 
 ## Sprawdzanie
 
-- `flutter analyze` bez uwag w każdej zmienionej aplikacji i pakiecie, `flutter test` w `apps/guest`
-  i `apps/panel`, przed każdą instalacją.
+- `flutter analyze` bez uwag w każdej zmienionej aplikacji i pakiecie, `flutter test` w `apps/guest`,
+  `apps/panel` i `apps/staff`, przed każdą instalacją.
 - Zrzut okna panelu (PrintWindow) bywa biały przy Impellerze albo wygaszonym monitorze. Wtedy wygląd sprawdzamy
   testem z `matchesGoldenFile` i prawdziwą czcionką Geist, poza repozytorium.

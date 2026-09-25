@@ -291,33 +291,7 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
       );
     }
 
-    final permissions = ref.watch(myPermissionsProvider(restaurant.id));
-    if (!permissions.hasValue) {
-      return permissions.hasError
-          ? ErrorView(
-              error: permissions.error!,
-              onRetry: () => ref.invalidate(myPermissionsProvider(restaurant.id)),
-            )
-          : const LoadingView();
-    }
-    if (!permissions.value!.contains('kitchen')) {
-      return const Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          PageHeader(title: 'Kuchnia'),
-          Expanded(
-            child: MessageView(
-              icon: AppIcons.lock,
-              title: 'Brak dostępu do ekranu kuchni',
-              message:
-                  'Ekran kuchni widzi stanowisko z uprawnieniem „Kuchnia”, na przykład Kucharz. '
-                  'Stanowiska ustawia właściciel w zakładce „Pracownicy”.',
-            ),
-          ),
-        ],
-      );
-    }
-
+    // Dostęp do zakładki sprawdza boczne menu (PanelShell) według uprawnień stanowiska.
     ref.listen(kitchenTicketsProvider(restaurant.id), (_, next) {
       if (next.value case final tickets?) _noticeNew(tickets);
     });

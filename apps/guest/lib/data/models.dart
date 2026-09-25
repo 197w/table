@@ -20,12 +20,24 @@ int _toInt(Object? value) {
 const _cuisineLabels = <String, String>{
   'polska': 'Polska',
   'wloska': 'Włoska',
-  'japonska': 'Japońska',
-  'wietnamska': 'Wietnamska',
-  'gruzinska': 'Gruzińska',
-  'weganska': 'Wegańska',
   'francuska': 'Francuska',
+  'grecka': 'Grecka',
+  'hiszpanska': 'Hiszpańska',
+  'gruzinska': 'Gruzińska',
+  'turecka': 'Turecka',
+  'japonska': 'Japońska',
+  'chinska': 'Chińska',
+  'tajska': 'Tajska',
+  'wietnamska': 'Wietnamska',
+  'koreanska': 'Koreańska',
   'indyjska': 'Indyjska',
+  'meksykanska': 'Meksykańska',
+  'amerykanska': 'Amerykańska',
+  'wegetarianska': 'Wegetariańska',
+  'weganska': 'Wegańska',
+  'srodziemnomorska': 'Śródziemnomorska',
+  'kawiarnia': 'Kawiarnia',
+  'inna': 'Inna',
 };
 
 String cuisineLabel(String slug) {
