@@ -226,10 +226,11 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       items: [
         if (table != null && item.available)
           const PopupMenuItem(value: 'note', child: Text('Dodaj z uwagą…')),
-        PopupMenuItem(
-          value: 'toggle',
-          child: Text(item.available ? 'Skończyło się (niedostępne)' : 'Znowu dostępne'),
-        ),
+        if (ref.read(memberPermissionsProvider).contains('menu_availability'))
+          PopupMenuItem(
+            value: 'toggle',
+            child: Text(item.available ? 'Skończyło się (niedostępne)' : 'Znowu dostępne'),
+          ),
       ],
     );
     if (!mounted || choice == null) return;

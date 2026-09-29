@@ -426,7 +426,7 @@ class PanelRepository {
           .select(
             'id, name, position, '
             'menu_items(id, section_id, name, description, price_grosze, allergens, position, '
-            'variants, addons, vat_rate, available, show_in_kitchen)',
+            'variants, addons, vat_rate, available, show_in_kitchen, photo_url)',
           )
           .eq('restaurant_id', restaurantId)
           .order('position');
@@ -1031,6 +1031,31 @@ class PanelRepository {
   // -------------------------------------------------------------
 
   static const logoBucket = 'restaurant-logos';
+  static const menuPhotoBucket = 'menu-photos';
+
+  /// Wgrywa zdjęcie dania (już zmniejszone, JPG) i zapisuje jego adres przy pozycji menu.
+  Future<String> uploadMenuPhoto({
+    required String restaurantId,
+    required String itemId,
+    required Uint8List jpeg,
+  }) {
+    return _guard(() async {
+      // Nowa nazwa przy każdej zmianie, żeby aplikacje nie pokazywały starego zdjęcia z pamięci podręcznej.
+      final path = '$restaurantId/$itemId-${DateTime.now().millisecondsSinceEpoch}.jpg';
+      await _db.storage.from(menuPhotoBucket).uploadBinary(
+        path,
+        jpeg,
+        fileOptions: const FileOptions(contentType: 'image/jpeg'),
+      );
+      final url = _db.storage.from(menuPhotoBucket).getPublicUrl(path);
+      await _db.from('menu_items').update({'photo_url': url}).eq('id', itemId);
+      return url;
+    });
+  }
+
+  Future<void> removeMenuPhoto(String itemId) {
+    return _guard(() => _db.from('menu_items').update({'photo_url': null}).eq('id', itemId));
+  }
 
   /// Wgrywa logo do Storage i zapisuje jego publiczny adres w profilu lokalu.
   Future<String> uploadLogo({

@@ -157,7 +157,7 @@ class MenuItemTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final muted = text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular);
-    return Padding(
+    final details = Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -239,6 +239,49 @@ class MenuItemTile extends StatelessWidget {
             ),
         ],
       ),
+    );
+    final photo = item.photoUrl;
+    if (photo == null) return details;
+    // Zdjęcie dania po prawej. Stuknięcie powiększa je na cały ekran.
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: details),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 14, 0, 12),
+          child: GestureDetector(
+            onTap: () => showDialog<void>(
+              context: context,
+              builder: (_) => Dialog(
+                clipBehavior: Clip.antiAlias,
+                insetPadding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    InteractiveViewer(child: Image.network(photo, fit: BoxFit.contain)),
+                    Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Text(item.name, style: text.titleMedium),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                photo,
+                width: 88,
+                height: 88,
+                fit: BoxFit.cover,
+                cacheWidth: 264,
+                errorBuilder: (_, _, _) => const SizedBox(width: 88, height: 88),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

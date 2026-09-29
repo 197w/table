@@ -635,10 +635,14 @@ class MenuItem {
     this.vatRate = 8,
     this.available = true,
     this.showInKitchen = true,
+    this.photoUrl,
   });
 
   final String id;
   final String sectionId;
+
+  /// Zdjęcie dania (publiczny adres w Storage). Goście widzą je w aplikacji.
+  final String? photoUrl;
   final String name;
   final String? description;
 
@@ -680,6 +684,7 @@ class MenuItem {
       vatRate: _toInt(json['vat_rate'], 8),
       available: json['available'] != false,
       showInKitchen: json['show_in_kitchen'] != false,
+      photoUrl: json['photo_url'] as String?,
     );
   }
 }
@@ -1022,7 +1027,9 @@ enum StaffPermission {
   timesheet('timesheet', 'Czas pracy', 'Podgląd i poprawianie zmian pracowników', 'Zespół'),
   positions('positions', 'Stanowiska', 'Tworzenie stanowisk i nadawanie uprawnień', 'Zespół'),
   profile('profile', 'Dane lokalu', 'Adres, godziny otwarcia i logo', 'Lokal'),
-  menu('menu', 'Menu', 'Zmiana dań i cen', 'Lokal'),
+  menu('menu', 'Menu', 'Podgląd menu lokalu', 'Lokal'),
+  menuEdit('menu_edit', 'Edycja menu', 'Dodawanie i zmiana dań, cen, sekcji i zdjęć', 'Lokal'),
+  menuAvailability('menu_availability', 'Dostępność dań', 'Oznaczanie „Skończyło się” i „Znowu dostępne”', 'Lokal'),
   giftCards('gift_cards', 'Karty podarunkowe', 'Realizacja kart gości', 'Lokal'),
   reviews('reviews', 'Opinie', 'Odpowiadanie na opinie', 'Wyniki'),
   stats('stats', 'Statystyki', 'Sprzedaż, rezerwacje i historia zamówień', 'Wyniki');

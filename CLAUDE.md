@@ -7,7 +7,7 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   Na tablety przejdziemy, gdy panel na komputerach będzie ustalony. Nigdy na telefony.
 - `apps/staff`: Table for employees, aplikacja dla pracowników lokalu na telefony (Android `pl.table.table_staff`,
   iOS `pl.table.tableStaff`). Logowanie numerem telefonu (SMS), skan wspólnego kodu QR z panelu
-  zaczyna zmianę i loguje w panelu, kelner nabija zamówienia (stoliki, menu, wysyłka na kuchnię, wydanie,
+  zaczyna zmianę i loguje w panelu. Dolne menu: Zamówienia, Zeskanuj, Grafik (kalendarz miesięczny), Ustawienia. Kelner nabija zamówienia (stoliki, menu, wysyłka na kuchnię, wydanie,
   zamknięcie rachunku), mój grafik (zgłaszanie godzin), mój kod do panelu, historia godzin. Każda aktualizacja na S23 i iPhone'a, tak jak aplikacja dla gości.
 - `packages/table_core`: wspólny motyw, czcionka Geist, ikony Phosphor, formatery, widżety i konfiguracja.
 
@@ -66,7 +66,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0032, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0033, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
   Gdy użytkownik napisze „kod”, podaj najnowszy `otp` z tej tabeli (jego numer kończy się na 098).
@@ -150,7 +150,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (1–9, strzałki, Spacja, Enter, Backspace, F, M, Esc; strzałki przechodzą między bilecikami, Spacja zbija
   i schodzi niżej, Enter zamyka bilecik i zaznacza następny), dolny pasek ze średnim czasem (`panel_kitchen_stats`),
   ustawienia (progi i pozycje ukryte, `panel_set_kitchen_config`). Pełny ekran chowa menu. Nowy bilecik dzwoni.
-- Menu: warianty (np. rozmiary, każdy z ceną), płatne dodatki, stawka VAT i „dostępne teraz”. Przy wariantach
+- Menu: zdjęcia dań (`menu_items.photo_url`, bucket `menu-photos`, panel zmniejsza zdjęcie do 1200 px JPG,
+  goście widzą je w aplikacji Table). Uprawnienia: `menu` (zakładka), `menu_edit` (dania, ceny, sekcje, zdjęcia),
+  `menu_availability` („Skończyło się”). Warianty (np. rozmiary, każdy z ceną), płatne dodatki, stawka VAT i „dostępne teraz”. Przy wariantach
   `price_grosze` to najniższa cena wariantu. „Skończyło się” może ustawić też kelner i kuchnia (`panel_set_menu_item_available`).
 
 ## Zasady projektu

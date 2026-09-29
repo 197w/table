@@ -5,6 +5,7 @@ import 'package:table_core/table_core.dart';
 
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../shared/menu_photo.dart';
 import '../../shared/panel_widgets.dart';
 
 class MenuScreen extends ConsumerStatefulWidget {
@@ -105,6 +106,24 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     await _run(() => ref.read(repositoryProvider).deleteItem(item.id), restaurantId, 'Pozycja usunięta.');
   }
 
+  Future<void> _photo(String restaurantId, MenuItem item) async {
+    try {
+      final jpeg = await pickMenuPhoto();
+      if (jpeg == null) return;
+      await _run(
+        () => ref.read(repositoryProvider).uploadMenuPhoto(restaurantId: restaurantId, itemId: item.id, jpeg: jpeg),
+        restaurantId,
+        'Zdjęcie „${item.name}” zapisane. Goście zobaczą je w aplikacji.',
+      );
+    } on FormatException {
+      if (mounted) showMessage(context, 'Nie udało się odczytać zdjęcia. Wybierz plik JPG, PNG albo WEBP.');
+    }
+  }
+
+  Future<void> _removePhoto(String restaurantId, MenuItem item) {
+    return _run(() => ref.read(repositoryProvider).removeMenuPhoto(item.id), restaurantId, 'Zdjęcie usunięte.');
+  }
+
   Future<void> _toggleAvailable(String restaurantId, MenuItem item) {
     return _run(
       () => ref.read(repositoryProvider).setItemAvailable(item.id, !item.available),
@@ -125,7 +144,10 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     final restaurant = ref.watch(currentRestaurantProvider);
     if (restaurant == null) return const LoadingView();
     final async = ref.watch(menuProvider(restaurant.id));
-    final editable = restaurant.canManage;
+    // Zmiany w menu według uprawnień pracownika zalogowanego w panelu.
+    final permissions = ref.watch(memberPermissionsProvider);
+    final editable = restaurant.canManage && permissions.contains('menu_edit');
+    final canToggle = permissions.contains('menu_availability') || permissions.contains('menu_edit');
     final text = Theme.of(context).textTheme;
 
     return Column(
@@ -232,7 +254,11 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                                         item: current.items[i],
                                         editable: editable,
                                         onEdit: () => _editItem(restaurant.id, current, current.items[i]),
-                                        onToggleAvailable: () => _toggleAvailable(restaurant.id, current.items[i]),
+                                        onPhoto: () => _photo(restaurant.id, current.items[i]),
+                                        onRemovePhoto: () => _removePhoto(restaurant.id, current.items[i]),
+                                        onToggleAvailable: canToggle
+                                            ? () => _toggleAvailable(restaurant.id, current.items[i])
+                                            : null,
                                         onDelete: () => _deleteItem(restaurant.id, current.items[i]),
                                         onUp: i == 0 ? null : () => _moveItem(restaurant.id, current, i, -1),
                                         onDown: i == current.items.length - 1
@@ -344,6 +370,8 @@ class _ItemRow extends StatelessWidget {
     required this.item,
     required this.editable,
     required this.onEdit,
+    required this.onPhoto,
+    required this.onRemovePhoto,
     required this.onToggleAvailable,
     required this.onDelete,
     required this.onUp,
@@ -353,7 +381,11 @@ class _ItemRow extends StatelessWidget {
   final MenuItem item;
   final bool editable;
   final VoidCallback onEdit;
-  final VoidCallback onToggleAvailable;
+  final VoidCallback onPhoto;
+  final VoidCallback onRemovePhoto;
+
+  /// Null: brak uprawnienia „Dostępność dań”.
+  final VoidCallback? onToggleAvailable;
   final VoidCallback onDelete;
   final VoidCallback? onUp;
   final VoidCallback? onDown;
@@ -366,6 +398,15 @@ class _ItemRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Zdjęcie dania: kliknięcie dodaje albo zmienia (z uprawnieniem „Edycja menu”).
+          if (item.photoUrl != null || editable) ...[
+            _PhotoThumb(
+              url: item.photoUrl,
+              onPick: editable ? onPhoto : null,
+              onRemove: editable && item.photoUrl != null ? onRemovePhoto : null,
+            ),
+            const SizedBox(width: 14),
+          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -429,15 +470,16 @@ class _ItemRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          IconButton(
-            tooltip: item.available ? 'Skończyło się: oznacz jako niedostępne' : 'Znowu dostępne',
-            icon: Glyph(
-              item.available ? AppIcons.eye : AppIcons.eyeSlash,
-              size: 16,
-              color: item.available ? AppColors.textMuted : AppColors.error,
+          if (onToggleAvailable != null)
+            IconButton(
+              tooltip: item.available ? 'Skończyło się: oznacz jako niedostępne' : 'Znowu dostępne',
+              icon: Glyph(
+                item.available ? AppIcons.eye : AppIcons.eyeSlash,
+                size: 16,
+                color: item.available ? AppColors.textMuted : AppColors.error,
+              ),
+              onPressed: onToggleAvailable,
             ),
-            onPressed: onToggleAvailable,
-          ),
           if (editable) ...[
             const SizedBox(width: 8),
             IconButton(
@@ -906,6 +948,62 @@ class _OptionsEditor extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Miniatura zdjęcia dania. Bez zdjęcia: pole „Dodaj zdjęcie”. Menu: zmiana albo usunięcie.
+class _PhotoThumb extends StatelessWidget {
+  const _PhotoThumb({required this.url, required this.onPick, required this.onRemove});
+
+  final String? url;
+  final VoidCallback? onPick;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final box = ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        width: 72,
+        height: 72,
+        color: AppColors.surfaceRaised,
+        child: url == null
+            ? Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Glyph(AppIcons.plus, size: 18, color: AppColors.textMuted),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Zdjęcie',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: AppColors.textMuted),
+                  ),
+                ],
+              )
+            : Image.network(
+                url!,
+                fit: BoxFit.cover,
+                cacheWidth: 144,
+                errorBuilder: (_, _, _) => Center(child: Glyph(AppIcons.warning, size: 18, color: AppColors.textMuted)),
+              ),
+      ),
+    );
+    if (onPick == null) return box;
+    if (url == null) {
+      return Tooltip(
+        message: 'Dodaj zdjęcie dania',
+        child: InkWell(borderRadius: BorderRadius.circular(10), onTap: onPick, child: box),
+      );
+    }
+    return PopupMenuButton<String>(
+      tooltip: 'Zdjęcie dania',
+      onSelected: (v) => v == 'remove' ? onRemove?.call() : onPick!(),
+      itemBuilder: (_) => [
+        const PopupMenuItem(value: 'change', child: Text('Zmień zdjęcie')),
+        if (onRemove != null)
+          PopupMenuItem(value: 'remove', child: Text('Usuń zdjęcie', style: TextStyle(color: AppColors.error))),
+      ],
+      child: box,
     );
   }
 }

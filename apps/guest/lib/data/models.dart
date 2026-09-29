@@ -150,6 +150,7 @@ class MenuItem {
     this.variants = const [],
     this.addons = const [],
     this.available = true,
+    this.photoUrl,
   });
 
   final String id;
@@ -168,6 +169,9 @@ class MenuItem {
   /// Lokal oznaczył danie jako chwilowo niedostępne.
   final bool available;
 
+  /// Zdjęcie dania dodane w panelu restauracji.
+  final String? photoUrl;
+
   factory MenuItem.fromJson(Map<String, dynamic> json) {
     return MenuItem(
       id: json['id'] as String,
@@ -179,6 +183,7 @@ class MenuItem {
       variants: MenuOption.listFrom(json['variants']),
       addons: MenuOption.listFrom(json['addons']),
       available: json['available'] != false,
+      photoUrl: json['photo_url'] as String?,
     );
   }
 }

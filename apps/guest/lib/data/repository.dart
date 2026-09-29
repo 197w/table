@@ -139,7 +139,7 @@ class Repository {
             .select(
               'id, name, cuisine, price_level, description, address, city, phone, plan, is_example, logo_url, max_party_size, '
               'opening_hours(weekday, opens, closes), '
-              'menu_sections(id, name, position, menu_items(id, name, description, price_grosze, allergens, position, variants, addons, available))',
+              'menu_sections(id, name, position, menu_items(id, name, description, price_grosze, allergens, position, variants, addons, available, photo_url))',
             )
             .eq('id', id)
             .single(),

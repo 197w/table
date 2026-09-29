@@ -198,12 +198,11 @@ class StaffRepository {
     );
   });
 
-  /// Mój grafik na najbliższe 8 tygodni.
-  Future<List<PlannedShift>> schedule() => _guard(() async {
-    final today = DateTime.now();
+  /// Mój grafik w podanym okresie (najwyżej ok. 3 miesiące).
+  Future<List<PlannedShift>> schedule({required DateTime from, required DateTime to}) => _guard(() async {
     final rows = await _db.rpc<List<dynamic>>('staff_my_schedule', params: {
-      'p_from': _isoDay(today),
-      'p_to': _isoDay(today.add(const Duration(days: 56))),
+      'p_from': _isoDay(from),
+      'p_to': _isoDay(to),
     });
     return [for (final r in rows) PlannedShift.fromJson(r as Map<String, dynamic>)];
   });
@@ -282,9 +281,13 @@ final jobsProvider = FutureProvider.autoDispose<List<Job>>((ref) {
   return ref.watch(staffRepositoryProvider).jobs();
 });
 
-final scheduleProvider = FutureProvider.autoDispose<List<PlannedShift>>((ref) {
+/// Grafik miesiąca w kalendarzu (z dniami sąsiednich miesięcy widocznymi w siatce).
+final scheduleMonthProvider = FutureProvider.autoDispose.family<List<PlannedShift>, DateTime>((ref, month) {
   if (ref.watch(sessionProvider) == null) return Future.value(const []);
-  return ref.watch(staffRepositoryProvider).schedule();
+  return ref.watch(staffRepositoryProvider).schedule(
+    from: DateTime(month.year, month.month, 1).subtract(const Duration(days: 7)),
+    to: DateTime(month.year, month.month + 1, 7),
+  );
 });
 
 final codesProvider = FutureProvider.autoDispose<Map<String, String>>((ref) {

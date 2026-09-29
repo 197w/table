@@ -6,8 +6,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:table_core/table_core.dart';
 
 import 'data.dart';
-import 'home_screen.dart';
 import 'login_screen.dart';
+import 'shell.dart';
 
 /// Table for employees: aplikacja dla pracowników lokalu. Zmianę zaczyna się skanem kodu QR
 /// z panelu restauracji, tutaj też widać przepracowane godziny.
@@ -43,7 +43,7 @@ class StaffApp extends ConsumerWidget {
       locale: const Locale('pl', 'PL'),
       supportedLocales: const [Locale('pl', 'PL')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      home: signedIn ? const HomeScreen() : const LoginScreen(),
+      home: signedIn ? const StaffShell() : const LoginScreen(),
     );
   }
 }
