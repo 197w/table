@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
@@ -382,7 +383,10 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
                 fullscreen: fullscreen,
                 undoLabel: _lastDone?.label,
                 onUndo: () => _undo(restaurant.id),
-                onSettings: () => _settings(restaurant.id, config),
+                // Ustawienia kuchni tylko z uprawnieniem „Ustawienia kuchni”.
+                onSettings: ref.watch(tabPermissionsProvider(PanelRoutes.kitchen)).contains('kitchen_settings')
+                    ? () => _settings(restaurant.id, config)
+                    : null,
                 onFullscreen: () => ref.read(kitchenFullscreenProvider.notifier).set(!fullscreen),
               ),
               Divider(height: 1, thickness: 1, color: AppColors.ring),
@@ -438,7 +442,7 @@ class _KitchenBar extends ConsumerWidget {
   final bool fullscreen;
   final String? undoLabel;
   final VoidCallback onUndo;
-  final VoidCallback onSettings;
+  final VoidCallback? onSettings;
   final VoidCallback onFullscreen;
 
   @override
@@ -482,12 +486,14 @@ class _KitchenBar extends ConsumerWidget {
             LiveStatus.connecting => const PanelPill('Łączenie…', dotColor: _amber),
             LiveStatus.offline => const PanelPill('Brak połączenia', dotColor: _late),
           },
-          const SizedBox(width: 12),
-          GlowButton(
-            icon: AppIcons.gear,
-            tooltip: 'Ustawienia kuchni',
-            onPressed: onSettings,
-          ),
+          if (onSettings case final open?) ...[
+            const SizedBox(width: 12),
+            GlowButton(
+              icon: AppIcons.gear,
+              tooltip: 'Ustawienia kuchni',
+              onPressed: open,
+            ),
+          ],
           const SizedBox(width: 8),
           GlowButton(
             icon: muted ? AppIcons.bellSlash : AppIcons.bell,

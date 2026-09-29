@@ -97,53 +97,62 @@ class ScanResult {
   final DateTime? startedAt;
 }
 
-/// Godziny w grafiku zaproponowane przez przełożonego. Przyjmuję je albo proponuję inne.
+/// Moje godziny w grafiku. Zgłaszam, od której do której mogę pracować, przełożony przyjmuje
+/// (czasem ze zmienionymi godzinami) albo odrzuca. Po decyzji nie mogę już zmienić tego dnia.
 class PlannedShift {
   const PlannedShift({
     required this.id,
+    required this.memberId,
     required this.restaurantName,
     required this.day,
     required this.starts,
     required this.ends,
     required this.status,
-    this.changeStarts,
-    this.changeEnds,
+    this.requestedStarts,
+    this.requestedEnds,
     this.note,
-    this.reply,
+    this.answer,
   });
 
   final String id;
+  final String memberId;
   final String restaurantName;
   final DateTime day;
 
-  /// Godziny jako „HH:MM”.
+  /// Godziny jako „HH:MM”: zgłoszone albo (po przyjęciu) zatwierdzone.
   final String starts;
   final String ends;
 
-  /// proposed: czeka na mnie, accepted: przyjęte, changed: zaproponowałem inne godziny.
+  /// pending: czeka na przełożonego, accepted: przyjęte, rejected: odrzucone.
   final String status;
-  final String? changeStarts;
-  final String? changeEnds;
-  final String? note;
-  final String? reply;
 
-  bool get waiting => status == 'proposed';
+  /// Co zgłosiłem. Null: godziny wpisał przełożony.
+  final String? requestedStarts;
+  final String? requestedEnds;
+  final String? note;
+  final String? answer;
+
+  bool get pending => status == 'pending';
   bool get accepted => status == 'accepted';
-  bool get changed => status == 'changed';
+  bool get rejected => status == 'rejected';
+
+  /// Przyjęte, ale z innymi godzinami, niż zgłosiłem.
+  bool get changed => accepted && requestedStarts != null && (requestedStarts != starts || requestedEnds != ends);
 
   static String? _hm(Object? v) => v == null ? null : (v as String).substring(0, 5);
 
   factory PlannedShift.fromJson(Map<String, dynamic> j) => PlannedShift(
     id: j['id'] as String,
+    memberId: j['member_id'] as String,
     restaurantName: j['restaurant_name'] as String,
     day: DateTime.parse(j['day'] as String),
     starts: _hm(j['starts'])!,
     ends: _hm(j['ends'])!,
     status: j['status'] as String,
-    changeStarts: _hm(j['change_starts']),
-    changeEnds: _hm(j['change_ends']),
+    requestedStarts: _hm(j['requested_starts']),
+    requestedEnds: _hm(j['requested_ends']),
     note: j['note'] as String?,
-    reply: j['reply'] as String?,
+    answer: j['answer'] as String?,
   );
 }
 
@@ -189,30 +198,42 @@ class StaffRepository {
     );
   });
 
-  /// Mój grafik na najbliższe 4 tygodnie.
+  /// Mój grafik na najbliższe 8 tygodni.
   Future<List<PlannedShift>> schedule() => _guard(() async {
     final today = DateTime.now();
     final rows = await _db.rpc<List<dynamic>>('staff_my_schedule', params: {
       'p_from': _isoDay(today),
-      'p_to': _isoDay(today.add(const Duration(days: 28))),
+      'p_to': _isoDay(today.add(const Duration(days: 56))),
     });
     return [for (final r in rows) PlannedShift.fromJson(r as Map<String, dynamic>)];
   });
 
-  /// Przyjmuję godziny albo proponuję inne ([starts], [ends] jako „HH:MM”).
-  Future<void> answerShift(String id, {required bool accept, String? starts, String? ends, String? reply}) =>
-      _guard(() => _db.rpc<void>('staff_answer_shift', params: {
-        'p_id': id,
-        'p_accept': accept,
+  /// Zgłaszam, od której do której mogę pracować w danym dniu ([starts], [ends] jako „HH:MM”).
+  /// Poprawić mogę tylko zgłoszenie, o którym przełożony jeszcze nie zdecydował.
+  Future<void> submitHours({
+    required String memberId,
+    required DateTime day,
+    required String starts,
+    required String ends,
+    String? note,
+  }) =>
+      _guard(() => _db.rpc<void>('staff_submit_hours', params: {
+        'p_member_id': memberId,
+        'p_day': _isoDay(day),
         'p_starts': starts,
         'p_ends': ends,
-        'p_reply': (reply?.trim().isEmpty ?? true) ? null : reply!.trim(),
+        'p_note': (note?.trim().isEmpty ?? true) ? null : note!.trim(),
       }));
 
-  /// Moje loginy do głównego stanowiska według numeru pracownika (hasło zna tylko pracownik).
-  Future<Map<String, String>> logins() => _guard(() async {
-    final rows = await _db.from('staff_accounts').select('member_id, login');
-    return {for (final r in rows) r['member_id'] as String: r['login'] as String};
+  Future<void> deleteHours(String id) => _guard(() => _db.rpc<void>('staff_delete_hours', params: {'p_id': id}));
+
+  /// Moje loginy i hasła do głównego stanowiska według numeru pracownika.
+  Future<Map<String, ({String login, String? password})>> logins() => _guard(() async {
+    final rows = await _db.rpc<List<dynamic>>('staff_my_logins');
+    return {
+      for (final r in rows.cast<Map<String, dynamic>>())
+        r['member_id'] as String: (login: r['login'] as String, password: r['password'] as String?),
+    };
   });
 
   Future<void> endShift(String memberId) =>
@@ -267,7 +288,7 @@ final scheduleProvider = FutureProvider.autoDispose<List<PlannedShift>>((ref) {
   return ref.watch(staffRepositoryProvider).schedule();
 });
 
-final loginsProvider = FutureProvider.autoDispose<Map<String, String>>((ref) {
+final loginsProvider = FutureProvider.autoDispose<Map<String, ({String login, String? password})>>((ref) {
   if (ref.watch(sessionProvider) == null) return Future.value(const {});
   return ref.watch(staffRepositoryProvider).logins();
 });

@@ -33,22 +33,37 @@ void main() {
     expect(KitchenTicket.fromRows([_row('a')]).single.waiter, isNull);
   });
 
-  test('propozycja w grafiku z godzinami pracownika', () {
+  test('zgłoszenie godzin przyjęte ze zmienionymi godzinami', () {
     final shift = PlannedShift.fromJson({
       'id': 's1',
       'member_id': 'm1',
       'day': '2026-10-01',
-      'starts': '08:00:00',
-      'ends': '16:00:00',
-      'status': 'changed',
-      'change_starts': '10:00:00',
-      'change_ends': '18:00:00',
-      'reply': 'Rano mam zajęcia',
+      'starts': '13:00:00',
+      'ends': '20:00:00',
+      'requested_starts': '12:00:00',
+      'requested_ends': '20:00:00',
+      'status': 'accepted',
+      'note': 'rano szkoła',
+      'answer': 'od 13',
     });
-    expect(shift.status, PlannedShiftStatus.changed);
-    expect((shift.starts, shift.ends), ('08:00', '16:00'));
-    expect((shift.changeStarts, shift.changeEnds), ('10:00', '18:00'));
+    expect(shift.status, PlannedShiftStatus.accepted);
+    expect((shift.starts, shift.ends), ('13:00', '20:00'));
+    expect((shift.requestedStarts, shift.requestedEnds), ('12:00', '20:00'));
+    expect(shift.changed, isTrue);
     expect(shift.day, DateTime(2026, 10, 1));
+  });
+
+  test('godziny wpisane przez przełożonego nie są „zmienione”', () {
+    final shift = PlannedShift.fromJson({
+      'id': 's2',
+      'member_id': 'm1',
+      'day': '2026-10-02',
+      'starts': '10:00:00',
+      'ends': '18:00:00',
+      'status': 'accepted',
+    });
+    expect(shift.requestedStarts, isNull);
+    expect(shift.changed, isFalse);
   });
 
   test('statystyki pracownika liczą średni rachunek', () {
@@ -65,12 +80,23 @@ void main() {
     expect(const MemberStats().averageOrder, 0);
   });
 
-  test('zakładka Pracownicy dla uprawnienia Pracownicy albo samego Grafiku', () {
+  test('zakładki według uprawnień', () {
     expect(canOpenRoute(PanelRoutes.staff, {'staff'}), isTrue);
     expect(canOpenRoute(PanelRoutes.staff, {'schedule'}), isTrue);
+    expect(canOpenRoute(PanelRoutes.staff, {'staff_logins'}), isTrue);
     expect(canOpenRoute(PanelRoutes.staff, {'orders'}), isFalse);
     expect(canOpenRoute(PanelRoutes.reservations, {'orders'}), isFalse);
-    expect(canOpenRoute(PanelRoutes.settings, {'profile'}), isTrue);
-    expect(canOpenRoute(PanelRoutes.settings, {'orders'}), isFalse);
+    expect(canOpenRoute(PanelRoutes.settings, {'settings'}), isTrue);
+    expect(canOpenRoute(PanelRoutes.settings, {'profile'}), isFalse);
+    expect(canOpenRoute(PanelRoutes.profile, {'profile'}), isTrue);
+  });
+
+  test('zakładka dla adresu i konto restauracji z pełnym dostępem', () {
+    expect(tabForRoute('/zamowienia?stolik=t1'), PanelRoutes.orders);
+    expect(tabForRoute('/logowanie'), isNull);
+    final account = ActingMember.account();
+    expect(account.isAccount, isTrue);
+    expect(account.dbMemberId, isNull);
+    expect(account.permissions, containsAll(['orders_close', 'positions', 'settings']));
   });
 }

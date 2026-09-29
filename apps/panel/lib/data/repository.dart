@@ -721,32 +721,37 @@ class PanelRepository {
   // Loginy pracowników, grafik i statystyki pracownika
   // -------------------------------------------------------------
 
-  /// Loginy pracowników lokalu według numeru pracownika.
+  /// Loginy i hasła pracowników lokalu według numeru pracownika (uprawnienie „Loginy i hasła”).
   Future<Map<String, StaffLogin>> staffLogins(String restaurantId) {
     return _guard(() async {
-      final rows = await _db
-          .from('staff_accounts')
-          .select('member_id, login, locked_until')
-          .eq('restaurant_id', restaurantId);
-      return {for (final r in rows) r['member_id'] as String: StaffLogin.fromJson(r)};
+      final rows = await _db.rpc<List<dynamic>>(
+        'panel_staff_logins',
+        params: {'p_restaurant_id': restaurantId},
+      );
+      return {
+        for (final r in rows.cast<Map<String, dynamic>>()) r['member_id'] as String: StaffLogin.fromJson(r),
+      };
     });
   }
 
-  /// Nowy login i krótkie hasło. Hasło wraca tylko tutaj, baza trzyma jego skrót.
-  Future<({String login, String password})> createStaffLogin(String memberId) {
+  /// Nowy login i hasło. [password] puste: łatwe hasło wylosowane przez bazę, np. „kawa47”.
+  Future<({String login, String password})> createStaffLogin(String memberId, {String? password}) {
     return _guard(() async {
       final json = await _db.rpc<Map<String, dynamic>>(
         'panel_create_staff_login',
-        params: {'p_member_id': memberId},
+        params: {'p_member_id': memberId, 'p_password': password},
       );
       return (login: json['login'] as String, password: json['password'] as String);
     });
   }
 
-  /// Nowe hasło pracownika (stare przestaje działać).
-  Future<String> resetStaffPassword(String memberId) {
+  /// Nowe hasło pracownika: wpisane albo wylosowane (puste). Stare przestaje działać.
+  Future<String> setStaffPassword(String memberId, {String? password}) {
     return _guard(
-      () => _db.rpc<String>('panel_reset_staff_password', params: {'p_member_id': memberId}),
+      () => _db.rpc<String>(
+        'panel_set_staff_password',
+        params: {'p_member_id': memberId, 'p_password': password},
+      ),
     );
   }
 
@@ -783,30 +788,40 @@ class PanelRepository {
     return () => _db.removeChannel(channel);
   }
 
-  Future<void> planShift({
+  /// Przełożony wpisuje godziny sam. Wpis jest od razu przyjęty.
+  Future<void> addHours({
     required String memberId,
     required DateTime day,
     required String starts,
     required String ends,
-    String? note,
+    String? answer,
   }) {
     return _guard(
-      () => _db.rpc<void>('panel_plan_shift', params: {
+      () => _db.rpc<void>('panel_add_hours', params: {
         'p_member_id': memberId,
         'p_day': _isoDay(day),
         'p_starts': starts,
         'p_ends': ends,
-        'p_note': note,
+        'p_answer': answer,
       }),
     );
   }
 
-  Future<void> acceptShiftChange(String id) {
-    return _guard(() => _db.rpc<void>('panel_accept_shift_change', params: {'p_id': id}));
+  /// Decyzja o zgłoszeniu pracownika: przyjęcie (także ze zmienionymi godzinami) albo odrzucenie.
+  Future<void> decideHours(String id, {required bool accept, String? starts, String? ends, String? answer}) {
+    return _guard(
+      () => _db.rpc<void>('panel_decide_hours', params: {
+        'p_id': id,
+        'p_accept': accept,
+        'p_starts': starts,
+        'p_ends': ends,
+        'p_answer': answer,
+      }),
+    );
   }
 
-  Future<void> deletePlannedShift(String id) {
-    return _guard(() => _db.rpc<void>('panel_delete_planned_shift', params: {'p_id': id}));
+  Future<void> deleteHours(String id) {
+    return _guard(() => _db.rpc<void>('panel_delete_hours', params: {'p_id': id}));
   }
 
   Future<MemberStats> memberStats(String memberId, int days) {

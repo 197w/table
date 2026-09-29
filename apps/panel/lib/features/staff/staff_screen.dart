@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
@@ -49,14 +50,15 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
   bool _showInactive = false;
   int _tab = 0;
 
-  Future<void> _addMember(String restaurantId) async {
+  Future<void> _addMember(String restaurantId, {required bool withLogin}) async {
     final id = await showDialog<String>(
       context: context,
       builder: (_) => _MemberDialog(restaurantId: restaurantId),
     );
     if (id == null || !mounted) return;
     ref.invalidate(staffProvider(restaurantId));
-    // Nowy pracownik od razu dostaje login i krótkie hasło do głównego stanowiska.
+    if (!withLogin) return;
+    // Nowy pracownik od razu dostaje login i łatwe hasło do głównego stanowiska.
     try {
       final created = await ref.read(repositoryProvider).createStaffLogin(id);
       ref.invalidate(staffLoginsProvider(restaurantId));
@@ -79,53 +81,42 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     );
   }
 
-  Future<void> _plan(String restaurantId, StaffMember member, DateTime day, PlannedShift? existing,
-      List<Availability> availability) async {
-    await showDialog<void>(
+  Future<void> _hours(String restaurantId, StaffMember member, DateTime day, PlannedShift? existing) {
+    return showDialog<void>(
       context: context,
-      builder: (_) => _PlanDialog(
+      builder: (_) => _HoursDialog(
         restaurantId: restaurantId,
         member: member,
         day: day,
         existing: existing,
-        availability: availability,
         week: _week,
       ),
     );
-  }
-
-  Future<void> _editAvailability(
-    String restaurantId,
-    StaffMember member,
-    DateTime day, [
-    Availability? existing,
-  ]) async {
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (_) => _AvailabilityDialog(
-        restaurantId: restaurantId,
-        member: member,
-        day: day,
-        existing: existing,
-      ),
-    );
-    if (saved == true) {
-      ref.invalidate(availabilityProvider((restaurantId: restaurantId, weekStart: _week)));
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     final restaurant = ref.watch(currentRestaurantProvider);
     if (restaurant == null) return const LoadingView();
-    final permissions = ref.watch(effectivePermissionsProvider(restaurant.id)) ?? const <String>{};
-    // Zakładka „Zespół” i czas pracy: uprawnienie „Pracownicy”. Grafik: także samo „Grafik”.
+    // Uprawnienia pracownika zalogowanego w tej zakładce. Każda część ma własne.
+    final permissions = ref.watch(tabPermissionsProvider(PanelRoutes.staff));
     final canStaff = permissions.contains('staff');
-    final canPlan = canStaff || permissions.contains('schedule');
-    // Uprawnienia stanowisk zmienia tylko właściciel lub kierownik na swoim koncie,
-    // nie pracownik zalogowany na stanowisku.
-    final canEditPositions = ref.watch(actingMemberProvider) == null && restaurant.canManage;
-    final tabs = [if (canStaff) (0, 'Zespół'), (1, 'Grafik'), if (canStaff) (2, 'Czas pracy')];
+    final canLogins = permissions.contains('staff_logins');
+    final canPlan = permissions.contains('schedule');
+    final canTimesheet = permissions.contains('timesheet');
+    final canPositions = permissions.contains('positions');
+    final tabs = [
+      if (canStaff || canLogins) (0, 'Zespół'),
+      if (canPlan) (1, 'Grafik'),
+      if (canTimesheet) (2, 'Czas pracy'),
+    ];
+    if (tabs.isEmpty) {
+      return const MessageView(
+        icon: AppIcons.lock,
+        title: 'Brak dostępu',
+        message: 'Twoje stanowisko nie ma uprawnień do żadnej części zakładki „Pracownicy”.',
+      );
+    }
     final tab = tabs.any((t) => t.$1 == _tab) ? _tab : tabs.first.$1;
 
     final staffAsync = ref.watch(staffProvider(restaurant.id));
@@ -163,7 +154,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                 ),
           actions: [
             if (tab == 0) ...[
-              if (canEditPositions)
+              if (canPositions)
                 OutlinedButton.icon(
                   onPressed: () => showDialog<void>(
                     context: context,
@@ -172,11 +163,12 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                   icon: const Glyph(AppIcons.identification, size: 18),
                   label: const Text('Stanowiska'),
                 ),
-              FilledButton.icon(
-                onPressed: () => _addMember(restaurant.id),
-                icon: const Glyph(AppIcons.plus, size: 18),
-                label: const Text('Dodaj pracownika'),
-              ),
+              if (canStaff)
+                FilledButton.icon(
+                  onPressed: () => _addMember(restaurant.id, withLogin: canLogins),
+                  icon: const Glyph(AppIcons.plus, size: 18),
+                  label: const Text('Dodaj pracownika'),
+                ),
             ] else ...[
               IconButton(
                 tooltip: 'Poprzedni tydzień',
@@ -209,10 +201,10 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                   icon: AppIcons.users,
                   title: 'Brak pracowników',
                   message: canStaff
-                      ? 'Dodaj pracownika. Dostanie login i krótkie hasło do logowania na głównym stanowisku.'
+                      ? 'Dodaj pracownika. Dostanie login i łatwe hasło do logowania na głównym stanowisku.'
                       : 'Kierownik jeszcze nie dodał pracowników.',
                   actionLabel: canStaff ? 'Dodaj pracownika' : null,
-                  onAction: canStaff ? () => _addMember(restaurant.id) : null,
+                  onAction: canStaff ? () => _addMember(restaurant.id, withLogin: canLogins) : null,
                 );
               }
               final members = all.where((m) => _showInactive || m.active).toList();
@@ -231,7 +223,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                   restaurantId: restaurant.id,
                   week: _week,
                   members: all,
-                  canEdit: canStaff,
+                  canEdit: canTimesheet,
                 );
               }
 
@@ -241,17 +233,17 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                   members: members,
                   shifts: shifts,
                   working: working,
-                  onOpen: (m) => _openMember(restaurant.id, m),
-                  onAdd: () => _addMember(restaurant.id),
+                  showLogins: canLogins,
+                  onOpen: canStaff || canLogins ? (m) => _openMember(restaurant.id, m) : null,
+                  onAdd: canStaff ? () => _addMember(restaurant.id, withLogin: canLogins) : null,
                   footer: toggleInactive,
                 );
               }
 
               final query = (restaurantId: restaurant.id, weekStart: _week);
-              final availability = ref.watch(availabilityProvider(query)).value ?? const <Availability>[];
               final planned = ref.watch(plannedShiftsProvider(query)).value ?? const <PlannedShift>[];
               final positions = ref.watch(positionsProvider(restaurant.id)).value ?? const <StaffPosition>[];
-              final waiting = planned.where((p) => p.status == PlannedShiftStatus.changed).length;
+              final waiting = planned.where((p) => p.status == PlannedShiftStatus.pending).length;
               return SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
                 child: Column(
@@ -261,10 +253,10 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: _Banner(
-                          icon: AppIcons.chatText,
+                          icon: AppIcons.clock,
                           text: waiting == 1
-                              ? 'Jeden pracownik proponuje inne godziny. Kliknij pomarańczowy wpis, żeby odpowiedzieć.'
-                              : 'Pracownicy proponują inne godziny ($waiting). Kliknij pomarańczowe wpisy, żeby odpowiedzieć.',
+                              ? 'Jedno zgłoszenie czeka na decyzję. Kliknij pomarańczowy wpis, żeby je przyjąć, zmienić albo odrzucić.'
+                              : 'Zgłoszenia czekające na decyzję: $waiting. Kliknij pomarańczowe wpisy, żeby je przyjąć, zmienić albo odrzucić.',
                         ),
                       ),
                     Card(
@@ -272,32 +264,22 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                       child: _WeekGrid(
                         week: _week,
                         members: members,
-                        availability: availability,
                         planned: planned,
-                        canPlan: canPlan,
                         positionNames: {for (final p in positions) p.id: p.name},
                         onOpenMember: canStaff ? (m) => _openMember(restaurant.id, m) : null,
-                        onPlan: (m, day, existing) => _plan(
-                          restaurant.id,
-                          m,
-                          day,
-                          existing,
-                          availability.where((a) => a.memberId == m.id && dateOnly(a.day) == day).toList(),
-                        ),
-                        onEditAvailability: canPlan ? (m, a) => _editAvailability(restaurant.id, m, a.day, a) : null,
+                        onHours: (m, day, existing) => _hours(restaurant.id, m, day, existing),
                       ),
                     ),
                     ?toggleInactive,
                     const SizedBox(height: 8),
                     const _Legend(),
-                    if (canPlan) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        'Kliknij dzień pracownika, żeby zaproponować mu godziny. Pracownik przyjmuje je '
-                        'albo proponuje inne w aplikacji Table for employees. Jasne pola to dyspozycyjność.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
-                      ),
-                    ],
+                    const SizedBox(height: 8),
+                    Text(
+                      'Pracownicy zgłaszają w aplikacji Table for employees, od której do której mogą pracować. '
+                      'Kliknij zgłoszenie, żeby je przyjąć (także ze zmienionymi godzinami) albo odrzucić. '
+                      'Po decyzji pracownik nie może już zmienić tego dnia. Kliknij pusty dzień, żeby wpisać godziny samemu.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+                    ),
                   ],
                 ),
               );
@@ -320,13 +302,13 @@ class _Banner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: _changed.withValues(alpha: 0.12),
+        color: _pending.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _changed.withValues(alpha: 0.5)),
+        border: Border.all(color: _pending.withValues(alpha: 0.5)),
       ),
       child: Row(
         children: [
-          Glyph(icon, size: 18, color: _changed),
+          Glyph(icon, size: 18, color: _pending),
           const SizedBox(width: 10),
           Expanded(child: Text(text, style: Theme.of(context).textTheme.bodyMedium)),
         ],
@@ -335,19 +317,19 @@ class _Banner extends StatelessWidget {
   }
 }
 
-/// Kolor propozycji zmienionej przez pracownika: czeka na odpowiedź przełożonego.
-const _changed = Color(0xFFE08A1E);
+/// Kolor zgłoszenia, które czeka na decyzję przełożonego.
+const _pending = Color(0xFFE08A1E);
 
 Color _statusColor(PlannedShiftStatus s) => switch (s) {
   PlannedShiftStatus.accepted => AppColors.accent,
-  PlannedShiftStatus.proposed => AppColors.textMuted,
-  PlannedShiftStatus.changed => _changed,
+  PlannedShiftStatus.pending => _pending,
+  PlannedShiftStatus.rejected => AppColors.error,
 };
 
 AppIconData _statusIcon(PlannedShiftStatus s) => switch (s) {
   PlannedShiftStatus.accepted => AppIcons.checkCircle,
-  PlannedShiftStatus.proposed => AppIcons.clock,
-  PlannedShiftStatus.changed => AppIcons.chatText,
+  PlannedShiftStatus.pending => AppIcons.clock,
+  PlannedShiftStatus.rejected => AppIcons.prohibit,
 };
 
 class _Legend extends StatelessWidget {
@@ -384,6 +366,7 @@ class _TeamGrid extends ConsumerWidget {
     required this.members,
     required this.shifts,
     required this.working,
+    required this.showLogins,
     required this.onOpen,
     required this.onAdd,
     this.footer,
@@ -392,18 +375,23 @@ class _TeamGrid extends ConsumerWidget {
   final String restaurantId;
   final List<StaffMember> members;
 
+  /// Loginy i hasła widać tylko z uprawnieniem „Loginy i hasła”.
+  final bool showLogins;
+
   /// Zmiany z bieżącego tygodnia, do godzin na kafelkach.
   final List<StaffShift> shifts;
 
   /// Kto jest teraz w pracy i od kiedy.
   final Map<String, DateTime> working;
-  final ValueChanged<StaffMember> onOpen;
-  final VoidCallback onAdd;
+  final ValueChanged<StaffMember>? onOpen;
+  final VoidCallback? onAdd;
   final Widget? footer;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final logins = ref.watch(staffLoginsProvider(restaurantId)).value ?? const <String, StaffLogin>{};
+    final logins = showLogins
+        ? ref.watch(staffLoginsProvider(restaurantId)).value ?? const <String, StaffLogin>{}
+        : const <String, StaffLogin>{};
     final positions = ref.watch(positionsProvider(restaurantId)).value ?? const <StaffPosition>[];
     final positionNames = {for (final p in positions) p.id: p.name};
     return SingleChildScrollView(
@@ -420,7 +408,7 @@ class _TeamGrid extends ConsumerWidget {
                 spacing: gap,
                 runSpacing: gap,
                 children: [
-                  SizedBox(width: width, height: 168, child: _AddTile(onTap: onAdd)),
+                  if (onAdd case final add?) SizedBox(width: width, height: 168, child: _AddTile(onTap: add)),
                   for (final m in members)
                     SizedBox(
                       width: width,
@@ -429,11 +417,12 @@ class _TeamGrid extends ConsumerWidget {
                         member: m,
                         position: positionNames[m.positionId] ?? m.position,
                         login: logins[m.id],
+                        showLogin: showLogins,
                         workingSince: working[m.id],
                         week: shifts
                             .where((s) => s.memberId == m.id)
                             .fold(Duration.zero, (sum, s) => sum + s.duration),
-                        onTap: () => onOpen(m),
+                        onTap: onOpen == null ? null : () => onOpen!(m),
                       ),
                     ),
                 ],
@@ -480,7 +469,7 @@ class _AddTile extends StatelessWidget {
               Text('Dodaj pracownika', style: text.titleSmall),
               const SizedBox(height: 2),
               Text(
-                'Dostanie login i krótkie hasło',
+                'Dostanie login i łatwe hasło',
                 style: text.bodySmall?.copyWith(color: AppColors.textMuted),
               ),
             ],
@@ -496,6 +485,7 @@ class _MemberTile extends StatelessWidget {
     required this.member,
     required this.position,
     required this.login,
+    required this.showLogin,
     required this.workingSince,
     required this.week,
     required this.onTap,
@@ -504,9 +494,10 @@ class _MemberTile extends StatelessWidget {
   final StaffMember member;
   final String? position;
   final StaffLogin? login;
+  final bool showLogin;
   final DateTime? workingSince;
   final Duration week;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -562,30 +553,33 @@ class _MemberTile extends StatelessWidget {
                   text: 'W tym tygodniu ${hoursText(week)} h',
                   color: AppColors.textMuted,
                 ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Glyph(
-                    login == null ? AppIcons.warning : AppIcons.password,
-                    size: 14,
-                    color: login == null ? _changed : AppColors.textMuted,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      login == null
-                          ? 'Bez loginu do stanowiska'
-                          : 'Login: ${login!.login}${login!.locked ? ' (zablokowany)' : ''}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: text.bodySmall?.copyWith(
-                        color: login == null ? _changed : AppColors.textMuted,
-                        fontFeatures: _tabular,
+              if (showLogin) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Glyph(
+                      login == null ? AppIcons.warning : AppIcons.password,
+                      size: 14,
+                      color: login == null ? _pending : AppColors.textMuted,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        login == null
+                            ? 'Bez loginu do stanowiska'
+                            : '${login!.login} · hasło: ${login!.password ?? 'nadaj nowe'}'
+                                  '${login!.locked ? ' · zablokowany' : ''}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.bodySmall?.copyWith(
+                          color: login == null ? _pending : AppColors.textMuted,
+                          fontFeatures: _tabular,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -672,7 +666,6 @@ class _MemberDetailsDialog extends ConsumerStatefulWidget {
 
 class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
   int _days = 30;
-  bool _busy = false;
 
   Future<void> _edit(StaffMember member) async {
     final result = await showDialog<String>(
@@ -685,39 +678,12 @@ class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
     if (result == _MemberDialog.deleted && mounted) Navigator.pop(context);
   }
 
-  Future<void> _newPassword(StaffMember member, StaffLogin? login) async {
-    if (login != null) {
-      final ok = await confirm(
-        context,
-        title: 'Nadać nowe hasło?',
-        message: 'Dotychczasowe hasło ${member.name} przestanie działać.',
-        action: 'Nadaj nowe hasło',
-      );
-      if (!ok) return;
-    }
-    setState(() => _busy = true);
-    try {
-      final repo = ref.read(repositoryProvider);
-      final String loginText;
-      final String password;
-      if (login == null) {
-        final created = await repo.createStaffLogin(member.id);
-        (loginText, password) = (created.login, created.password);
-      } else {
-        password = await repo.resetStaffPassword(member.id);
-        loginText = login.login;
-      }
-      ref.invalidate(staffLoginsProvider(widget.restaurantId));
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (_) => CredentialsDialog(name: member.name, login: loginText, password: password),
-      );
-    } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+  Future<void> _password(StaffMember member, StaffLogin? login) async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => _PasswordDialog(member: member, login: login),
+    );
+    if (saved == true) ref.invalidate(staffLoginsProvider(widget.restaurantId));
   }
 
   @override
@@ -725,10 +691,16 @@ class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
     final text = Theme.of(context).textTheme;
     final members = ref.watch(staffProvider(widget.restaurantId)).value;
     final member = members?.where((m) => m.id == widget.member.id).firstOrNull ?? widget.member;
-    final login = ref.watch(staffLoginsProvider(widget.restaurantId)).value?[member.id];
+    final permissions = ref.watch(tabPermissionsProvider(PanelRoutes.staff));
+    final canLogins = permissions.contains('staff_logins');
+    final canStats = permissions.contains('staff');
+    final logins = canLogins ? ref.watch(staffLoginsProvider(widget.restaurantId)).value : null;
+    final login = logins?[member.id];
     final positions = ref.watch(positionsProvider(widget.restaurantId)).value ?? const <StaffPosition>[];
     final position = positions.where((p) => p.id == member.positionId).firstOrNull;
-    final statsAsync = ref.watch(memberStatsProvider((memberId: member.id, days: _days)));
+    final statsAsync = canStats
+        ? ref.watch(memberStatsProvider((memberId: member.id, days: _days)))
+        : const AsyncValue<MemberStats>.loading();
     final stats = statsAsync.value;
     final color = staffColors[member.color % staffColors.length];
 
@@ -761,6 +733,7 @@ class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
                       ],
                     ),
                   ),
+                  if (canStats)
                   OutlinedButton.icon(
                     onPressed: () => _edit(member),
                     style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
@@ -786,7 +759,8 @@ class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
                 ),
               ],
               const SizedBox(height: 20),
-              // Login do głównego stanowiska. Hasło widać tylko przy tworzeniu albo zmianie.
+              // Login i hasło do głównego stanowiska: widać je stale (uprawnienie „Loginy i hasła”).
+              if (canLogins)
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -801,17 +775,29 @@ class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            login == null ? 'Brak loginu do stanowiska' : 'Login: ${login.login}',
-                            style: text.titleMedium?.copyWith(fontFeatures: _tabular),
-                          ),
+                          if (login == null)
+                            Text('Brak loginu do stanowiska', style: text.titleMedium)
+                          else
+                            SelectableText.rich(
+                              TextSpan(
+                                children: [
+                                  TextSpan(text: 'Login: ', style: TextStyle(color: AppColors.textMuted)),
+                                  TextSpan(text: login.login),
+                                  TextSpan(text: '   Hasło: ', style: TextStyle(color: AppColors.textMuted)),
+                                  TextSpan(text: login.password ?? '(nieznane)'),
+                                ],
+                              ),
+                              style: text.titleMedium?.copyWith(fontFeatures: _tabular),
+                            ),
                           const SizedBox(height: 2),
                           Text(
                             login == null
-                                ? 'Utwórz login i krótkie hasło, żeby pracownik mógł wejść na zmianę na głównym stanowisku.'
+                                ? 'Utwórz login i hasło, żeby pracownik mógł się logować na głównym stanowisku.'
                                 : login.locked
-                                ? 'Zablokowany po kilku błędnych hasłach. Nowe hasło zdejmuje blokadę.'
-                                : 'Hasło widać tylko przy nadawaniu. Zapomniane? Nadaj nowe.',
+                                ? 'Zablokowany po kilku błędnych hasłach. Zmiana hasła zdejmuje blokadę.'
+                                : login.password == null
+                                ? 'Hasło założone przed zmianą nie jest znane. Zmień je, żeby było widać.'
+                                : 'Tym loginem i hasłem pracownik loguje się na głównym stanowisku.',
                             style: text.bodySmall?.copyWith(
                               color: login?.locked ?? false ? AppColors.error : AppColors.textMuted,
                             ),
@@ -821,13 +807,14 @@ class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
                     ),
                     const SizedBox(width: 12),
                     FilledButton.tonal(
-                      onPressed: _busy ? null : () => _newPassword(member, login),
+                      onPressed: () => _password(member, login),
                       style: FilledButton.styleFrom(minimumSize: const Size(0, 42)),
-                      child: Text(login == null ? 'Utwórz login' : 'Nadaj nowe hasło'),
+                      child: Text(login == null ? 'Utwórz login' : 'Zmień hasło'),
                     ),
                   ],
                 ),
               ),
+              if (canStats) ...[
               const SizedBox(height: 24),
               Row(
                 children: [
@@ -904,8 +891,8 @@ class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
                           const SizedBox(height: 6),
                           Text(
                             stats.planned == 0
-                                ? 'Brak zaplanowanych zmian.'
-                                : 'Zaplanowane zmiany od dziś: ${stats.planned}.',
+                                ? 'Brak przyjętych godzin od dziś.'
+                                : 'Przyjęte dni od dziś: ${stats.planned}.',
                             style: text.bodyMedium,
                           ),
                           if (stats.lastShift != null)
@@ -918,6 +905,7 @@ class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
                     ),
                   ],
                 ),
+              ],
               ],
             ],
           ),
@@ -962,7 +950,7 @@ class _StatTile extends StatelessWidget {
   }
 }
 
-/// Login i hasło pokazane raz: przy dodaniu pracownika albo nadaniu nowego hasła.
+/// Login i hasło nowego pracownika, do przekazania mu od razu.
 class CredentialsDialog extends StatelessWidget {
   const CredentialsDialog({super.key, required this.name, required this.login, required this.password});
 
@@ -1018,7 +1006,7 @@ class CredentialsDialog extends StatelessWidget {
             const SizedBox(height: 14),
             Text(
               'Przekaż je pracownikowi. Loguje się nimi na głównym stanowisku („Wejdź na zmianę” '
-              'i przy zamówieniach). Hasło widać tylko teraz. Gdy zginie, nadaj nowe w szczegółach pracownika.',
+              'i w zakładkach). Login i hasło widać też w szczegółach pracownika i w jego aplikacji.',
               style: text.bodySmall?.copyWith(color: AppColors.textMuted),
             ),
           ],
@@ -1039,27 +1027,21 @@ class _WeekGrid extends StatelessWidget {
   const _WeekGrid({
     required this.week,
     required this.members,
-    required this.availability,
     required this.planned,
-    required this.canPlan,
     required this.positionNames,
     required this.onOpenMember,
-    required this.onPlan,
-    required this.onEditAvailability,
+    required this.onHours,
   });
 
   final DateTime week;
   final List<StaffMember> members;
-  final List<Availability> availability;
   final List<PlannedShift> planned;
-  final bool canPlan;
 
   /// Aktualne nazwy stanowisk po identyfikatorze. Po zmianie nazwy stanowiska
   /// lista pokazuje nową, a nie tę zapisaną przy pracowniku.
   final Map<String, String> positionNames;
   final ValueChanged<StaffMember>? onOpenMember;
-  final void Function(StaffMember member, DateTime day, PlannedShift? existing) onPlan;
-  final void Function(StaffMember member, Availability entry)? onEditAvailability;
+  final void Function(StaffMember member, DateTime day, PlannedShift? existing) onHours;
 
   @override
   Widget build(BuildContext context) {
@@ -1164,14 +1146,9 @@ class _WeekGrid extends StatelessWidget {
                   Expanded(
                     child: _DayCell(
                       member: m,
-                      entries: availability
-                          .where((a) => a.memberId == m.id && dateOnly(a.day) == day)
-                          .toList(),
-                      planned: planned.where((p) => p.memberId == m.id && dateOnly(p.day) == day).firstOrNull,
-                      canPlan: canPlan,
+                      entry: planned.where((p) => p.memberId == m.id && dateOnly(p.day) == day).firstOrNull,
                       isToday: day == today,
-                      onPlan: (existing) => onPlan(m, day, existing),
-                      onEditAvailability: onEditAvailability == null ? null : (a) => onEditAvailability!(m, a),
+                      onTap: (existing) => onHours(m, day, existing),
                     ),
                   ),
               ],
@@ -1185,15 +1162,13 @@ class _WeekGrid extends StatelessWidget {
               width: 220,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Text('W grafiku / dostępnych', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
+                child: Text('Przyjętych osób', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
               ),
             ),
             for (final day in days)
               Expanded(
                 child: Text(
-                  '${planned.where((p) => dateOnly(p.day) == day && members.any((m) => m.id == p.memberId)).length}'
-                  ' / '
-                  '${members.where((m) => availability.any((a) => a.memberId == m.id && dateOnly(a.day) == day)).length}',
+                  '${planned.where((p) => dateOnly(p.day) == day && p.status == PlannedShiftStatus.accepted && members.any((m) => m.id == p.memberId)).length}',
                   textAlign: TextAlign.center,
                   style: text.titleSmall?.copyWith(fontFeatures: _tabular),
                 ),
@@ -1205,140 +1180,104 @@ class _WeekGrid extends StatelessWidget {
   }
 }
 
-/// Dzień pracownika w grafiku: jasne pola to dyspozycyjność, pełne to godziny w grafiku.
+/// Dzień pracownika w grafiku: zgłoszenie (pomarańczowe), przyjęte (w kolorze pracownika)
+/// albo odrzucone (przekreślone).
 class _DayCell extends StatelessWidget {
   const _DayCell({
     required this.member,
-    required this.entries,
-    required this.planned,
-    required this.canPlan,
+    required this.entry,
     required this.isToday,
-    required this.onPlan,
-    required this.onEditAvailability,
+    required this.onTap,
   });
 
   final StaffMember member;
-  final List<Availability> entries;
-  final PlannedShift? planned;
-  final bool canPlan;
+  final PlannedShift? entry;
   final bool isToday;
-  final ValueChanged<PlannedShift?> onPlan;
-  final ValueChanged<Availability>? onEditAvailability;
+  final ValueChanged<PlannedShift?> onTap;
 
   @override
   Widget build(BuildContext context) {
     final color = staffColors[member.color % staffColors.length];
     final text = Theme.of(context).textTheme;
-    final shift = planned;
+    final e = entry;
     return Container(
-      constraints: const BoxConstraints(minHeight: 72),
+      constraints: const BoxConstraints(minHeight: 64),
       decoration: BoxDecoration(
         border: Border(left: BorderSide(color: AppColors.ring)),
         color: isToday ? AppColors.accentTint.withValues(alpha: 0.18) : null,
       ),
       child: InkWell(
-        onTap: canPlan ? () => onPlan(shift) : null,
+        onTap: () => onTap(e),
         hoverColor: AppColors.ring,
         child: Padding(
           padding: const EdgeInsets.all(6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (shift != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Tooltip(
-                    message: [
-                      shift.status.label,
-                      if (shift.status == PlannedShiftStatus.changed)
-                        'Proponuje ${shift.changeStarts}–${shift.changeEnds}',
-                      ?shift.reply,
-                    ].join('\n'),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: shift.status == PlannedShiftStatus.changed
-                            ? _changed.withValues(alpha: 0.18)
-                            : color.withValues(alpha: shift.status == PlannedShiftStatus.accepted ? 0.9 : 0.35),
-                        borderRadius: BorderRadius.circular(8),
-                        border: shift.status == PlannedShiftStatus.changed ? Border.all(color: _changed) : null,
-                      ),
-                      child: Row(
-                        children: [
-                          Glyph(
-                            _statusIcon(shift.status),
-                            size: 13,
-                            color: shift.status == PlannedShiftStatus.accepted ? Colors.white : _statusColor(shift.status),
-                          ),
-                          const SizedBox(width: 5),
-                          Expanded(
-                            child: Text(
-                              '${shift.starts}–${shift.ends}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: text.labelMedium?.copyWith(
-                                fontFeatures: _tabular,
-                                fontWeight: FontWeight.w600,
-                                color: shift.status == PlannedShiftStatus.accepted ? Colors.white : AppColors.text,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              for (final a in entries)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Tooltip(
-                    message: ['Dyspozycyjność', ?a.note].join(': '),
-                    child: Material(
-                      color: Colors.transparent,
+          child: e == null
+              ? Center(child: Glyph(AppIcons.plus, size: 14, color: AppColors.textDisabled))
+              : Tooltip(
+                  message: [
+                    e.status.label,
+                    if (e.changed) 'Zgłoszone: ${e.requestedStarts}–${e.requestedEnds}',
+                    if (e.note != null) 'Pracownik: ${e.note}',
+                    if (e.answer != null) 'Odpowiedź: ${e.answer}',
+                  ].join('\n'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: switch (e.status) {
+                        PlannedShiftStatus.accepted => color.withValues(alpha: 0.9),
+                        PlannedShiftStatus.pending => _pending.withValues(alpha: 0.16),
+                        PlannedShiftStatus.rejected => Colors.transparent,
+                      },
                       borderRadius: BorderRadius.circular(8),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(8),
-                        onTap: onEditAvailability == null ? null : () => onEditAvailability!(a),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: color.withValues(alpha: 0.45), style: BorderStyle.solid),
-                          ),
+                      border: switch (e.status) {
+                        PlannedShiftStatus.accepted => null,
+                        PlannedShiftStatus.pending => Border.all(color: _pending),
+                        PlannedShiftStatus.rejected => Border.all(color: AppColors.ring),
+                      },
+                    ),
+                    child: Row(
+                      children: [
+                        Glyph(
+                          _statusIcon(e.status),
+                          size: 13,
+                          color: e.status == PlannedShiftStatus.accepted ? Colors.white : _statusColor(e.status),
+                        ),
+                        const SizedBox(width: 5),
+                        Expanded(
                           child: Text(
-                            '${a.starts}–${a.ends}',
+                            '${e.starts}–${e.ends}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: text.labelSmall?.copyWith(fontFeatures: _tabular, color: AppColors.textMuted),
+                            style: text.labelMedium?.copyWith(
+                              fontFeatures: _tabular,
+                              fontWeight: FontWeight.w600,
+                              color: switch (e.status) {
+                                PlannedShiftStatus.accepted => Colors.white,
+                                PlannedShiftStatus.pending => AppColors.text,
+                                PlannedShiftStatus.rejected => AppColors.textMuted,
+                              },
+                              decoration: e.status == PlannedShiftStatus.rejected ? TextDecoration.lineThrough : null,
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ),
-              if (shift == null && entries.isEmpty && canPlan)
-                Expanded(
-                  child: Center(
-                    child: Glyph(AppIcons.plus, size: 14, color: AppColors.textDisabled),
-                  ),
-                ),
-            ],
-          ),
         ),
       ),
     );
   }
 }
 
-/// Propozycja godzin dla pracownika w danym dniu. Gdy pracownik zaproponował inne,
-/// przełożony je przyjmuje albo proponuje jeszcze raz.
-class _PlanDialog extends ConsumerStatefulWidget {
-  const _PlanDialog({
+/// Decyzja o zgłoszeniu pracownika (przyjmij, przyjmij ze zmienionymi godzinami, odrzuć)
+/// albo godziny wpisane przez przełożonego na pusty dzień.
+class _HoursDialog extends ConsumerStatefulWidget {
+  const _HoursDialog({
     required this.restaurantId,
     required this.member,
     required this.day,
     required this.existing,
-    required this.availability,
     required this.week,
   });
 
@@ -1346,21 +1285,16 @@ class _PlanDialog extends ConsumerStatefulWidget {
   final StaffMember member;
   final DateTime day;
   final PlannedShift? existing;
-  final List<Availability> availability;
   final DateTime week;
 
   @override
-  ConsumerState<_PlanDialog> createState() => _PlanDialogState();
+  ConsumerState<_HoursDialog> createState() => _HoursDialogState();
 }
 
-class _PlanDialogState extends ConsumerState<_PlanDialog> {
-  late TimeOfDay _starts = _parse(
-    widget.existing?.starts ?? (widget.availability.isEmpty ? '10:00' : widget.availability.first.starts),
-  );
-  late TimeOfDay _ends = _parse(
-    widget.existing?.ends ?? (widget.availability.isEmpty ? '18:00' : widget.availability.first.ends),
-  );
-  late final _note = TextEditingController(text: widget.existing?.note ?? '');
+class _HoursDialogState extends ConsumerState<_HoursDialog> {
+  late TimeOfDay _starts = _parse(widget.existing?.starts ?? '10:00');
+  late TimeOfDay _ends = _parse(widget.existing?.ends ?? '18:00');
+  late final _answer = TextEditingController(text: widget.existing?.answer ?? '');
   bool _busy = false;
 
   static TimeOfDay _parse(String hm) {
@@ -1370,9 +1304,11 @@ class _PlanDialogState extends ConsumerState<_PlanDialog> {
 
   static String _fmt(TimeOfDay t) => '${_two(t.hour)}:${_two(t.minute)}';
 
+  bool get _validTimes => _ends.hour * 60 + _ends.minute > _starts.hour * 60 + _starts.minute;
+
   @override
   void dispose() {
-    _note.dispose();
+    _answer.dispose();
     super.dispose();
   }
 
@@ -1396,21 +1332,31 @@ class _PlanDialogState extends ConsumerState<_PlanDialog> {
     }
   }
 
-  Future<void> _propose() {
-    if (_ends.hour * 60 + _ends.minute <= _starts.hour * 60 + _starts.minute) {
+  void _accept() {
+    if (!_validTimes) {
       showMessage(context, 'Koniec musi być później niż początek.');
-      return Future.value();
+      return;
     }
-    return _run(
-      () => ref.read(repositoryProvider).planShift(
-        memberId: widget.member.id,
-        day: widget.day,
-        starts: _fmt(_starts),
-        ends: _fmt(_ends),
-        note: _note.text,
-      ),
-      'Propozycja wysłana. ${widget.member.name.split(' ').first} zobaczy ją w aplikacji.',
-    );
+    final repo = ref.read(repositoryProvider);
+    final existing = widget.existing;
+    final first = widget.member.name.split(' ').first;
+    if (existing == null) {
+      _run(
+        () => repo.addHours(
+          memberId: widget.member.id,
+          day: widget.day,
+          starts: _fmt(_starts),
+          ends: _fmt(_ends),
+          answer: _answer.text,
+        ),
+        'Godziny dodane do grafiku. $first zobaczy je w aplikacji.',
+      );
+    } else {
+      _run(
+        () => repo.decideHours(existing.id, accept: true, starts: _fmt(_starts), ends: _fmt(_ends), answer: _answer.text),
+        'Przyjęto ${_fmt(_starts)}–${_fmt(_ends)}. $first zobaczy to w aplikacji.',
+      );
+    }
   }
 
   @override
@@ -1418,6 +1364,8 @@ class _PlanDialogState extends ConsumerState<_PlanDialog> {
     final text = Theme.of(context).textTheme;
     final existing = widget.existing;
     final repo = ref.read(repositoryProvider);
+    final changedHours = existing?.requestedStarts != null &&
+        (existing!.requestedStarts != _fmt(_starts) || existing.requestedEnds != _fmt(_ends));
     Widget timeButton(TimeOfDay t, bool start) => OutlinedButton(
       onPressed: () => _pick(start),
       style: OutlinedButton.styleFrom(minimumSize: const Size(96, 44)),
@@ -1427,7 +1375,7 @@ class _PlanDialogState extends ConsumerState<_PlanDialog> {
     return AlertDialog(
       title: Text(widget.member.name),
       content: SizedBox(
-        width: 440,
+        width: 460,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1436,15 +1384,8 @@ class _PlanDialogState extends ConsumerState<_PlanDialog> {
               Fmt.capitalize(Fmt.dayLong(widget.day)),
               style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
             ),
-            const SizedBox(height: 10),
-            Text(
-              widget.availability.isEmpty
-                  ? 'Brak dyspozycyjności w tym dniu.'
-                  : 'Dyspozycyjność: ${widget.availability.map((a) => '${a.starts}–${a.ends}').join(', ')}',
-              style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-            ),
-            if (existing != null) ...[
-              const SizedBox(height: 14),
+            const SizedBox(height: 12),
+            if (existing != null)
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -1461,37 +1402,33 @@ class _PlanDialogState extends ConsumerState<_PlanDialog> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '${existing.status == PlannedShiftStatus.accepted ? 'W grafiku' : 'Twoja propozycja'}: '
-                            '${existing.starts}–${existing.ends}',
+                            existing.requestedStarts == null
+                                ? '${existing.status.label}: ${existing.starts}–${existing.ends} (wpisane przez przełożonego)'
+                                : 'Pracownik zgłosił ${existing.requestedStarts}–${existing.requestedEnds}',
                             style: text.titleSmall?.copyWith(fontFeatures: _tabular),
                           ),
-                          Text(
-                            existing.status == PlannedShiftStatus.changed
-                                ? 'Pracownik proponuje ${existing.changeStarts}–${existing.changeEnds}'
-                                : existing.status.label,
-                            style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
-                          ),
-                          if (existing.reply != null)
-                            Text('„${existing.reply}”', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+                          if (existing.requestedStarts != null)
+                            Text(
+                              existing.status == PlannedShiftStatus.accepted
+                                  ? 'Przyjęte: ${existing.starts}–${existing.ends}'
+                                  : existing.status.label,
+                              style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
+                            ),
+                          if (existing.note != null)
+                            Text('„${existing.note}”', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
                         ],
                       ),
                     ),
                   ],
                 ),
+              )
+            else
+              Text(
+                'Pracownik nie zgłosił godzin na ten dzień. Możesz wpisać je sam, będą od razu przyjęte.',
+                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
               ),
-              if (existing.status == PlannedShiftStatus.changed) ...[
-                const SizedBox(height: 10),
-                FilledButton.icon(
-                  onPressed: _busy
-                      ? null
-                      : () => _run(() => repo.acceptShiftChange(existing.id), 'Przyjęto godziny pracownika.'),
-                  icon: const Glyph(AppIcons.check, size: 18),
-                  label: Text('Przyjmij ${existing.changeStarts}–${existing.changeEnds}'),
-                ),
-              ],
-            ],
             const SizedBox(height: 16),
-            Text(existing == null ? 'Zaproponuj godziny' : 'Zaproponuj inne godziny', style: text.titleSmall),
+            Text(existing == null ? 'Godziny' : 'Godziny do przyjęcia (możesz je zmienić)', style: text.titleSmall),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -1501,34 +1438,51 @@ class _PlanDialogState extends ConsumerState<_PlanDialog> {
                   child: Text('–', style: text.titleMedium),
                 ),
                 timeButton(_ends, false),
+                if (changedHours) ...[
+                  const SizedBox(width: 12),
+                  const Flexible(child: Tag('ZMIENIONE', color: _pending)),
+                ],
               ],
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: _note,
+              controller: _answer,
               maxLength: 200,
-              decoration: const InputDecoration(labelText: 'Uwagi (opcjonalnie)', hintText: 'Na przykład: bar, zamknięcie'),
+              decoration: const InputDecoration(
+                labelText: 'Wiadomość dla pracownika (opcjonalnie)',
+                hintText: 'Na przykład: potrzebuję Cię od 12',
+              ),
             ),
           ],
         ),
       ),
       actions: [
-        if (existing != null)
+        if (existing != null) ...[
           TextButton(
-            onPressed: _busy
-                ? null
-                : () => _run(() => repo.deletePlannedShift(existing.id), 'Usunięto z grafiku.'),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Usuń z grafiku'),
+            onPressed: _busy ? null : () => _run(() => repo.deleteHours(existing.id), 'Usunięto z grafiku.'),
+            style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+            child: const Text('Usuń'),
           ),
+          if (existing.status != PlannedShiftStatus.rejected)
+            TextButton(
+              onPressed: _busy
+                  ? null
+                  : () => _run(
+                      () => repo.decideHours(existing.id, accept: false, answer: _answer.text),
+                      'Godziny odrzucone.',
+                    ),
+              style: TextButton.styleFrom(foregroundColor: AppColors.error),
+              child: const Text('Odrzuć'),
+            ),
+        ],
         TextButton(
           onPressed: () => Navigator.pop(context),
           style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
           child: const Text('Anuluj'),
         ),
         FilledButton(
-          onPressed: _busy ? null : _propose,
-          child: Text(existing == null ? 'Zaproponuj' : 'Wyślij propozycję'),
+          onPressed: _busy ? null : _accept,
+          child: Text(existing == null ? 'Dodaj' : (changedHours ? 'Przyjmij zmienione' : 'Przyjmij')),
         ),
       ],
     );
@@ -1739,7 +1693,7 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
             ] else ...[
               const SizedBox(height: 14),
               Text(
-                'Po zapisaniu pracownik dostanie login i krótkie hasło do głównego stanowiska.',
+                'Po zapisaniu pracownik dostanie login i łatwe hasło do głównego stanowiska.',
                 style: text.bodySmall?.copyWith(color: AppColors.textMuted),
               ),
             ],
@@ -1828,7 +1782,7 @@ class _PositionsDialog extends ConsumerWidget {
               Text(
                 'Kelner, Kucharz i Dostawca są dodane przez system i nie da się ich usunąć, '
                 'bo korzystają z nich pakiety Table. Własne stanowiska dodajesz poniżej. '
-                'Pracownik zalogowany na głównym stanowisku widzi tylko zakładki ze swoimi uprawnieniami.',
+                'Pracownik zaloguje się tylko do zakładek, do których ma uprawnienia, i zobaczy tylko dozwolone przyciski.',
                 style: text.bodySmall?.copyWith(color: AppColors.textMuted),
               ),
               const SizedBox(height: 14),
@@ -1996,8 +1950,23 @@ class _PositionEditorState extends ConsumerState<_PositionEditor> {
               ),
               const SizedBox(height: 14),
               Text('Uprawnienia', style: text.titleSmall),
-              const SizedBox(height: 4),
-              for (final p in StaffPermission.values)
+              Text(
+                'Pracownik widzi i otwiera tylko te zakładki i przyciski, do których ma uprawnienia.',
+                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+              ),
+              for (final p in StaffPermission.values) ...[
+                if (p == StaffPermission.values.first || p.group != StaffPermission.values[p.index - 1].group)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 14, bottom: 2),
+                    child: Text(
+                      p.group.toUpperCase(),
+                      style: text.labelSmall?.copyWith(
+                        color: AppColors.textDisabled,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ),
                 CheckboxListTile(
                   value: _permissions.contains(p),
                   onChanged: (v) => setState(() {
@@ -2026,6 +1995,7 @@ class _PositionEditorState extends ConsumerState<_PositionEditor> {
                     style: text.bodySmall?.copyWith(color: AppColors.textMuted),
                   ),
                 ),
+              ],
             ],
           ),
         ),
@@ -2042,79 +2012,53 @@ class _PositionEditorState extends ConsumerState<_PositionEditor> {
   }
 }
 
-class _AvailabilityDialog extends ConsumerStatefulWidget {
-  const _AvailabilityDialog({
-    required this.restaurantId,
-    required this.member,
-    required this.day,
-    this.existing,
-  });
+/// Login i hasło pracownika: własne hasło albo wylosowane łatwe („kawa47”).
+class _PasswordDialog extends ConsumerStatefulWidget {
+  const _PasswordDialog({required this.member, required this.login});
 
-  final String restaurantId;
   final StaffMember member;
-  final DateTime day;
-  final Availability? existing;
+  final StaffLogin? login;
 
   @override
-  ConsumerState<_AvailabilityDialog> createState() => _AvailabilityDialogState();
+  ConsumerState<_PasswordDialog> createState() => _PasswordDialogState();
 }
 
-class _AvailabilityDialogState extends ConsumerState<_AvailabilityDialog> {
-  late TimeOfDay _starts = _parse(widget.existing?.starts ?? '10:00');
-  late TimeOfDay _ends = _parse(widget.existing?.ends ?? '18:00');
-  late final _note = TextEditingController(text: widget.existing?.note ?? '');
+class _PasswordDialogState extends ConsumerState<_PasswordDialog> {
+  final _password = TextEditingController();
   bool _busy = false;
-
-  static TimeOfDay _parse(String hm) {
-    final p = hm.split(':');
-    return TimeOfDay(hour: int.parse(p[0]), minute: int.parse(p[1]));
-  }
-
-  static String _fmt(TimeOfDay t) =>
-      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  String? _problem;
 
   @override
   void dispose() {
-    _note.dispose();
+    _password.dispose();
     super.dispose();
   }
 
-  Future<void> _pick(bool start) async {
-    final picked = await pickTime(context, initial: start ? _starts : _ends);
-    if (picked != null) setState(() => start ? _starts = picked : _ends = picked);
-  }
-
-  Future<void> _save() async {
-    if (_ends.hour * 60 + _ends.minute <= _starts.hour * 60 + _starts.minute) {
-      showMessage(context, 'Koniec musi być później niż początek.');
+  Future<void> _save({required bool random}) async {
+    final typed = _password.text.trim().toLowerCase();
+    if (!random && !RegExp(r'^[a-z0-9]{4,20}$').hasMatch(typed)) {
+      setState(() => _problem = 'Od 4 do 20 znaków: litery bez polskich znaków i cyfry.');
       return;
     }
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _problem = null;
+    });
     try {
-      await ref.read(repositoryProvider).saveAvailability(
-        restaurantId: widget.restaurantId,
-        id: widget.existing?.id,
-        memberId: widget.member.id,
-        day: widget.day,
-        starts: _fmt(_starts),
-        ends: _fmt(_ends),
-        note: _note.text,
-      );
-      if (mounted) Navigator.pop(context, true);
+      final repo = ref.read(repositoryProvider);
+      final password = random ? null : typed;
+      final String shown;
+      if (widget.login == null) {
+        final created = await repo.createStaffLogin(widget.member.id, password: password);
+        shown = '${created.login}, hasło ${created.password}';
+      } else {
+        shown = 'nowe hasło ${await repo.setStaffPassword(widget.member.id, password: password)}';
+      }
+      if (!mounted) return;
+      Navigator.pop(context, true);
+      showMessage(context, '${widget.member.name}: $shown.');
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _delete() async {
-    setState(() => _busy = true);
-    try {
-      await ref.read(repositoryProvider).deleteAvailability(widget.existing!.id);
-      if (mounted) Navigator.pop(context, true);
-    } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) setState(() => _problem = errorText(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -2123,57 +2067,56 @@ class _AvailabilityDialogState extends ConsumerState<_AvailabilityDialog> {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    Widget timeButton(TimeOfDay t, bool start) => OutlinedButton(
-      onPressed: () => _pick(start),
-      style: OutlinedButton.styleFrom(minimumSize: const Size(96, 44)),
-      child: Text(_fmt(t), style: const TextStyle(fontFeatures: _tabular, fontSize: 16)),
-    );
-
+    final login = widget.login;
     return AlertDialog(
-      title: Text(widget.member.name),
+      title: Text(login == null ? 'Login dla: ${widget.member.name}' : 'Hasło: ${widget.member.name}'),
       content: SizedBox(
-        width: 380,
+        width: 420,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Dyspozycyjność: ${Fmt.capitalize(Fmt.dayLong(widget.day))}',
+              login == null
+                  ? 'Login powstanie z imienia i nazwiska. Hasło wpisz sam albo wylosuj łatwe, np. „kawa47”.'
+                  : 'Login: ${login.login}. Wpisz nowe hasło albo wylosuj łatwe, np. „kawa47”. Stare przestanie działać.',
               style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                timeButton(_starts, true),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text('–', style: text.titleMedium),
-                ),
-                timeButton(_ends, false),
-              ],
-            ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             TextField(
-              controller: _note,
-              maxLength: 200,
-              decoration: const InputDecoration(labelText: 'Uwagi (opcjonalnie)', hintText: 'Na przykład: tylko sala'),
+              controller: _password,
+              autofocus: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              maxLength: 20,
+              decoration: InputDecoration(
+                labelText: 'Hasło',
+                hintText: 'np. anna2024',
+                counterText: '',
+                errorText: _problem,
+                errorMaxLines: 3,
+              ),
+              onSubmitted: (_) => _save(random: false),
             ),
           ],
         ),
       ),
       actions: [
-        if (widget.existing != null)
-          TextButton(
-            onPressed: _busy ? null : _delete,
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Usuń'),
-          ),
         TextButton(
           onPressed: () => Navigator.pop(context, false),
           style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
           child: const Text('Anuluj'),
         ),
-        FilledButton(onPressed: _busy ? null : _save, child: const Text('Zapisz')),
+        OutlinedButton(
+          onPressed: _busy ? null : () => _save(random: true),
+          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+          child: const Text('Wylosuj łatwe'),
+        ),
+        FilledButton(
+          onPressed: _busy ? null : () => _save(random: false),
+          style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+          child: const Text('Zapisz hasło'),
+        ),
       ],
     );
   }

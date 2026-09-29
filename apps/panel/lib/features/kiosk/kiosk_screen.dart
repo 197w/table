@@ -9,6 +9,7 @@ import 'package:table_core/table_core.dart';
 import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../shared/panel_widgets.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -19,16 +20,21 @@ String _two(int n) => n.toString().padLeft(2, '0');
 String _hm(DateTime t) => '${_two(t.toLocal().hour)}:${_two(t.toLocal().minute)}';
 
 /// Ekran „Wejdź na zmianę” na głównym stanowisku. Pracownik skanuje kod aplikacją
-/// Table for employees albo wpisuje login i hasło. Po zalogowaniu ekran znika, a panel
-/// pokazuje zakładki jego stanowiska. Wylogowanie jest ręczne i wraca do tego ekranu.
-class KioskLockScreen extends ConsumerStatefulWidget {
-  const KioskLockScreen({super.key});
+/// Table for employees albo wpisuje login i hasło, zmiana się zaczyna, a ekran znika.
+/// Do zakładek panelu pracownik loguje się osobno, w każdej zakładce.
+class ShiftScreen extends ConsumerStatefulWidget {
+  const ShiftScreen({super.key});
+
+  /// Otwiera ekran na całe okno.
+  static Future<void> open(BuildContext context) => Navigator.of(context).push(
+    MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => const ShiftScreen()),
+  );
 
   @override
-  ConsumerState<KioskLockScreen> createState() => _KioskLockScreenState();
+  ConsumerState<ShiftScreen> createState() => _ShiftScreenState();
 }
 
-class _KioskLockScreenState extends ConsumerState<KioskLockScreen> {
+class _ShiftScreenState extends ConsumerState<ShiftScreen> {
   late final Timer _clock;
 
   @override
@@ -45,22 +51,21 @@ class _KioskLockScreenState extends ConsumerState<KioskLockScreen> {
     super.dispose();
   }
 
-  Future<void> _exit() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => const RestaurantPasswordDialog(
-        title: 'Pełny dostęp do panelu?',
-        action: 'Odblokuj',
-      ),
+  void _started(ActingMember member) {
+    final since = member.shiftStartedAt;
+    Navigator.of(context).pop();
+    showMessage(
+      context,
+      '${member.name}: zmiana trwa${since == null ? '' : ' od ${_hm(since)}'}. '
+      'Do zakładek loguj się w każdej z nich.',
     );
-    if (ok == true) await ref.read(kioskModeProvider.notifier).set(false);
   }
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final restaurant = ref.watch(currentRestaurantProvider);
-    if (restaurant == null) return const LoadingView();
+    if (restaurant == null) return const Scaffold(body: LoadingView());
 
     final now = DateTime.now();
     final today = dateOnly(now);
@@ -71,11 +76,11 @@ class _KioskLockScreenState extends ConsumerState<KioskLockScreen> {
     final names = {for (final m in staff) m.id: m.name};
     final working = shifts.where((s) => s.isOpen).toList();
 
-    return ColoredBox(
-      color: AppColors.background,
-      child: SafeArea(
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(48, 40, 48, 28),
+          padding: const EdgeInsets.fromLTRB(48, 32, 32, 28),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -90,6 +95,12 @@ class _KioskLockScreenState extends ConsumerState<KioskLockScreen> {
                   Text(
                     '${_two(now.hour)}:${_two(now.minute)}:${_two(now.second)}',
                     style: text.headlineMedium?.copyWith(fontSize: 36, fontFeatures: _tabular),
+                  ),
+                  const SizedBox(width: 20),
+                  IconButton(
+                    tooltip: 'Zamknij',
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Glyph(AppIcons.close, size: 22),
                   ),
                 ],
               ),
@@ -109,53 +120,45 @@ class _KioskLockScreenState extends ConsumerState<KioskLockScreen> {
                           const SizedBox(height: 10),
                           Text(
                             'Zeskanuj kod aplikacją Table for employees na telefonie prywatnym albo służbowym '
-                            'albo wpisz swój login i hasło. Po pracy wyloguj się ręcznie.',
+                            'albo wpisz swój login i hasło. Zmiana zacznie się od razu.',
                             style: text.titleMedium?.copyWith(color: AppColors.textMuted, fontSize: 18),
                           ),
                           const SizedBox(height: 32),
-                          StationLogin(restaurantId: restaurant.id, qrSize: 340, autofocus: true),
+                          StationLogin(
+                            restaurantId: restaurant.id,
+                            qrSize: 340,
+                            autofocus: true,
+                            onLogin: _started,
+                          ),
                         ],
                       ),
                     ),
                   ),
                 ),
               ),
-              // Kto jest teraz w pracy, żeby kierownik widział to bez logowania.
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
+              // Kto jest teraz w pracy.
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Expanded(
-                    child: Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          working.isEmpty ? 'Nikt nie jest teraz w pracy' : 'W pracy:',
-                          style: text.titleMedium?.copyWith(color: AppColors.textMuted),
-                        ),
-                        for (final s in working)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: AppColors.ring),
-                            ),
-                            child: Text(
-                              '${names[s.memberId] ?? 'Pracownik'} · od ${_hm(s.startedAt)}',
-                              style: text.titleSmall?.copyWith(fontFeatures: _tabular),
-                            ),
-                          ),
-                      ],
+                  Text(
+                    working.isEmpty ? 'Nikt nie jest teraz w pracy' : 'W pracy:',
+                    style: text.titleMedium?.copyWith(color: AppColors.textMuted),
+                  ),
+                  for (final s in working)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.ring),
+                      ),
+                      child: Text(
+                        '${names[s.memberId] ?? 'Pracownik'} · od ${_hm(s.startedAt)}',
+                        style: text.titleSmall?.copyWith(fontFeatures: _tabular),
+                      ),
                     ),
-                  ),
-                  TextButton.icon(
-                    onPressed: _exit,
-                    style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
-                    icon: const Glyph(AppIcons.lock, size: 16),
-                    label: const Text('Pełny dostęp'),
-                  ),
                 ],
               ),
             ],
@@ -167,7 +170,7 @@ class _KioskLockScreenState extends ConsumerState<KioskLockScreen> {
 }
 
 /// Logowanie pracownika na głównym stanowisku: kod QR (zmienia się co 30 sekund) i obok
-/// login z hasłem. Po zalogowaniu zapisuje pracownika w [actingMemberProvider] (albo robi [onLogin]). Na innym
+/// login z hasłem. Zalogowanego pracownika (jego zmiana już trwa) dostaje [onLogin]. Na innym
 /// komputerze niż główne stanowisko pokazuje, gdzie się zalogować.
 class StationLogin extends ConsumerStatefulWidget {
   const StationLogin({
@@ -175,16 +178,15 @@ class StationLogin extends ConsumerStatefulWidget {
     required this.restaurantId,
     this.qrSize = 280,
     this.autofocus = false,
-    this.onLogin,
+    required this.onLogin,
   });
 
   final String restaurantId;
   final double qrSize;
   final bool autofocus;
 
-  /// Co zrobić z zalogowanym pracownikiem. Domyślnie loguje go do całego panelu
-  /// i od razu do Zamówień.
-  final ValueChanged<ActingMember>? onLogin;
+  /// Co zrobić z zalogowanym pracownikiem, np. zalogować go w zakładce.
+  final ValueChanged<ActingMember> onLogin;
 
   @override
   ConsumerState<StationLogin> createState() => _StationLoginState();
@@ -278,15 +280,7 @@ class _StationLoginState extends ConsumerState<StationLogin> {
     }
   }
 
-  void _done(ActingMember member) {
-    if (widget.onLogin case final onLogin?) {
-      onLogin(member);
-      return;
-    }
-    ref.read(actingMemberProvider.notifier).set(member);
-    // Kto wszedł na zmianę, od razu może nabijać zamówienia.
-    ref.read(orderMemberProvider.notifier).set(member);
-  }
+  void _done(ActingMember member) => widget.onLogin(member);
 
   Future<void> _submit() async {
     final device = ref.read(deviceIdProvider).value;
@@ -400,7 +394,7 @@ class _StationLoginState extends ConsumerState<StationLogin> {
             Text('Login i hasło', style: text.titleLarge),
             const SizedBox(height: 6),
             Text(
-              'Login i krótkie hasło daje przełożony w zakładce „Pracownicy”.',
+              'Login i hasło daje przełożony w zakładce „Pracownicy”.',
               style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
             ),
             const SizedBox(height: 18),
@@ -591,6 +585,187 @@ class _RestaurantPasswordDialogState extends ConsumerState<RestaurantPasswordDia
         ),
         FilledButton(onPressed: _busy ? null : _submit, child: Text(widget.action)),
       ],
+    );
+  }
+}
+
+/// Logowanie w zakładce panelu. Każda zakładka ma własnego zalogowanego pracownika,
+/// a wejść może tylko ktoś z uprawnieniem do niej. Właściciel może odblokować zakładkę
+/// hasłem konta restauracji (np. przy pierwszym uruchomieniu albo na innym komputerze).
+class TabLoginGate extends ConsumerWidget {
+  const TabLoginGate({super.key, required this.tab, required this.label});
+
+  /// Ścieżka zakładki, np. „/zamowienia”.
+  final String tab;
+  final String label;
+
+  Future<void> _unlock(BuildContext context, WidgetRef ref) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => RestaurantPasswordDialog(
+        title: 'Otworzyć „$label” jako właściciel?',
+        message: 'Zakładka będzie otwarta z pełnym dostępem, dopóki jej nie wylogujesz.',
+        action: 'Otwórz',
+      ),
+    );
+    if (ok == true) ref.read(tabSessionsProvider.notifier).signIn(tab, ActingMember.account());
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final restaurant = ref.watch(currentRestaurantProvider);
+    if (restaurant == null) return const LoadingView();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(32, 28, 32, 0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: text.headlineSmall),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Zaloguj się, żeby korzystać z tej zakładki. Po pracy wyloguj się, '
+                      'żeby mógł się zalogować następny pracownik.',
+                      style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+              if (restaurant.canManage)
+                TextButton.icon(
+                  onPressed: () => _unlock(context, ref),
+                  style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+                  icon: const Glyph(AppIcons.lock, size: 16),
+                  label: const Text('Właściciel: otwórz hasłem konta'),
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(32),
+              child: StationLogin(
+                restaurantId: restaurant.id,
+                autofocus: true,
+                onLogin: (member) {
+                  if (!canOpenRoute(tab, member.permissions)) {
+                    showMessage(
+                      context,
+                      '${member.name} nie ma uprawnienia do zakładki „$label”'
+                      '${member.position == null ? '' : ' (stanowisko „${member.position}”)'}.',
+                    );
+                    return;
+                  }
+                  ref.read(tabSessionsProvider.notifier).signIn(tab, member);
+                },
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Pasek nad zakładką: kto jest w niej zalogowany, „Wyloguj” (tylko z tej zakładki)
+/// i „Zakończ zmianę”.
+class TabSessionBar extends ConsumerWidget {
+  const TabSessionBar({super.key, required this.tab, required this.member});
+
+  final String tab;
+  final ActingMember member;
+
+  Future<void> _endShift(BuildContext context, WidgetRef ref) async {
+    final ok = await confirm(
+      context,
+      title: 'Zakończyć zmianę?',
+      message: '${member.name} kończy pracę teraz i zostanie wylogowany ze wszystkich zakładek.',
+      action: 'Zakończ zmianę',
+    );
+    if (!ok) return;
+    try {
+      await ref.read(repositoryProvider).endShift(member.memberId);
+      ref.read(tabSessionsProvider.notifier).signOutMember(member.memberId);
+      if (context.mounted) showMessage(context, 'Zmiana zakończona.');
+    } catch (e) {
+      if (context.mounted) showMessage(context, errorText(e));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final initials = member.name
+        .split(' ')
+        .where((p) => p.isNotEmpty)
+        .take(2)
+        .map((p) => p[0].toUpperCase())
+        .join();
+    final since = member.shiftStartedAt;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(32, 8, 24, 8),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.ring)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.accentTint,
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: member.isAccount
+                ? Glyph(AppIcons.lock, size: 14, color: AppColors.accent)
+                : Text(initials, style: text.labelMedium?.copyWith(color: AppColors.accent)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(text: member.name, style: text.labelLarge),
+                  TextSpan(
+                    text: [
+                      '',
+                      ?member.position,
+                      if (since != null) 'na zmianie od ${_hm(since)}',
+                    ].join(' · '),
+                    style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                  ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (!member.isAccount && since != null)
+            TextButton.icon(
+              onPressed: () => _endShift(context, ref),
+              style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+              icon: const Glyph(AppIcons.timer, size: 16),
+              label: const Text('Zakończ zmianę'),
+            ),
+          const SizedBox(width: 6),
+          OutlinedButton.icon(
+            onPressed: () => ref.read(tabSessionsProvider.notifier).signOut(tab),
+            style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
+            icon: const Glyph(AppIcons.signOut, size: 16),
+            label: Text('Wyloguj (${member.name.split(' ').first})'),
+          ),
+        ],
+      ),
     );
   }
 }

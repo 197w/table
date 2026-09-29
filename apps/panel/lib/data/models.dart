@@ -1007,25 +1007,35 @@ enum LiveStatus {
 
 /// Uprawnienie stanowiska. Działa, gdy pracownicy dostaną własne konta w panelu.
 enum StaffPermission {
-  reservations('reservations', 'Rezerwacje', 'Przyjmowanie, zmiana i odwoływanie rezerwacji'),
-  floor('floor', 'Plan sali', 'Podgląd sali i wyłączanie stolików'),
-  floorEdit('floor_edit', 'Edycja sali', 'Zmiana układu stolików i stref'),
-  menu('menu', 'Menu', 'Zmiana dań i cen'),
-  orders('orders', 'Zamówienia', 'Nabijanie zamówień przy stoliku i rachunki'),
-  kitchen('kitchen', 'Kuchnia', 'Ekran zamówień na kuchni'),
-  deliveries('deliveries', 'Dostawy', 'Aplikacja dla kurierów', soon: true),
-  giftCards('gift_cards', 'Karty podarunkowe', 'Realizacja kart gości'),
-  reviews('reviews', 'Opinie', 'Odpowiadanie na opinie'),
-  stats('stats', 'Statystyki', 'Podgląd wyników lokalu'),
-  staff('staff', 'Pracownicy', 'Pracownicy, ich loginy, statystyki i czas pracy'),
-  schedule('schedule', 'Grafik', 'Rozpisywanie godzin pracy i odpowiedzi pracowników'),
-  profile('profile', 'Dane lokalu', 'Adres, godziny otwarcia i logo');
+  reservations('reservations', 'Rezerwacje', 'Przyjmowanie, zmiana i odwoływanie rezerwacji', 'Sala'),
+  floor('floor', 'Plan sali', 'Podgląd sali i wyłączanie stolików w Rezerwacjach', 'Sala'),
+  floorEdit('floor_edit', 'Edycja sali', 'Zmiana układu stolików i stref', 'Sala'),
+  orders('orders', 'Zamówienia', 'Nabijanie pozycji i wysyłanie ich na kuchnię', 'Zamówienia'),
+  ordersClose('orders_close', 'Zamykanie rachunków', 'Przyjmowanie płatności i zamykanie rachunku', 'Zamówienia'),
+  ordersCancel('orders_cancel', 'Anulowanie pozycji', 'Anulowanie pozycji, które są już na kuchni', 'Zamówienia'),
+  deliveries('deliveries', 'Dostawy', 'Aplikacja dla kurierów', 'Zamówienia', soon: true),
+  kitchen('kitchen', 'Kuchnia', 'Ekran zamówień na kuchni', 'Kuchnia'),
+  kitchenSettings('kitchen_settings', 'Ustawienia kuchni', 'Progi czasu i pozycje ukryte na kuchni', 'Kuchnia'),
+  staff('staff', 'Pracownicy', 'Dodawanie i edycja pracowników, ich statystyki', 'Zespół'),
+  staffLogins('staff_logins', 'Loginy i hasła', 'Podgląd i zmiana loginów oraz haseł pracowników', 'Zespół'),
+  schedule('schedule', 'Grafik', 'Przyjmowanie, zmiana i odrzucanie godzin pracowników', 'Zespół'),
+  timesheet('timesheet', 'Czas pracy', 'Podgląd i poprawianie zmian pracowników', 'Zespół'),
+  positions('positions', 'Stanowiska', 'Tworzenie stanowisk i nadawanie uprawnień', 'Zespół'),
+  profile('profile', 'Dane lokalu', 'Adres, godziny otwarcia i logo', 'Lokal'),
+  menu('menu', 'Menu', 'Zmiana dań i cen', 'Lokal'),
+  giftCards('gift_cards', 'Karty podarunkowe', 'Realizacja kart gości', 'Lokal'),
+  settings('settings', 'Ustawienia', 'Główne stanowisko i ustawienia komputera', 'Lokal'),
+  reviews('reviews', 'Opinie', 'Odpowiadanie na opinie', 'Wyniki'),
+  stats('stats', 'Statystyki', 'Sprzedaż, rezerwacje i historia zamówień', 'Wyniki');
 
-  const StaffPermission(this.key, this.label, this.description, {this.soon = false});
+  const StaffPermission(this.key, this.label, this.description, this.group, {this.soon = false});
 
   final String key;
   final String label;
   final String description;
+
+  /// Część panelu, do której należy uprawnienie (nagłówek w oknie stanowiska).
+  final String group;
 
   /// Funkcja, której jeszcze nie ma w panelu.
   final bool soon;
@@ -1397,7 +1407,7 @@ class KitchenStats {
   }
 }
 
-/// Pracownik zalogowany na głównym stanowisku kodem QR z aplikacji Table for employees albo loginem.
+/// Pracownik zalogowany w zakładce panelu kodem QR z aplikacji Table for employees albo loginem i hasłem.
 /// Panel pokazuje wtedy tylko zakładki z jego uprawnień.
 class ActingMember {
   const ActingMember({
@@ -1414,6 +1424,19 @@ class ActingMember {
   final Set<String> permissions;
   final DateTime? shiftStartedAt;
 
+  /// Właściciel odblokował zakładkę hasłem konta restauracji: pełny dostęp, bez pracownika.
+  factory ActingMember.account() => ActingMember(
+    memberId: '',
+    name: 'Konto restauracji',
+    position: 'pełny dostęp',
+    permissions: {for (final p in StaffPermission.values) p.key},
+  );
+
+  bool get isAccount => memberId.isEmpty;
+
+  /// Pracownik zapisywany przy zamówieniach. Konto restauracji: nikt.
+  String? get dbMemberId => isAccount ? null : memberId;
+
   factory ActingMember.fromJson(Map<String, dynamic> json) => ActingMember(
     memberId: json['member_id'] as String,
     name: json['name'] as String,
@@ -1423,13 +1446,16 @@ class ActingMember {
   );
 }
 
-/// Login pracownika do logowania na głównym stanowisku. Hasła panel nie zna:
-/// widać je tylko raz, przy tworzeniu albo nadaniu nowego.
+/// Login i hasło pracownika do logowania na głównym stanowisku. Widać je stale
+/// (osoba z uprawnieniem „Loginy i hasła”), w bazie hasło jest zaszyfrowane.
 class StaffLogin {
-  const StaffLogin({required this.memberId, required this.login, this.lockedUntil});
+  const StaffLogin({required this.memberId, required this.login, this.password, this.lockedUntil});
 
   final String memberId;
   final String login;
+
+  /// Hasło do podglądu. Null: login założony, zanim hasła były widoczne (trzeba nadać nowe).
+  final String? password;
 
   /// Po kilku błędnych hasłach login jest chwilowo zablokowany.
   final DateTime? lockedUntil;
@@ -1439,6 +1465,7 @@ class StaffLogin {
   factory StaffLogin.fromJson(Map<String, dynamic> json) => StaffLogin(
     memberId: json['member_id'] as String,
     login: json['login'] as String,
+    password: json['password'] as String?,
     lockedUntil: _toDateOrNull(json['locked_until']),
   );
 }
@@ -1461,16 +1488,17 @@ class MainStation {
 }
 
 enum PlannedShiftStatus {
-  proposed('Czeka na pracownika'),
+  pending('Czeka na decyzję'),
   accepted('Przyjęte'),
-  changed('Pracownik proponuje zmianę');
+  rejected('Odrzucone');
 
   const PlannedShiftStatus(this.label);
   final String label;
 }
 
-/// Godziny w grafiku zaproponowane pracownikowi. Pracownik przyjmuje je
-/// w aplikacji Table for employees albo proponuje inne.
+/// Godziny w grafiku. Pracownik zgłasza w aplikacji, od której do której może pracować,
+/// przełożony przyjmuje (także ze zmienionymi godzinami) albo odrzuca. Po decyzji pracownik
+/// nie może już zmienić tego dnia. Przełożony może też wpisać godziny sam.
 class PlannedShift {
   const PlannedShift({
     required this.id,
@@ -1479,41 +1507,51 @@ class PlannedShift {
     required this.starts,
     required this.ends,
     required this.status,
-    this.changeStarts,
-    this.changeEnds,
+    this.requestedStarts,
+    this.requestedEnds,
     this.note,
-    this.reply,
+    this.answer,
   });
 
   final String id;
   final String memberId;
   final DateTime day;
 
-  /// Godziny jako „HH:MM”.
+  /// Godziny jako „HH:MM”: zgłoszone albo (po przyjęciu) zatwierdzone.
   final String starts;
   final String ends;
   final PlannedShiftStatus status;
-  final String? changeStarts;
-  final String? changeEnds;
-  final String? note;
-  final String? reply;
 
-  static String _hm(Object? v) => (v as String).substring(0, 5);
+  /// Co zgłosił pracownik. Null: godziny wpisał przełożony.
+  final String? requestedStarts;
+  final String? requestedEnds;
+
+  /// Uwagi pracownika i odpowiedź przełożonego.
+  final String? note;
+  final String? answer;
+
+  /// Przyjęte, ale z innymi godzinami, niż zgłosił pracownik.
+  bool get changed =>
+      status == PlannedShiftStatus.accepted &&
+      requestedStarts != null &&
+      (requestedStarts != starts || requestedEnds != ends);
+
+  static String? _hm(Object? v) => v == null ? null : (v as String).substring(0, 5);
 
   factory PlannedShift.fromJson(Map<String, dynamic> json) => PlannedShift(
     id: json['id'] as String,
     memberId: json['member_id'] as String,
     day: DateTime.parse(json['day'] as String),
-    starts: _hm(json['starts']),
-    ends: _hm(json['ends']),
+    starts: _hm(json['starts'])!,
+    ends: _hm(json['ends'])!,
     status: PlannedShiftStatus.values.firstWhere(
       (s) => s.name == json['status'],
-      orElse: () => PlannedShiftStatus.proposed,
+      orElse: () => PlannedShiftStatus.pending,
     ),
-    changeStarts: json['change_starts'] == null ? null : _hm(json['change_starts']),
-    changeEnds: json['change_ends'] == null ? null : _hm(json['change_ends']),
+    requestedStarts: _hm(json['requested_starts']),
+    requestedEnds: _hm(json['requested_ends']),
     note: json['note'] as String?,
-    reply: json['reply'] as String?,
+    answer: json['answer'] as String?,
   );
 }
 

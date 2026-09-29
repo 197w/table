@@ -5,9 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
-import '../kiosk/kiosk_screen.dart';
 import '../../shared/panel_widgets.dart';
 import '../floor/floor_canvas.dart';
 
@@ -71,7 +71,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     if (order != null) return order.id;
     return ref
         .read(repositoryProvider)
-        .openOrder(restaurantId, tableId, memberId: ref.read(orderMemberProvider)?.memberId);
+        .openOrder(restaurantId, tableId, memberId: ref.read(tabMemberProvider(PanelRoutes.orders))?.dbMemberId);
   }
 
   Future<void> _add(
@@ -107,7 +107,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
           addons: choice.addons,
           quantity: choice.quantity,
           note: choice.note,
-          memberId: ref.read(orderMemberProvider)?.memberId,
+          memberId: ref.read(tabMemberProvider(PanelRoutes.orders))?.dbMemberId,
         );
       }),
     );
@@ -144,7 +144,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         payment.method,
         giftCardId: payment.card?.id,
         giftAmount: payment.giftAmount,
-        memberId: ref.read(orderMemberProvider)?.memberId,
+        memberId: ref.read(tabMemberProvider(PanelRoutes.orders))?.dbMemberId,
       );
       ok = true;
     });
@@ -267,42 +267,10 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       );
     }
 
-    // Zamówienie nabija zawsze zalogowany pracownik: kodem QR z aplikacji albo loginem i hasłem
-    // na głównym stanowisku. To logowanie dotyczy tylko Zamówień, reszta panelu się nie zmienia.
-    final orderMember = ref.watch(orderMemberProvider);
-    if (orderMember == null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const PageHeader(
-            title: 'Zamówienia',
-            subtitle: 'Zaloguj się, żeby nabić zamówienie. Potem wyloguj się, żeby mógł się zalogować następny pracownik.',
-          ),
-          Expanded(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
-                child: StationLogin(
-                  restaurantId: restaurant.id,
-                  autofocus: true,
-                  onLogin: (member) {
-                    if (!member.permissions.contains('orders')) {
-                      showMessage(
-                        context,
-                        '${member.name} nie ma uprawnienia do zamówień'
-                        '${member.position == null ? '' : ' (stanowisko „${member.position}”)'}.',
-                      );
-                      return;
-                    }
-                    ref.read(orderMemberProvider.notifier).set(member);
-                  },
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
+    // Pracownika zalogowanego w tej zakładce i jego uprawnienia pilnuje układ panelu (PanelShell).
+    final permissions = ref.watch(tabPermissionsProvider(PanelRoutes.orders));
+    final canClose = permissions.contains('orders_close');
+    final canCancel = permissions.contains('orders_cancel');
 
     // Dostęp do zakładki sprawdza boczne menu (PanelShell) według uprawnień stanowiska.
     final tablesAsync = ref.watch(tablesProvider(restaurant.id));
@@ -334,15 +302,8 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       children: [
         PageHeader(
           title: 'Zamówienia',
-          subtitle: 'Zamówienia nabija: ${orderMember.name}. Wybierz stolik, nabij pozycje i wyślij je na kuchnię.',
+          subtitle: 'Wybierz stolik, nabij pozycje z menu i wyślij je na kuchnię.',
           actions: [
-            // Wylogowuje tylko z Zamówień: następny pracownik loguje się i składa swoje zamówienie.
-            OutlinedButton.icon(
-              onPressed: () => ref.read(orderMemberProvider.notifier).set(null),
-              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
-              icon: const Glyph(AppIcons.signOut, size: 16),
-              label: Text('Wyloguj (${orderMember.name.split(' ').first})'),
-            ),
             switch (live) {
               LiveStatus.live => const PanelPill('Na żywo', dotColor: Color(0xFF2FB673)),
               LiveStatus.connecting => const PanelPill('Łączenie…', dotColor: Color(0xFFD99A15)),
@@ -443,8 +404,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                                       final ok = await confirm(
                                         context,
                                         title: 'Anulować „${item.name}”?',
-                                        message:
-                                            'Pozycja jest już na kuchni. Anulować ją może tylko kierownik albo właściciel.',
+                                        message: 'Pozycja jest już na kuchni. Kuchnia zobaczy ją jako anulowaną.',
                                         action: 'Anuluj pozycję',
                                         destructive: true,
                                       );
@@ -457,8 +417,14 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                                   },
                                   onServeAll: (items) => _serveAll(restaurant.id, items),
                                   onSend: order == null ? null : () => _send(restaurant.id, order!),
-                                  onClose: order == null ? null : () => _close(restaurant.id, table!, order!),
-                                  onCancel: order == null ? null : () => _cancel(restaurant.id, table!, order!),
+                                  // Zamknięcie i anulowanie wymagają osobnych uprawnień stanowiska.
+                                  onClose: order == null || !canClose
+                                      ? null
+                                      : () => _close(restaurant.id, table!, order!),
+                                  onCancel: order == null || !canCancel
+                                      ? null
+                                      : () => _cancel(restaurant.id, table!, order!),
+                                  canCancelSent: canCancel,
                                   onMove: order == null
                                       ? null
                                       : () => _move(restaurant.id, table!, order!, tables, orders),
@@ -1166,6 +1132,7 @@ class _OrderPanel extends StatelessWidget {
     required this.onClose,
     required this.onCancel,
     required this.onMove,
+    required this.canCancelSent,
   });
 
   final DiningTable table;
@@ -1179,6 +1146,9 @@ class _OrderPanel extends StatelessWidget {
   final VoidCallback? onClose;
   final VoidCallback? onCancel;
   final VoidCallback? onMove;
+
+  /// Czy zalogowany pracownik może anulować pozycje, które są już na kuchni.
+  final bool canCancelSent;
 
   @override
   Widget build(BuildContext context) {
@@ -1299,6 +1269,7 @@ class _OrderPanel extends StatelessWidget {
                         for (final item in list)
                           _OrderLine(
                             item: item,
+                            canCancelSent: canCancelSent,
                             onQuantity: (q) => onQuantity(item, q),
                             onNote: () => onNote(item),
                             onStatus: (s) => onStatus(item, s),
@@ -1353,12 +1324,14 @@ class _OrderPanel extends StatelessWidget {
 class _OrderLine extends StatelessWidget {
   const _OrderLine({
     required this.item,
+    required this.canCancelSent,
     required this.onQuantity,
     required this.onNote,
     required this.onStatus,
   });
 
   final OrderItem item;
+  final bool canCancelSent;
   final ValueChanged<int> onQuantity;
   final VoidCallback onNote;
   final ValueChanged<OrderItemStatus> onStatus;
@@ -1450,13 +1423,14 @@ class _OrderLine extends StatelessWidget {
               if (fresh) const PopupMenuItem(value: 'note', child: Text('Uwaga dla kuchni')),
               if (item.status == OrderItemStatus.sent || ready)
                 const PopupMenuItem(value: 'served', child: Text('Wydane')),
-              PopupMenuItem(
-                value: 'cancel',
-                child: Text(
-                  fresh ? 'Usuń z rachunku' : 'Anuluj pozycję',
-                  style: TextStyle(color: AppColors.error),
+              if (fresh || canCancelSent)
+                PopupMenuItem(
+                  value: 'cancel',
+                  child: Text(
+                    fresh ? 'Usuń z rachunku' : 'Anuluj pozycję',
+                    style: TextStyle(color: AppColors.error),
+                  ),
                 ),
-              ),
             ],
           ),
         ],

@@ -29,11 +29,6 @@ class PanelShell extends ConsumerWidget {
       ref.watch(reservationsLiveProvider(current.id).select((s) => s.status));
     }
 
-    // Zablokowane główne stanowisko bez zalogowanego pracownika: cały ekran to „Wejdź na zmianę”.
-    if (current != null && ref.watch(kioskModeProvider) && ref.watch(actingMemberProvider) == null) {
-      return const Scaffold(body: KioskLockScreen());
-    }
-
     // Ekran kuchni na cały ekran: bez bocznego menu, same bileciki.
     if (ref.watch(kitchenFullscreenProvider) && location.startsWith(PanelRoutes.kitchen)) {
       return Scaffold(body: _RouteGuard(location: location, child: child));
@@ -83,7 +78,20 @@ class _RouteGuard extends ConsumerWidget {
     if (current == null) return child;
     final permissions = ref.watch(effectivePermissionsProvider(current.id));
     if (permissions == null) return const LoadingView();
-    if (canOpenRoute(location, permissions)) return child;
+    if (canOpenRoute(location, permissions)) {
+      // Każda zakładka ma własne logowanie pracownika i własne „Wyloguj”.
+      final tab = tabForRoute(location);
+      if (tab == null) return child;
+      final member = ref.watch(tabMemberProvider(tab));
+      if (member == null) return TabLoginGate(tab: tab, label: panelTabLabels[tab] ?? 'Zakładka');
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TabSessionBar(tab: tab, member: member),
+          Expanded(child: child),
+        ],
+      );
+    }
 
     String? first;
     for (final (_, items) in _groups) {
@@ -104,10 +112,8 @@ class _RouteGuard extends ConsumerWidget {
       message:
           'Twoje stanowisko nie ma jeszcze żadnych uprawnień. Poproś kierownika o ich ustawienie '
           'w zakładce „Pracownicy” → „Stanowiska”.',
-      actionLabel: ref.watch(actingMemberProvider) != null ? 'Wyloguj' : 'Wyloguj się',
-      onAction: () => ref.read(actingMemberProvider) != null
-          ? ref.read(actingMemberProvider.notifier).set(null)
-          : ref.read(repositoryProvider).signOut(),
+      actionLabel: 'Wyloguj się',
+      onAction: () => ref.read(repositoryProvider).signOut(),
     );
   }
 }
@@ -207,14 +213,12 @@ class _Sidebar extends ConsumerWidget {
     final text = Theme.of(context).textTheme;
     final theme = ref.watch(themeSettingProvider);
     final email = ref.watch(repositoryProvider).email;
-    // Zakładki według uprawnień: stanowisko pracownika albo pełny dostęp kierownika.
+    // Zakładki według uprawnień konta. W samej zakładce decyduje zalogowany pracownik.
     final permissions = current == null
         ? const <String>{}
         : ref.watch(effectivePermissionsProvider(current.id)) ?? const <String>{};
     bool allowed(String route) => canOpenRoute(route, permissions);
 
-    final kiosk = ref.watch(kioskModeProvider);
-    final acting = ref.watch(actingMemberProvider);
     final isMain = current == null ? false : ref.watch(isMainStationProvider(current.id)) ?? false;
 
     return Column(
@@ -233,10 +237,7 @@ class _Sidebar extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 10),
-        // Gdy na stanowisku jest zalogowany pracownik, zamiast wyboru lokalu widać, kto to.
-        if (acting != null)
-          _MemberCard(member: acting, width: inner, fade: fade)
-        else if (current != null)
+        if (current != null)
           _RestaurantSwitcher(
             current: current,
             restaurants: list,
@@ -330,44 +331,24 @@ class _Sidebar extends ConsumerWidget {
             );
           },
         ),
-        if (acting != null) ...[
-          // Wylogowanie jest ręczne. Na zablokowanym stanowisku wraca ekran „Wejdź na zmianę”.
+        // Tylko główne stanowisko: pracownicy wchodzą na zmianę kodem QR albo loginem i hasłem.
+        if (isMain)
           _IconRow(
             icon: AppIcons.timer,
-            label: 'Zakończ zmianę',
+            label: 'Wejdź na zmianę',
             width: inner,
             fade: fade,
             muted: true,
-            onTap: () => _endShift(context, ref, acting),
+            onTap: () => ShiftScreen.open(context),
           ),
-          _IconRow(
-            icon: AppIcons.signOut,
-            label: 'Wyloguj (${acting.name.split(' ').first})',
-            width: inner,
-            fade: fade,
-            muted: true,
-            onTap: () => _signOutMember(ref, acting),
-          ),
-        ] else ...[
-          // Tylko główne stanowisko: pracownicy wchodzą na zmianę kodem QR albo loginem i hasłem.
-          if (!kiosk && isMain)
-            _IconRow(
-              icon: AppIcons.timer,
-              label: 'Wejdź na zmianę',
-              width: inner,
-              fade: fade,
-              muted: true,
-              onTap: () => ref.read(kioskModeProvider.notifier).set(true),
-            ),
-          _IconRow(
-            icon: AppIcons.signOut,
-            label: 'Wyloguj się',
-            width: inner,
-            fade: fade,
-            muted: true,
-            onTap: () => ref.read(repositoryProvider).signOut(),
-          ),
-        ],
+        _IconRow(
+          icon: AppIcons.signOut,
+          label: 'Wyloguj się',
+          width: inner,
+          fade: fade,
+          muted: true,
+          onTap: () => ref.read(repositoryProvider).signOut(),
+        ),
         SizedBox(
           width: inner,
           height: 26,
@@ -389,103 +370,6 @@ class _Sidebar extends ConsumerWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// Wylogowuje pracownika z panelu, a z Zamówień tylko wtedy, gdy to on w nich jest zalogowany.
-void _signOutMember(WidgetRef ref, ActingMember member) {
-  ref.read(actingMemberProvider.notifier).set(null);
-  if (ref.read(orderMemberProvider)?.memberId == member.memberId) {
-    ref.read(orderMemberProvider.notifier).set(null);
-  }
-}
-
-Future<void> _endShift(BuildContext context, WidgetRef ref, ActingMember member) async {
-  final ok = await confirm(
-    context,
-    title: 'Zakończyć zmianę?',
-    message: '${member.name} kończy pracę teraz. Czas pracy zapisze się w zakładce „Pracownicy”.',
-    action: 'Zakończ zmianę',
-  );
-  if (!ok) return;
-  try {
-    await ref.read(repositoryProvider).endShift(member.memberId);
-    _signOutMember(ref, member);
-  } catch (e) {
-    if (context.mounted) showMessage(context, errorText(e));
-  }
-}
-
-/// Pracownik zalogowany na stanowisku: imię, stanowisko i od kiedy pracuje.
-class _MemberCard extends StatelessWidget {
-  const _MemberCard({required this.member, required this.width, required this.fade});
-
-  final ActingMember member;
-  final double width;
-  final double fade;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final initials = member.name
-        .split(' ')
-        .where((p) => p.isNotEmpty)
-        .take(2)
-        .map((p) => p[0].toUpperCase())
-        .join();
-    final since = member.shiftStartedAt?.toLocal();
-    return SizedBox(
-      width: width,
-      height: 52,
-      child: Row(
-        children: [
-          SizedBox(
-            width: railSlot(fade),
-            child: Center(
-              child: Container(
-                width: 40,
-                height: 40,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: AppColors.accentTint,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.accent),
-                ),
-                child: Text(initials, style: text.labelLarge?.copyWith(color: AppColors.accent)),
-              ),
-            ),
-          ),
-          if (fade > 0)
-            Expanded(
-              child: Opacity(
-                opacity: labelFade(fade),
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 10),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(member.name, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-                          style: text.labelLarge),
-                      Text(
-                        [
-                          ?member.position,
-                          if (since != null)
-                            'od ${since.hour.toString().padLeft(2, '0')}:${since.minute.toString().padLeft(2, '0')}',
-                        ].join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        softWrap: false,
-                        style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
     );
   }
 }

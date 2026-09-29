@@ -645,66 +645,46 @@ final memberStatsProvider = FutureProvider.autoDispose.family<MemberStats, Membe
   return ref.watch(repositoryProvider).memberStats(q.memberId, q.days);
 });
 
-/// Blokada głównego stanowiska: bez zalogowanego pracownika panel pokazuje ekran
-/// „Wejdź na zmianę”. Zdjęcie blokady wymaga hasła konta restauracji. Stan pamiętamy na komputerze.
-class KioskModeNotifier extends Notifier<bool> {
-  static const _key = 'panel_tryb_obslugi';
-
+/// Pracownicy zalogowani w zakładkach panelu (klucz: ścieżka zakładki, np. „/zamowienia”).
+/// Każda zakładka ma własne logowanie i wylogowanie, żeby przy jednym komputerze mogło
+/// pracować kilka osób. Zmiana lokalu wylogowuje wszystkich.
+class TabSessionsNotifier extends Notifier<Map<String, ActingMember>> {
   @override
-  bool build() {
-    _load();
-    return false;
+  Map<String, ActingMember> build() {
+    ref.watch(selectedRestaurantIdProvider);
+    return const {};
   }
 
-  Future<void> _load() async {
-    try {
-      final saved = await SharedPreferencesAsync().getBool(_key);
-      if (saved != null) state = saved;
-    } catch (_) {
-      // Bez zapisu panel startuje w zwykłym trybie.
-    }
-  }
+  void signIn(String tab, ActingMember member) => state = {...state, tab: member};
 
-  Future<void> set(bool value) async {
-    state = value;
-    if (!value) ref.read(actingMemberProvider.notifier).set(null);
-    try {
-      await SharedPreferencesAsync().setBool(_key, value);
-    } catch (_) {
-      // Wybór działa do zamknięcia panelu.
-    }
-  }
+  void signOut(String tab) => state = {...state}..remove(tab);
+
+  /// Wylogowuje pracownika ze wszystkich zakładek, np. po zakończeniu zmiany.
+  void signOutMember(String memberId) => state = {
+    for (final e in state.entries)
+      if (e.value.memberId != memberId) e.key: e.value,
+  };
 }
 
-final kioskModeProvider = NotifierProvider<KioskModeNotifier, bool>(KioskModeNotifier.new);
-
-/// Pracownik zalogowany teraz na panelu (kod QR albo login i hasło). Null: nikt.
-/// Wylogowanie jest ręczne.
-class ActingMemberNotifier extends Notifier<ActingMember?> {
-  @override
-  ActingMember? build() => null;
-
-  void set(ActingMember? member) => state = member;
-}
-
-final actingMemberProvider = NotifierProvider<ActingMemberNotifier, ActingMember?>(
-  ActingMemberNotifier.new,
+final tabSessionsProvider = NotifierProvider<TabSessionsNotifier, Map<String, ActingMember>>(
+  TabSessionsNotifier.new,
 );
 
-/// Pracownik zalogowany w „Zamówieniach”, osobno od logowania do całego panelu. Wylogowanie
-/// w Zamówieniach zwalnia je dla następnego pracownika, a reszta panelu zostaje bez zmian.
-final orderMemberProvider = NotifierProvider<ActingMemberNotifier, ActingMember?>(
-  ActingMemberNotifier.new,
+/// Kto jest zalogowany w zakładce [tab]. Null: zakładka pokazuje logowanie.
+final tabMemberProvider = Provider.family<ActingMember?, String>(
+  (ref, tab) => ref.watch(tabSessionsProvider)[tab],
 );
 
-/// Uprawnienia, według których panel pokazuje zakładki. Gdy na stanowisku jest zalogowany pracownik,
-/// są to uprawnienia jego stanowiska. Zablokowane stanowisko bez pracownika nie ma żadnych.
-/// Poza tym uprawnienia konta (kierownik i właściciel mają wszystkie).
-final effectivePermissionsProvider = Provider.autoDispose.family<Set<String>?, String>((ref, id) {
-  if (ref.watch(actingMemberProvider) case final member?) return member.permissions;
-  if (ref.watch(kioskModeProvider)) return const {};
-  return ref.watch(myPermissionsProvider(id)).value;
-});
+/// Uprawnienia osoby zalogowanej w zakładce: według nich zakładka pokazuje przyciski.
+final tabPermissionsProvider = Provider.family<Set<String>, String>(
+  (ref, tab) => ref.watch(tabMemberProvider(tab))?.permissions ?? const {},
+);
+
+/// Uprawnienia konta, na którym działa panel (kierownik i właściciel mają wszystkie).
+/// Według nich menu boczne pokazuje zakładki; w samej zakładce decyduje zalogowany pracownik.
+final effectivePermissionsProvider = Provider.autoDispose.family<Set<String>?, String>(
+  (ref, id) => ref.watch(myPermissionsProvider(id)).value,
+);
 
 typedef ShiftQuery = ({String restaurantId, DateTime from, DateTime to});
 

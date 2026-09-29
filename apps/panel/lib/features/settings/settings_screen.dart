@@ -90,10 +90,6 @@ class _MainStationCardState extends ConsumerState<_MainStationCard> {
         enable: enable,
         force: force,
       );
-      if (!enable) {
-        // Bez głównego stanowiska blokada tego komputera nie ma sensu.
-        await ref.read(kioskModeProvider.notifier).set(false);
-      }
       ref.invalidate(mainStationProvider(id));
       if (mounted) {
         showMessage(context, enable ? 'Ten komputer jest teraz głównym stanowiskiem.' : 'Główne stanowisko wyłączone.');

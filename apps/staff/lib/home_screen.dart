@@ -86,25 +86,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Future<void> _answer(PlannedShift shift, {required bool accept}) async {
-    final repo = ref.read(staffRepositoryProvider);
-    try {
-      if (accept) {
-        await repo.answerShift(shift.id, accept: true);
-        if (mounted) showMessage(context, 'Przyjęte: ${shift.starts}–${shift.ends}.');
-      } else {
-        final change = await showModalBottomSheet<({String starts, String ends, String reply})>(
-          context: context,
-          isScrollControlled: true,
-          useSafeArea: true,
-          showDragHandle: true,
-          builder: (_) => _ChangeSheet(shift: shift),
-        );
-        if (change == null) return;
-        await repo.answerShift(shift.id, accept: false, starts: change.starts, ends: change.ends, reply: change.reply);
-        if (mounted) showMessage(context, 'Wysłano propozycję: ${change.starts}–${change.ends}.');
-      }
+  /// Zgłoszenie godzin: nowe albo poprawione, dopóki przełożony nie zdecydował.
+  Future<void> _hours(List<Job> jobs, [PlannedShift? existing]) async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (_) => _HoursSheet(jobs: jobs, existing: existing),
+    );
+    if (saved == true) {
       ref.invalidate(scheduleProvider);
+      if (mounted) showMessage(context, 'Zgłoszone. Przełożony przyjmie albo zmieni godziny.');
+    }
+  }
+
+  Future<void> _deleteHours(PlannedShift shift) async {
+    try {
+      await ref.read(staffRepositoryProvider).deleteHours(shift.id);
+      ref.invalidate(scheduleProvider);
+      if (mounted) showMessage(context, 'Zgłoszenie wycofane.');
     } catch (e) {
       if (mounted) showMessage(context, errorText(e));
     }
@@ -138,7 +139,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final jobs = ref.watch(jobsProvider);
     final shifts = ref.watch(shiftsProvider).value ?? const <Shift>[];
     final schedule = ref.watch(scheduleProvider).value ?? const <PlannedShift>[];
-    final logins = ref.watch(loginsProvider).value ?? const <String, String>{};
+    final logins = ref.watch(loginsProvider).value ?? const <String, ({String login, String? password})>{};
     final phone = ref.watch(staffRepositoryProvider).phone;
 
     return Scaffold(
@@ -205,8 +206,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 const SizedBox(height: 28),
                 _Schedule(
                   shifts: schedule,
-                  onAccept: (s) => _answer(s, accept: true),
-                  onChange: (s) => _answer(s, accept: false),
+                  onAdd: () => _hours(list),
+                  onEdit: (s) => _hours(list, s),
+                  onDelete: _deleteHours,
                 ),
                 const SizedBox(height: 28),
                 _History(shifts: shifts),
@@ -224,8 +226,8 @@ class _JobCard extends StatelessWidget {
 
   final Job job;
 
-  /// Login do głównego stanowiska. Null: przełożony jeszcze go nie utworzył.
-  final String? login;
+  /// Login i hasło do głównego stanowiska. Null: przełożony jeszcze ich nie utworzył.
+  final ({String login, String? password})? login;
   final VoidCallback onEnd;
   final VoidCallback onOrders;
 
@@ -250,7 +252,11 @@ class _JobCard extends StatelessWidget {
                       if (job.position != null)
                         Text(job.position!, style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
                       Text(
-                        login == null ? 'Bez loginu do stanowiska' : 'Login do stanowiska: $login',
+                        switch (login) {
+                          null => 'Bez loginu do stanowiska',
+                          (:final login, :final password) =>
+                            'Login: $login · hasło: ${password ?? 'poproś o nowe'}',
+                        },
                         style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
                       ),
                     ],
@@ -297,135 +303,130 @@ class _JobCard extends StatelessWidget {
   }
 }
 
-/// Mój grafik: godziny zaproponowane przez przełożonego. Przyjmuję je albo proponuję inne.
+/// Mój grafik: zgłoszone godziny i decyzje przełożonego. Zgłoszenie mogę poprawić
+/// albo wycofać, dopóki przełożony nie zdecydował.
 class _Schedule extends StatelessWidget {
-  const _Schedule({required this.shifts, required this.onAccept, required this.onChange});
+  const _Schedule({required this.shifts, required this.onAdd, required this.onEdit, required this.onDelete});
 
   final List<PlannedShift> shifts;
-  final ValueChanged<PlannedShift> onAccept;
-  final ValueChanged<PlannedShift> onChange;
+  final VoidCallback onAdd;
+  final ValueChanged<PlannedShift> onEdit;
+  final ValueChanged<PlannedShift> onDelete;
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final waiting = shifts.where((s) => s.waiting).length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(child: Text('Mój grafik', style: text.titleMedium)),
-            if (waiting > 0)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: AppColors.accentTint, borderRadius: BorderRadius.circular(12)),
-                child: Text(
-                  waiting == 1 ? '1 nowa propozycja' : 'Nowe propozycje: $waiting',
-                  style: text.labelMedium?.copyWith(color: AppColors.accent),
-                ),
-              ),
-          ],
+        Text('Mój grafik', style: text.titleMedium),
+        const SizedBox(height: 4),
+        Text(
+          'Zgłoś, od której do której możesz pracować. Przełożony przyjmie godziny, zmieni je albo odrzuci.',
+          style: text.bodySmall?.copyWith(color: AppColors.textMuted),
         ),
-        const SizedBox(height: 8),
-        if (shifts.isEmpty)
-          Text(
-            'Tu pojawią się godziny, które zaproponuje Ci przełożony.',
-            style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
-          )
-        else
-          for (final s in shifts)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.ring))),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: onAdd,
+          icon: const Glyph(AppIcons.calendarPlus, size: 20),
+          label: const Text('Zgłoś godziny'),
+        ),
+        const SizedBox(height: 4),
+        for (final s in shifts)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.ring))),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(Fmt.capitalize(Fmt.dayShort(s.day)), style: text.bodyLarge),
+                          Text(
+                            '${s.starts}–${s.ends}${s.changed ? ' (zgłaszałeś ${s.requestedStarts}–${s.requestedEnds})' : ''}',
+                            style: text.bodyMedium?.copyWith(
+                              fontFeatures: _tabular,
+                              decoration: s.rejected ? TextDecoration.lineThrough : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Glyph(
+                      s.accepted ? AppIcons.checkCircle : (s.rejected ? AppIcons.prohibit : AppIcons.clock),
+                      size: 18,
+                      color: s.accepted ? AppColors.accent : (s.rejected ? AppColors.error : AppColors.textMuted),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      s.accepted ? (s.changed ? 'Przyjęte ze zmianą' : 'Przyjęte') : (s.rejected ? 'Odrzucone' : 'Czeka'),
+                      style: text.labelMedium?.copyWith(
+                        color: s.accepted ? AppColors.accent : (s.rejected ? AppColors.error : AppColors.textMuted),
+                      ),
+                    ),
+                  ],
+                ),
+                if (s.answer != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('Przełożony: ${s.answer}', style: text.bodySmall),
+                  ),
+                if (s.pending) ...[
+                  const SizedBox(height: 10),
+                  // Przyciski w motywie Table zajmują całą szerokość, więc w wierszu dostają Expanded.
                   Row(
                     children: [
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(Fmt.capitalize(Fmt.dayShort(s.day)), style: text.bodyLarge),
-                            Text(
-                              '${s.restaurantName} · ${s.starts}–${s.ends}',
-                              style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-                            ),
-                          ],
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+                          onPressed: () => onEdit(s),
+                          child: const Text('Zmień'),
                         ),
                       ),
-                      Glyph(
-                        s.accepted ? AppIcons.checkCircle : (s.changed ? AppIcons.chatText : AppIcons.clock),
-                        size: 18,
-                        color: s.accepted ? AppColors.accent : AppColors.textMuted,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        s.accepted ? 'Przyjęte' : (s.changed ? 'Wysłano zmianę' : 'Do decyzji'),
-                        style: text.labelMedium?.copyWith(
-                          color: s.accepted ? AppColors.accent : AppColors.textMuted,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(0, 44),
+                            foregroundColor: AppColors.error,
+                          ),
+                          onPressed: () => onDelete(s),
+                          child: const Text('Wycofaj'),
                         ),
                       ),
                     ],
                   ),
-                  if (s.note != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text('Uwagi: ${s.note}', style: text.bodySmall),
-                    ),
-                  if (s.changed)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        'Proponujesz ${s.changeStarts}–${s.changeEnds}${s.reply == null ? '' : ': „${s.reply}”'}',
-                        style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-                      ),
-                    ),
-                  if (!s.accepted) ...[
-                    const SizedBox(height: 10),
-                    // Przyciski w motywie Table zajmują całą szerokość, więc w wierszu dostają Expanded.
-                    Row(
-                      children: [
-                        Expanded(
-                          child: FilledButton(
-                            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
-                            onPressed: () => onAccept(s),
-                            child: const Text('Przyjmij'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
-                            onPressed: () => onChange(s),
-                            child: const Text('Inne godziny'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
                 ],
-              ),
+              ],
             ),
+          ),
       ],
     );
   }
 }
 
-/// Moja propozycja innych godzin w danym dniu.
-class _ChangeSheet extends StatefulWidget {
-  const _ChangeSheet({required this.shift});
+/// Zgłoszenie godzin w wybranym dniu: dzień, od–do i uwagi.
+class _HoursSheet extends ConsumerStatefulWidget {
+  const _HoursSheet({required this.jobs, this.existing});
 
-  final PlannedShift shift;
+  final List<Job> jobs;
+  final PlannedShift? existing;
 
   @override
-  State<_ChangeSheet> createState() => _ChangeSheetState();
+  ConsumerState<_HoursSheet> createState() => _HoursSheetState();
 }
 
-class _ChangeSheetState extends State<_ChangeSheet> {
-  late TimeOfDay _starts = _parse(widget.shift.changeStarts ?? widget.shift.starts);
-  late TimeOfDay _ends = _parse(widget.shift.changeEnds ?? widget.shift.ends);
-  late final _reply = TextEditingController(text: widget.shift.reply ?? '');
+class _HoursSheetState extends ConsumerState<_HoursSheet> {
+  late DateTime _day = widget.existing?.day ?? DateTime.now().add(const Duration(days: 1));
+  late TimeOfDay _starts = _parse(widget.existing?.starts ?? '10:00');
+  late TimeOfDay _ends = _parse(widget.existing?.ends ?? '18:00');
+  late String _memberId = widget.existing?.memberId ?? widget.jobs.first.memberId;
+  late final _note = TextEditingController(text: widget.existing?.note ?? '');
+  bool _busy = false;
 
   static TimeOfDay _parse(String hm) {
     final p = hm.split(':');
@@ -436,8 +437,19 @@ class _ChangeSheetState extends State<_ChangeSheet> {
 
   @override
   void dispose() {
-    _reply.dispose();
+    _note.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDay() async {
+    final today = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _day,
+      firstDate: DateTime(today.year, today.month, today.day),
+      lastDate: today.add(const Duration(days: 90)),
+    );
+    if (picked != null) setState(() => _day = picked);
   }
 
   Future<void> _pick(bool start) async {
@@ -452,12 +464,26 @@ class _ChangeSheetState extends State<_ChangeSheet> {
     if (picked != null) setState(() => start ? _starts = picked : _ends = picked);
   }
 
-  void _send() {
+  Future<void> _send() async {
     if (_ends.hour * 60 + _ends.minute <= _starts.hour * 60 + _starts.minute) {
       showMessage(context, 'Koniec musi być później niż początek.');
       return;
     }
-    Navigator.pop(context, (starts: _fmt(_starts), ends: _fmt(_ends), reply: _reply.text));
+    setState(() => _busy = true);
+    try {
+      await ref.read(staffRepositoryProvider).submitHours(
+        memberId: _memberId,
+        day: _day,
+        starts: _fmt(_starts),
+        ends: _fmt(_ends),
+        note: _note.text,
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) showMessage(context, errorText(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -480,14 +506,32 @@ class _ChangeSheetState extends State<_ChangeSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Inne godziny', style: text.titleLarge),
+            Text(widget.existing == null ? 'Zgłoś godziny' : 'Zmień zgłoszenie', style: text.titleLarge),
             const SizedBox(height: 4),
             Text(
-              '${Fmt.capitalize(Fmt.dayShort(widget.shift.day))}. Przełożony proponuje '
-              '${widget.shift.starts}–${widget.shift.ends}.',
+              'Przełożony przyjmie godziny, zmieni je albo odrzuci. Po jego decyzji nie zmienisz już tego dnia.',
               style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
             ),
-            const SizedBox(height: 16),
+            if (widget.jobs.length > 1 && widget.existing == null) ...[
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                initialValue: _memberId,
+                decoration: const InputDecoration(labelText: 'Lokal'),
+                items: [
+                  for (final j in widget.jobs) DropdownMenuItem(value: j.memberId, child: Text(j.restaurantName)),
+                ],
+                onChanged: (v) => setState(() => _memberId = v ?? _memberId),
+              ),
+            ],
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 52)),
+              // Dzień zgłoszenia zmienia się przez wycofanie i nowe zgłoszenie.
+              onPressed: widget.existing == null ? _pickDay : null,
+              icon: const Glyph(AppIcons.calendar, size: 20),
+              label: Text(Fmt.capitalize(Fmt.dayShort(_day)), style: const TextStyle(fontSize: 17)),
+            ),
+            const SizedBox(height: 12),
             Row(
               children: [
                 time(_starts, true),
@@ -500,12 +544,12 @@ class _ChangeSheetState extends State<_ChangeSheet> {
             ),
             const SizedBox(height: 14),
             TextField(
-              controller: _reply,
+              controller: _note,
               maxLength: 200,
-              decoration: const InputDecoration(labelText: 'Wiadomość (opcjonalnie)', hintText: 'Na przykład: rano mam zajęcia'),
+              decoration: const InputDecoration(labelText: 'Uwagi (opcjonalnie)', hintText: 'Na przykład: rano mam zajęcia'),
             ),
             const SizedBox(height: 8),
-            FilledButton(onPressed: _send, child: const Text('Wyślij propozycję')),
+            FilledButton(onPressed: _busy ? null : _send, child: const Text('Zgłoś')),
           ],
         ),
       ),

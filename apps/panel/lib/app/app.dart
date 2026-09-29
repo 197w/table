@@ -171,27 +171,47 @@ abstract final class PanelRoutes {
   static const settings = '/ustawienia';
 }
 
-/// Uprawnienia, z których wystarczy jedno, żeby otworzyć zakładkę. Null: zakładka dla każdego.
-Set<String>? permissionsForRoute(String location) {
-  const map = {
-    PanelRoutes.reservations: {'reservations'},
-    PanelRoutes.orders: {'orders'},
-    PanelRoutes.kitchen: {'kitchen'},
-    PanelRoutes.floor: {'floor_edit'},
-    // Osoba tylko z uprawnieniem „Grafik” widzi w Pracownikach sam grafik.
-    PanelRoutes.staff: {'staff', 'schedule'},
-    PanelRoutes.profile: {'profile'},
-    PanelRoutes.menu: {'menu'},
-    PanelRoutes.giftCards: {'gift_cards'},
-    PanelRoutes.reviews: {'reviews'},
-    PanelRoutes.stats: {'stats'},
-    PanelRoutes.settings: {'profile'},
-  };
-  for (final e in map.entries) {
-    if (location.startsWith(e.key)) return e.value;
+/// Uprawnienia, z których wystarczy jedno, żeby otworzyć zakładkę.
+const _routePermissions = {
+  PanelRoutes.reservations: {'reservations'},
+  PanelRoutes.orders: {'orders'},
+  PanelRoutes.kitchen: {'kitchen'},
+  PanelRoutes.floor: {'floor_edit'},
+  // W Pracownikach każda część ma własne uprawnienie: zespół, loginy, grafik, czas pracy, stanowiska.
+  PanelRoutes.staff: {'staff', 'staff_logins', 'schedule', 'timesheet', 'positions'},
+  PanelRoutes.profile: {'profile'},
+  PanelRoutes.menu: {'menu'},
+  PanelRoutes.giftCards: {'gift_cards'},
+  PanelRoutes.reviews: {'reviews'},
+  PanelRoutes.stats: {'stats'},
+  PanelRoutes.settings: {'settings'},
+};
+
+/// Nazwy zakładek, np. w logowaniu do zakładki.
+const panelTabLabels = {
+  PanelRoutes.reservations: 'Rezerwacje',
+  PanelRoutes.orders: 'Zamówienia',
+  PanelRoutes.kitchen: 'Kuchnia',
+  PanelRoutes.floor: 'Edycja sali',
+  PanelRoutes.staff: 'Pracownicy',
+  PanelRoutes.profile: 'Dane lokalu',
+  PanelRoutes.menu: 'Menu',
+  PanelRoutes.giftCards: 'Karty podarunkowe',
+  PanelRoutes.reviews: 'Opinie',
+  PanelRoutes.stats: 'Statystyki',
+  PanelRoutes.settings: 'Ustawienia',
+};
+
+/// Zakładka (jej ścieżka) dla adresu. Null: adres poza zakładkami.
+String? tabForRoute(String location) {
+  for (final tab in _routePermissions.keys) {
+    if (location.startsWith(tab)) return tab;
   }
   return null;
 }
+
+/// Uprawnienia, z których wystarczy jedno, żeby otworzyć zakładkę. Null: zakładka dla każdego.
+Set<String>? permissionsForRoute(String location) => _routePermissions[tabForRoute(location)];
 
 /// Czy osoba z [permissions] może otworzyć zakładkę. Bez uprawnienia zakładki nie widać w menu.
 bool canOpenRoute(String location, Set<String> permissions) {
