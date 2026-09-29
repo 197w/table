@@ -227,12 +227,11 @@ class StaffRepository {
 
   Future<void> deleteHours(String id) => _guard(() => _db.rpc<void>('staff_delete_hours', params: {'p_id': id}));
 
-  /// Moje loginy i hasła do głównego stanowiska według numeru pracownika.
-  Future<Map<String, ({String login, String? password})>> logins() => _guard(() async {
-    final rows = await _db.rpc<List<dynamic>>('staff_my_logins');
+  /// Moje czterocyfrowe kody do głównego stanowiska według numeru pracownika.
+  Future<Map<String, String>> codes() => _guard(() async {
+    final rows = await _db.rpc<List<dynamic>>('staff_my_codes');
     return {
-      for (final r in rows.cast<Map<String, dynamic>>())
-        r['member_id'] as String: (login: r['login'] as String, password: r['password'] as String?),
+      for (final r in rows.cast<Map<String, dynamic>>()) r['member_id'] as String: r['code'] as String,
     };
   });
 
@@ -288,9 +287,9 @@ final scheduleProvider = FutureProvider.autoDispose<List<PlannedShift>>((ref) {
   return ref.watch(staffRepositoryProvider).schedule();
 });
 
-final loginsProvider = FutureProvider.autoDispose<Map<String, ({String login, String? password})>>((ref) {
+final codesProvider = FutureProvider.autoDispose<Map<String, String>>((ref) {
   if (ref.watch(sessionProvider) == null) return Future.value(const {});
-  return ref.watch(staffRepositoryProvider).logins();
+  return ref.watch(staffRepositoryProvider).codes();
 });
 
 final shiftsProvider = FutureProvider.autoDispose<List<Shift>>((ref) {

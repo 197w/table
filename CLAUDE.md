@@ -66,7 +66,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0030, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0031, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
   Gdy użytkownik napisze „kod”, podaj najnowszy `otp` z tej tabeli (jego numer kończy się na 098).
@@ -95,28 +95,30 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   nie zweryfikuje (weryfikacja: `update restaurants set listed = true`, poprawić też położenie `location`).
   Ja nadal nie zakładam kont ani nie wymyślam haseł: konto zakłada sama restauracja albo użytkownik.
 - Pracownicy nie mają kont w panelu. Dodaje ich osoba z uprawnieniem `staff` w „Pracownicy” → „Zespół”
-  (kafelki, szczegóły ze statystykami `panel_member_stats`). Nowy pracownik od razu dostaje login i łatwe hasło
-  („słowo + 2 cyfry”, np. kawa47, albo wpisane ręcznie; `panel_create_staff_login`, `panel_set_staff_password`).
-  Loginy i hasła są stale widoczne (prośba użytkownika) dla uprawnienia `staff_logins` (`panel_staff_logins`)
-  i dla samego pracownika w aplikacji (`staff_my_logins`). Hasło leży zaszyfrowane w Supabase Vault
-  (`staff_accounts.password_secret`), do logowania służy skrót bcrypt. Login i hasło działają tylko na głównym
-  stanowisku, nie są kontem Supabase Auth; konta Auth dla pracowników czekają na decyzję użytkownika
-  (wymagają funkcji z kluczem serwisowym, której wdrożenie zablokowało zabezpieczenie).
+  (kafelki, szczegóły ze statystykami `panel_member_stats`). Każdy pracownik ma czterocyfrowy kod, unikalny w lokalu
+  (nadaje go baza przy dodaniu, trigger `staff_members_code`; zmiana: `panel_set_staff_code`, wpisany albo losowy).
+  Kod widać stale w szczegółach (uprawnienie `staff_logins`, „Kody pracowników”, `panel_staff_codes`) i w aplikacji
+  pracownika (`staff_my_codes`). Kod leży zaszyfrowany w Supabase Vault (`staff_codes.code_secret`), logowanie szuka
+  po skrócie sha256 z lokalem. Po 10 błędnych kodach w 5 minut stanowisko wstrzymuje logowanie kodem
+  (`station_login_failures`). Kod nie jest kontem Supabase Auth.
+- Stanowisko systemowe „ALL” (`system_key = 'all'`): zawsze wszystkie uprawnienia, także przyszłe
+  (`private.all_permissions()`, `private.position_permissions`). Nowe uprawnienie dopisujemy w `private.all_permissions()`
+  i w `StaffPermission`. „ALL” ma Wiktor Godlewski (REVE); nadaje je tylko osoba z uprawnieniem `positions`.
 - Główne stanowisko (`main_stations`, jedno na lokal): „Ustawienia” (`/ustawienia`, uprawnienie `settings`), przełącznik
   na tym komputerze. Identyfikator komputera leży w pliku `stanowisko.id` w katalogu danych panelu
   (`deviceIdProvider`), nie w shared_preferences: tamten plik zapisuje też sesja Supabase i zapisy się ścigały.
   Przeniesienie: wyłączyć na starym, włączyć na nowym; gdy stary komputer nie działa, właściciel przenosi po haśle
   konta (`p_force`). Pracownicy logują się tylko tam (`private.check_station`).
-- Każda zakładka panelu ma własne logowanie pracownika (`TabLoginGate`, `tabSessionsProvider`): kod QR z aplikacji
-  Table for employees (`staff_scan`) albo login i hasło (`panel_member_login`, 5 błędów = 5 min blokady).
-  Wejść może tylko osoba z uprawnieniem do zakładki (`canOpenRoute`). Pasek nad zakładką (`TabSessionBar`)
-  ma „Wyloguj” (tylko z tej zakładki) i „Zakończ zmianę”. Właściciel otwiera zakładkę hasłem konta restauracji
-  (`ActingMember.account()`, pełny dostęp). „Wejdź na zmianę” (menu boczne, tylko na głównym stanowisku,
-  `ShiftScreen`) tylko zaczyna zmianę. Logowanie zaczyna zmianę, jeśli nie trwa.
+- Logowanie pracownika w panelu jest jedno dla wszystkich zakładek (`panelMemberProvider`): kod QR z aplikacji
+  Table for employees (`staff_scan`) albo czterocyfrowy kod na klawiaturze (`panel_member_login`). Bez zalogowanego
+  pracownika każda zakładka pokazuje logowanie (`TabLoginGate`); wejść może tylko osoba z uprawnieniem do zakładki.
+  Menu boczne pokazuje zakładki zalogowanego pracownika. Pasek nad zakładką (`TabSessionBar`): „Wyloguj”
+  i „Zakończ zmianę”. Właściciel otwiera panel hasłem konta restauracji (`ActingMember.account()`).
+  „Wejdź na zmianę” (tylko na głównym stanowisku, `ShiftScreen`) zaczyna zmianę i loguje pracownika.
 - Uprawnienia (`StaffPermission`, grupy Sala, Zamówienia, Kuchnia, Zespół, Lokal, Wyniki): m.in. `orders_close`
   (zamykanie rachunków), `orders_cancel` (anulowanie pozycji z kuchni), `kitchen_settings`, `staff_logins`,
   `schedule`, `timesheet`, `positions`, `settings`. Menu boczne pokazuje zakładki według uprawnień konta,
-  w zakładce przyciski według uprawnień zalogowanego pracownika (`tabPermissionsProvider`).
+  w zakładce przyciski według uprawnień zalogowanego pracownika (`memberPermissionsProvider`).
   Konto telefonu pracownika dostaje rolę obsługi (`restaurant_staff`, trigger `staff_members_account`), więc
   zamówienia w aplikacji używają funkcji `panel_*` z `p_member_id` (wymagana trwająca zmiana). Zamówienia zapisują
   pracownika (`opened_by_member`, `created_by_member`), kuchnia pokazuje jego imię na bileciku.

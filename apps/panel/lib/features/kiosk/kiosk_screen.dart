@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
@@ -20,8 +21,8 @@ String _two(int n) => n.toString().padLeft(2, '0');
 String _hm(DateTime t) => '${_two(t.toLocal().hour)}:${_two(t.toLocal().minute)}';
 
 /// Ekran „Wejdź na zmianę” na głównym stanowisku. Pracownik skanuje kod aplikacją
-/// Table for employees albo wpisuje login i hasło, zmiana się zaczyna, a ekran znika.
-/// Do zakładek panelu pracownik loguje się osobno, w każdej zakładce.
+/// Table for employees albo wpisuje swój kod, zmiana się zaczyna, pracownik jest zalogowany
+/// w panelu, a ekran znika.
 class ShiftScreen extends ConsumerStatefulWidget {
   const ShiftScreen({super.key});
 
@@ -53,12 +54,9 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
 
   void _started(ActingMember member) {
     final since = member.shiftStartedAt;
+    ref.read(panelMemberProvider.notifier).signIn(member);
     Navigator.of(context).pop();
-    showMessage(
-      context,
-      '${member.name}: zmiana trwa${since == null ? '' : ' od ${_hm(since)}'}. '
-      'Do zakładek loguj się w każdej z nich.',
-    );
+    showMessage(context, '${member.name}: zmiana trwa${since == null ? '' : ' od ${_hm(since)}'}.');
   }
 
   @override
@@ -120,7 +118,7 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
                           const SizedBox(height: 10),
                           Text(
                             'Zeskanuj kod aplikacją Table for employees na telefonie prywatnym albo służbowym '
-                            'albo wpisz swój login i hasło. Zmiana zacznie się od razu.',
+                            'albo wpisz swój czterocyfrowy kod. Zmiana zacznie się od razu.',
                             style: text.titleMedium?.copyWith(color: AppColors.textMuted, fontSize: 18),
                           ),
                           const SizedBox(height: 32),
@@ -170,7 +168,7 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
 }
 
 /// Logowanie pracownika na głównym stanowisku: kod QR (zmienia się co 30 sekund) i obok
-/// login z hasłem. Zalogowanego pracownika (jego zmiana już trwa) dostaje [onLogin]. Na innym
+/// klawiatura na czterocyfrowy kod pracownika. Zalogowanego pracownika (jego zmiana już trwa) dostaje [onLogin]. Na innym
 /// komputerze niż główne stanowisko pokazuje, gdzie się zalogować.
 class StationLogin extends ConsumerStatefulWidget {
   const StationLogin({
@@ -193,9 +191,9 @@ class StationLogin extends ConsumerStatefulWidget {
 }
 
 class _StationLoginState extends ConsumerState<StationLogin> {
-  final _login = TextEditingController();
-  final _password = TextEditingController();
-  final _passwordFocus = FocusNode();
+  /// Wpisywany kod pracownika (do 4 cyfr).
+  String _code = '';
+  final _pinFocus = FocusNode(debugLabel: 'kod pracownika');
   String? _token;
   DateTime? _issuedAt;
   String? _tokenProblem;
@@ -227,9 +225,7 @@ class _StationLoginState extends ConsumerState<StationLogin> {
   void dispose() {
     _poll.cancel();
     _tick.cancel();
-    _login.dispose();
-    _password.dispose();
-    _passwordFocus.dispose();
+    _pinFocus.dispose();
     super.dispose();
   }
 
@@ -282,13 +278,54 @@ class _StationLoginState extends ConsumerState<StationLogin> {
 
   void _done(ActingMember member) => widget.onLogin(member);
 
+  void _digit(String d) {
+    if (_busy || _code.length >= 4) return;
+    setState(() {
+      _code += d;
+      _formProblem = null;
+    });
+    // Czwarta cyfra od razu loguje.
+    if (_code.length == 4) unawaited(_submit());
+  }
+
+  void _backspace() {
+    if (_busy || _code.isEmpty) return;
+    setState(() => _code = _code.substring(0, _code.length - 1));
+  }
+
+  /// Cyfry, Backspace i Enter z klawiatury komputera.
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    final label = event.character ?? '';
+    if (RegExp(r'^[0-9]$').hasMatch(label)) {
+      _digit(label);
+      return KeyEventResult.handled;
+    }
+    const numpad = [
+      LogicalKeyboardKey.numpad0, LogicalKeyboardKey.numpad1, LogicalKeyboardKey.numpad2,
+      LogicalKeyboardKey.numpad3, LogicalKeyboardKey.numpad4, LogicalKeyboardKey.numpad5,
+      LogicalKeyboardKey.numpad6, LogicalKeyboardKey.numpad7, LogicalKeyboardKey.numpad8,
+      LogicalKeyboardKey.numpad9,
+    ];
+    if (numpad.contains(key)) {
+      _digit('${numpad.indexOf(key)}');
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.backspace) {
+      _backspace();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.escape) {
+      setState(() => _code = '');
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   Future<void> _submit() async {
     final device = ref.read(deviceIdProvider).value;
-    if (_login.text.trim().isEmpty || _password.text.isEmpty) {
-      setState(() => _formProblem = 'Wpisz login i hasło.');
-      return;
-    }
-    if (device == null) return;
+    if (device == null || _code.length != 4) return;
     setState(() {
       _busy = true;
       _formProblem = null;
@@ -296,20 +333,20 @@ class _StationLoginState extends ConsumerState<StationLogin> {
     try {
       final member = await ref.read(repositoryProvider).memberLogin(
         restaurantId: widget.restaurantId,
-        login: _login.text,
-        password: _password.text,
+        code: _code,
         deviceId: device,
       );
       if (!mounted) return;
       ref.invalidate(shiftsProvider);
-      _login.clear();
-      _password.clear();
+      setState(() => _code = '');
       _done(member);
     } catch (e) {
       if (!mounted) return;
-      _password.clear();
-      setState(() => _formProblem = errorText(e));
-      _passwordFocus.requestFocus();
+      setState(() {
+        _code = '';
+        _formProblem = errorText(e);
+      });
+      _pinFocus.requestFocus();
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -384,47 +421,117 @@ class _StationLoginState extends ConsumerState<StationLogin> {
       ],
     );
 
-    final form = ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 360),
-      child: AutofillGroup(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Login i hasło', style: text.titleLarge),
-            const SizedBox(height: 6),
-            Text(
-              'Login i hasło daje przełożony w zakładce „Pracownicy”.',
-              style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 18),
-            TextField(
-              controller: _login,
-              autofocus: widget.autofocus,
-              autocorrect: false,
-              enableSuggestions: false,
-              textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(labelText: 'Login', hintText: 'np. anna.k27'),
-              onSubmitted: (_) => _passwordFocus.requestFocus(),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _password,
-              focusNode: _passwordFocus,
-              obscureText: true,
-              autocorrect: false,
-              enableSuggestions: false,
-              decoration: InputDecoration(labelText: 'Hasło', errorText: _formProblem, errorMaxLines: 3),
-              onSubmitted: (_) => _submit(),
-            ),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: _busy ? null : _submit,
-              child: _busy
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Zaloguj się'),
-            ),
-          ],
+    Widget key(Widget child, VoidCallback onTap, {bool muted = false}) => SizedBox(
+      height: 60,
+      child: OutlinedButton(
+        onPressed: _busy ? null : onTap,
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, 60),
+          padding: EdgeInsets.zero,
+          foregroundColor: muted ? AppColors.textMuted : AppColors.text,
+        ),
+        child: child,
+      ),
+    );
+    final digitStyle = text.headlineSmall?.copyWith(fontFeatures: _tabular);
+
+    // Klawiatura numeryczna na kod pracownika. Działa też klawiatura komputera.
+    final form = Focus(
+      focusNode: _pinFocus,
+      autofocus: widget.autofocus,
+      onKeyEvent: _onKey,
+      child: GestureDetector(
+        onTap: _pinFocus.requestFocus,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Kod pracownika', style: text.titleLarge),
+              const SizedBox(height: 6),
+              Text(
+                'Wpisz swój czterocyfrowy kod. Znajdziesz go w aplikacji Table for employees.',
+                style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  for (var i = 0; i < 4; i++) ...[
+                    if (i > 0) const SizedBox(width: 10),
+                    Expanded(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 120),
+                        height: 60,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _formProblem != null
+                                ? AppColors.error
+                                : i == _code.length
+                                ? AppColors.accent
+                                : AppColors.ringStrong,
+                            width: i == _code.length || _formProblem != null ? 2 : 1,
+                          ),
+                        ),
+                        child: i < _code.length
+                            ? Container(
+                                width: 14,
+                                height: 14,
+                                decoration: BoxDecoration(color: AppColors.text, shape: BoxShape.circle),
+                              )
+                            : null,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              SizedBox(
+                height: 34,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _busy
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : Text(
+                          _formProblem ?? '',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: text.bodyMedium?.copyWith(color: AppColors.error),
+                        ),
+                ),
+              ),
+              for (final row in const [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9']]) ...[
+                Row(
+                  children: [
+                    for (final (i, d) in row.indexed) ...[
+                      if (i > 0) const SizedBox(width: 10),
+                      Expanded(child: key(Text(d, style: digitStyle), () => _digit(d))),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
+              Row(
+                children: [
+                  Expanded(
+                    child: key(
+                      Text('Wyczyść', style: text.labelLarge),
+                      () => setState(() => _code = ''),
+                      muted: true,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(child: key(Text('0', style: digitStyle), () => _digit('0'))),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: key(const Glyph(AppIcons.arrowLeft, size: 22), _backspace, muted: true),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -589,8 +696,8 @@ class _RestaurantPasswordDialogState extends ConsumerState<RestaurantPasswordDia
   }
 }
 
-/// Logowanie w zakładce panelu. Każda zakładka ma własnego zalogowanego pracownika,
-/// a wejść może tylko ktoś z uprawnieniem do niej. Właściciel może odblokować zakładkę
+/// Logowanie w zakładce panelu, gdy nikt nie jest zalogowany. Logowanie jest jedno dla wszystkich
+/// zakładek. Wejść może tylko ktoś z uprawnieniem do zakładki. Właściciel może otworzyć panel
 /// hasłem konta restauracji (np. przy pierwszym uruchomieniu albo na innym komputerze).
 class TabLoginGate extends ConsumerWidget {
   const TabLoginGate({super.key, required this.tab, required this.label});
@@ -602,13 +709,13 @@ class TabLoginGate extends ConsumerWidget {
   Future<void> _unlock(BuildContext context, WidgetRef ref) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => RestaurantPasswordDialog(
-        title: 'Otworzyć „$label” jako właściciel?',
-        message: 'Zakładka będzie otwarta z pełnym dostępem, dopóki jej nie wylogujesz.',
+      builder: (_) => const RestaurantPasswordDialog(
+        title: 'Otworzyć panel jako właściciel?',
+        message: 'Panel będzie otwarty z pełnym dostępem, dopóki się nie wylogujesz.',
         action: 'Otwórz',
       ),
     );
-    if (ok == true) ref.read(tabSessionsProvider.notifier).signIn(tab, ActingMember.account());
+    if (ok == true) ref.read(panelMemberProvider.notifier).signIn(ActingMember.account());
   }
 
   @override
@@ -631,8 +738,8 @@ class TabLoginGate extends ConsumerWidget {
                     Text(label, style: text.headlineSmall),
                     const SizedBox(height: 4),
                     Text(
-                      'Zaloguj się, żeby korzystać z tej zakładki. Po pracy wyloguj się, '
-                      'żeby mógł się zalogować następny pracownik.',
+                      'Zaloguj się kodem albo kodem QR. Zostaniesz zalogowany we wszystkich zakładkach, '
+                      'do których masz uprawnienia. Po pracy wyloguj się.',
                       style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
                     ),
                   ],
@@ -664,7 +771,7 @@ class TabLoginGate extends ConsumerWidget {
                     );
                     return;
                   }
-                  ref.read(tabSessionsProvider.notifier).signIn(tab, member);
+                  ref.read(panelMemberProvider.notifier).signIn(member);
                 },
               ),
             ),
@@ -675,25 +782,23 @@ class TabLoginGate extends ConsumerWidget {
   }
 }
 
-/// Pasek nad zakładką: kto jest w niej zalogowany, „Wyloguj” (tylko z tej zakładki)
-/// i „Zakończ zmianę”.
+/// Pasek nad zakładką: kto jest zalogowany w panelu, „Wyloguj” i „Zakończ zmianę”.
 class TabSessionBar extends ConsumerWidget {
-  const TabSessionBar({super.key, required this.tab, required this.member});
+  const TabSessionBar({super.key, required this.member});
 
-  final String tab;
   final ActingMember member;
 
   Future<void> _endShift(BuildContext context, WidgetRef ref) async {
     final ok = await confirm(
       context,
       title: 'Zakończyć zmianę?',
-      message: '${member.name} kończy pracę teraz i zostanie wylogowany ze wszystkich zakładek.',
+      message: '${member.name} kończy pracę teraz i zostanie wylogowany z panelu.',
       action: 'Zakończ zmianę',
     );
     if (!ok) return;
     try {
       await ref.read(repositoryProvider).endShift(member.memberId);
-      ref.read(tabSessionsProvider.notifier).signOutMember(member.memberId);
+      ref.read(panelMemberProvider.notifier).signOutMember(member.memberId);
       if (context.mounted) showMessage(context, 'Zmiana zakończona.');
     } catch (e) {
       if (context.mounted) showMessage(context, errorText(e));
@@ -759,7 +864,7 @@ class TabSessionBar extends ConsumerWidget {
             ),
           const SizedBox(width: 6),
           OutlinedButton.icon(
-            onPressed: () => ref.read(tabSessionsProvider.notifier).signOut(tab),
+            onPressed: () => ref.read(panelMemberProvider.notifier).signOut(),
             style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
             icon: const Glyph(AppIcons.signOut, size: 16),
             label: Text('Wyloguj (${member.name.split(' ').first})'),

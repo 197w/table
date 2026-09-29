@@ -1017,7 +1017,7 @@ enum StaffPermission {
   kitchen('kitchen', 'Kuchnia', 'Ekran zamówień na kuchni', 'Kuchnia'),
   kitchenSettings('kitchen_settings', 'Ustawienia kuchni', 'Progi czasu i pozycje ukryte na kuchni', 'Kuchnia'),
   staff('staff', 'Pracownicy', 'Dodawanie i edycja pracowników, ich statystyki', 'Zespół'),
-  staffLogins('staff_logins', 'Loginy i hasła', 'Podgląd i zmiana loginów oraz haseł pracowników', 'Zespół'),
+  staffLogins('staff_logins', 'Kody pracowników', 'Podgląd i zmiana czterocyfrowych kodów pracowników', 'Zespół'),
   schedule('schedule', 'Grafik', 'Przyjmowanie, zmiana i odrzucanie godzin pracowników', 'Zespół'),
   timesheet('timesheet', 'Czas pracy', 'Podgląd i poprawianie zmian pracowników', 'Zespół'),
   positions('positions', 'Stanowiska', 'Tworzenie stanowisk i nadawanie uprawnień', 'Zespół'),
@@ -1068,6 +1068,9 @@ class StaffPosition {
   final List<StaffPermission> permissions;
 
   bool get isSystem => systemKey != null;
+
+  /// Stanowisko „ALL”: zawsze wszystkie uprawnienia, także te dodane w przyszłości.
+  bool get isAll => systemKey == 'all';
 
   factory StaffPosition.fromJson(Map<String, dynamic> json) {
     return StaffPosition(
@@ -1443,30 +1446,6 @@ class ActingMember {
     position: json['position'] as String?,
     permissions: {for (final p in json['permissions'] as List? ?? const []) p.toString()},
     shiftStartedAt: _toDateOrNull(json['shift_started_at']),
-  );
-}
-
-/// Login i hasło pracownika do logowania na głównym stanowisku. Widać je stale
-/// (osoba z uprawnieniem „Loginy i hasła”), w bazie hasło jest zaszyfrowane.
-class StaffLogin {
-  const StaffLogin({required this.memberId, required this.login, this.password, this.lockedUntil});
-
-  final String memberId;
-  final String login;
-
-  /// Hasło do podglądu. Null: login założony, zanim hasła były widoczne (trzeba nadać nowe).
-  final String? password;
-
-  /// Po kilku błędnych hasłach login jest chwilowo zablokowany.
-  final DateTime? lockedUntil;
-
-  bool get locked => lockedUntil != null && lockedUntil!.isAfter(DateTime.now());
-
-  factory StaffLogin.fromJson(Map<String, dynamic> json) => StaffLogin(
-    memberId: json['member_id'] as String,
-    login: json['login'] as String,
-    password: json['password'] as String?,
-    lockedUntil: _toDateOrNull(json['locked_until']),
   );
 }
 

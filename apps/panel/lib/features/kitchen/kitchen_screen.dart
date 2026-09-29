@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
-import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
@@ -384,7 +383,7 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
                 undoLabel: _lastDone?.label,
                 onUndo: () => _undo(restaurant.id),
                 // Ustawienia kuchni tylko z uprawnieniem „Ustawienia kuchni”.
-                onSettings: ref.watch(tabPermissionsProvider(PanelRoutes.kitchen)).contains('kitchen_settings')
+                onSettings: ref.watch(memberPermissionsProvider).contains('kitchen_settings')
                     ? () => _settings(restaurant.id, config)
                     : null,
                 onFullscreen: () => ref.read(kitchenFullscreenProvider.notifier).set(!fullscreen),

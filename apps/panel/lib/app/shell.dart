@@ -79,15 +79,15 @@ class _RouteGuard extends ConsumerWidget {
     final permissions = ref.watch(effectivePermissionsProvider(current.id));
     if (permissions == null) return const LoadingView();
     if (canOpenRoute(location, permissions)) {
-      // Każda zakładka ma własne logowanie pracownika i własne „Wyloguj”.
+      // Jedno logowanie pracownika na cały panel. Bez niego każda zakładka pokazuje logowanie.
       final tab = tabForRoute(location);
       if (tab == null) return child;
-      final member = ref.watch(tabMemberProvider(tab));
+      final member = ref.watch(panelMemberProvider);
       if (member == null) return TabLoginGate(tab: tab, label: panelTabLabels[tab] ?? 'Zakładka');
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TabSessionBar(tab: tab, member: member),
+          TabSessionBar(member: member),
           Expanded(child: child),
         ],
       );
@@ -213,7 +213,7 @@ class _Sidebar extends ConsumerWidget {
     final text = Theme.of(context).textTheme;
     final theme = ref.watch(themeSettingProvider);
     final email = ref.watch(repositoryProvider).email;
-    // Zakładki według uprawnień konta. W samej zakładce decyduje zalogowany pracownik.
+    // Zakładki według uprawnień zalogowanego pracownika (bez niego: konta panelu).
     final permissions = current == null
         ? const <String>{}
         : ref.watch(effectivePermissionsProvider(current.id)) ?? const <String>{};

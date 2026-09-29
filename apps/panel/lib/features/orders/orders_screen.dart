@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
-import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
@@ -71,7 +70,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     if (order != null) return order.id;
     return ref
         .read(repositoryProvider)
-        .openOrder(restaurantId, tableId, memberId: ref.read(tabMemberProvider(PanelRoutes.orders))?.dbMemberId);
+        .openOrder(restaurantId, tableId, memberId: ref.read(panelMemberProvider)?.dbMemberId);
   }
 
   Future<void> _add(
@@ -107,7 +106,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
           addons: choice.addons,
           quantity: choice.quantity,
           note: choice.note,
-          memberId: ref.read(tabMemberProvider(PanelRoutes.orders))?.dbMemberId,
+          memberId: ref.read(panelMemberProvider)?.dbMemberId,
         );
       }),
     );
@@ -144,7 +143,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         payment.method,
         giftCardId: payment.card?.id,
         giftAmount: payment.giftAmount,
-        memberId: ref.read(tabMemberProvider(PanelRoutes.orders))?.dbMemberId,
+        memberId: ref.read(panelMemberProvider)?.dbMemberId,
       );
       ok = true;
     });
@@ -268,7 +267,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     }
 
     // Pracownika zalogowanego w tej zakładce i jego uprawnienia pilnuje układ panelu (PanelShell).
-    final permissions = ref.watch(tabPermissionsProvider(PanelRoutes.orders));
+    final permissions = ref.watch(memberPermissionsProvider);
     final canClose = permissions.contains('orders_close');
     final canCancel = permissions.contains('orders_cancel');
 

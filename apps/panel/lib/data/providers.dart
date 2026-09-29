@@ -648,9 +648,10 @@ final isMainStationProvider = Provider.autoDispose.family<bool?, String>((ref, i
   return station.value != null && station.value!.deviceId == device.value;
 });
 
-final staffLoginsProvider = FutureProvider.autoDispose
-    .family<Map<String, StaffLogin>, String>(
-      (ref, id) => (ref..cacheFor()).watch(repositoryProvider).staffLogins(id),
+/// Kody pracowników lokalu według numeru pracownika.
+final staffCodesProvider = FutureProvider.autoDispose
+    .family<Map<String, String>, String>(
+      (ref, id) => (ref..cacheFor()).watch(repositoryProvider).staffCodes(id),
     );
 
 /// Grafik na żywo: przyjęcie albo zmiana godzin w aplikacji od razu widać w panelu.
@@ -686,46 +687,40 @@ final memberStatsProvider = FutureProvider.autoDispose.family<MemberStats, Membe
   return ref.watch(repositoryProvider).memberStats(q.memberId, q.days);
 });
 
-/// Pracownicy zalogowani w zakładkach panelu (klucz: ścieżka zakładki, np. „/zamowienia”).
-/// Każda zakładka ma własne logowanie i wylogowanie, żeby przy jednym komputerze mogło
-/// pracować kilka osób. Zmiana lokalu wylogowuje wszystkich.
-class TabSessionsNotifier extends Notifier<Map<String, ActingMember>> {
+/// Pracownik zalogowany teraz w panelu (kodem albo kodem QR). Logowanie jest jedno dla wszystkich
+/// zakładek: kto zalogował się w Rezerwacjach, jest zalogowany także w Menu. Wylogowanie jest ręczne.
+/// Zmiana lokalu wylogowuje.
+class PanelMemberNotifier extends Notifier<ActingMember?> {
   @override
-  Map<String, ActingMember> build() {
+  ActingMember? build() {
     ref.watch(selectedRestaurantIdProvider);
-    return const {};
+    return null;
   }
 
-  void signIn(String tab, ActingMember member) => state = {...state, tab: member};
+  void signIn(ActingMember member) => state = member;
 
-  void signOut(String tab) => state = {...state}..remove(tab);
+  void signOut() => state = null;
 
-  /// Wylogowuje pracownika ze wszystkich zakładek, np. po zakończeniu zmiany.
-  void signOutMember(String memberId) => state = {
-    for (final e in state.entries)
-      if (e.value.memberId != memberId) e.key: e.value,
-  };
+  /// Wylogowuje, jeśli zalogowany jest ten pracownik (np. po zakończeniu jego zmiany).
+  void signOutMember(String memberId) {
+    if (state?.memberId == memberId) state = null;
+  }
 }
 
-final tabSessionsProvider = NotifierProvider<TabSessionsNotifier, Map<String, ActingMember>>(
-  TabSessionsNotifier.new,
+final panelMemberProvider = NotifierProvider<PanelMemberNotifier, ActingMember?>(PanelMemberNotifier.new);
+
+/// Uprawnienia zalogowanego pracownika: według nich zakładki pokazują przyciski.
+final memberPermissionsProvider = Provider<Set<String>>(
+  (ref) => ref.watch(panelMemberProvider)?.permissions ?? const {},
 );
 
-/// Kto jest zalogowany w zakładce [tab]. Null: zakładka pokazuje logowanie.
-final tabMemberProvider = Provider.family<ActingMember?, String>(
-  (ref, tab) => ref.watch(tabSessionsProvider)[tab],
-);
-
-/// Uprawnienia osoby zalogowanej w zakładce: według nich zakładka pokazuje przyciski.
-final tabPermissionsProvider = Provider.family<Set<String>, String>(
-  (ref, tab) => ref.watch(tabMemberProvider(tab))?.permissions ?? const {},
-);
-
-/// Uprawnienia konta, na którym działa panel (kierownik i właściciel mają wszystkie).
-/// Według nich menu boczne pokazuje zakładki; w samej zakładce decyduje zalogowany pracownik.
-final effectivePermissionsProvider = Provider.autoDispose.family<Set<String>?, String>(
-  (ref, id) => ref.watch(myPermissionsProvider(id)).value,
-);
+/// Uprawnienia, według których menu boczne pokazuje zakładki: zalogowanego pracownika,
+/// a gdy nikt nie jest zalogowany, konta panelu (kierownik i właściciel mają wszystkie;
+/// każda zakładka i tak poprosi wtedy o zalogowanie).
+final effectivePermissionsProvider = Provider.autoDispose.family<Set<String>?, String>((ref, id) {
+  if (ref.watch(panelMemberProvider) case final member?) return member.permissions;
+  return ref.watch(myPermissionsProvider(id)).value;
+});
 
 typedef ShiftQuery = ({String restaurantId, DateTime from, DateTime to});
 

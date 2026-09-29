@@ -47,7 +47,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ..invalidate(jobsProvider)
       ..invalidate(shiftsProvider)
       ..invalidate(scheduleProvider)
-      ..invalidate(loginsProvider);
+      ..invalidate(codesProvider);
   }
 
   Future<void> _scan() async {
@@ -139,7 +139,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final jobs = ref.watch(jobsProvider);
     final shifts = ref.watch(shiftsProvider).value ?? const <Shift>[];
     final schedule = ref.watch(scheduleProvider).value ?? const <PlannedShift>[];
-    final logins = ref.watch(loginsProvider).value ?? const <String, ({String login, String? password})>{};
+    final codes = ref.watch(codesProvider).value ?? const <String, String>{};
     final phone = ref.watch(staffRepositoryProvider).phone;
 
     return Scaffold(
@@ -182,7 +182,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 for (final job in list) ...[
                   _JobCard(
                     job: job,
-                    login: logins[job.memberId],
+                    code: codes[job.memberId],
                     onEnd: () => _end(job),
                     onOrders: () => Navigator.push(
                       context,
@@ -222,12 +222,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 }
 
 class _JobCard extends StatelessWidget {
-  const _JobCard({required this.job, required this.login, required this.onEnd, required this.onOrders});
+  const _JobCard({required this.job, required this.code, required this.onEnd, required this.onOrders});
 
   final Job job;
 
-  /// Login i hasło do głównego stanowiska. Null: przełożony jeszcze ich nie utworzył.
-  final ({String login, String? password})? login;
+  /// Mój czterocyfrowy kod do głównego stanowiska.
+  final String? code;
   final VoidCallback onEnd;
   final VoidCallback onOrders;
 
@@ -251,14 +251,11 @@ class _JobCard extends StatelessWidget {
                       Text(job.restaurantName, style: text.titleMedium),
                       if (job.position != null)
                         Text(job.position!, style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
-                      Text(
-                        switch (login) {
-                          null => 'Bez loginu do stanowiska',
-                          (:final login, :final password) =>
-                            'Login: $login · hasło: ${password ?? 'poproś o nowe'}',
-                        },
-                        style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-                      ),
+                      if (code != null)
+                        Text(
+                          'Kod do stanowiska: $code',
+                          style: text.bodyMedium?.copyWith(fontFeatures: _tabular, fontWeight: FontWeight.w600),
+                        ),
                     ],
                   ),
                 ),

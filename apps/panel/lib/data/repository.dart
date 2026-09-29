@@ -663,22 +663,16 @@ class PanelRepository {
     );
   }
 
-  /// Logowanie pracownika na głównym stanowisku loginem i hasłem. Zaczyna jego zmianę.
+  /// Logowanie pracownika na głównym stanowisku czterocyfrowym kodem. Zaczyna jego zmianę.
   Future<ActingMember> memberLogin({
     required String restaurantId,
-    required String login,
-    required String password,
+    required String code,
     required String deviceId,
   }) {
     return _guard(() async {
       final json = await _db.rpc<Map<String, dynamic>>(
         'panel_member_login',
-        params: {
-          'p_restaurant_id': restaurantId,
-          'p_login': login,
-          'p_password': password,
-          'p_device': deviceId,
-        },
+        params: {'p_restaurant_id': restaurantId, 'p_code': code, 'p_device': deviceId},
       );
       if (json['error'] case final String problem) throw AppFailure(problem);
       return ActingMember.fromJson(json);
@@ -718,40 +712,26 @@ class PanelRepository {
   }
 
   // -------------------------------------------------------------
-  // Loginy pracowników, grafik i statystyki pracownika
+  // Kody pracowników, grafik i statystyki pracownika
   // -------------------------------------------------------------
 
-  /// Loginy i hasła pracowników lokalu według numeru pracownika (uprawnienie „Loginy i hasła”).
-  Future<Map<String, StaffLogin>> staffLogins(String restaurantId) {
+  /// Czterocyfrowe kody pracowników lokalu według numeru pracownika (uprawnienie „Kody pracowników”).
+  Future<Map<String, String>> staffCodes(String restaurantId) {
     return _guard(() async {
       final rows = await _db.rpc<List<dynamic>>(
-        'panel_staff_logins',
+        'panel_staff_codes',
         params: {'p_restaurant_id': restaurantId},
       );
       return {
-        for (final r in rows.cast<Map<String, dynamic>>()) r['member_id'] as String: StaffLogin.fromJson(r),
+        for (final r in rows.cast<Map<String, dynamic>>()) r['member_id'] as String: r['code'] as String,
       };
     });
   }
 
-  /// Nowy login i hasło. [password] puste: łatwe hasło wylosowane przez bazę, np. „kawa47”.
-  Future<({String login, String password})> createStaffLogin(String memberId, {String? password}) {
-    return _guard(() async {
-      final json = await _db.rpc<Map<String, dynamic>>(
-        'panel_create_staff_login',
-        params: {'p_member_id': memberId, 'p_password': password},
-      );
-      return (login: json['login'] as String, password: json['password'] as String);
-    });
-  }
-
-  /// Nowe hasło pracownika: wpisane albo wylosowane (puste). Stare przestaje działać.
-  Future<String> setStaffPassword(String memberId, {String? password}) {
+  /// Nowy kod pracownika: wpisany (4 cyfry) albo wylosowany (puste). Stary przestaje działać.
+  Future<String> setStaffCode(String memberId, {String? code}) {
     return _guard(
-      () => _db.rpc<String>(
-        'panel_set_staff_password',
-        params: {'p_member_id': memberId, 'p_password': password},
-      ),
+      () => _db.rpc<String>('panel_set_staff_code', params: {'p_member_id': memberId, 'p_code': code}),
     );
   }
 

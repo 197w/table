@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
-import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
@@ -58,19 +57,19 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     if (id == null || !mounted) return;
     ref.invalidate(staffProvider(restaurantId));
     if (!withLogin) return;
-    // Nowy pracownik od razu dostaje login i łatwe hasło do głównego stanowiska.
+    // Nowy pracownik od razu ma czterocyfrowy kod (nadaje go baza). Pokazujemy go do przekazania.
     try {
-      final created = await ref.read(repositoryProvider).createStaffLogin(id);
-      ref.invalidate(staffLoginsProvider(restaurantId));
+      ref.invalidate(staffCodesProvider(restaurantId));
+      final codes = await ref.read(staffCodesProvider(restaurantId).future);
       final members = await ref.read(staffProvider(restaurantId).future);
-      if (!mounted) return;
+      if (!mounted || codes[id] == null) return;
       final name = members.where((m) => m.id == id).firstOrNull?.name ?? 'Pracownik';
       await showDialog<void>(
         context: context,
-        builder: (_) => CredentialsDialog(name: name, login: created.login, password: created.password),
+        builder: (_) => CodeDialog(name: name, code: codes[id]!),
       );
     } catch (e) {
-      if (mounted) showMessage(context, 'Pracownik dodany, ale nie udało się utworzyć loginu: ${errorText(e)}');
+      if (mounted) showMessage(context, 'Pracownik dodany. Kod zobaczysz w jego szczegółach.');
     }
   }
 
@@ -99,7 +98,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     final restaurant = ref.watch(currentRestaurantProvider);
     if (restaurant == null) return const LoadingView();
     // Uprawnienia pracownika zalogowanego w tej zakładce. Każda część ma własne.
-    final permissions = ref.watch(tabPermissionsProvider(PanelRoutes.staff));
+    final permissions = ref.watch(memberPermissionsProvider);
     final canStaff = permissions.contains('staff');
     final canLogins = permissions.contains('staff_logins');
     final canPlan = permissions.contains('schedule');
@@ -201,7 +200,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                   icon: AppIcons.users,
                   title: 'Brak pracowników',
                   message: canStaff
-                      ? 'Dodaj pracownika. Dostanie login i łatwe hasło do logowania na głównym stanowisku.'
+                      ? 'Dodaj pracownika. Dostanie czterocyfrowy kod do logowania na głównym stanowisku.'
                       : 'Kierownik jeszcze nie dodał pracowników.',
                   actionLabel: canStaff ? 'Dodaj pracownika' : null,
                   onAction: canStaff ? () => _addMember(restaurant.id, withLogin: canLogins) : null,
@@ -375,7 +374,7 @@ class _TeamGrid extends ConsumerWidget {
   final String restaurantId;
   final List<StaffMember> members;
 
-  /// Loginy i hasła widać tylko z uprawnieniem „Loginy i hasła”.
+  /// Kody pracowników widać tylko z uprawnieniem „Kody pracowników”.
   final bool showLogins;
 
   /// Zmiany z bieżącego tygodnia, do godzin na kafelkach.
@@ -389,9 +388,9 @@ class _TeamGrid extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final logins = showLogins
-        ? ref.watch(staffLoginsProvider(restaurantId)).value ?? const <String, StaffLogin>{}
-        : const <String, StaffLogin>{};
+    final codes = showLogins
+        ? ref.watch(staffCodesProvider(restaurantId)).value ?? const <String, String>{}
+        : const <String, String>{};
     final positions = ref.watch(positionsProvider(restaurantId)).value ?? const <StaffPosition>[];
     final positionNames = {for (final p in positions) p.id: p.name};
     return SingleChildScrollView(
@@ -416,8 +415,8 @@ class _TeamGrid extends ConsumerWidget {
                       child: _MemberTile(
                         member: m,
                         position: positionNames[m.positionId] ?? m.position,
-                        login: logins[m.id],
-                        showLogin: showLogins,
+                        code: codes[m.id],
+                        showCode: showLogins,
                         workingSince: working[m.id],
                         week: shifts
                             .where((s) => s.memberId == m.id)
@@ -469,7 +468,7 @@ class _AddTile extends StatelessWidget {
               Text('Dodaj pracownika', style: text.titleSmall),
               const SizedBox(height: 2),
               Text(
-                'Dostanie login i łatwe hasło',
+                'Dostanie czterocyfrowy kod',
                 style: text.bodySmall?.copyWith(color: AppColors.textMuted),
               ),
             ],
@@ -484,8 +483,8 @@ class _MemberTile extends StatelessWidget {
   const _MemberTile({
     required this.member,
     required this.position,
-    required this.login,
-    required this.showLogin,
+    required this.code,
+    required this.showCode,
     required this.workingSince,
     required this.week,
     required this.onTap,
@@ -493,8 +492,8 @@ class _MemberTile extends StatelessWidget {
 
   final StaffMember member;
   final String? position;
-  final StaffLogin? login;
-  final bool showLogin;
+  final String? code;
+  final bool showCode;
   final DateTime? workingSince;
   final Duration week;
   final VoidCallback? onTap;
@@ -553,28 +552,18 @@ class _MemberTile extends StatelessWidget {
                   text: 'W tym tygodniu ${hoursText(week)} h',
                   color: AppColors.textMuted,
                 ),
-              if (showLogin) ...[
+              if (showCode) ...[
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Glyph(
-                      login == null ? AppIcons.warning : AppIcons.password,
-                      size: 14,
-                      color: login == null ? _pending : AppColors.textMuted,
-                    ),
+                    Glyph(AppIcons.password, size: 14, color: AppColors.textMuted),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        login == null
-                            ? 'Bez loginu do stanowiska'
-                            : '${login!.login} · hasło: ${login!.password ?? 'nadaj nowe'}'
-                                  '${login!.locked ? ' · zablokowany' : ''}',
+                        code == null ? 'Kod: …' : 'Kod: $code',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: text.bodySmall?.copyWith(
-                          color: login == null ? _pending : AppColors.textMuted,
-                          fontFeatures: _tabular,
-                        ),
+                        style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
                       ),
                     ),
                   ],
@@ -678,12 +667,12 @@ class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
     if (result == _MemberDialog.deleted && mounted) Navigator.pop(context);
   }
 
-  Future<void> _password(StaffMember member, StaffLogin? login) async {
+  Future<void> _changeCode(StaffMember member) async {
     final saved = await showDialog<bool>(
       context: context,
-      builder: (_) => _PasswordDialog(member: member, login: login),
+      builder: (_) => _CodeEditDialog(member: member),
     );
-    if (saved == true) ref.invalidate(staffLoginsProvider(widget.restaurantId));
+    if (saved == true) ref.invalidate(staffCodesProvider(widget.restaurantId));
   }
 
   @override
@@ -691,11 +680,11 @@ class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
     final text = Theme.of(context).textTheme;
     final members = ref.watch(staffProvider(widget.restaurantId)).value;
     final member = members?.where((m) => m.id == widget.member.id).firstOrNull ?? widget.member;
-    final permissions = ref.watch(tabPermissionsProvider(PanelRoutes.staff));
+    final permissions = ref.watch(memberPermissionsProvider);
     final canLogins = permissions.contains('staff_logins');
     final canStats = permissions.contains('staff');
-    final logins = canLogins ? ref.watch(staffLoginsProvider(widget.restaurantId)).value : null;
-    final login = logins?[member.id];
+    final codes = canLogins ? ref.watch(staffCodesProvider(widget.restaurantId)).value : null;
+    final code = codes?[member.id];
     final positions = ref.watch(positionsProvider(widget.restaurantId)).value ?? const <StaffPosition>[];
     final position = positions.where((p) => p.id == member.positionId).firstOrNull;
     final statsAsync = canStats
@@ -759,7 +748,7 @@ class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
                 ),
               ],
               const SizedBox(height: 20),
-              // Login i hasło do głównego stanowiska: widać je stale (uprawnienie „Loginy i hasła”).
+              // Kod do głównego stanowiska: widać go stale (uprawnienie „Kody pracowników”).
               if (canLogins)
               Container(
                 padding: const EdgeInsets.all(16),
@@ -775,41 +764,31 @@ class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (login == null)
-                            Text('Brak loginu do stanowiska', style: text.titleMedium)
-                          else
-                            SelectableText.rich(
-                              TextSpan(
-                                children: [
-                                  TextSpan(text: 'Login: ', style: TextStyle(color: AppColors.textMuted)),
-                                  TextSpan(text: login.login),
-                                  TextSpan(text: '   Hasło: ', style: TextStyle(color: AppColors.textMuted)),
-                                  TextSpan(text: login.password ?? '(nieznane)'),
-                                ],
-                              ),
-                              style: text.titleMedium?.copyWith(fontFeatures: _tabular),
+                          SelectableText.rich(
+                            TextSpan(
+                              children: [
+                                TextSpan(text: 'Kod pracownika: ', style: TextStyle(color: AppColors.textMuted)),
+                                TextSpan(
+                                  text: code ?? '…',
+                                  style: const TextStyle(fontSize: 26, letterSpacing: 4, fontWeight: FontWeight.w600),
+                                ),
+                              ],
                             ),
+                            style: text.titleMedium?.copyWith(fontFeatures: _tabular),
+                          ),
                           const SizedBox(height: 2),
                           Text(
-                            login == null
-                                ? 'Utwórz login i hasło, żeby pracownik mógł się logować na głównym stanowisku.'
-                                : login.locked
-                                ? 'Zablokowany po kilku błędnych hasłach. Zmiana hasła zdejmuje blokadę.'
-                                : login.password == null
-                                ? 'Hasło założone przed zmianą nie jest znane. Zmień je, żeby było widać.'
-                                : 'Tym loginem i hasłem pracownik loguje się na głównym stanowisku.',
-                            style: text.bodySmall?.copyWith(
-                              color: login?.locked ?? false ? AppColors.error : AppColors.textMuted,
-                            ),
+                            'Tym kodem pracownik loguje się na głównym stanowisku. Widzi go też w aplikacji.',
+                            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
                           ),
                         ],
                       ),
                     ),
                     const SizedBox(width: 12),
                     FilledButton.tonal(
-                      onPressed: () => _password(member, login),
+                      onPressed: () => _changeCode(member),
                       style: FilledButton.styleFrom(minimumSize: const Size(0, 42)),
-                      child: Text(login == null ? 'Utwórz login' : 'Zmień hasło'),
+                      child: const Text('Zmień kod'),
                     ),
                   ],
                 ),
@@ -950,63 +929,44 @@ class _StatTile extends StatelessWidget {
   }
 }
 
-/// Login i hasło nowego pracownika, do przekazania mu od razu.
-class CredentialsDialog extends StatelessWidget {
-  const CredentialsDialog({super.key, required this.name, required this.login, required this.password});
+/// Kod nowego pracownika, do przekazania mu od razu.
+class CodeDialog extends StatelessWidget {
+  const CodeDialog({super.key, required this.name, required this.code});
 
   final String name;
-  final String login;
-  final String password;
+  final String code;
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    Widget row(String label, String value) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 70,
-            child: Text(label, style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
-          ),
-          Expanded(
-            child: SelectableText(
-              value,
-              style: text.headlineSmall?.copyWith(fontFeatures: _tabular, letterSpacing: 1),
-            ),
-          ),
-          IconButton(
-            tooltip: 'Kopiuj',
-            icon: const Glyph(AppIcons.copy, size: 18),
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: value));
-              showMessage(context, 'Skopiowano.');
-            },
-          ),
-        ],
-      ),
-    );
-
     return AlertDialog(
-      title: Text('Login dla: $name'),
+      title: Text('Kod dla: $name'),
       content: SizedBox(
-        width: 440,
+        width: 420,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: AppColors.surfaceRaised,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Column(children: [row('Login', login), row('Hasło', password)]),
+              child: SelectableText(
+                code,
+                style: text.displaySmall?.copyWith(
+                  fontFeatures: _tabular,
+                  letterSpacing: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
             const SizedBox(height: 14),
             Text(
-              'Przekaż je pracownikowi. Loguje się nimi na głównym stanowisku („Wejdź na zmianę” '
-              'i w zakładkach). Login i hasło widać też w szczegółach pracownika i w jego aplikacji.',
+              'Przekaż go pracownikowi. Tym kodem loguje się na głównym stanowisku. '
+              'Kod widać też w szczegółach pracownika i w jego aplikacji.',
               style: text.bodySmall?.copyWith(color: AppColors.textMuted),
             ),
           ],
@@ -1586,8 +1546,12 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final positions =
-        ref.watch(positionsProvider(widget.restaurantId)).value ?? const <StaffPosition>[];
+    final canAssignAll = ref.watch(memberPermissionsProvider).contains('positions');
+    final positions = [
+      for (final p in ref.watch(positionsProvider(widget.restaurantId)).value ?? const <StaffPosition>[])
+        // „ALL” (wszystkie uprawnienia) nadaje tylko osoba z uprawnieniem „Stanowiska”.
+        if (!p.isAll || canAssignAll || p.id == widget.member?.positionId) p,
+    ];
     final selected = positions.any((p) => p.id == _positionId) ? _positionId : null;
 
     return AlertDialog(
@@ -1693,7 +1657,7 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
             ] else ...[
               const SizedBox(height: 14),
               Text(
-                'Po zapisaniu pracownik dostanie login i łatwe hasło do głównego stanowiska.',
+                'Po zapisaniu pracownik dostanie czterocyfrowy kod do głównego stanowiska.',
                 style: text.bodySmall?.copyWith(color: AppColors.textMuted),
               ),
             ],
@@ -1819,7 +1783,9 @@ class _PositionsDialog extends ConsumerWidget {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  p.permissions.isEmpty
+                                  p.isAll
+                                      ? 'Wszystkie uprawnienia, także te dodane w przyszłości'
+                                      : p.permissions.isEmpty
                                       ? 'Bez uprawnień'
                                       : p.permissions.map((x) => x.label).join(' · '),
                                   style: text.bodySmall?.copyWith(color: AppColors.textMuted),
@@ -2012,32 +1978,31 @@ class _PositionEditorState extends ConsumerState<_PositionEditor> {
   }
 }
 
-/// Login i hasło pracownika: własne hasło albo wylosowane łatwe („kawa47”).
-class _PasswordDialog extends ConsumerStatefulWidget {
-  const _PasswordDialog({required this.member, required this.login});
+/// Nowy kod pracownika: wpisany (4 cyfry) albo wylosowany. Kod musi być unikalny w lokalu.
+class _CodeEditDialog extends ConsumerStatefulWidget {
+  const _CodeEditDialog({required this.member});
 
   final StaffMember member;
-  final StaffLogin? login;
 
   @override
-  ConsumerState<_PasswordDialog> createState() => _PasswordDialogState();
+  ConsumerState<_CodeEditDialog> createState() => _CodeEditDialogState();
 }
 
-class _PasswordDialogState extends ConsumerState<_PasswordDialog> {
-  final _password = TextEditingController();
+class _CodeEditDialogState extends ConsumerState<_CodeEditDialog> {
+  final _code = TextEditingController();
   bool _busy = false;
   String? _problem;
 
   @override
   void dispose() {
-    _password.dispose();
+    _code.dispose();
     super.dispose();
   }
 
   Future<void> _save({required bool random}) async {
-    final typed = _password.text.trim().toLowerCase();
-    if (!random && !RegExp(r'^[a-z0-9]{4,20}$').hasMatch(typed)) {
-      setState(() => _problem = 'Od 4 do 20 znaków: litery bez polskich znaków i cyfry.');
+    final typed = _code.text.trim();
+    if (!random && !RegExp(r'^[0-9]{4}$').hasMatch(typed)) {
+      setState(() => _problem = 'Kod to dokładnie 4 cyfry.');
       return;
     }
     setState(() {
@@ -2045,18 +2010,12 @@ class _PasswordDialogState extends ConsumerState<_PasswordDialog> {
       _problem = null;
     });
     try {
-      final repo = ref.read(repositoryProvider);
-      final password = random ? null : typed;
-      final String shown;
-      if (widget.login == null) {
-        final created = await repo.createStaffLogin(widget.member.id, password: password);
-        shown = '${created.login}, hasło ${created.password}';
-      } else {
-        shown = 'nowe hasło ${await repo.setStaffPassword(widget.member.id, password: password)}';
-      }
+      final code = await ref
+          .read(repositoryProvider)
+          .setStaffCode(widget.member.id, code: random ? null : typed);
       if (!mounted) return;
       Navigator.pop(context, true);
-      showMessage(context, '${widget.member.name}: $shown.');
+      showMessage(context, '${widget.member.name}: nowy kod $code.');
     } catch (e) {
       if (mounted) setState(() => _problem = errorText(e));
     } finally {
@@ -2067,35 +2026,26 @@ class _PasswordDialogState extends ConsumerState<_PasswordDialog> {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final login = widget.login;
     return AlertDialog(
-      title: Text(login == null ? 'Login dla: ${widget.member.name}' : 'Hasło: ${widget.member.name}'),
+      title: Text('Kod: ${widget.member.name}'),
       content: SizedBox(
-        width: 420,
+        width: 400,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              login == null
-                  ? 'Login powstanie z imienia i nazwiska. Hasło wpisz sam albo wylosuj łatwe, np. „kawa47”.'
-                  : 'Login: ${login.login}. Wpisz nowe hasło albo wylosuj łatwe, np. „kawa47”. Stare przestanie działać.',
+              'Wpisz nowy czterocyfrowy kod albo wylosuj go. Stary kod przestanie działać.',
               style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
             ),
             const SizedBox(height: 14),
             TextField(
-              controller: _password,
+              controller: _code,
               autofocus: true,
-              autocorrect: false,
-              enableSuggestions: false,
-              maxLength: 20,
-              decoration: InputDecoration(
-                labelText: 'Hasło',
-                hintText: 'np. anna2024',
-                counterText: '',
-                errorText: _problem,
-                errorMaxLines: 3,
-              ),
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)],
+              style: text.headlineSmall?.copyWith(fontFeatures: _tabular, letterSpacing: 8),
+              decoration: InputDecoration(labelText: 'Kod', hintText: '0000', errorText: _problem, errorMaxLines: 3),
               onSubmitted: (_) => _save(random: false),
             ),
           ],
@@ -2110,12 +2060,12 @@ class _PasswordDialogState extends ConsumerState<_PasswordDialog> {
         OutlinedButton(
           onPressed: _busy ? null : () => _save(random: true),
           style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
-          child: const Text('Wylosuj łatwe'),
+          child: const Text('Wylosuj'),
         ),
         FilledButton(
           onPressed: _busy ? null : () => _save(random: false),
           style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
-          child: const Text('Zapisz hasło'),
+          child: const Text('Zapisz kod'),
         ),
       ],
     );
