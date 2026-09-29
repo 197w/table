@@ -66,6 +66,25 @@ void main() {
     expect(shift.changed, isFalse);
   });
 
+  test('wolne od przełożonego nie ma godzin', () {
+    final shift = PlannedShift.fromJson({
+      'id': 's3',
+      'member_id': 'm1',
+      'day': '2026-10-03',
+      'starts': null,
+      'ends': null,
+      'requested_starts': '12:00:00',
+      'requested_ends': '20:00:00',
+      'status': 'off',
+    });
+    expect(shift.status, PlannedShiftStatus.off);
+    expect(shift.off, isTrue);
+    expect(shift.status.label, 'Wolne');
+    expect((shift.starts, shift.ends), ('', ''));
+    expect(shift.requestedStarts, '12:00');
+    expect(shift.changed, isFalse);
+  });
+
   test('statystyki pracownika liczą średni rachunek', () {
     final stats = MemberStats.fromJson({
       'seconds': 3600,

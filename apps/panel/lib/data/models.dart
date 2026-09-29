@@ -1463,7 +1463,8 @@ class ActingMember {
 enum PlannedShiftStatus {
   pending('Czeka na decyzję'),
   accepted('Przyjęte'),
-  rejected('Odrzucone');
+  rejected('Odrzucone'),
+  off('Wolne');
 
   const PlannedShiftStatus(this.label);
   final String label;
@@ -1471,7 +1472,7 @@ enum PlannedShiftStatus {
 
 /// Godziny w grafiku. Pracownik zgłasza w aplikacji, od której do której może pracować,
 /// przełożony przyjmuje (także ze zmienionymi godzinami) albo odrzuca. Po decyzji pracownik
-/// nie może już zmienić tego dnia. Przełożony może też wpisać godziny sam.
+/// nie może już zmienić tego dnia. Przełożony może też wpisać godziny sam albo dać wolne.
 class PlannedShift {
   const PlannedShift({
     required this.id,
@@ -1490,10 +1491,13 @@ class PlannedShift {
   final String memberId;
   final DateTime day;
 
-  /// Godziny jako „HH:MM”: zgłoszone albo (po przyjęciu) zatwierdzone.
+  /// Godziny jako „HH:MM”: zgłoszone albo (po przyjęciu) zatwierdzone. Puste przy wolnym dniu.
   final String starts;
   final String ends;
   final PlannedShiftStatus status;
+
+  /// Wolne dał przełożony. Wpis nie ma godzin.
+  bool get off => status == PlannedShiftStatus.off;
 
   /// Co zgłosił pracownik. Null: godziny wpisał przełożony.
   final String? requestedStarts;
@@ -1515,8 +1519,8 @@ class PlannedShift {
     id: json['id'] as String,
     memberId: json['member_id'] as String,
     day: DateTime.parse(json['day'] as String),
-    starts: _hm(json['starts'])!,
-    ends: _hm(json['ends'])!,
+    starts: _hm(json['starts']) ?? '',
+    ends: _hm(json['ends']) ?? '',
     status: PlannedShiftStatus.values.firstWhere(
       (s) => s.name == json['status'],
       orElse: () => PlannedShiftStatus.pending,

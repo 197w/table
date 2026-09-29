@@ -61,7 +61,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: const Text('Zeskanuj kod z panelu'),
+        title: const Text('Zeskanuj kod'),
       ),
       body: Stack(
         children: [

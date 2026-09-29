@@ -15,6 +15,9 @@ const _monthsShort = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'w
 /// Kolor zgłoszenia, które czeka na decyzję przełożonego.
 const _pending = Color(0xFFE08A1E);
 
+/// Kolor wolnego dnia (daje go przełożony w panelu).
+const _off = Color(0xFF3B82F6);
+
 String _two(int n) => n.toString().padLeft(2, '0');
 String _hm(DateTime t) => '${_two(t.hour)}:${_two(t.minute)}';
 DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -165,6 +168,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     final accepted = byDay.values.where((e) => e.accepted).length;
     final waiting = byDay.values.where((e) => e.pending).length;
     final rejected = byDay.values.where((e) => e.rejected).length;
+    final free = byDay.values.where((e) => e.off).length;
     final shifts = ref.watch(shiftsProvider).value ?? const <Shift>[];
     final (unit, submitLabel) = switch (kind) {
       'month' => ('miesiąc', 'Zgłoś godziny na ten miesiąc'),
@@ -215,6 +219,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                 _Count(color: AppColors.accent, label: 'Przyjęte', count: accepted),
                 _Count(color: _pending, label: 'Czeka', count: waiting),
                 _Count(color: AppColors.error, label: 'Odrzucone', count: rejected),
+                if (free > 0) _Count(color: _off, label: 'Wolne', count: free),
               ],
             ),
             if (open.isNotEmpty && jobs.isNotEmpty) ...[
@@ -287,6 +292,7 @@ class _DayRow extends StatelessWidget {
       null => (AppColors.textMuted, past ? 'Brak godzin' : 'Nie zgłoszono'),
       final e when e.accepted => (AppColors.accent, e.changed ? 'Przyjęte ze zmianą' : 'Przyjęte'),
       final e when e.rejected => (AppColors.error, 'Odrzucone'),
+      final e when e.off => (_off, 'Wolne'),
       _ => (_pending, 'Czeka na decyzję'),
     };
     return Opacity(
@@ -335,7 +341,7 @@ class _DayRow extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (e != null)
+                        if (e != null && !e.off)
                           Text(
                             '${e.starts}–${e.ends}',
                             style: text.titleMedium?.copyWith(
@@ -610,6 +616,8 @@ class _EntryCard extends StatelessWidget {
         ? (AppColors.accent, AppIcons.checkCircle, e.changed ? 'Przyjęte ze zmianą' : 'Przyjęte')
         : e.rejected
         ? (AppColors.error, AppIcons.prohibit, 'Odrzucone')
+        : e.off
+        ? (_off, AppIcons.sun, 'Wolne')
         : (_pending, AppIcons.clock, 'Czeka na decyzję przełożonego');
     return Card(
       child: Padding(
@@ -626,14 +634,14 @@ class _EntryCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '${e.starts}–${e.ends}',
+              e.off ? 'Masz wolne' : '${e.starts}–${e.ends}',
               style: text.headlineSmall?.copyWith(
                 fontFeatures: _tabular,
                 decoration: e.rejected ? TextDecoration.lineThrough : null,
               ),
             ),
             Text(e.restaurantName, style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
-            if (e.changed)
+            if (e.changed || (e.off && e.requestedStarts != null))
               Text(
                 'Zgłaszałeś ${e.requestedStarts}–${e.requestedEnds}',
                 style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),

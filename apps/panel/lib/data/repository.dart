@@ -765,6 +765,17 @@ class PanelRepository {
     return _guard(() => _db.rpc<void>('panel_delete_hours', params: {'p_id': id}));
   }
 
+  /// Przełożony daje wolne w danym dniu. Zastępuje zgłoszenie albo przyjęte godziny.
+  Future<void> setDayOff({required String memberId, required DateTime day, String? answer}) {
+    return _guard(
+      () => _db.rpc<void>('panel_set_day_off', params: {
+        'p_member_id': memberId,
+        'p_day': _isoDay(day),
+        'p_answer': answer,
+      }),
+    );
+  }
+
   Future<MemberStats> memberStats(String memberId, int days) {
     return _guard(() async {
       final json = await _db.rpc<Map<String, dynamic>>(

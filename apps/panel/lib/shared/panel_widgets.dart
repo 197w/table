@@ -534,6 +534,149 @@ class SegmentedTabs<T> extends StatelessWidget {
   }
 }
 
+/// Zakładki jako same ikony. Wybrana rozsuwa się i pokazuje nazwę obok ikony,
+/// pozostałe mają nazwę w podpowiedzi po najechaniu myszą.
+class IconTabs<T> extends StatelessWidget {
+  const IconTabs({
+    super.key,
+    required this.options,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final List<(T, AppIconData, String)> options;
+  final T selected;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final (value, icon, label) in options)
+            _IconTab(
+              icon: icon,
+              label: label,
+              selected: value == selected,
+              onTap: () => onChanged(value),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IconTab extends StatelessWidget {
+  const _IconTab({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AppIconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  static const _duration = Duration(milliseconds: 280);
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final tab = Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: onTap,
+          child: PanelPress(
+            scale: 0.94,
+            child: AnimatedContainer(
+              duration: _duration,
+              curve: AppMotion.easeOut,
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+              decoration: BoxDecoration(
+                // Jak w SegmentedTabs: ten sam kolor z inną przezroczystością.
+                color: (AppColors.palette.brightness == Brightness.dark
+                        ? const Color(0xFF26262B)
+                        : AppColors.surface)
+                    .withValues(alpha: selected ? 1 : 0),
+                borderRadius: BorderRadius.circular(9),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.accent.withValues(alpha: selected ? 1 : 0),
+                    blurRadius: 0,
+                    spreadRadius: 1,
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: selected ? 0.35 : 0),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TweenAnimationBuilder<Color?>(
+                    tween: ColorTween(end: selected ? AppColors.accent : AppColors.textMuted),
+                    duration: _duration,
+                    curve: AppMotion.easeOut,
+                    builder: (context, color, _) => AnimatedScale(
+                      scale: selected ? 1.08 : 1,
+                      duration: _duration,
+                      curve: AppMotion.easeOut,
+                      child: Glyph(icon, size: 18, color: color),
+                    ),
+                  ),
+                  // Nazwa wysuwa się zza ikony: szerokość rośnie, tekst pojawia się i przesuwa w prawo.
+                  ClipRect(
+                    child: AnimatedAlign(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: selected ? 1 : 0,
+                      duration: _duration,
+                      curve: AppMotion.easeOut,
+                      child: AnimatedOpacity(
+                        opacity: selected ? 1 : 0,
+                        duration: _duration,
+                        curve: AppMotion.easeOut,
+                        child: AnimatedSlide(
+                          offset: selected ? Offset.zero : const Offset(-0.25, 0),
+                          duration: _duration,
+                          curve: AppMotion.easeOut,
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: Text(
+                              label,
+                              maxLines: 1,
+                              softWrap: false,
+                              style: text.labelLarge?.copyWith(color: AppColors.text),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return selected ? tab : Tooltip(message: label, child: tab);
+  }
+}
+
 /// Informacja zamiast funkcji dostępnej tylko w planie Pro.
 class ProGate extends StatelessWidget {
   const ProGate({super.key, required this.feature});

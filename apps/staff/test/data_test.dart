@@ -51,6 +51,21 @@ void main() {
     expect(shift.changed, isFalse);
   });
 
+  test('wolne od przełożonego', () {
+    final shift = PlannedShift.fromJson({
+      'id': 's3',
+      'member_id': 'm1',
+      'restaurant_name': 'REVE',
+      'day': '2026-10-03',
+      'starts': null,
+      'ends': null,
+      'status': 'off',
+    });
+    expect(shift.off, isTrue);
+    expect(shift.pending, isFalse);
+    expect(shift.starts, isEmpty);
+  });
+
   test('okres grafiku lokalu z danych pracownika', () {
     Job job(Object? period) => Job.fromJson({
       'member_id': 'm',

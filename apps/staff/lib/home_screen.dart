@@ -164,7 +164,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     onPressed: _scan,
                     icon: const Glyph(AppIcons.squaresFour, size: 22),
                     label: Text(
-                      list.any((j) => j.working) ? 'Zeskanuj kod z panelu' : 'Zeskanuj kod i zacznij zmianę',
+                      list.any((j) => j.working) ? 'Zeskanuj kod' : 'Zeskanuj kod i zacznij zmianę',
                       style: const TextStyle(fontSize: 17),
                     ),
                   ),

@@ -69,7 +69,7 @@ class _OrdersTab extends ConsumerWidget {
         title: withOrders.isEmpty ? 'Brak uprawnienia do zamówień' : 'Zamówienia po rozpoczęciu zmiany',
         message: withOrders.isEmpty
             ? 'Twoje stanowisko nie nabija zamówień. Jeśli to pomyłka, porozmawiaj z przełożonym.'
-            : 'Zeskanuj kod z panelu w lokalu, żeby zacząć zmianę. Potem nabijesz tu zamówienia.',
+            : 'Zeskanuj kod w lokalu, żeby zacząć zmianę. Potem nabijesz tu zamówienia.',
         actionLabel: withOrders.isEmpty ? null : 'Zeskanuj kod',
         onAction: withOrders.isEmpty ? null : onScan,
       ),

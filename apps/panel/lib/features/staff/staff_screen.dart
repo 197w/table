@@ -105,9 +105,9 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     final canTimesheet = permissions.contains('timesheet');
     final canPositions = permissions.contains('positions');
     final tabs = [
-      if (canStaff || canLogins) (0, 'Zespół'),
-      if (canPlan) (1, 'Grafik'),
-      if (canTimesheet) (2, 'Czas pracy'),
+      if (canStaff || canLogins) (0, AppIcons.users, 'Zespół'),
+      if (canPlan) (1, AppIcons.calendarDots, 'Grafik'),
+      if (canTimesheet) (2, AppIcons.timer, 'Czas pracy'),
     ];
     if (tabs.isEmpty) {
       return const MessageView(
@@ -141,20 +141,22 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
               ? '${all.where((m) => m.active).length} w zespole · ${working.length} teraz w pracy'
               : '${tab == 1 ? 'Grafik' : 'Czas pracy'} ${Fmt.dayShort(_week)} – ${Fmt.dayShort(weekEnd)}'
                     '${isThisWeek ? ' · ten tydzień' : ''}',
-          below: tabs.length < 2
+          below: tabs.length < 2 && tab != 0
               ? null
-              : Align(
-                  alignment: Alignment.centerLeft,
-                  child: SegmentedTabs<int>(
-                    options: tabs,
-                    selected: tab,
-                    onChanged: (t) => setState(() => _tab = t),
-                  ),
+              : Row(
+                  children: [
+                    if (tabs.length > 1)
+                      IconTabs<int>(
+                        options: tabs,
+                        selected: tab,
+                        onChanged: (t) => setState(() => _tab = t),
+                      ),
+                    const Spacer(),
+                    if (tab == 0) const _ViewToggle(),
+                  ],
                 ),
           actions: [
             if (tab == 0) ...[
-              const _ViewToggle(),
-              const SizedBox(width: 8),
               if (canPositions)
                 OutlinedButton.icon(
                   onPressed: () => showDialog<void>(
@@ -278,7 +280,8 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                     Text(
                       'Pracownicy zgłaszają w aplikacji Table for employees, od której do której mogą pracować. '
                       'Kliknij zgłoszenie, żeby je przyjąć (także ze zmienionymi godzinami) albo odrzucić. '
-                      'Po decyzji pracownik nie może już zmienić tego dnia. Kliknij pusty dzień, żeby wpisać godziny samemu.',
+                      'Po decyzji pracownik nie może już zmienić tego dnia. Kliknij pusty dzień, żeby wpisać godziny samemu '
+                      'albo dać wolne.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
                     ),
                   ],
@@ -321,16 +324,21 @@ class _Banner extends StatelessWidget {
 /// Kolor zgłoszenia, które czeka na decyzję przełożonego.
 const _pending = Color(0xFFE08A1E);
 
+/// Kolor wolnego dnia.
+const _off = Color(0xFF3B82F6);
+
 Color _statusColor(PlannedShiftStatus s) => switch (s) {
   PlannedShiftStatus.accepted => AppColors.accent,
   PlannedShiftStatus.pending => _pending,
   PlannedShiftStatus.rejected => AppColors.error,
+  PlannedShiftStatus.off => _off,
 };
 
 AppIconData _statusIcon(PlannedShiftStatus s) => switch (s) {
   PlannedShiftStatus.accepted => AppIcons.checkCircle,
   PlannedShiftStatus.pending => AppIcons.clock,
   PlannedShiftStatus.rejected => AppIcons.prohibit,
+  PlannedShiftStatus.off => AppIcons.sun,
 };
 
 class _Legend extends StatelessWidget {
@@ -371,58 +379,16 @@ class TeamAsListNotifier extends Notifier<bool> {
 
 final teamAsListProvider = NotifierProvider<TeamAsListNotifier, bool>(TeamAsListNotifier.new);
 
-/// Ikony „Kafelki” i „Lista” nad zespołem.
+/// „Kafelki” i „Lista” po prawej stronie wiersza z zakładkami.
 class _ViewToggle extends ConsumerWidget {
   const _ViewToggle();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final asList = ref.watch(teamAsListProvider);
-    Widget option(bool list, AppIconData icon, String label) {
-      final selected = asList == list;
-      return Tooltip(
-        message: label,
-        child: Material(
-          color: selected ? AppColors.surface : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: () => ref.read(teamAsListProvider.notifier).set(list),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Glyph(icon, size: 18, color: selected ? AppColors.accent : AppColors.textMuted),
-                  const SizedBox(width: 6),
-                  Text(
-                    label,
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: selected ? AppColors.text : AppColors.textMuted,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceRaised,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.ring),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          option(false, AppIcons.squaresFour, 'Kafelki'),
-          option(true, AppIcons.list, 'Lista'),
-        ],
-      ),
+    return IconTabs<bool>(
+      options: const [(false, AppIcons.squaresFour, 'Kafelki'), (true, AppIcons.list, 'Lista')],
+      selected: ref.watch(teamAsListProvider),
+      onChanged: (list) => ref.read(teamAsListProvider.notifier).set(list),
     );
   }
 }
@@ -1359,8 +1325,8 @@ class _WeekGrid extends StatelessWidget {
   }
 }
 
-/// Dzień pracownika w grafiku: zgłoszenie (pomarańczowe), przyjęte (w kolorze pracownika)
-/// albo odrzucone (przekreślone).
+/// Dzień pracownika w grafiku: zgłoszenie (pomarańczowe), przyjęte (w kolorze pracownika),
+/// odrzucone (przekreślone) albo wolne (niebieskie).
 class _DayCell extends StatelessWidget {
   const _DayCell({
     required this.member,
@@ -1395,7 +1361,8 @@ class _DayCell extends StatelessWidget {
               : Tooltip(
                   message: [
                     e.status.label,
-                    if (e.changed) 'Zgłoszone: ${e.requestedStarts}–${e.requestedEnds}',
+                    if (e.changed || (e.off && e.requestedStarts != null))
+                      'Zgłoszone: ${e.requestedStarts}–${e.requestedEnds}',
                     if (e.note != null) 'Pracownik: ${e.note}',
                     if (e.answer != null) 'Odpowiedź: ${e.answer}',
                   ].join('\n'),
@@ -1406,12 +1373,14 @@ class _DayCell extends StatelessWidget {
                         PlannedShiftStatus.accepted => color.withValues(alpha: 0.9),
                         PlannedShiftStatus.pending => _pending.withValues(alpha: 0.16),
                         PlannedShiftStatus.rejected => Colors.transparent,
+                        PlannedShiftStatus.off => _off.withValues(alpha: 0.14),
                       },
                       borderRadius: BorderRadius.circular(8),
                       border: switch (e.status) {
                         PlannedShiftStatus.accepted => null,
                         PlannedShiftStatus.pending => Border.all(color: _pending),
                         PlannedShiftStatus.rejected => Border.all(color: AppColors.ring),
+                        PlannedShiftStatus.off => Border.all(color: _off.withValues(alpha: 0.6)),
                       },
                     ),
                     child: Row(
@@ -1424,7 +1393,7 @@ class _DayCell extends StatelessWidget {
                         const SizedBox(width: 5),
                         Expanded(
                           child: Text(
-                            '${e.starts}–${e.ends}',
+                            e.off ? 'Wolne' : '${e.starts}–${e.ends}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: text.labelMedium?.copyWith(
@@ -1432,7 +1401,7 @@ class _DayCell extends StatelessWidget {
                               fontWeight: FontWeight.w600,
                               color: switch (e.status) {
                                 PlannedShiftStatus.accepted => Colors.white,
-                                PlannedShiftStatus.pending => AppColors.text,
+                                PlannedShiftStatus.pending || PlannedShiftStatus.off => AppColors.text,
                                 PlannedShiftStatus.rejected => AppColors.textMuted,
                               },
                               decoration: e.status == PlannedShiftStatus.rejected ? TextDecoration.lineThrough : null,
@@ -1449,8 +1418,8 @@ class _DayCell extends StatelessWidget {
   }
 }
 
-/// Decyzja o zgłoszeniu pracownika (przyjmij, przyjmij ze zmienionymi godzinami, odrzuć)
-/// albo godziny wpisane przez przełożonego na pusty dzień.
+/// Decyzja o zgłoszeniu pracownika (przyjmij, przyjmij ze zmienionymi godzinami, odrzuć, wolne)
+/// albo godziny wpisane przez przełożonego na pusty dzień, albo wolne.
 class _HoursDialog extends ConsumerStatefulWidget {
   const _HoursDialog({
     required this.restaurantId,
@@ -1471,8 +1440,9 @@ class _HoursDialog extends ConsumerStatefulWidget {
 }
 
 class _HoursDialogState extends ConsumerState<_HoursDialog> {
-  late TimeOfDay _starts = _parse(widget.existing?.starts ?? '10:00');
-  late TimeOfDay _ends = _parse(widget.existing?.ends ?? '18:00');
+  // Wolny dzień nie ma godzin: podpowiadamy zgłoszone przez pracownika albo 10–18.
+  late TimeOfDay _starts = _parse(_initial(widget.existing?.starts, widget.existing?.requestedStarts, '10:00'));
+  late TimeOfDay _ends = _parse(_initial(widget.existing?.ends, widget.existing?.requestedEnds, '18:00'));
   late final _answer = TextEditingController(text: widget.existing?.answer ?? '');
   bool _busy = false;
 
@@ -1482,6 +1452,17 @@ class _HoursDialogState extends ConsumerState<_HoursDialog> {
   }
 
   static String _fmt(TimeOfDay t) => '${_two(t.hour)}:${_two(t.minute)}';
+
+  static String _initial(String? hours, String? requested, String fallback) =>
+      (hours?.isNotEmpty ?? false) ? hours! : (requested ?? fallback);
+
+  void _dayOff() {
+    final first = widget.member.name.split(' ').first;
+    _run(
+      () => ref.read(repositoryProvider).setDayOff(memberId: widget.member.id, day: widget.day, answer: _answer.text),
+      '$first ma wolne ${Fmt.dayShort(widget.day)}. Zobaczy to w aplikacji.',
+    );
+  }
 
   bool get _validTimes => _ends.hour * 60 + _ends.minute > _starts.hour * 60 + _starts.minute;
 
@@ -1582,7 +1563,9 @@ class _HoursDialogState extends ConsumerState<_HoursDialog> {
                         children: [
                           Text(
                             existing.requestedStarts == null
-                                ? '${existing.status.label}: ${existing.starts}–${existing.ends} (wpisane przez przełożonego)'
+                                ? (existing.off
+                                      ? 'Wolne (dał przełożony)'
+                                      : '${existing.status.label}: ${existing.starts}–${existing.ends} (wpisane przez przełożonego)')
                                 : 'Pracownik zgłosił ${existing.requestedStarts}–${existing.requestedEnds}',
                             style: text.titleSmall?.copyWith(fontFeatures: _tabular),
                           ),
@@ -1603,11 +1586,18 @@ class _HoursDialogState extends ConsumerState<_HoursDialog> {
               )
             else
               Text(
-                'Pracownik nie zgłosił godzin na ten dzień. Możesz wpisać je sam, będą od razu przyjęte.',
+                'Pracownik nie zgłosił godzin na ten dzień. Możesz wpisać je sam (będą od razu przyjęte) albo dać wolne.',
                 style: text.bodySmall?.copyWith(color: AppColors.textMuted),
               ),
             const SizedBox(height: 16),
-            Text(existing == null ? 'Godziny' : 'Godziny do przyjęcia (możesz je zmienić)', style: text.titleSmall),
+            Text(
+              existing == null
+                  ? 'Godziny'
+                  : existing.off
+                  ? 'Godziny, jeśli jednak ma pracować'
+                  : 'Godziny do przyjęcia (możesz je zmienić)',
+              style: text.titleSmall,
+            ),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -1642,7 +1632,7 @@ class _HoursDialogState extends ConsumerState<_HoursDialog> {
             style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
             child: const Text('Usuń'),
           ),
-          if (existing.status != PlannedShiftStatus.rejected)
+          if (existing.status != PlannedShiftStatus.rejected && !existing.off)
             TextButton(
               onPressed: _busy
                   ? null
@@ -1654,6 +1644,13 @@ class _HoursDialogState extends ConsumerState<_HoursDialog> {
               child: const Text('Odrzuć'),
             ),
         ],
+        if (existing == null || !existing.off)
+          TextButton.icon(
+            onPressed: _busy ? null : _dayOff,
+            style: TextButton.styleFrom(foregroundColor: _off),
+            icon: const Glyph(AppIcons.sun, size: 16, color: _off),
+            label: const Text('Wolne'),
+          ),
         TextButton(
           onPressed: () => Navigator.pop(context),
           style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
@@ -1661,7 +1658,11 @@ class _HoursDialogState extends ConsumerState<_HoursDialog> {
         ),
         FilledButton(
           onPressed: _busy ? null : _accept,
-          child: Text(existing == null ? 'Dodaj' : (changedHours ? 'Przyjmij zmienione' : 'Przyjmij')),
+          child: Text(
+            existing == null || existing.off
+                ? 'Dodaj godziny'
+                : (changedHours ? 'Przyjmij zmienione' : 'Przyjmij'),
+          ),
         ),
       ],
     );

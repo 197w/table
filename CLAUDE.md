@@ -68,7 +68,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0034, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0035, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
   Gdy użytkownik napisze „kod”, podaj najnowszy `otp` z tej tabeli (jego numer kończy się na 098).
@@ -96,7 +96,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   nie zweryfikuje (weryfikacja: `update restaurants set listed = true`, poprawić też położenie `location`).
   Ja nadal nie zakładam kont ani nie wymyślam haseł: konto zakłada sama restauracja albo użytkownik.
 - Pracownicy nie mają kont w panelu. Dodaje ich osoba z uprawnieniem `staff` w „Pracownicy” → „Zespół”
-  (kafelki albo lista, przełącznik z ikonami nad zespołem; szczegóły ze statystykami `panel_member_stats`). Każdy pracownik ma czterocyfrowy kod, unikalny w lokalu
+  (kafelki albo lista, przełącznik po prawej w wierszu zakładek; szczegóły ze statystykami `panel_member_stats`).
+  Zakładki Zespół, Grafik i Czas pracy to same ikony (`IconTabs` w `panel_widgets.dart`): wybrana rozsuwa się z nazwą. Każdy pracownik ma czterocyfrowy kod, unikalny w lokalu
   (nadaje go baza przy dodaniu, trigger `staff_members_code`; zmiana: `panel_set_staff_code`, wpisany albo losowy).
   Kod widać stale w szczegółach (uprawnienie `staff_logins`, „Kody pracowników”, `panel_staff_codes`) i w aplikacji
   pracownika (`staff_my_codes`). Kod leży zaszyfrowany w Supabase Vault (`staff_codes.code_secret`), logowanie szuka
@@ -122,7 +123,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Grafik („Pracownicy” → „Grafik”, uprawnienie `schedule`): pracownik zgłasza w aplikacji, od której do której może
   pracować (`staff_submit_hours`, `staff_delete_hours`, `staff_my_schedule`), przełożony przyjmuje (także ze
   zmienionymi godzinami), odrzuca albo sam wpisuje godziny (`panel_decide_hours`, `panel_add_hours`,
-  `panel_delete_hours`). Po decyzji pracownik nie może zmienić tego dnia. Okres, na który pracownicy zgłaszają
+  `panel_delete_hours`) albo daje wolne (`panel_set_day_off`, stan `off` bez godzin, niebieski, ikona słońca).
+  Po decyzji pracownik nie może zmienić tego dnia. Okres, na który pracownicy zgłaszają
   godziny, ustawia lokal w „Dane lokalu” → „Grafik pracowników” (`schedule_period`: week, two_weeks, month;
   pary tygodni liczone od poniedziałku 5.01.2026, `staff_my_jobs` zwraca okres). Czas pracy: „Pracownicy” → „Czas pracy”.
 - Statystyki mają zakładki: Sprzedaż (`panel_sales_stats`), Rezerwacje i goście, Historia zamówień.

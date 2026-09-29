@@ -103,7 +103,7 @@ class ScanResult {
 }
 
 /// Moje godziny w grafiku. Zgłaszam, od której do której mogę pracować, przełożony przyjmuje
-/// (czasem ze zmienionymi godzinami) albo odrzuca. Po decyzji nie mogę już zmienić tego dnia.
+/// (czasem ze zmienionymi godzinami), odrzuca albo daje wolne. Po decyzji nie mogę już zmienić tego dnia.
 class PlannedShift {
   const PlannedShift({
     required this.id,
@@ -124,11 +124,11 @@ class PlannedShift {
   final String restaurantName;
   final DateTime day;
 
-  /// Godziny jako „HH:MM”: zgłoszone albo (po przyjęciu) zatwierdzone.
+  /// Godziny jako „HH:MM”: zgłoszone albo (po przyjęciu) zatwierdzone. Puste przy wolnym dniu.
   final String starts;
   final String ends;
 
-  /// pending: czeka na przełożonego, accepted: przyjęte, rejected: odrzucone.
+  /// pending: czeka na przełożonego, accepted: przyjęte, rejected: odrzucone, off: wolne.
   final String status;
 
   /// Co zgłosiłem. Null: godziny wpisał przełożony.
@@ -140,6 +140,7 @@ class PlannedShift {
   bool get pending => status == 'pending';
   bool get accepted => status == 'accepted';
   bool get rejected => status == 'rejected';
+  bool get off => status == 'off';
 
   /// Przyjęte, ale z innymi godzinami, niż zgłosiłem.
   bool get changed => accepted && requestedStarts != null && (requestedStarts != starts || requestedEnds != ends);
@@ -151,8 +152,8 @@ class PlannedShift {
     memberId: j['member_id'] as String,
     restaurantName: j['restaurant_name'] as String,
     day: DateTime.parse(j['day'] as String),
-    starts: _hm(j['starts'])!,
-    ends: _hm(j['ends'])!,
+    starts: _hm(j['starts']) ?? '',
+    ends: _hm(j['ends']) ?? '',
     status: j['status'] as String,
     requestedStarts: _hm(j['requested_starts']),
     requestedEnds: _hm(j['requested_ends']),
