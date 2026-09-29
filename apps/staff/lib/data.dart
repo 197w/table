@@ -84,7 +84,7 @@ class ScanResult {
     required this.restaurant,
     required this.member,
     required this.startedNow,
-    required this.token,
+    this.openedPanel = false,
     this.startedAt,
   });
 
@@ -92,10 +92,63 @@ class ScanResult {
   final String member;
   final bool startedNow;
 
-  /// Kod z panelu. Z nim można jeszcze otworzyć panel na swoje konto.
-  final String token;
+  /// Skan zalogował mnie też na głównym stanowisku (nikt inny nie użył tego kodu).
+  final bool openedPanel;
   final DateTime? startedAt;
 }
+
+/// Godziny w grafiku zaproponowane przez przełożonego. Przyjmuję je albo proponuję inne.
+class PlannedShift {
+  const PlannedShift({
+    required this.id,
+    required this.restaurantName,
+    required this.day,
+    required this.starts,
+    required this.ends,
+    required this.status,
+    this.changeStarts,
+    this.changeEnds,
+    this.note,
+    this.reply,
+  });
+
+  final String id;
+  final String restaurantName;
+  final DateTime day;
+
+  /// Godziny jako „HH:MM”.
+  final String starts;
+  final String ends;
+
+  /// proposed: czeka na mnie, accepted: przyjęte, changed: zaproponowałem inne godziny.
+  final String status;
+  final String? changeStarts;
+  final String? changeEnds;
+  final String? note;
+  final String? reply;
+
+  bool get waiting => status == 'proposed';
+  bool get accepted => status == 'accepted';
+  bool get changed => status == 'changed';
+
+  static String? _hm(Object? v) => v == null ? null : (v as String).substring(0, 5);
+
+  factory PlannedShift.fromJson(Map<String, dynamic> j) => PlannedShift(
+    id: j['id'] as String,
+    restaurantName: j['restaurant_name'] as String,
+    day: DateTime.parse(j['day'] as String),
+    starts: _hm(j['starts'])!,
+    ends: _hm(j['ends'])!,
+    status: j['status'] as String,
+    changeStarts: _hm(j['change_starts']),
+    changeEnds: _hm(j['change_ends']),
+    note: j['note'] as String?,
+    reply: j['reply'] as String?,
+  );
+}
+
+String _isoDay(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 /// Jedyne miejsce aplikacji, które rozmawia z Supabase. Błędy zamienia na polskie komunikaty.
 class StaffRepository {
@@ -131,14 +184,36 @@ class StaffRepository {
       restaurant: j['restaurant'] as String,
       member: j['member'] as String,
       startedNow: j['started_now'] == true,
-      token: j['token'] as String? ?? '',
+      openedPanel: j['opened_panel'] == true,
       startedAt: _date(j['shift_started_at']),
     );
   });
 
-  /// Otwiera panel na komputerze, z którego zeskanowano kod, na uprawnienia pracownika.
-  Future<void> openPanel(String token) =>
-      _guard(() => _db.rpc<void>('staff_open_panel', params: {'p_token': token}));
+  /// Mój grafik na najbliższe 4 tygodnie.
+  Future<List<PlannedShift>> schedule() => _guard(() async {
+    final today = DateTime.now();
+    final rows = await _db.rpc<List<dynamic>>('staff_my_schedule', params: {
+      'p_from': _isoDay(today),
+      'p_to': _isoDay(today.add(const Duration(days: 28))),
+    });
+    return [for (final r in rows) PlannedShift.fromJson(r as Map<String, dynamic>)];
+  });
+
+  /// Przyjmuję godziny albo proponuję inne ([starts], [ends] jako „HH:MM”).
+  Future<void> answerShift(String id, {required bool accept, String? starts, String? ends, String? reply}) =>
+      _guard(() => _db.rpc<void>('staff_answer_shift', params: {
+        'p_id': id,
+        'p_accept': accept,
+        'p_starts': starts,
+        'p_ends': ends,
+        'p_reply': (reply?.trim().isEmpty ?? true) ? null : reply!.trim(),
+      }));
+
+  /// Moje loginy do głównego stanowiska według numeru pracownika (hasło zna tylko pracownik).
+  Future<Map<String, String>> logins() => _guard(() async {
+    final rows = await _db.from('staff_accounts').select('member_id, login');
+    return {for (final r in rows) r['member_id'] as String: r['login'] as String};
+  });
 
   Future<void> endShift(String memberId) =>
       _guard(() => _db.rpc<void>('staff_end_shift', params: {'p_member_id': memberId}));
@@ -185,6 +260,16 @@ final sessionProvider = NotifierProvider<SessionNotifier, Session?>(SessionNotif
 final jobsProvider = FutureProvider.autoDispose<List<Job>>((ref) {
   if (ref.watch(sessionProvider) == null) return Future.value(const []);
   return ref.watch(staffRepositoryProvider).jobs();
+});
+
+final scheduleProvider = FutureProvider.autoDispose<List<PlannedShift>>((ref) {
+  if (ref.watch(sessionProvider) == null) return Future.value(const []);
+  return ref.watch(staffRepositoryProvider).schedule();
+});
+
+final loginsProvider = FutureProvider.autoDispose<Map<String, String>>((ref) {
+  if (ref.watch(sessionProvider) == null) return Future.value(const {});
+  return ref.watch(staffRepositoryProvider).logins();
 });
 
 final shiftsProvider = FutureProvider.autoDispose<List<Shift>>((ref) {

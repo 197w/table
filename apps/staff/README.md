@@ -1,4 +1,4 @@
-# Table for workers
+# Table for employees
 
 Aplikacja dla pracowników lokalu (Android i iOS).
 

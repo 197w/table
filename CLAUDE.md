@@ -5,10 +5,10 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
 - `apps/guest`: aplikacja dla gości na telefony (Android i iOS), identyfikator `pl.table.app`.
 - `apps/panel`: panel restauracji na komputery (Windows i macOS), identyfikator macOS `pl.table.panel`.
   Na tablety przejdziemy, gdy panel na komputerach będzie ustalony. Nigdy na telefony.
-- `apps/staff`: Table for workers, aplikacja dla pracowników lokalu na telefony (Android `pl.table.table_staff`,
-  iOS `pl.table.tableStaff`). Logowanie numerem telefonu (SMS), skan wspólnego kodu QR z panelu zaczyna zmianę,
-  „Otwórz panel na komputerze” odblokowuje panel na swoje konto, kelner nabija zamówienia (stoliki, menu,
-  wysyłka na kuchnię, wydanie, zamknięcie rachunku), historia godzin. Każda aktualizacja na S23 i iPhone'a, tak jak aplikacja dla gości.
+- `apps/staff`: Table for employees, aplikacja dla pracowników lokalu na telefony (Android `pl.table.table_staff`,
+  iOS `pl.table.tableStaff`). Logowanie numerem telefonu (SMS), skan wspólnego kodu QR z głównego stanowiska
+  zaczyna zmianę i loguje na stanowisku, kelner nabija zamówienia (stoliki, menu, wysyłka na kuchnię, wydanie,
+  zamknięcie rachunku), mój grafik (przyjęcie albo inne godziny), login do stanowiska, historia godzin. Każda aktualizacja na S23 i iPhone'a, tak jak aplikacja dla gości.
 - `packages/table_core`: wspólny motyw, czcionka Geist, ikony Phosphor, formatery, widżety i konfiguracja.
 
 Z użytkownikiem rozmawiamy po polsku. Teksty w aplikacjach i komentarze w kodzie też są po polsku.
@@ -66,7 +66,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0028, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0029, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
   Gdy użytkownik napisze „kod”, podaj najnowszy `otp` z tej tabeli (jego numer kończy się na 098).
@@ -82,7 +82,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `scan_screen.dart`, `waiter_screens.dart`
   (mobile_scanner). Podpis iOS: `DEVELOPMENT_TEAM` w `ios/Flutter/*.xcconfig`, nie w pbxproj.
 - `apps/panel/lib`: `app` (router, boczne menu, motyw na komputer), `data` (modele, `PanelRepository`, providery),
-  `features` (auth, onboarding, kiosk, reservations, orders, kitchen, floor, menu, profile, reviews, staff, stats),
+  `features` (auth, onboarding, kiosk, reservations, orders, kitchen, floor, menu, profile, reviews, staff, stats,
+  settings),
   `shared/panel_widgets.dart`.
 
 ## Panel restauracji
@@ -93,16 +94,31 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Nowy lokal ma `restaurants.listed = false`: działa w panelu, ale goście go nie widzą, dopóki Table go
   nie zweryfikuje (weryfikacja: `update restaurants set listed = true`, poprawić też położenie `location`).
   Ja nadal nie zakładam kont ani nie wymyślam haseł: konto zakłada sama restauracja albo użytkownik.
-- Pracownicy nie mają kont w panelu. Właściciel dodaje ich w „Pracownicy” z numerem telefonu. Pracownik loguje się
-  tym numerem w Table for workers i skanuje kod QR z panelu w trybie obsługi (`panel_new_login_token`, `staff_scan`).
-  Kod jest wspólny: każdy skan zaczyna zmianę tej osoby (`staff_shifts`). Panel odblokowuje osobny krok
-  `staff_open_panel` (raz na kod) na uprawnienia stanowiska (`ActingMember`). Konto telefonu pracownika dostaje
-  rolę obsługi (`restaurant_staff`, trigger `staff_members_account`), więc zamówienia w aplikacji używają tych
-  samych funkcji `panel_*` z `p_member_id` (wymagana trwająca zmiana).
-  Tryb obsługi włącza kierownik w menu bocznym, wyjście z niego wymaga hasła konta restauracji.
-  Zamówienia zapisują pracownika (`opened_by_member`, `created_by_member`). Czas pracy: „Pracownicy” → „Czas pracy”.
-- Menu boczne pokazuje tylko zakładki z uprawnień (`effectivePermissionsProvider`, `permissionForRoute`),
-  a wejście na inną zakładkę przenosi do pierwszej dozwolonej. Uprawnienie `profile` to „Dane lokalu”.
+- Pracownicy nie mają kont w panelu. Osoba z uprawnieniem „Pracownicy” dodaje ich w „Pracownicy” → „Zespół”
+  (kafelki, szczegóły ze statystykami `panel_member_stats`). Nowy pracownik od razu dostaje login i krótkie hasło
+  (`panel_create_staff_login`, tabela `staff_accounts`, w bazie tylko skrót bcrypt). Hasło widać raz, przy tworzeniu
+  albo „Nadaj nowe hasło” (`panel_reset_staff_password`); jawnych haseł nie zapisujemy (zablokowało to zabezpieczenie).
+  Login i hasło działają tylko na głównym stanowisku, nie są kontem Supabase Auth. Konta Auth dla pracowników
+  (logowanie loginem w aplikacji na telefon) czekają na decyzję użytkownika: wymagają funkcji z kluczem serwisowym.
+- Główne stanowisko (`main_stations`, jedno na lokal): „Ustawienia” (`/ustawienia`, uprawnienie `profile`), przełącznik
+  na tym komputerze (`deviceIdProvider`, `panel_set_main_station`). Przeniesienie: wyłączyć na starym, włączyć na nowym;
+  gdy stary komputer nie działa, właściciel przenosi po haśle konta (`p_force`). Pracownicy logują się tylko tam
+  (`private.check_station` w `panel_new_login_token` i `panel_member_login`).
+- „Wejdź na zmianę” (menu boczne, tylko na głównym stanowisku) blokuje panel ekranem logowania (`KioskLockScreen`,
+  `kioskModeProvider`): kod QR z aplikacji Table for employees (`staff_scan` zaczyna zmianę i od razu loguje
+  na stanowisku, jeśli nikt nie użył kodu) albo login i hasło (`panel_member_login`, 5 błędów = 5 min blokady).
+  Po zalogowaniu ekran znika, panel ma uprawnienia stanowiska pracownika (`ActingMember`), wylogowanie jest ręczne.
+  „Pełny dostęp” wymaga hasła konta restauracji. Zakładka „Zamówienia” bez zalogowanego pracownika pokazuje to samo
+  logowanie (`StationLogin`). Konto telefonu pracownika dostaje rolę obsługi (`restaurant_staff`, trigger
+  `staff_members_account`), więc zamówienia w aplikacji używają tych samych funkcji `panel_*` z `p_member_id`
+  (wymagana trwająca zmiana). Zamówienia zapisują pracownika (`opened_by_member`, `created_by_member`),
+  kuchnia pokazuje jego imię na bileciku. Czas pracy: „Pracownicy” → „Czas pracy”.
+- Grafik („Pracownicy” → „Grafik”, uprawnienie `schedule` albo `staff`): dyspozycyjność i propozycje godzin
+  (`staff_schedule`, `panel_plan_shift`). Pracownik w aplikacji przyjmuje albo proponuje inne godziny
+  (`staff_my_schedule`, `staff_answer_shift`), przełożony przyjmuje zmianę (`panel_accept_shift_change`).
+- Menu boczne pokazuje tylko zakładki z uprawnień (`effectivePermissionsProvider`, `canOpenRoute`),
+  a wejście na inną zakładkę przenosi do pierwszej dozwolonej. Uprawnienie `profile` to „Dane lokalu” i „Ustawienia”.
+  Stanowiska (uprawnienia) zmienia tylko właściciel lub kierownik na swoim koncie, nie pracownik na stanowisku.
 - Statystyki mają zakładki: Sprzedaż (`panel_sales_stats`), Rezerwacje i goście, Historia zamówień.
 - Role w `restaurant_staff`: owner, manager, staff. Kierownik i właściciel zmieniają salę, menu, dane lokalu
   i odpowiadają na opinie. Obsługa prowadzi rezerwacje. Uprawnień pilnuje baza (RLS i funkcje `panel_*`).
@@ -129,7 +145,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   kolory po progach z `restaurants.kitchen_warn_minutes`/`kitchen_late_minutes` (domyślnie 4 i 6 min).
   Stuknięcie pozycji albo „Gotowe” wywołuje `panel_kitchen_set` (sent ↔ ready, `ready_at`); cofnięta pozycja
   ma `recalled_at` i jest niebieska. Anulowane pozycje widać na czerwono. Sterowanie klawiaturą
-  (1–9, strzałki, Spacja, Enter, Backspace, F, M, Esc), dolny pasek ze średnim czasem (`panel_kitchen_stats`),
+  (1–9, strzałki, Spacja, Enter, Backspace, F, M, Esc; strzałki przechodzą między bilecikami, Spacja zbija
+  i schodzi niżej, Enter zamyka bilecik i zaznacza następny), dolny pasek ze średnim czasem (`panel_kitchen_stats`),
   ustawienia (progi i pozycje ukryte, `panel_set_kitchen_config`). Pełny ekran chowa menu. Nowy bilecik dzwoni.
 - Menu: warianty (np. rozmiary, każdy z ceną), płatne dodatki, stawka VAT i „dostępne teraz”. Przy wariantach
   `price_grosze` to najniższa cena wariantu. „Skończyło się” może ustawić też kelner i kuchnia (`panel_set_menu_item_available`).

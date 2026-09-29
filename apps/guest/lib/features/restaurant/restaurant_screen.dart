@@ -7,6 +7,7 @@ import 'package:table_core/table_core.dart';
 import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import 'menu_screen.dart';
 
 const _weekdayNames = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Nie'];
 
@@ -82,6 +83,8 @@ class _Body extends ConsumerWidget {
     final r = restaurant;
     final text = Theme.of(context).textTheme;
     final reviews = ref.watch(reviewsProvider(r.id));
+    final dishes = r.menu.fold<int>(0, (sum, s) => sum + s.items.length);
+    final preview = r.menu.where((s) => s.items.isNotEmpty).firstOrNull;
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
@@ -132,8 +135,17 @@ class _Body extends ConsumerWidget {
                   style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
                 ),
               ],
+              // Menu jest jedną z pierwszych rzeczy, których gość szuka, więc przycisk stoi wysoko.
+              if (dishes > 0) ...[
+                const SizedBox(height: 16),
+                FilledButton.tonalIcon(
+                  onPressed: () => context.push(AppRoutes.menu(r.id)),
+                  icon: const Glyph(AppIcons.bookOpen, size: 20),
+                  label: Text('Zobacz menu ($dishes)'),
+                ),
+              ],
               if (r.isPro) ...[
-                const SizedBox(height: 14),
+                SizedBox(height: dishes > 0 ? 10 : 14),
                 OutlinedButton.icon(
                   onPressed: () => context.push(AppRoutes.buyGiftCard(r.id)),
                   icon: const Glyph(AppIcons.envelope, size: 18),
@@ -143,6 +155,27 @@ class _Body extends ConsumerWidget {
             ],
           ),
         ),
+        if (preview != null) ...[
+          SectionTitle(
+            'Menu',
+            trailing: TextButton(
+              onPressed: () => context.push(AppRoutes.menu(r.id)),
+              child: const Text('Całe menu'),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: MenuSectionCard(section: preview, limit: 3),
+          ),
+          if (dishes > 3)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: OutlinedButton(
+                onPressed: () => context.push(AppRoutes.menu(r.id)),
+                child: Text('Pokaż całe menu ($dishes)'),
+              ),
+            ),
+        ],
         const SectionTitle('Oceny'),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -153,10 +186,6 @@ class _Body extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: _HoursTable(hours: r.hours),
         ),
-        if (r.menu.isNotEmpty) ...[
-          const SectionTitle('Menu'),
-          for (final section in r.menu) _MenuSectionView(section: section),
-        ],
         SectionTitle(
           'Opinie',
           trailing: TextButton(
@@ -339,112 +368,6 @@ class _HoursTable extends StatelessWidget {
             },
           ),
       ],
-    );
-  }
-}
-
-class _MenuSectionView extends StatelessWidget {
-  const _MenuSectionView({required this.section});
-
-  final MenuSection section;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            section.name.toUpperCase(),
-            style: text.labelMedium?.copyWith(
-              color: AppColors.accent,
-              letterSpacing: 1.2,
-            ),
-          ),
-          const SizedBox(height: 8),
-          for (final item in section.items)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item.name,
-                          style: text.titleSmall?.copyWith(
-                            color: item.available ? null : AppColors.textMuted,
-                          ),
-                        ),
-                        if (!item.available)
-                          Text(
-                            'Chwilowo niedostępne',
-                            style: text.bodySmall?.copyWith(color: AppColors.error),
-                          ),
-                        if (item.description != null)
-                          Text(
-                            item.description!,
-                            style: text.bodySmall?.copyWith(
-                              color: AppColors.textMuted,
-                            ),
-                          ),
-                        // Warianty z cenami, np. „Mała 25 zł · Duża 39 zł”.
-                        if (item.variants.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              item.variants
-                                  .map((v) => '${v.name} ${Fmt.price(v.priceGrosze)}')
-                                  .join(' · '),
-                              style: text.bodySmall?.copyWith(
-                                color: AppColors.textMuted,
-                                fontFeatures: const [FontFeature.tabularFigures()],
-                              ),
-                            ),
-                          ),
-                        if (item.addons.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Text(
-                              'Dodatki: ${item.addons.map((a) => '${a.name.toLowerCase()} +${Fmt.price(a.priceGrosze)}').join(', ')}',
-                              style: text.bodySmall?.copyWith(
-                                color: AppColors.textMuted,
-                                fontFeatures: const [FontFeature.tabularFigures()],
-                              ),
-                            ),
-                          ),
-                        if (item.allergens.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              'Alergeny: ${item.allergens.join(', ')}',
-                              style: text.bodySmall?.copyWith(
-                                color: AppColors.textDisabled,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Text(
-                    item.variants.isEmpty
-                        ? Fmt.price(item.priceGrosze)
-                        : 'od ${Fmt.price(item.priceGrosze)}',
-                    style: text.titleSmall?.copyWith(
-                      color: item.available ? null : AppColors.textMuted,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
     );
   }
 }

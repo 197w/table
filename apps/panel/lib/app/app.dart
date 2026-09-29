@@ -16,6 +16,7 @@ import '../features/profile/profile_screen.dart';
 import '../features/reservations/reservations_screen.dart';
 import '../features/reviews/reviews_screen.dart';
 import '../features/staff/staff_screen.dart';
+import '../features/settings/settings_screen.dart';
 import '../features/stats/stats_screen.dart';
 import 'panel_theme.dart';
 import 'shell.dart';
@@ -142,6 +143,7 @@ GoRouter _buildRouter(Listenable refresh) {
           _page(PanelRoutes.profile, const ProfileScreen()),
           _page(PanelRoutes.reviews, const ReviewsScreen()),
           _page(PanelRoutes.stats, const StatsScreen()),
+          _page(PanelRoutes.settings, const SettingsScreen()),
         ],
       ),
     ],
@@ -166,26 +168,35 @@ abstract final class PanelRoutes {
   static const profile = '/lokal';
   static const reviews = '/opinie';
   static const stats = '/statystyki';
+  static const settings = '/ustawienia';
 }
 
-/// Uprawnienie potrzebne do zakładki. Null: zakładka dostępna dla każdego.
-String? permissionForRoute(String location) {
+/// Uprawnienia, z których wystarczy jedno, żeby otworzyć zakładkę. Null: zakładka dla każdego.
+Set<String>? permissionsForRoute(String location) {
   const map = {
-    PanelRoutes.reservations: 'reservations',
-    PanelRoutes.orders: 'orders',
-    PanelRoutes.kitchen: 'kitchen',
-    PanelRoutes.floor: 'floor_edit',
-    PanelRoutes.staff: 'staff',
-    PanelRoutes.profile: 'profile',
-    PanelRoutes.menu: 'menu',
-    PanelRoutes.giftCards: 'gift_cards',
-    PanelRoutes.reviews: 'reviews',
-    PanelRoutes.stats: 'stats',
+    PanelRoutes.reservations: {'reservations'},
+    PanelRoutes.orders: {'orders'},
+    PanelRoutes.kitchen: {'kitchen'},
+    PanelRoutes.floor: {'floor_edit'},
+    // Osoba tylko z uprawnieniem „Grafik” widzi w Pracownikach sam grafik.
+    PanelRoutes.staff: {'staff', 'schedule'},
+    PanelRoutes.profile: {'profile'},
+    PanelRoutes.menu: {'menu'},
+    PanelRoutes.giftCards: {'gift_cards'},
+    PanelRoutes.reviews: {'reviews'},
+    PanelRoutes.stats: {'stats'},
+    PanelRoutes.settings: {'profile'},
   };
   for (final e in map.entries) {
     if (location.startsWith(e.key)) return e.value;
   }
   return null;
+}
+
+/// Czy osoba z [permissions] może otworzyć zakładkę. Bez uprawnienia zakładki nie widać w menu.
+bool canOpenRoute(String location, Set<String> permissions) {
+  final need = permissionsForRoute(location);
+  return need == null || need.any(permissions.contains);
 }
 
 class _AuthRefresh extends ChangeNotifier {

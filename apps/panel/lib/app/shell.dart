@@ -29,7 +29,7 @@ class PanelShell extends ConsumerWidget {
       ref.watch(reservationsLiveProvider(current.id).select((s) => s.status));
     }
 
-    // Tryb obsługi bez zalogowanego pracownika: cały ekran to kod QR do zeskanowania.
+    // Zablokowane główne stanowisko bez zalogowanego pracownika: cały ekran to „Wejdź na zmianę”.
     if (current != null && ref.watch(kioskModeProvider) && ref.watch(actingMemberProvider) == null) {
       return const Scaffold(body: KioskLockScreen());
     }
@@ -83,14 +83,12 @@ class _RouteGuard extends ConsumerWidget {
     if (current == null) return child;
     final permissions = ref.watch(effectivePermissionsProvider(current.id));
     if (permissions == null) return const LoadingView();
-    final required = permissionForRoute(location);
-    if (required == null || permissions.contains(required)) return child;
+    if (canOpenRoute(location, permissions)) return child;
 
     String? first;
     for (final (_, items) in _groups) {
       for (final item in items) {
-        final need = permissionForRoute(item.route);
-        if (first == null && (need == null || permissions.contains(need))) first = item.route;
+        if (first == null && canOpenRoute(item.route, permissions)) first = item.route;
       }
     }
     if (first != null) {
@@ -106,8 +104,8 @@ class _RouteGuard extends ConsumerWidget {
       message:
           'Twoje stanowisko nie ma jeszcze żadnych uprawnień. Poproś kierownika o ich ustawienie '
           'w zakładce „Pracownicy” → „Stanowiska”.',
-      actionLabel: ref.watch(kioskModeProvider) ? 'Wyloguj' : 'Wyloguj się',
-      onAction: () => ref.watch(kioskModeProvider)
+      actionLabel: ref.watch(actingMemberProvider) != null ? 'Wyloguj' : 'Wyloguj się',
+      onAction: () => ref.read(actingMemberProvider) != null
           ? ref.read(actingMemberProvider.notifier).set(null)
           : ref.read(repositoryProvider).signOut(),
     );
@@ -136,6 +134,7 @@ const _groups = <(String, List<_NavItem>)>[
     _NavItem(PanelRoutes.profile, 'Dane lokalu', AppIcons.storefront),
     _NavItem(PanelRoutes.menu, 'Menu', AppIcons.bookOpen),
     _NavItem(PanelRoutes.giftCards, 'Karty podarunkowe', AppIcons.envelope),
+    _NavItem(PanelRoutes.settings, 'Ustawienia', AppIcons.gear),
   ]),
   ('Wyniki', [
     _NavItem(PanelRoutes.reviews, 'Opinie', AppIcons.chatCircle),
@@ -212,13 +211,11 @@ class _Sidebar extends ConsumerWidget {
     final permissions = current == null
         ? const <String>{}
         : ref.watch(effectivePermissionsProvider(current.id)) ?? const <String>{};
-    bool allowed(String route) {
-      final need = permissionForRoute(route);
-      return need == null || permissions.contains(need);
-    }
+    bool allowed(String route) => canOpenRoute(route, permissions);
 
     final kiosk = ref.watch(kioskModeProvider);
     final acting = ref.watch(actingMemberProvider);
+    final isMain = current == null ? false : ref.watch(isMainStationProvider(current.id)) ?? false;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -236,7 +233,7 @@ class _Sidebar extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 10),
-        // W trybie obsługi zamiast wyboru lokalu widać, kto jest zalogowany.
+        // Gdy na stanowisku jest zalogowany pracownik, zamiast wyboru lokalu widać, kto to.
         if (acting != null)
           _MemberCard(member: acting, width: inner, fade: fade)
         else if (current != null)
@@ -334,7 +331,7 @@ class _Sidebar extends ConsumerWidget {
           },
         ),
         if (acting != null) ...[
-          // Pracownik kończy pracę na panelu: wraca ekran z kodem QR.
+          // Wylogowanie jest ręczne. Na zablokowanym stanowisku wraca ekran „Wejdź na zmianę”.
           _IconRow(
             icon: AppIcons.timer,
             label: 'Zakończ zmianę',
@@ -352,15 +349,15 @@ class _Sidebar extends ConsumerWidget {
             onTap: () => ref.read(actingMemberProvider.notifier).set(null),
           ),
         ] else ...[
-          // Wspólny komputer w lokalu: pracownicy logują się kodem QR z aplikacji Table for workers.
-          if (!kiosk && (current?.canManage ?? false))
+          // Tylko główne stanowisko: pracownicy wchodzą na zmianę kodem QR albo loginem i hasłem.
+          if (!kiosk && isMain)
             _IconRow(
-              icon: AppIcons.lock,
-              label: 'Tryb obsługi',
+              icon: AppIcons.timer,
+              label: 'Wejdź na zmianę',
               width: inner,
               fade: fade,
               muted: true,
-              onTap: () => _startKiosk(context, ref),
+              onTap: () => ref.read(kioskModeProvider.notifier).set(true),
             ),
           _IconRow(
             icon: AppIcons.signOut,
@@ -396,18 +393,6 @@ class _Sidebar extends ConsumerWidget {
   }
 }
 
-Future<void> _startKiosk(BuildContext context, WidgetRef ref) async {
-  final ok = await confirm(
-    context,
-    title: 'Włączyć tryb obsługi?',
-    message:
-        'Panel pokaże kod QR. Pracownik skanuje go aplikacją Table for workers, zaczyna zmianę '
-        'i widzi tylko zakładki swojego stanowiska. Wyjście z trybu wymaga hasła konta restauracji.',
-    action: 'Włącz',
-  );
-  if (ok) await ref.read(kioskModeProvider.notifier).set(true);
-}
-
 Future<void> _endShift(BuildContext context, WidgetRef ref, ActingMember member) async {
   final ok = await confirm(
     context,
@@ -424,7 +409,7 @@ Future<void> _endShift(BuildContext context, WidgetRef ref, ActingMember member)
   }
 }
 
-/// Zalogowany pracownik w trybie obsługi: imię, stanowisko i od kiedy pracuje.
+/// Pracownik zalogowany na stanowisku: imię, stanowisko i od kiedy pracuje.
 class _MemberCard extends StatelessWidget {
   const _MemberCard({required this.member, required this.width, required this.fade});
 

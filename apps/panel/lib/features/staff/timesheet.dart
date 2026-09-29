@@ -19,7 +19,8 @@ String hoursText(Duration d) {
 }
 
 /// Czas pracy w tygodniu: kto jest teraz w pracy, godziny każdego dnia i lista zmian.
-/// Zmiany zaczynają się skanem kodu QR w aplikacji Table for workers, kierownik może je poprawić.
+/// Zmiany zaczynają się na głównym stanowisku (kod QR z aplikacji Table for employees albo login i hasło),
+/// kierownik może je poprawić.
 class Timesheet extends ConsumerWidget {
   const Timesheet({
     super.key,
@@ -123,7 +124,8 @@ class Timesheet extends ConsumerWidget {
                     : null,
                 child: open.isEmpty
                     ? Text(
-                        'Pracownik zaczyna zmianę, skanując kod z panelu (tryb obsługi) w aplikacji Table for workers.',
+                        'Pracownik zaczyna zmianę na głównym stanowisku („Wejdź na zmianę”): kodem QR z aplikacji '
+                        'Table for employees albo loginem i hasłem.',
                         style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
                       )
                     : Wrap(

@@ -65,6 +65,9 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
   String? _selectedKey;
   int _cursor = -1;
 
+  /// Bileciki widoczne w ostatniej klatce, w kolejności na ekranie.
+  List<KitchenTicket> _visible = const [];
+
   @override
   void initState() {
     super.initState();
@@ -132,8 +135,12 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
     setState(() {
       _lastDone = (key: ticket.key, label: label, ids: ids);
       if (_selectedKey == ticket.key) {
-        _selectedKey = null;
-        _cursor = -1;
+        // Zaznaczenie przechodzi na następny bilecik, żeby dało się zamykać je po kolei Enterem.
+        final tickets = _visible;
+        final i = tickets.indexWhere((t) => t.key == ticket.key);
+        final next = i >= 0 && i + 1 < tickets.length ? tickets[i + 1] : null;
+        _selectedKey = next?.key;
+        _cursor = next == null ? -1 : 0;
       }
     });
     await _set(restaurantId, ids, done: true);
@@ -167,6 +174,29 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
     Timer(const Duration(seconds: 8), () {
       if (mounted) setState(() => _fresh.removeAll(added));
     });
+  }
+
+  void _selectAt(String? key, int cursor) => setState(() {
+    _selectedKey = key;
+    _cursor = cursor;
+  });
+
+  /// Zaznaczenie o jedną pozycję w dół. Za ostatnią pozycją bilecika przechodzi
+  /// na pierwszą pozycję następnego bilecika. [skipDoneFrom]: właśnie zbita pozycja,
+  /// której bilecik może zaraz zniknąć, gdy była ostatnia do zrobienia.
+  void _moveDown(List<KitchenTicket> tickets, int index, {String? skipDoneFrom}) {
+    final ticket = tickets[index];
+    final last = ticket.items.length - 1;
+    // Bilecik, w którym wszystko będzie zbite, zniknie: zaznaczamy od razu następny.
+    final ticketFinishes = skipDoneFrom != null &&
+        ticket.items.every((i) => i.id == skipDoneFrom || _isDone(i) || i.status == OrderItemStatus.cancelled);
+    if (_cursor < last && !ticketFinishes) {
+      setState(() => _cursor++);
+    } else if (index + 1 < tickets.length) {
+      _selectAt(tickets[index + 1].key, 0);
+    } else if (ticketFinishes) {
+      _selectAt(null, -1);
+    }
   }
 
   /// Skróty klawiszowe działają tylko na tym ekranie, gdy ma on fokus.
@@ -210,22 +240,35 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
       if (tickets.isNotEmpty) select(index <= 0 ? tickets.length - 1 : index - 1);
       return KeyEventResult.handled;
     }
-    if (key == LogicalKeyboardKey.arrowDown || key == LogicalKeyboardKey.arrowUp) {
+    if (key == LogicalKeyboardKey.arrowDown) {
       if (selected == null) {
-        if (tickets.isNotEmpty) select(0);
+        if (tickets.isNotEmpty) _selectAt(tickets.first.key, 0);
       } else {
-        final last = selected.items.length - 1;
-        setState(() {
-          _cursor = key == LogicalKeyboardKey.arrowDown
-              ? (_cursor >= last ? 0 : _cursor + 1)
-              : (_cursor <= 0 ? last : _cursor - 1);
-        });
+        _moveDown(tickets, index);
+      }
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowUp) {
+      if (selected == null) {
+        if (tickets.isNotEmpty) _selectAt(tickets.last.key, tickets.last.items.length - 1);
+      } else if (_cursor < 0) {
+        setState(() => _cursor = selected.items.length - 1);
+      } else if (_cursor > 0) {
+        setState(() => _cursor--);
+      } else if (index > 0) {
+        // Na pierwszej pozycji strzałka w górę przechodzi na ostatnią pozycję poprzedniego bilecika.
+        final previous = tickets[index - 1];
+        _selectAt(previous.key, previous.items.length - 1);
       }
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.space) {
       if (selected != null && _cursor >= 0 && _cursor < selected.items.length) {
-        _toggle(restaurantId, selected.items[_cursor]);
+        final item = selected.items[_cursor];
+        final willBeDone = !_isDone(item) && item.status != OrderItemStatus.cancelled;
+        _toggle(restaurantId, item);
+        // Po zbiciu zaznaczenie schodzi na następną pozycję, żeby kucharz mógł zbijać po kolei.
+        if (willBeDone) _moveDown(tickets, index, skipDoneFrom: item.id);
       }
       return KeyEventResult.handled;
     }
@@ -310,6 +353,7 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
           (t) => t.items.any((i) => i.status != OrderItemStatus.cancelled && !_isDone(i)),
         )
         .toList();
+    _visible = tickets;
     final pendingItems = tickets.fold<int>(
       0,
       (sum, t) =>
@@ -728,15 +772,31 @@ class _Ticket extends StatelessWidget {
                   const SizedBox(width: 12),
                 ],
                 Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: text.headlineMedium?.copyWith(
-                      fontSize: 34,
-                      fontWeight: FontWeight.w600,
-                      color: headerFg,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.headlineMedium?.copyWith(
+                          fontSize: 34,
+                          fontWeight: FontWeight.w600,
+                          color: headerFg,
+                        ),
+                      ),
+                      // Kto nabił zamówienie, żeby kuchnia wiedziała, kogo zawołać.
+                      if (ticket.waiter case final waiter?)
+                        Text(
+                          waiter,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: text.titleMedium?.copyWith(
+                            fontSize: 20,
+                            color: headerFg.withValues(alpha: 0.8),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 Column(

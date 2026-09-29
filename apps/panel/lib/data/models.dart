@@ -1017,7 +1017,8 @@ enum StaffPermission {
   giftCards('gift_cards', 'Karty podarunkowe', 'Realizacja kart gości'),
   reviews('reviews', 'Opinie', 'Odpowiadanie na opinie'),
   stats('stats', 'Statystyki', 'Podgląd wyników lokalu'),
-  staff('staff', 'Pracownicy', 'Pracownicy, grafik i czas pracy'),
+  staff('staff', 'Pracownicy', 'Pracownicy, ich loginy, statystyki i czas pracy'),
+  schedule('schedule', 'Grafik', 'Rozpisywanie godzin pracy i odpowiedzi pracowników'),
   profile('profile', 'Dane lokalu', 'Adres, godziny otwarcia i logo');
 
   const StaffPermission(this.key, this.label, this.description, {this.soon = false});
@@ -1306,12 +1307,16 @@ class KitchenTicket {
     required this.sentAt,
     required this.items,
     this.tableId,
+    this.waiter,
   });
 
   final String orderId;
   final String? tableId;
   final DateTime sentAt;
   final List<OrderItem> items;
+
+  /// Imię i nazwisko pracownika, który nabił pozycje (kilku: po przecinku).
+  final String? waiter;
 
   /// Klucz bilecika: rachunek i chwila wysłania.
   String get key => '$orderId@${sentAt.millisecondsSinceEpoch}';
@@ -1335,6 +1340,12 @@ class KitchenTicket {
           orderId: list.first['order_id'] as String,
           tableId: (list.first['orders'] as Map<String, dynamic>?)?['table_id'] as String?,
           sentAt: _toDate(list.first['sent_at']),
+          waiter: {
+            for (final r in list)
+              if ((r['member'] as Map<String, dynamic>?)?['name'] case final String name) name,
+          }.join(', ').ifEmpty ??
+              ((list.first['orders'] as Map<String, dynamic>?)?['opener'] as Map<String, dynamic>?)?['name']
+                  as String?,
           items: list.map(OrderItem.fromJson).toList()
             ..sort((a, b) {
               final byCourse = a.course.compareTo(b.course);
@@ -1386,7 +1397,7 @@ class KitchenStats {
   }
 }
 
-/// Pracownik zalogowany na panelu kodem QR z aplikacji Table for workers.
+/// Pracownik zalogowany na głównym stanowisku kodem QR z aplikacji Table for employees albo loginem.
 /// Panel pokazuje wtedy tylko zakładki z jego uprawnień.
 class ActingMember {
   const ActingMember({
@@ -1409,6 +1420,150 @@ class ActingMember {
     position: json['position'] as String?,
     permissions: {for (final p in json['permissions'] as List? ?? const []) p.toString()},
     shiftStartedAt: _toDateOrNull(json['shift_started_at']),
+  );
+}
+
+/// Login pracownika do logowania na głównym stanowisku. Hasła panel nie zna:
+/// widać je tylko raz, przy tworzeniu albo nadaniu nowego.
+class StaffLogin {
+  const StaffLogin({required this.memberId, required this.login, this.lockedUntil});
+
+  final String memberId;
+  final String login;
+
+  /// Po kilku błędnych hasłach login jest chwilowo zablokowany.
+  final DateTime? lockedUntil;
+
+  bool get locked => lockedUntil != null && lockedUntil!.isAfter(DateTime.now());
+
+  factory StaffLogin.fromJson(Map<String, dynamic> json) => StaffLogin(
+    memberId: json['member_id'] as String,
+    login: json['login'] as String,
+    lockedUntil: _toDateOrNull(json['locked_until']),
+  );
+}
+
+/// Główne stanowisko lokalu: komputer, na którym pracownicy wchodzą na zmianę.
+class MainStation {
+  const MainStation({required this.deviceId, this.deviceName, this.setAt});
+
+  final String deviceId;
+  final String? deviceName;
+  final DateTime? setAt;
+
+  String get label => deviceName ?? 'komputer bez nazwy';
+
+  factory MainStation.fromJson(Map<String, dynamic> json) => MainStation(
+    deviceId: json['device_id'] as String,
+    deviceName: json['device_name'] as String?,
+    setAt: _toDateOrNull(json['set_at']),
+  );
+}
+
+enum PlannedShiftStatus {
+  proposed('Czeka na pracownika'),
+  accepted('Przyjęte'),
+  changed('Pracownik proponuje zmianę');
+
+  const PlannedShiftStatus(this.label);
+  final String label;
+}
+
+/// Godziny w grafiku zaproponowane pracownikowi. Pracownik przyjmuje je
+/// w aplikacji Table for employees albo proponuje inne.
+class PlannedShift {
+  const PlannedShift({
+    required this.id,
+    required this.memberId,
+    required this.day,
+    required this.starts,
+    required this.ends,
+    required this.status,
+    this.changeStarts,
+    this.changeEnds,
+    this.note,
+    this.reply,
+  });
+
+  final String id;
+  final String memberId;
+  final DateTime day;
+
+  /// Godziny jako „HH:MM”.
+  final String starts;
+  final String ends;
+  final PlannedShiftStatus status;
+  final String? changeStarts;
+  final String? changeEnds;
+  final String? note;
+  final String? reply;
+
+  static String _hm(Object? v) => (v as String).substring(0, 5);
+
+  factory PlannedShift.fromJson(Map<String, dynamic> json) => PlannedShift(
+    id: json['id'] as String,
+    memberId: json['member_id'] as String,
+    day: DateTime.parse(json['day'] as String),
+    starts: _hm(json['starts']),
+    ends: _hm(json['ends']),
+    status: PlannedShiftStatus.values.firstWhere(
+      (s) => s.name == json['status'],
+      orElse: () => PlannedShiftStatus.proposed,
+    ),
+    changeStarts: json['change_starts'] == null ? null : _hm(json['change_starts']),
+    changeEnds: json['change_ends'] == null ? null : _hm(json['change_ends']),
+    note: json['note'] as String?,
+    reply: json['reply'] as String?,
+  );
+}
+
+/// Wyniki pracownika z ostatnich dni: czas pracy i sprzedaż.
+class MemberStats {
+  const MemberStats({
+    this.seconds = 0,
+    this.shifts = 0,
+    this.weekSeconds = 0,
+    this.openSince,
+    this.lastShift,
+    this.ordersOpened = 0,
+    this.ordersClosed = 0,
+    this.revenueGrosze = 0,
+    this.items = 0,
+    this.topItems = const [],
+    this.planned = 0,
+  });
+
+  final int seconds;
+  final int shifts;
+  final int weekSeconds;
+  final DateTime? openSince;
+  final DateTime? lastShift;
+  final int ordersOpened;
+  final int ordersClosed;
+  final int revenueGrosze;
+  final int items;
+  final List<(String, int)> topItems;
+
+  /// Zaplanowane zmiany od dziś.
+  final int planned;
+
+  int get averageOrder => ordersClosed == 0 ? 0 : (revenueGrosze / ordersClosed).round();
+
+  factory MemberStats.fromJson(Map<String, dynamic> json) => MemberStats(
+    seconds: _toInt(json['seconds']),
+    shifts: _toInt(json['shifts']),
+    weekSeconds: _toInt(json['week_seconds']),
+    openSince: _toDateOrNull(json['open_since']),
+    lastShift: _toDateOrNull(json['last_shift']),
+    ordersOpened: _toInt(json['orders_opened']),
+    ordersClosed: _toInt(json['orders_closed']),
+    revenueGrosze: _toInt(json['revenue']),
+    items: _toInt(json['items']),
+    topItems: [
+      for (final t in (json['top_items'] as List? ?? const []).cast<Map<String, dynamic>>())
+        (t['name'] as String, _toInt(t['quantity'])),
+    ],
+    planned: _toInt(json['planned']),
   );
 }
 
@@ -1529,4 +1684,9 @@ class SalesStats {
       staff: [for (final s in list('staff')) (s['name'] as String, _toInt(s['revenue']), _toInt(s['orders']))],
     );
   }
+}
+
+extension _IfEmpty on String {
+  /// Pusty napis zamienia na null.
+  String? get ifEmpty => isEmpty ? null : this;
 }

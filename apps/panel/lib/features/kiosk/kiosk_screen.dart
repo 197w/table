@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:table_core/table_core.dart';
 
+import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 
@@ -16,9 +18,9 @@ const _tokenSeconds = 30;
 String _two(int n) => n.toString().padLeft(2, '0');
 String _hm(DateTime t) => '${_two(t.toLocal().hour)}:${_two(t.toLocal().minute)}';
 
-/// Ekran trybu obsługi: panel na wspólnym komputerze czeka na pracownika.
-/// Pracownik skanuje kod aplikacją Table for workers, zaczyna zmianę i panel otwiera się
-/// z zakładkami jego stanowiska.
+/// Ekran „Wejdź na zmianę” na głównym stanowisku. Pracownik skanuje kod aplikacją
+/// Table for employees albo wpisuje login i hasło. Po zalogowaniu ekran znika, a panel
+/// pokazuje zakładki jego stanowiska. Wylogowanie jest ręczne i wraca do tego ekranu.
 class KioskLockScreen extends ConsumerStatefulWidget {
   const KioskLockScreen({super.key});
 
@@ -27,71 +29,30 @@ class KioskLockScreen extends ConsumerStatefulWidget {
 }
 
 class _KioskLockScreenState extends ConsumerState<KioskLockScreen> {
-  String? _token;
-  DateTime? _issuedAt;
-  String? _problem;
-  bool _checking = false;
-  late final Timer _poll;
-  late final Timer _tick;
+  late final Timer _clock;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_newToken());
-    // Co półtorej sekundy pytamy, czy ktoś już zeskanował kod.
-    _poll = Timer.periodic(const Duration(milliseconds: 1500), (_) => _check());
-    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      final issued = _issuedAt;
-      if (issued != null && DateTime.now().difference(issued).inSeconds >= _tokenSeconds) {
-        unawaited(_newToken());
-      } else {
-        setState(() {});
-      }
+    _clock = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
     });
   }
 
   @override
   void dispose() {
-    _poll.cancel();
-    _tick.cancel();
+    _clock.cancel();
     super.dispose();
   }
 
-  Future<void> _newToken() async {
-    final restaurant = ref.read(currentRestaurantProvider);
-    if (restaurant == null) return;
-    try {
-      final token = await ref.read(repositoryProvider).newLoginToken(restaurant.id);
-      if (!mounted) return;
-      setState(() {
-        _token = token;
-        _issuedAt = DateTime.now();
-        _problem = null;
-      });
-    } catch (e) {
-      if (mounted) setState(() => _problem = errorText(e));
-    }
-  }
-
-  Future<void> _check() async {
-    final token = _token;
-    if (token == null || _checking || !mounted) return;
-    _checking = true;
-    try {
-      final member = await ref.read(repositoryProvider).loginTokenStatus(token);
-      if (member != null && mounted && _token == token) {
-        ref.read(actingMemberProvider.notifier).set(member);
-      }
-    } catch (_) {
-      // Chwilowy brak internetu: spróbujemy przy następnym sprawdzeniu.
-    } finally {
-      _checking = false;
-    }
-  }
-
   Future<void> _exit() async {
-    final ok = await showDialog<bool>(context: context, builder: (_) => const _ExitDialog());
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => const RestaurantPasswordDialog(
+        title: 'Pełny dostęp do panelu?',
+        action: 'Odblokuj',
+      ),
+    );
     if (ok == true) await ref.read(kioskModeProvider.notifier).set(false);
   }
 
@@ -109,9 +70,6 @@ class _KioskLockScreenState extends ConsumerState<KioskLockScreen> {
     final staff = ref.watch(staffProvider(restaurant.id)).value ?? const <StaffMember>[];
     final names = {for (final m in staff) m.id: m.name};
     final working = shifts.where((s) => s.isOpen).toList();
-    final left = _issuedAt == null
-        ? _tokenSeconds
-        : (_tokenSeconds - now.difference(_issuedAt!).inSeconds).clamp(0, _tokenSeconds);
 
     return ColoredBox(
       color: AppColors.background,
@@ -135,116 +93,30 @@ class _KioskLockScreenState extends ConsumerState<KioskLockScreen> {
                   ),
                 ],
               ),
-              // Instrukcja i kod blisko siebie, na środku ekranu, także na szerokim monitorze.
               Expanded(
                 child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1180),
-                    child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
+                  child: SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1080),
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Zaloguj się do pracy',
+                            'Wejdź na zmianę',
                             style: text.displaySmall?.copyWith(fontSize: 44, fontWeight: FontWeight.w600),
                           ),
-                          const SizedBox(height: 28),
-                          for (final (i, step) in const [
-                            'Otwórz aplikację Table for workers na swoim telefonie.',
-                            'Stuknij „Zeskanuj kod” i skieruj aparat na kod obok. Kod jest wspólny dla wszystkich.',
-                            'Zaczynasz zmianę. Żeby pracować na tym komputerze, stuknij „Otwórz panel”.',
-                          ].indexed)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 18),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Container(
-                                    width: 36,
-                                    height: 36,
-                                    alignment: Alignment.center,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.accentTint,
-                                      borderRadius: BorderRadius.circular(18),
-                                    ),
-                                    child: Text(
-                                      '${i + 1}',
-                                      style: text.titleMedium?.copyWith(color: AppColors.accent),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(top: 6),
-                                      child: Text(step, style: text.titleLarge?.copyWith(fontSize: 22)),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Zeskanuj kod aplikacją Table for employees na telefonie prywatnym albo służbowym '
+                            'albo wpisz swój login i hasło. Po pracy wyloguj się ręcznie.',
+                            style: text.titleMedium?.copyWith(color: AppColors.textMuted, fontSize: 18),
+                          ),
+                          const SizedBox(height: 32),
+                          StationLogin(restaurantId: restaurant.id, qrSize: 340, autofocus: true),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 48),
-                    // Kod QR na białym tle, żeby aparat telefonu łapał go także w ciemnym motywie.
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 380,
-                          height: 380,
-                          padding: const EdgeInsets.all(22),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: _token == null
-                              ? Center(
-                                  child: _problem == null
-                                      ? const CircularProgressIndicator()
-                                      : Text(
-                                          _problem!,
-                                          textAlign: TextAlign.center,
-                                          style: const TextStyle(color: Colors.black),
-                                        ),
-                                )
-                              : QrImageView(
-                                  data: 'table-praca:$_token',
-                                  padding: EdgeInsets.zero,
-                                  backgroundColor: Colors.white,
-                                  eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Colors.black),
-                                  dataModuleStyle: const QrDataModuleStyle(
-                                    dataModuleShape: QrDataModuleShape.square,
-                                    color: Colors.black,
-                                  ),
-                                ),
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: 380,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(3),
-                            child: LinearProgressIndicator(
-                              value: left / _tokenSeconds,
-                              minHeight: 6,
-                              backgroundColor: AppColors.surfaceRaised,
-                              color: AppColors.accentFill,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Nowy kod za $left s',
-                          style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
                   ),
                 ),
               ),
@@ -282,7 +154,7 @@ class _KioskLockScreenState extends ConsumerState<KioskLockScreen> {
                     onPressed: _exit,
                     style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
                     icon: const Glyph(AppIcons.lock, size: 16),
-                    label: const Text('Wyjdź z trybu obsługi'),
+                    label: const Text('Pełny dostęp'),
                   ),
                 ],
               ),
@@ -294,16 +166,349 @@ class _KioskLockScreenState extends ConsumerState<KioskLockScreen> {
   }
 }
 
-/// Wyjście z trybu obsługi wymaga hasła konta restauracji,
-/// żeby pracownik nie dostał przypadkiem pełnego dostępu.
-class _ExitDialog extends ConsumerStatefulWidget {
-  const _ExitDialog();
+/// Logowanie pracownika na głównym stanowisku: kod QR (zmienia się co 30 sekund) i obok
+/// login z hasłem. Po zalogowaniu zapisuje pracownika w [actingMemberProvider]. Na innym
+/// komputerze niż główne stanowisko pokazuje, gdzie się zalogować.
+class StationLogin extends ConsumerStatefulWidget {
+  const StationLogin({
+    super.key,
+    required this.restaurantId,
+    this.qrSize = 280,
+    this.autofocus = false,
+  });
+
+  final String restaurantId;
+  final double qrSize;
+  final bool autofocus;
 
   @override
-  ConsumerState<_ExitDialog> createState() => _ExitDialogState();
+  ConsumerState<StationLogin> createState() => _StationLoginState();
 }
 
-class _ExitDialogState extends ConsumerState<_ExitDialog> {
+class _StationLoginState extends ConsumerState<StationLogin> {
+  final _login = TextEditingController();
+  final _password = TextEditingController();
+  final _passwordFocus = FocusNode();
+  String? _token;
+  DateTime? _issuedAt;
+  String? _tokenProblem;
+  String? _formProblem;
+  bool _fetching = false;
+  bool _checking = false;
+  bool _busy = false;
+  late final Timer _poll;
+  late final Timer _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    // Co półtorej sekundy pytamy, czy ktoś już zeskanował kod.
+    _poll = Timer.periodic(const Duration(milliseconds: 1500), (_) => _check());
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      final issued = _issuedAt;
+      if (issued == null || DateTime.now().difference(issued).inSeconds >= _tokenSeconds) {
+        unawaited(_newToken());
+      } else {
+        setState(() {});
+      }
+    });
+    unawaited(_newToken());
+  }
+
+  @override
+  void dispose() {
+    _poll.cancel();
+    _tick.cancel();
+    _login.dispose();
+    _password.dispose();
+    _passwordFocus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _newToken() async {
+    if (_fetching || ref.read(isMainStationProvider(widget.restaurantId)) != true) return;
+    final device = ref.read(deviceIdProvider).value;
+    if (device == null) return;
+    _fetching = true;
+    try {
+      final token = await ref.read(repositoryProvider).newLoginToken(widget.restaurantId, device);
+      if (!mounted) return;
+      setState(() {
+        _token = token;
+        _issuedAt = DateTime.now();
+        _tokenProblem = null;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _tokenProblem = errorText(e);
+          // Ponowna próba za kilka sekund, a nie co sekundę.
+          _issuedAt = DateTime.now().subtract(const Duration(seconds: _tokenSeconds - 5));
+        });
+      }
+    } finally {
+      _fetching = false;
+    }
+  }
+
+  Future<void> _check() async {
+    final token = _token;
+    if (token == null || _checking || !mounted) return;
+    _checking = true;
+    try {
+      final member = await ref.read(repositoryProvider).loginTokenStatus(token);
+      if (member != null && mounted && _token == token) {
+        ref.read(actingMemberProvider.notifier).set(member);
+      }
+    } catch (_) {
+      // Chwilowy brak internetu: spróbujemy przy następnym sprawdzeniu.
+    } finally {
+      _checking = false;
+    }
+  }
+
+  Future<void> _submit() async {
+    final device = ref.read(deviceIdProvider).value;
+    if (_login.text.trim().isEmpty || _password.text.isEmpty) {
+      setState(() => _formProblem = 'Wpisz login i hasło.');
+      return;
+    }
+    if (device == null) return;
+    setState(() {
+      _busy = true;
+      _formProblem = null;
+    });
+    try {
+      final member = await ref.read(repositoryProvider).memberLogin(
+        restaurantId: widget.restaurantId,
+        login: _login.text,
+        password: _password.text,
+        deviceId: device,
+      );
+      if (!mounted) return;
+      ref
+        ..invalidate(shiftsProvider)
+        ..read(actingMemberProvider.notifier).set(member);
+    } catch (e) {
+      if (!mounted) return;
+      _password.clear();
+      setState(() => _formProblem = errorText(e));
+      _passwordFocus.requestFocus();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final isMain = ref.watch(isMainStationProvider(widget.restaurantId));
+    if (isMain == null) return const SizedBox(height: 200, child: LoadingView());
+    if (!isMain) {
+      return _NotMainStation(
+        station: ref.watch(mainStationProvider(widget.restaurantId)).value,
+      );
+    }
+
+    final left = _issuedAt == null
+        ? _tokenSeconds
+        : (_tokenSeconds - DateTime.now().difference(_issuedAt!).inSeconds).clamp(0, _tokenSeconds);
+
+    final qr = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Kod QR na białym tle, żeby aparat telefonu łapał go także w ciemnym motywie.
+        Container(
+          width: widget.qrSize,
+          height: widget.qrSize,
+          padding: EdgeInsets.all(widget.qrSize * 0.06),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+          ),
+          child: _token == null
+              ? Center(
+                  child: _tokenProblem == null
+                      ? const CircularProgressIndicator()
+                      : Text(
+                          _tokenProblem!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.black),
+                        ),
+                )
+              : QrImageView(
+                  data: 'table-praca:$_token',
+                  padding: EdgeInsets.zero,
+                  backgroundColor: Colors.white,
+                  eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Colors.black),
+                  dataModuleStyle: const QrDataModuleStyle(
+                    dataModuleShape: QrDataModuleShape.square,
+                    color: Colors.black,
+                  ),
+                ),
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          width: widget.qrSize,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: left / _tokenSeconds,
+              minHeight: 6,
+              backgroundColor: AppColors.surfaceRaised,
+              color: AppColors.accentFill,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Nowy kod za $left s',
+          style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+        ),
+      ],
+    );
+
+    final form = ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 360),
+      child: AutofillGroup(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Login i hasło', style: text.titleLarge),
+            const SizedBox(height: 6),
+            Text(
+              'Login i krótkie hasło daje przełożony w zakładce „Pracownicy”.',
+              style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 18),
+            TextField(
+              controller: _login,
+              autofocus: widget.autofocus,
+              autocorrect: false,
+              enableSuggestions: false,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'Login', hintText: 'np. anna.k27'),
+              onSubmitted: (_) => _passwordFocus.requestFocus(),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _password,
+              focusNode: _passwordFocus,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: InputDecoration(labelText: 'Hasło', errorText: _formProblem, errorMaxLines: 3),
+              onSubmitted: (_) => _submit(),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: _busy ? null : _submit,
+              child: _busy
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Zaloguj się'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    return LayoutBuilder(
+      builder: (context, box) {
+        // Wąskie okno: kod nad formularzem.
+        if (box.maxWidth < widget.qrSize + 460) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [qr, const SizedBox(height: 28), form],
+          );
+        }
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            qr,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 36),
+              child: Column(
+                children: [
+                  Container(width: 1, height: 90, color: AppColors.ring),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Text('albo', style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
+                  ),
+                  Container(width: 1, height: 90, color: AppColors.ring),
+                ],
+              ),
+            ),
+            Flexible(child: form),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Ten komputer nie jest głównym stanowiskiem: pracownik loguje się gdzie indziej.
+class _NotMainStation extends ConsumerWidget {
+  const _NotMainStation({required this.station});
+
+  final MainStation? station;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final canSet = ref.watch(currentRestaurantProvider)?.canManage ?? false;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 520),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Glyph(AppIcons.lock, size: 36, color: AppColors.textMuted),
+          const SizedBox(height: 14),
+          Text(
+            station == null ? 'Nie ustawiono głównego stanowiska' : 'To nie jest główne stanowisko',
+            style: text.titleLarge,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            station == null
+                ? 'Pracownicy logują się tylko na głównym stanowisku. Ustaw je w Ustawieniach '
+                    'na komputerze, przy którym obsługa nabija zamówienia.'
+                : 'Pracownicy logują się tylko na głównym stanowisku: „${station!.label}”.',
+            style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+            textAlign: TextAlign.center,
+          ),
+          if (canSet) ...[
+            const SizedBox(height: 18),
+            OutlinedButton.icon(
+              onPressed: () => context.go(PanelRoutes.settings),
+              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+              icon: const Glyph(AppIcons.gear, size: 18),
+              label: const Text('Otwórz Ustawienia'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Potwierdzenie hasłem konta restauracji, np. przed zdjęciem blokady stanowiska,
+/// żeby pracownik nie dostał przypadkiem pełnego dostępu.
+class RestaurantPasswordDialog extends ConsumerStatefulWidget {
+  const RestaurantPasswordDialog({super.key, required this.title, required this.action, this.message});
+
+  final String title;
+  final String action;
+  final String? message;
+
+  @override
+  ConsumerState<RestaurantPasswordDialog> createState() => _RestaurantPasswordDialogState();
+}
+
+class _RestaurantPasswordDialogState extends ConsumerState<RestaurantPasswordDialog> {
   final _password = TextEditingController();
   bool _busy = false;
   String? _problem;
@@ -334,13 +539,17 @@ class _ExitDialogState extends ConsumerState<_ExitDialog> {
   Widget build(BuildContext context) {
     final email = ref.watch(repositoryProvider).email;
     return AlertDialog(
-      title: const Text('Wyjść z trybu obsługi?'),
+      title: Text(widget.title),
       content: SizedBox(
         width: 400,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (widget.message != null) ...[
+              Text(widget.message!),
+              const SizedBox(height: 10),
+            ],
             Text('Wpisz hasło konta restauracji${email == null ? '' : ' ($email)'}.'),
             const SizedBox(height: 14),
             TextField(
@@ -359,7 +568,7 @@ class _ExitDialogState extends ConsumerState<_ExitDialog> {
           style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
           child: const Text('Anuluj'),
         ),
-        FilledButton(onPressed: _busy ? null : _submit, child: const Text('Wyjdź')),
+        FilledButton(onPressed: _busy ? null : _submit, child: Text(widget.action)),
       ],
     );
   }

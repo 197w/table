@@ -585,7 +585,7 @@ class PanelRepository {
     return _guard(() async {
       final rows = await _db
           .from('order_items')
-          .select('*, orders!inner(table_id, status), menu_items(show_in_kitchen)')
+          .select('*, menu_items(show_in_kitchen), member:staff_members(name), orders!inner(table_id, status, opener:staff_members!opened_by_member(name))')
           .eq('restaurant_id', restaurantId)
           .inFilter('status', ['sent', 'ready', 'cancelled'])
           .eq('orders.status', 'open')
@@ -653,11 +653,170 @@ class PanelRepository {
   // Czas pracy i logowanie pracowników kodem QR
   // -------------------------------------------------------------
 
-  /// Nowy kod QR do zeskanowania aplikacją Table for workers.
-  Future<String> newLoginToken(String restaurantId) {
+  /// Nowy kod QR do zeskanowania aplikacją Table for employees. Działa tylko na głównym stanowisku.
+  Future<String> newLoginToken(String restaurantId, String deviceId) {
     return _guard(
-      () => _db.rpc<String>('panel_new_login_token', params: {'p_restaurant_id': restaurantId}),
+      () => _db.rpc<String>(
+        'panel_new_login_token',
+        params: {'p_restaurant_id': restaurantId, 'p_device': deviceId},
+      ),
     );
+  }
+
+  /// Logowanie pracownika na głównym stanowisku loginem i hasłem. Zaczyna jego zmianę.
+  Future<ActingMember> memberLogin({
+    required String restaurantId,
+    required String login,
+    required String password,
+    required String deviceId,
+  }) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>(
+        'panel_member_login',
+        params: {
+          'p_restaurant_id': restaurantId,
+          'p_login': login,
+          'p_password': password,
+          'p_device': deviceId,
+        },
+      );
+      if (json['error'] case final String problem) throw AppFailure(problem);
+      return ActingMember.fromJson(json);
+    });
+  }
+
+  /// Główne stanowisko lokalu albo null, gdy nie jest ustawione.
+  Future<MainStation?> mainStation(String restaurantId) {
+    return _guard(() async {
+      final row = await _db
+          .from('main_stations')
+          .select('device_id, device_name, set_at')
+          .eq('restaurant_id', restaurantId)
+          .maybeSingle();
+      return row == null ? null : MainStation.fromJson(row);
+    });
+  }
+
+  /// Włącza albo wyłącza główne stanowisko na tym komputerze. [force]: przejęcie
+  /// stanowiska z komputera, który nie działa (tylko właściciel, po haśle).
+  Future<void> setMainStation({
+    required String restaurantId,
+    required String deviceId,
+    required String deviceName,
+    required bool enable,
+    bool force = false,
+  }) {
+    return _guard(
+      () => _db.rpc<void>('panel_set_main_station', params: {
+        'p_restaurant_id': restaurantId,
+        'p_device': deviceId,
+        'p_name': deviceName,
+        'p_enable': enable,
+        'p_force': force,
+      }),
+    );
+  }
+
+  // -------------------------------------------------------------
+  // Loginy pracowników, grafik i statystyki pracownika
+  // -------------------------------------------------------------
+
+  /// Loginy pracowników lokalu według numeru pracownika.
+  Future<Map<String, StaffLogin>> staffLogins(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db
+          .from('staff_accounts')
+          .select('member_id, login, locked_until')
+          .eq('restaurant_id', restaurantId);
+      return {for (final r in rows) r['member_id'] as String: StaffLogin.fromJson(r)};
+    });
+  }
+
+  /// Nowy login i krótkie hasło. Hasło wraca tylko tutaj, baza trzyma jego skrót.
+  Future<({String login, String password})> createStaffLogin(String memberId) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>(
+        'panel_create_staff_login',
+        params: {'p_member_id': memberId},
+      );
+      return (login: json['login'] as String, password: json['password'] as String);
+    });
+  }
+
+  /// Nowe hasło pracownika (stare przestaje działać).
+  Future<String> resetStaffPassword(String memberId) {
+    return _guard(
+      () => _db.rpc<String>('panel_reset_staff_password', params: {'p_member_id': memberId}),
+    );
+  }
+
+  Future<List<PlannedShift>> plannedShifts(String restaurantId, {required DateTime from, required DateTime to}) {
+    return _guard(() async {
+      final rows = await _db
+          .from('staff_schedule')
+          .select()
+          .eq('restaurant_id', restaurantId)
+          .gte('day', _isoDay(from))
+          .lt('day', _isoDay(to))
+          .order('day')
+          .order('starts');
+      return rows.map(PlannedShift.fromJson).toList();
+    });
+  }
+
+  /// Grafik na żywo: odpowiedź pracownika z aplikacji od razu widać w panelu.
+  void Function() watchSchedule(String restaurantId, void Function() onChange) {
+    final channel = _db
+        .channel('panel-grafik-$restaurantId-${_channelSeq++}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'staff_schedule',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'restaurant_id',
+            value: restaurantId,
+          ),
+          callback: (_) => onChange(),
+        )
+        .subscribe();
+    return () => _db.removeChannel(channel);
+  }
+
+  Future<void> planShift({
+    required String memberId,
+    required DateTime day,
+    required String starts,
+    required String ends,
+    String? note,
+  }) {
+    return _guard(
+      () => _db.rpc<void>('panel_plan_shift', params: {
+        'p_member_id': memberId,
+        'p_day': _isoDay(day),
+        'p_starts': starts,
+        'p_ends': ends,
+        'p_note': note,
+      }),
+    );
+  }
+
+  Future<void> acceptShiftChange(String id) {
+    return _guard(() => _db.rpc<void>('panel_accept_shift_change', params: {'p_id': id}));
+  }
+
+  Future<void> deletePlannedShift(String id) {
+    return _guard(() => _db.rpc<void>('panel_delete_planned_shift', params: {'p_id': id}));
+  }
+
+  Future<MemberStats> memberStats(String memberId, int days) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>(
+        'panel_member_stats',
+        params: {'p_member_id': memberId, 'p_days': days},
+      );
+      return MemberStats.fromJson(json);
+    });
   }
 
   /// Pracownik, który zeskanował kod, albo null, gdy jeszcze nikt.
@@ -962,7 +1121,8 @@ class PanelRepository {
     });
   }
 
-  Future<void> saveStaffMember({
+  /// Zapisuje pracownika i zwraca jego numer (nowy przy dodaniu).
+  Future<String> saveStaffMember({
     required String restaurantId,
     String? id,
     required String firstName,
@@ -984,11 +1144,14 @@ class PanelRepository {
       'color': color,
       'active': active,
     };
-    return _guard(
-      () => id == null
-          ? _db.from('staff_members').insert(row)
-          : _db.from('staff_members').update(row).eq('id', id),
-    );
+    return _guard(() async {
+      if (id != null) {
+        await _db.from('staff_members').update(row).eq('id', id);
+        return id;
+      }
+      final created = await _db.from('staff_members').insert(row).select('id').single();
+      return created['id'] as String;
+    });
   }
 
   Future<void> deleteStaffMember(String id) {
@@ -1185,3 +1348,7 @@ class PanelRepository {
     return 'Nie udało się zalogować. Spróbuj ponownie.';
   }
 }
+
+/// Dzień jako „RRRR-MM-DD” dla kolumn typu date.
+String _isoDay(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';

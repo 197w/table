@@ -7,6 +7,7 @@ import 'package:table_core/table_core.dart';
 
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../kiosk/kiosk_screen.dart';
 import '../../shared/panel_widgets.dart';
 import '../floor/floor_canvas.dart';
 
@@ -262,6 +263,28 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         children: [
           PageHeader(title: 'Zamówienia'),
           Expanded(child: ProGate(feature: 'Zamówienia przy stoliku')),
+        ],
+      );
+    }
+
+    // Zamówienie nabija zawsze zalogowany pracownik: kodem QR z aplikacji albo loginem i hasłem
+    // na głównym stanowisku. Wylogowanie jest ręczne (boczne menu).
+    if (ref.watch(actingMemberProvider) == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const PageHeader(
+            title: 'Zamówienia',
+            subtitle: 'Zaloguj się jako pracownik, żeby nabijać zamówienia. Po pracy wyloguj się ręcznie.',
+          ),
+          Expanded(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
+                child: StationLogin(restaurantId: restaurant.id, autofocus: true),
+              ),
+            ),
+          ),
         ],
       );
     }

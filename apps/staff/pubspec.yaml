@@ -1,5 +1,5 @@
 name: table_staff
-description: "Table for workers: aplikacja dla pracowników lokalu (czas pracy, logowanie do panelu kodem QR)."
+description: "Table for employees: aplikacja dla pracowników lokalu (czas pracy, logowanie do panelu kodem QR)."
 publish_to: "none"
 version: 0.1.0+1
 resolution: workspace

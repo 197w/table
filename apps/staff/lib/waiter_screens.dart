@@ -235,6 +235,8 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
   Future<void> _close(WOrder order) async {
     final method = await showModalBottomSheet<WPayment>(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       builder: (context) => _CloseSheet(total: order.total),
     );
@@ -465,7 +467,7 @@ class _CloseSheetState extends State<_CloseSheet> {
     final received = double.tryParse(digits);
     final change = received == null ? null : (received * 100).round() - widget.total;
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
+      padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + _bottomInset(context)),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -562,6 +564,7 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
       final picked = await showModalBottomSheet<_Choice>(
         context: context,
         isScrollControlled: true,
+        useSafeArea: true,
         showDragHandle: true,
         builder: (_) => _OptionsSheet(item: item),
       );
@@ -782,7 +785,7 @@ class _OptionsSheetState extends State<_OptionsSheet> {
     final item = widget.item;
     final needsVariant = item.variants.isNotEmpty && _variant == null;
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
+      padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + _bottomInset(context)),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -867,4 +870,12 @@ class _OptionsSheetState extends State<_OptionsSheet> {
       ),
     );
   }
+}
+
+/// Odstęp od dołu ekranu dla okien wysuwanych z dołu: klawiatura albo przyciski systemu
+/// Androida (aplikacja rysuje się pod nimi), zależnie od tego, co jest wyżej.
+double _bottomInset(BuildContext context) {
+  final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+  final system = MediaQuery.viewPaddingOf(context).bottom;
+  return keyboard > system ? keyboard : system;
 }

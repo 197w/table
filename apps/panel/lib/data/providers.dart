@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -563,11 +565,88 @@ final orderHistoryProvider = FutureProvider.autoDispose.family<List<PanelOrder>,
 );
 
 // ---------------------------------------------------------------
-// Tryb obsługi: panel na wspólnym komputerze, pracownicy logują się kodem QR
+// Główne stanowisko i „Wejdź na zmianę”: pracownicy logują się kodem QR albo loginem
 // ---------------------------------------------------------------
 
-/// Tryb obsługi włączony na tym komputerze. Panel pokazuje wtedy ekran z kodem QR,
-/// a po zeskanowaniu tylko zakładki pracownika. Wybór pamiętamy na komputerze.
+/// Stały identyfikator tej instalacji panelu. Po nim baza rozpoznaje główne stanowisko.
+final deviceIdProvider = FutureProvider<String>((ref) async {
+  const key = 'panel_stanowisko_id';
+  try {
+    final prefs = SharedPreferencesAsync();
+    final saved = await prefs.getString(key);
+    if (saved != null && saved.length >= 16) return saved;
+    final random = Random.secure();
+    final id = List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+    await prefs.setString(key, id);
+    return id;
+  } catch (_) {
+    // Bez zapisu na dysku komputer nie może być głównym stanowiskiem.
+    return 'bez-zapisu';
+  }
+});
+
+/// Nazwa komputera, np. „KASA-1”. Pokazujemy ją, żeby było wiadomo, gdzie jest główne stanowisko.
+final deviceNameProvider = Provider<String>((ref) {
+  try {
+    return Platform.localHostname;
+  } catch (_) {
+    return 'Komputer';
+  }
+});
+
+final mainStationProvider = FutureProvider.autoDispose.family<MainStation?, String>((ref, id) {
+  ref.cacheFor(const Duration(minutes: 30));
+  return ref.watch(repositoryProvider).mainStation(id);
+});
+
+/// Czy ten komputer jest głównym stanowiskiem lokalu. Null, dopóki się nie wczyta.
+final isMainStationProvider = Provider.autoDispose.family<bool?, String>((ref, id) {
+  final station = ref.watch(mainStationProvider(id));
+  final device = ref.watch(deviceIdProvider);
+  if (!station.hasValue || !device.hasValue) return null;
+  return station.value != null && station.value!.deviceId == device.value;
+});
+
+final staffLoginsProvider = FutureProvider.autoDispose
+    .family<Map<String, StaffLogin>, String>(
+      (ref, id) => (ref..cacheFor()).watch(repositoryProvider).staffLogins(id),
+    );
+
+/// Grafik na żywo: przyjęcie albo zmiana godzin w aplikacji od razu widać w panelu.
+class ScheduleLive extends Notifier<int> {
+  ScheduleLive(this.restaurantId);
+
+  final String restaurantId;
+
+  @override
+  int build() {
+    final stop = ref.watch(repositoryProvider).watchSchedule(restaurantId, () => state++);
+    ref.onDispose(stop);
+    return 0;
+  }
+}
+
+final scheduleLiveProvider = NotifierProvider.autoDispose.family<ScheduleLive, int, String>(ScheduleLive.new);
+
+final plannedShiftsProvider = FutureProvider.autoDispose.family<List<PlannedShift>, WeekQuery>((ref, q) {
+  ref.cacheFor();
+  ref.watch(scheduleLiveProvider(q.restaurantId));
+  return ref.watch(repositoryProvider).plannedShifts(
+    q.restaurantId,
+    from: q.weekStart,
+    to: DateTime(q.weekStart.year, q.weekStart.month, q.weekStart.day + 7),
+  );
+});
+
+typedef MemberStatsQuery = ({String memberId, int days});
+
+final memberStatsProvider = FutureProvider.autoDispose.family<MemberStats, MemberStatsQuery>((ref, q) {
+  ref.cacheFor();
+  return ref.watch(repositoryProvider).memberStats(q.memberId, q.days);
+});
+
+/// Blokada głównego stanowiska: bez zalogowanego pracownika panel pokazuje ekran
+/// „Wejdź na zmianę”. Zdjęcie blokady wymaga hasła konta restauracji. Stan pamiętamy na komputerze.
 class KioskModeNotifier extends Notifier<bool> {
   static const _key = 'panel_tryb_obslugi';
 
@@ -599,7 +678,8 @@ class KioskModeNotifier extends Notifier<bool> {
 
 final kioskModeProvider = NotifierProvider<KioskModeNotifier, bool>(KioskModeNotifier.new);
 
-/// Pracownik zalogowany teraz na panelu kodem QR. Null: ekran z kodem albo zwykły tryb.
+/// Pracownik zalogowany teraz na panelu (kod QR albo login i hasło). Null: nikt.
+/// Wylogowanie jest ręczne.
 class ActingMemberNotifier extends Notifier<ActingMember?> {
   @override
   ActingMember? build() => null;
@@ -611,18 +691,18 @@ final actingMemberProvider = NotifierProvider<ActingMemberNotifier, ActingMember
   ActingMemberNotifier.new,
 );
 
-/// Uprawnienia, według których panel pokazuje zakładki. W trybie obsługi są to uprawnienia
-/// zalogowanego pracownika, poza nim uprawnienia konta (kierownik i właściciel mają wszystkie).
+/// Uprawnienia, według których panel pokazuje zakładki. Gdy na stanowisku jest zalogowany pracownik,
+/// są to uprawnienia jego stanowiska. Zablokowane stanowisko bez pracownika nie ma żadnych.
+/// Poza tym uprawnienia konta (kierownik i właściciel mają wszystkie).
 final effectivePermissionsProvider = Provider.autoDispose.family<Set<String>?, String>((ref, id) {
-  if (ref.watch(kioskModeProvider)) {
-    return ref.watch(actingMemberProvider)?.permissions ?? const {};
-  }
+  if (ref.watch(actingMemberProvider) case final member?) return member.permissions;
+  if (ref.watch(kioskModeProvider)) return const {};
   return ref.watch(myPermissionsProvider(id)).value;
 });
 
 typedef ShiftQuery = ({String restaurantId, DateTime from, DateTime to});
 
-/// Zmiany na żywo: skan w aplikacji Table for workers od razu widać w panelu.
+/// Zmiany na żywo: skan w aplikacji Table for employees od razu widać w panelu.
 class ShiftsLive extends Notifier<int> {
   ShiftsLive(this.restaurantId);
 
