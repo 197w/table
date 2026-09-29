@@ -559,9 +559,13 @@ class RestaurantProfile {
     required this.hours,
     this.description,
     this.logoUrl,
+    this.schedulePeriod = 'week',
   });
 
   final String? logoUrl;
+
+  /// Na jaki okres pracownicy zgłaszają godziny: week, two_weeks albo month.
+  final String schedulePeriod;
 
   final String id;
   final String name;
@@ -596,6 +600,7 @@ class RestaurantProfile {
       priceLevel: _toInt(json['price_level'], 2),
       hours: hours,
       logoUrl: json['logo_url'] as String?,
+      schedulePeriod: json['schedule_period'] as String? ?? 'week',
     );
   }
 }

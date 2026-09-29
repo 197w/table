@@ -108,16 +108,18 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
                       constraints: const BoxConstraints(maxWidth: 1080),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Text(
                             'Wejdź na zmianę',
+                            textAlign: TextAlign.center,
                             style: text.displaySmall?.copyWith(fontSize: 44, fontWeight: FontWeight.w600),
                           ),
                           const SizedBox(height: 10),
                           Text(
                             'Zeskanuj kod aplikacją Table for employees na telefonie prywatnym albo służbowym '
                             'albo wpisz swój czterocyfrowy kod. Zmiana zacznie się od razu.',
+                            textAlign: TextAlign.center,
                             style: text.titleMedium?.copyWith(color: AppColors.textMuted, fontSize: 18),
                           ),
                           const SizedBox(height: 32),

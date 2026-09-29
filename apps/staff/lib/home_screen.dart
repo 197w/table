@@ -113,7 +113,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final jobs = ref.watch(jobsProvider);
-    final shifts = ref.watch(shiftsProvider).value ?? const <Shift>[];
     final codes = ref.watch(codesProvider).value ?? const <String, String>{};
     final phone = ref.watch(staffRepositoryProvider).phone;
 
@@ -170,8 +169,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 28),
-                _History(shifts: shifts),
               ],
             ],
           ),
@@ -261,54 +258,3 @@ class _JobCard extends StatelessWidget {
 }
 
 /// Moje zmiany z ostatniego miesiąca, dzień po dniu, z sumą.
-class _History extends StatelessWidget {
-  const _History({required this.shifts});
-
-  final List<Shift> shifts;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final total = shifts.fold(Duration.zero, (sum, s) => sum + s.duration);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(child: Text('Moje godziny', style: text.titleMedium)),
-            Text(
-              '31 dni: ${_hours(total)} h',
-              style: text.titleSmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        if (shifts.isEmpty)
-          Text('Tu pojawią się Twoje zmiany.', style: text.bodyMedium?.copyWith(color: AppColors.textMuted))
-        else
-          for (final s in shifts)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.ring))),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(Fmt.capitalize(Fmt.dayShort(s.startedAt)), style: text.bodyLarge),
-                        Text(
-                          '${s.restaurantName} · ${_hm(s.startedAt)}–${s.endedAt == null ? 'trwa' : _hm(s.endedAt!)}',
-                          style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Text('${_hours(s.duration)} h', style: text.titleSmall?.copyWith(fontFeatures: _tabular)),
-                ],
-              ),
-            ),
-      ],
-    );
-  }
-}

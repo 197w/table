@@ -135,13 +135,14 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
     return few ? 'są jeszcze $phrase' : 'jest jeszcze $phrase';
   }
 
-  Future<void> _create(String restaurantId, ReservationSource source) async {
+  Future<void> _create(String restaurantId, ReservationSource source, {Set<String> tableIds = const {}}) async {
     final id = await showDialog<String>(
       context: context,
       builder: (_) => NewReservationDialog(
         restaurantId: restaurantId,
         source: source,
         day: ref.read(selectedDayProvider),
+        tableIds: tableIds,
       ),
     );
     if (id != null && mounted) {
@@ -373,6 +374,7 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                         onGroup: (g) => setState(() => _group = g),
                         onSelectReservation: (id) => setState(() => _selectedId = id),
                         onToggleTable: (table) => _toggleTable(restaurant.id, query, table),
+                        onReserve: (table) => _create(restaurant.id, ReservationSource.phone, tableIds: {?table.id}),
                         orders: ref.watch(canTakeOrdersProvider(restaurant.id))
                             ? ref.watch(openOrdersProvider(restaurant.id)).value ?? const []
                             : null,
@@ -1247,6 +1249,7 @@ class _PlanPanel extends StatefulWidget {
     required this.onGroup,
     required this.onSelectReservation,
     required this.onToggleTable,
+    required this.onReserve,
     required this.orders,
     required this.onOrder,
   });
@@ -1266,6 +1269,9 @@ class _PlanPanel extends StatefulWidget {
   final ValueChanged<String?> onGroup;
   final ValueChanged<String> onSelectReservation;
   final ValueChanged<DiningTable> onToggleTable;
+
+  /// Nowa rezerwacja z tym stolikiem.
+  final ValueChanged<DiningTable> onReserve;
 
   /// Otwarte rachunki. Null, gdy konto nie ma uprawnienia do zamówień.
   final List<PanelOrder>? orders;
@@ -1455,6 +1461,10 @@ class _PlanPanelState extends State<_PlanPanel> {
                             _close();
                             w.onToggleTable(menu.table);
                           },
+                          onReserve: () {
+                            _close();
+                            w.onReserve(menu.table);
+                          },
                         ),
                       ),
                     ),
@@ -1517,6 +1527,7 @@ class _TableMenu extends StatelessWidget {
     required this.onShow,
     required this.onOrder,
     required this.onToggle,
+    required this.onReserve,
   });
 
   /// Obszar planu sali: kliknięcia w nim nie zamykają menu, robi to sam plan.
@@ -1529,6 +1540,7 @@ class _TableMenu extends StatelessWidget {
   final ValueChanged<PanelReservation> onShow;
   final VoidCallback onOrder;
   final VoidCallback onToggle;
+  final VoidCallback onReserve;
 
   @override
   Widget build(BuildContext context) {
@@ -1587,6 +1599,12 @@ class _TableMenu extends StatelessWidget {
                         icon: AppIcons.calendarCheck,
                         label: '${reservation.guestName}, ${Fmt.time(reservation.startsAt)}',
                         onTap: () => onShow(reservation),
+                      ),
+                    if (table.active)
+                      _MenuRow(
+                        icon: AppIcons.calendarPlus,
+                        label: 'Nowa rezerwacja',
+                        onTap: onReserve,
                       ),
                     if (canOrder)
                       _MenuRow(

@@ -153,6 +153,8 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                 ),
           actions: [
             if (tab == 0) ...[
+              const _ViewToggle(),
+              const SizedBox(width: 8),
               if (canPositions)
                 OutlinedButton.icon(
                   onPressed: () => showDialog<void>(
@@ -359,6 +361,211 @@ class _Legend extends StatelessWidget {
 // Zespół: kafelki pracowników
 // ---------------------------------------------------------------
 
+/// Zespół jako kafelki albo lista. Wybór trwa do zamknięcia panelu.
+class TeamAsListNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void set(bool value) => state = value;
+}
+
+final teamAsListProvider = NotifierProvider<TeamAsListNotifier, bool>(TeamAsListNotifier.new);
+
+/// Ikony „Kafelki” i „Lista” nad zespołem.
+class _ViewToggle extends ConsumerWidget {
+  const _ViewToggle();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final asList = ref.watch(teamAsListProvider);
+    Widget option(bool list, AppIconData icon, String label) {
+      final selected = asList == list;
+      return Tooltip(
+        message: label,
+        child: Material(
+          color: selected ? AppColors.surface : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => ref.read(teamAsListProvider.notifier).set(list),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Glyph(icon, size: 18, color: selected ? AppColors.accent : AppColors.textMuted),
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: selected ? AppColors.text : AppColors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.ring),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          option(false, AppIcons.squaresFour, 'Kafelki'),
+          option(true, AppIcons.list, 'Lista'),
+        ],
+      ),
+    );
+  }
+}
+
+/// Zespół jako lista: jeden wiersz na pracownika.
+class _TeamList extends StatelessWidget {
+  const _TeamList({
+    required this.members,
+    required this.positionNames,
+    required this.codes,
+    required this.showCodes,
+    required this.working,
+    required this.shifts,
+    required this.onOpen,
+    required this.onAdd,
+  });
+
+  final List<StaffMember> members;
+  final Map<String, String> positionNames;
+  final Map<String, String> codes;
+  final bool showCodes;
+  final Map<String, DateTime> working;
+  final List<StaffShift> shifts;
+  final ValueChanged<StaffMember>? onOpen;
+  final VoidCallback? onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    Widget header(String label, {int flex = 1, TextAlign align = TextAlign.left}) => Expanded(
+      flex: flex,
+      child: Text(
+        label,
+        textAlign: align,
+        style: text.labelMedium?.copyWith(color: AppColors.textMuted),
+      ),
+    );
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: Row(
+              children: [
+                const SizedBox(width: 52),
+                header('Pracownik', flex: 3),
+                header('Stanowisko', flex: 2),
+                header('Teraz', flex: 2),
+                header('Ten tydzień', align: TextAlign.right),
+                if (showCodes) header('Kod', align: TextAlign.right),
+                const SizedBox(width: 30),
+              ],
+            ),
+          ),
+          for (final m in members) ...[
+            Divider(height: 1, color: AppColors.ring),
+            InkWell(
+              onTap: onOpen == null ? null : () => onOpen!(m),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: Row(
+                  children: [
+                    _Avatar(
+                      name: m.name,
+                      color: staffColors[m.color % staffColors.length],
+                      size: 38,
+                      dimmed: !m.active,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      flex: 3,
+                      child: Text(
+                        m.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.titleSmall?.copyWith(color: m.active ? AppColors.text : AppColors.textMuted),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        [?(positionNames[m.positionId] ?? m.position), if (!m.active) 'nieaktywny'].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: working[m.id] == null
+                            ? Text('poza pracą', style: text.bodyMedium?.copyWith(color: AppColors.textMuted))
+                            : _Pill(icon: AppIcons.timer, text: 'od ${_hm(working[m.id]!)}', color: AppColors.accent),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        '${hoursText(shifts.where((s) => s.memberId == m.id).fold(Duration.zero, (sum, s) => sum + s.duration))} h',
+                        textAlign: TextAlign.right,
+                        style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
+                      ),
+                    ),
+                    if (showCodes)
+                      Expanded(
+                        child: Text(
+                          codes[m.id] ?? '…',
+                          textAlign: TextAlign.right,
+                          style: text.titleSmall?.copyWith(fontFeatures: _tabular, letterSpacing: 2),
+                        ),
+                      ),
+                    const SizedBox(width: 8),
+                    Glyph(AppIcons.caretRight, size: 14, color: AppColors.textDisabled),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          if (onAdd != null) ...[
+            Divider(height: 1, color: AppColors.ring),
+            InkWell(
+              onTap: onAdd,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Row(
+                  children: [
+                    Glyph(AppIcons.plus, size: 18, color: AppColors.accent),
+                    const SizedBox(width: 10),
+                    Text('Dodaj pracownika', style: text.titleSmall?.copyWith(color: AppColors.accent)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _TeamGrid extends ConsumerWidget {
   const _TeamGrid({
     required this.restaurantId,
@@ -398,6 +605,18 @@ class _TeamGrid extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (ref.watch(teamAsListProvider))
+            _TeamList(
+              members: members,
+              positionNames: positionNames,
+              codes: codes,
+              showCodes: showLogins,
+              working: working,
+              shifts: shifts,
+              onOpen: onOpen,
+              onAdd: onAdd,
+            )
+          else
           LayoutBuilder(
             builder: (context, box) {
               const gap = 14.0;

@@ -302,7 +302,7 @@ class PanelRepository {
           .from('restaurants')
           .select(
             'id, name, cuisine, description, address, city, phone, slot_interval_min, max_party_size, price_level, logo_url, '
-            'opening_hours(weekday, opens, closes)',
+            'schedule_period, opening_hours(weekday, opens, closes)',
           )
           .eq('id', restaurantId)
           .single();

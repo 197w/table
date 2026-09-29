@@ -23,6 +23,7 @@ class Job {
     required this.restaurantName,
     required this.memberName,
     required this.weekSeconds,
+    this.schedulePeriod = 'week',
     this.permissions = const {},
     this.position,
     this.shiftStartedAt,
@@ -45,6 +46,9 @@ class Job {
   /// Przepracowane sekundy w tym tygodniu (z trwającą zmianą).
   final int weekSeconds;
 
+  /// Okres grafiku ustawiony przez lokal w „Dane lokalu”: week, two_weeks albo month.
+  final String schedulePeriod;
+
   bool get working => shiftStartedAt != null;
 
   factory Job.fromJson(Map<String, dynamic> j) => Job(
@@ -56,6 +60,7 @@ class Job {
     permissions: {for (final p in j['permissions'] as List? ?? const []) p.toString()},
     shiftStartedAt: _date(j['shift_started_at']),
     weekSeconds: _toInt(j['week_seconds']),
+    schedulePeriod: j['schedule_period'] as String? ?? 'week',
   );
 }
 
@@ -281,14 +286,12 @@ final jobsProvider = FutureProvider.autoDispose<List<Job>>((ref) {
   return ref.watch(staffRepositoryProvider).jobs();
 });
 
-/// Grafik miesiąca w kalendarzu (z dniami sąsiednich miesięcy widocznymi w siatce).
-final scheduleMonthProvider = FutureProvider.autoDispose.family<List<PlannedShift>, DateTime>((ref, month) {
-  if (ref.watch(sessionProvider) == null) return Future.value(const []);
-  return ref.watch(staffRepositoryProvider).schedule(
-    from: DateTime(month.year, month.month, 1).subtract(const Duration(days: 7)),
-    to: DateTime(month.year, month.month + 1, 7),
-  );
-});
+/// Mój grafik w okresie lokalu (tydzień, 2 tygodnie albo miesiąc), od pierwszego do ostatniego dnia.
+final schedulePeriodProvider = FutureProvider.autoDispose
+    .family<List<PlannedShift>, ({DateTime from, DateTime to})>((ref, period) {
+      if (ref.watch(sessionProvider) == null) return Future.value(const []);
+      return ref.watch(staffRepositoryProvider).schedule(from: period.from, to: period.to);
+    });
 
 final codesProvider = FutureProvider.autoDispose<Map<String, String>>((ref) {
   if (ref.watch(sessionProvider) == null) return Future.value(const {});

@@ -107,7 +107,7 @@ class SettingsScreen extends ConsumerWidget {
                       ..invalidate(jobsProvider)
                       ..invalidate(shiftsProvider)
                       ..invalidate(codesProvider)
-                      ..invalidate(scheduleMonthProvider);
+                      ..invalidate(schedulePeriodProvider);
                     showMessage(context, 'Odświeżono.');
                   },
                 ),

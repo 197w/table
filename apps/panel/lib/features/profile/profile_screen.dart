@@ -82,6 +82,8 @@ class ProfileScreen extends ConsumerWidget {
                           profile: profile,
                           editable: restaurant.canManage,
                         ),
+                        const SizedBox(height: 20),
+                        _SchedulePeriodCard(profile: profile, editable: restaurant.canManage),
                       ],
                     ),
                   ),
@@ -916,6 +918,63 @@ class _LogoCardState extends ConsumerState<_LogoCard> {
                   ),
                 ],
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Okres grafiku: na tydzień, 2 tygodnie albo miesiąc pracownicy zgłaszają godziny
+/// w aplikacji Table for employees.
+class _SchedulePeriodCard extends ConsumerStatefulWidget {
+  const _SchedulePeriodCard({required this.profile, required this.editable});
+
+  final RestaurantProfile profile;
+  final bool editable;
+
+  @override
+  ConsumerState<_SchedulePeriodCard> createState() => _SchedulePeriodCardState();
+}
+
+class _SchedulePeriodCardState extends ConsumerState<_SchedulePeriodCard> {
+  bool _busy = false;
+
+  Future<void> _set(String period) async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(repositoryProvider).updateProfile(widget.profile.id, {'schedule_period': period});
+      ref.invalidate(profileProvider(widget.profile.id));
+      if (mounted) showMessage(context, 'Okres grafiku zapisany.');
+    } catch (e) {
+      if (mounted) showMessage(context, errorText(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return PanelCard(
+      title: 'Grafik pracowników',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Na jaki okres pracownicy zgłaszają w aplikacji Table for employees, od której do której mogą pracować.',
+            style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 12),
+          IgnorePointer(
+            ignoring: !widget.editable || _busy,
+            child: SegmentedTabs<String>(
+              options: const [('week', 'Tydzień'), ('two_weeks', '2 tygodnie'), ('month', 'Miesiąc')],
+              selected: widget.profile.schedulePeriod,
+              onChanged: (v) {
+                if (v != widget.profile.schedulePeriod) _set(v);
+              },
             ),
           ),
         ],

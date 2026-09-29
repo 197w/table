@@ -46,7 +46,6 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
 
   // Podgląd na żywo: godzina, dla której pokazujemy zajętość.
   DateTime _now = DateTime.now();
-  int? _minuteOfDay;
   Timer? _clock;
 
   // Edycja: kopia robocza układu.
@@ -144,12 +143,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     super.dispose();
   }
 
-  DateTime get _viewTime {
-    final m = _minuteOfDay;
-    if (m == null) return _now;
-    final d = dateOnly(_now);
-    return DateTime(d.year, d.month, d.day, m ~/ 60, m % 60);
-  }
+  DateTime get _viewTime => _now;
 
   void _startEditing(
     List<FloorZone> zones,
@@ -538,7 +532,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
           title: 'Edycja sali',
           subtitle: editing
               ? 'Przeciągaj stoliki, krzesła i stałe elementy. Ctrl+C i Ctrl+V kopiują, Ctrl+Z cofa (na Macu Cmd).'
-              : 'Zajętość stolików ${_minuteOfDay == null ? 'teraz' : 'dziś o ${Fmt.time(_viewTime)}'}. Odświeża się sama.',
+              : 'Zajętość stolików teraz. Odświeża się sama.',
           actions: [
             if (!editing && restaurant.canManage)
               OutlinedButton.icon(
@@ -583,10 +577,6 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
                 ),
               ],
               const Spacer(),
-              if (!editing) _TimeControl(
-                minuteOfDay: _minuteOfDay,
-                onChanged: (m) => setState(() => _minuteOfDay = m),
-              ),
               if (editing && zoneList.isNotEmpty) ...[
                 OutlinedButton.icon(
                   onPressed: () => _addElement(_currentZone(zoneList)),
@@ -758,7 +748,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
   }
 
   TableLook _liveLook(DiningTable t, List<PanelReservation> reservations) =>
-      liveTableLook(t, reservations, _viewTime, seatedCountsNow: _minuteOfDay == null);
+      liveTableLook(t, reservations, _viewTime, seatedCountsNow: true);
 
   Widget _livePanel(List<DiningTable> tables, List<PanelReservation> reservations) {
     final text = Theme.of(context).textTheme;
@@ -772,7 +762,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       final tableCount = active.where((t) => !t.isSeat).length;
       final seats = active.fold(0, (sum, t) => sum + t.seats);
       return PanelCard(
-        title: 'Sala ${_minuteOfDay == null ? 'teraz' : 'o ${Fmt.time(_viewTime)}'}',
+        title: 'Sala teraz',
         icon: AppIcons.squaresFour,
         iconColor: TileColors.blue,
         child: Column(
@@ -937,45 +927,6 @@ class _Legend extends StatelessWidget {
         item(AppColors.warning.withValues(alpha: 0.14), AppColors.warning, 'Zarezerwowany na tę godzinę'),
         item(AppColors.surface, AppColors.warning, 'Wolny, rezerwacja w ciągu 90 minut'),
         item(AppColors.surface, planLine, 'Wolny'),
-      ],
-    );
-  }
-}
-
-class _TimeControl extends StatelessWidget {
-  const _TimeControl({required this.minuteOfDay, required this.onChanged});
-
-  final int? minuteOfDay;
-  final ValueChanged<int?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final value = (minuteOfDay ?? (DateTime.now().hour * 60 + DateTime.now().minute)).clamp(600, 1425);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SegmentedTabs<bool>(
-          options: const [(true, 'Teraz'), (false, 'Inna godzina')],
-          selected: minuteOfDay == null,
-          onChanged: (now) => onChanged(now ? null : value),
-        ),
-        if (minuteOfDay != null) ...[
-          SizedBox(
-            width: 240,
-            child: Slider(
-              value: value.toDouble(),
-              min: 600,
-              max: 1425,
-              divisions: (1425 - 600) ~/ 15,
-              onChanged: (v) => onChanged(v.round()),
-            ),
-          ),
-          Text(
-            '${(value ~/ 60).toString().padLeft(2, '0')}:${(value % 60).toString().padLeft(2, '0')}',
-            style: text.titleSmall?.copyWith(fontFeatures: _tabular),
-          ),
-        ],
       ],
     );
   }

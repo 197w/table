@@ -17,11 +17,15 @@ class NewReservationDialog extends ConsumerStatefulWidget {
     required this.restaurantId,
     required this.source,
     required this.day,
+    this.tableIds = const {},
   });
 
   final String restaurantId;
   final ReservationSource source;
   final DateTime day;
+
+  /// Stoliki wybrane od razu, np. po kliknięciu stolika na planie sali.
+  final Set<String> tableIds;
 
   @override
   ConsumerState<NewReservationDialog> createState() => _NewReservationDialogState();
@@ -34,8 +38,8 @@ class _NewReservationDialogState extends ConsumerState<NewReservationDialog> {
   int _party = 2;
   int? _duration;
   Occasion? _occasion;
-  final Set<String> _tables = {};
-  bool _autoTable = true;
+  late final Set<String> _tables = {...widget.tableIds};
+  late bool _autoTable = widget.tableIds.isEmpty;
   bool _busy = false;
   String? _nameError;
 
@@ -287,17 +291,14 @@ class _NewReservationDialogState extends ConsumerState<NewReservationDialog> {
                       ],
                     ),
                     const SizedBox(height: 18),
+                    // Stolik: dobór automatyczny albo własny wybór z listy stolików.
                     Row(
                       children: [
                         Text('Stolik', style: text.titleSmall),
-                        const Spacer(),
-                        Text(
-                          'Dobierz automatycznie',
-                          style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
-                        ),
-                        const SizedBox(width: 8),
-                        Switch(
-                          value: _autoTable,
+                        const SizedBox(width: 16),
+                        SegmentedTabs<bool>(
+                          options: const [(true, 'Dobierz automatycznie'), (false, 'Wybierz stolik')],
+                          selected: _autoTable,
                           onChanged: (v) => setState(() => _autoTable = v),
                         ),
                       ],
