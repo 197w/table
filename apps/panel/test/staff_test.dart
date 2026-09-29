@@ -86,8 +86,6 @@ void main() {
     expect(canOpenRoute(PanelRoutes.staff, {'staff_logins'}), isTrue);
     expect(canOpenRoute(PanelRoutes.staff, {'orders'}), isFalse);
     expect(canOpenRoute(PanelRoutes.reservations, {'orders'}), isFalse);
-    expect(canOpenRoute(PanelRoutes.settings, {'settings'}), isTrue);
-    expect(canOpenRoute(PanelRoutes.settings, {'profile'}), isFalse);
     expect(canOpenRoute(PanelRoutes.profile, {'profile'}), isTrue);
   });
 
@@ -97,6 +95,6 @@ void main() {
     final account = ActingMember.account();
     expect(account.isAccount, isTrue);
     expect(account.dbMemberId, isNull);
-    expect(account.permissions, containsAll(['orders_close', 'positions', 'settings']));
+    expect(account.permissions, containsAll(['orders_close', 'positions', 'staff_logins']));
   });
 }

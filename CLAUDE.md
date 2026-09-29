@@ -6,9 +6,9 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
 - `apps/panel`: panel restauracji na komputery (Windows i macOS), identyfikator macOS `pl.table.panel`.
   Na tablety przejdziemy, gdy panel na komputerach będzie ustalony. Nigdy na telefony.
 - `apps/staff`: Table for employees, aplikacja dla pracowników lokalu na telefony (Android `pl.table.table_staff`,
-  iOS `pl.table.tableStaff`). Logowanie numerem telefonu (SMS), skan wspólnego kodu QR z głównego stanowiska
-  zaczyna zmianę i loguje na stanowisku, kelner nabija zamówienia (stoliki, menu, wysyłka na kuchnię, wydanie,
-  zamknięcie rachunku), mój grafik (przyjęcie albo inne godziny), login do stanowiska, historia godzin. Każda aktualizacja na S23 i iPhone'a, tak jak aplikacja dla gości.
+  iOS `pl.table.tableStaff`). Logowanie numerem telefonu (SMS), skan wspólnego kodu QR z panelu
+  zaczyna zmianę i loguje w panelu, kelner nabija zamówienia (stoliki, menu, wysyłka na kuchnię, wydanie,
+  zamknięcie rachunku), mój grafik (zgłaszanie godzin), mój kod do panelu, historia godzin. Każda aktualizacja na S23 i iPhone'a, tak jak aplikacja dla gości.
 - `packages/table_core`: wspólny motyw, czcionka Geist, ikony Phosphor, formatery, widżety i konfiguracja.
 
 Z użytkownikiem rozmawiamy po polsku. Teksty w aplikacjach i komentarze w kodzie też są po polsku.
@@ -66,7 +66,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0031, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0032, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
   Gdy użytkownik napisze „kod”, podaj najnowszy `otp` z tej tabeli (jego numer kończy się na 098).
@@ -82,8 +82,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `scan_screen.dart`, `waiter_screens.dart`
   (mobile_scanner). Podpis iOS: `DEVELOPMENT_TEAM` w `ios/Flutter/*.xcconfig`, nie w pbxproj.
 - `apps/panel/lib`: `app` (router, boczne menu, motyw na komputer), `data` (modele, `PanelRepository`, providery),
-  `features` (auth, onboarding, kiosk, reservations, orders, kitchen, floor, menu, profile, reviews, staff, stats,
-  settings),
+  `features` (auth, onboarding, kiosk, reservations, orders, kitchen, floor, menu, profile, reviews, staff, stats),
   `shared/panel_widgets.dart`.
 
 ## Panel restauracji
@@ -99,25 +98,21 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (nadaje go baza przy dodaniu, trigger `staff_members_code`; zmiana: `panel_set_staff_code`, wpisany albo losowy).
   Kod widać stale w szczegółach (uprawnienie `staff_logins`, „Kody pracowników”, `panel_staff_codes`) i w aplikacji
   pracownika (`staff_my_codes`). Kod leży zaszyfrowany w Supabase Vault (`staff_codes.code_secret`), logowanie szuka
-  po skrócie sha256 z lokalem. Po 10 błędnych kodach w 5 minut stanowisko wstrzymuje logowanie kodem
-  (`station_login_failures`). Kod nie jest kontem Supabase Auth.
+  po skrócie sha256 z lokalem. Po 10 błędnych kodach w 5 minut lokal wstrzymuje logowanie kodem
+  (`station_login_failures`). Kod nie jest kontem Supabase Auth. Głównego stanowiska nie ma (usunięte w 0032):
+  pracownicy logują się na każdym komputerze z panelem lokalu.
 - Stanowisko systemowe „ALL” (`system_key = 'all'`): zawsze wszystkie uprawnienia, także przyszłe
   (`private.all_permissions()`, `private.position_permissions`). Nowe uprawnienie dopisujemy w `private.all_permissions()`
   i w `StaffPermission`. „ALL” ma Wiktor Godlewski (REVE); nadaje je tylko osoba z uprawnieniem `positions`.
-- Główne stanowisko (`main_stations`, jedno na lokal): „Ustawienia” (`/ustawienia`, uprawnienie `settings`), przełącznik
-  na tym komputerze. Identyfikator komputera leży w pliku `stanowisko.id` w katalogu danych panelu
-  (`deviceIdProvider`), nie w shared_preferences: tamten plik zapisuje też sesja Supabase i zapisy się ścigały.
-  Przeniesienie: wyłączyć na starym, włączyć na nowym; gdy stary komputer nie działa, właściciel przenosi po haśle
-  konta (`p_force`). Pracownicy logują się tylko tam (`private.check_station`).
 - Logowanie pracownika w panelu jest jedno dla wszystkich zakładek (`panelMemberProvider`): kod QR z aplikacji
   Table for employees (`staff_scan`) albo czterocyfrowy kod na klawiaturze (`panel_member_login`). Bez zalogowanego
   pracownika każda zakładka pokazuje logowanie (`TabLoginGate`); wejść może tylko osoba z uprawnieniem do zakładki.
   Menu boczne pokazuje zakładki zalogowanego pracownika. Pasek nad zakładką (`TabSessionBar`): „Wyloguj”
   i „Zakończ zmianę”. Właściciel otwiera panel hasłem konta restauracji (`ActingMember.account()`).
-  „Wejdź na zmianę” (tylko na głównym stanowisku, `ShiftScreen`) zaczyna zmianę i loguje pracownika.
+  „Wejdź na zmianę” (menu boczne, `ShiftScreen`) zaczyna zmianę i loguje pracownika.
 - Uprawnienia (`StaffPermission`, grupy Sala, Zamówienia, Kuchnia, Zespół, Lokal, Wyniki): m.in. `orders_close`
   (zamykanie rachunków), `orders_cancel` (anulowanie pozycji z kuchni), `kitchen_settings`, `staff_logins`,
-  `schedule`, `timesheet`, `positions`, `settings`. Menu boczne pokazuje zakładki według uprawnień konta,
+  `schedule`, `timesheet`, `positions`. Menu boczne pokazuje zakładki według uprawnień konta,
   w zakładce przyciski według uprawnień zalogowanego pracownika (`memberPermissionsProvider`).
   Konto telefonu pracownika dostaje rolę obsługi (`restaurant_staff`, trigger `staff_members_account`), więc
   zamówienia w aplikacji używają funkcji `panel_*` z `p_member_id` (wymagana trwająca zmiana). Zamówienia zapisują

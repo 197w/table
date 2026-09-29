@@ -16,7 +16,6 @@ import '../features/profile/profile_screen.dart';
 import '../features/reservations/reservations_screen.dart';
 import '../features/reviews/reviews_screen.dart';
 import '../features/staff/staff_screen.dart';
-import '../features/settings/settings_screen.dart';
 import '../features/stats/stats_screen.dart';
 import 'panel_theme.dart';
 import 'shell.dart';
@@ -143,7 +142,6 @@ GoRouter _buildRouter(Listenable refresh) {
           _page(PanelRoutes.profile, const ProfileScreen()),
           _page(PanelRoutes.reviews, const ReviewsScreen()),
           _page(PanelRoutes.stats, const StatsScreen()),
-          _page(PanelRoutes.settings, const SettingsScreen()),
         ],
       ),
     ],
@@ -168,7 +166,6 @@ abstract final class PanelRoutes {
   static const profile = '/lokal';
   static const reviews = '/opinie';
   static const stats = '/statystyki';
-  static const settings = '/ustawienia';
 }
 
 /// Uprawnienia, z których wystarczy jedno, żeby otworzyć zakładkę.
@@ -184,7 +181,6 @@ const _routePermissions = {
   PanelRoutes.giftCards: {'gift_cards'},
   PanelRoutes.reviews: {'reviews'},
   PanelRoutes.stats: {'stats'},
-  PanelRoutes.settings: {'settings'},
 };
 
 /// Nazwy zakładek, np. w logowaniu do zakładki.
@@ -199,7 +195,6 @@ const panelTabLabels = {
   PanelRoutes.giftCards: 'Karty podarunkowe',
   PanelRoutes.reviews: 'Opinie',
   PanelRoutes.stats: 'Statystyki',
-  PanelRoutes.settings: 'Ustawienia',
 };
 
 /// Zakładka (jej ścieżka) dla adresu. Null: adres poza zakładkami.

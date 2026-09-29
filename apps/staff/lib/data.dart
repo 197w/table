@@ -92,7 +92,7 @@ class ScanResult {
   final String member;
   final bool startedNow;
 
-  /// Skan zalogował mnie też na głównym stanowisku (nikt inny nie użył tego kodu).
+  /// Skan zalogował mnie też w panelu na komputerze (nikt inny nie użył tego kodu).
   final bool openedPanel;
   final DateTime? startedAt;
 }
@@ -227,7 +227,7 @@ class StaffRepository {
 
   Future<void> deleteHours(String id) => _guard(() => _db.rpc<void>('staff_delete_hours', params: {'p_id': id}));
 
-  /// Moje czterocyfrowe kody do głównego stanowiska według numeru pracownika.
+  /// Moje czterocyfrowe kody do panelu według numeru pracownika.
   Future<Map<String, String>> codes() => _guard(() async {
     final rows = await _db.rpc<List<dynamic>>('staff_my_codes');
     return {

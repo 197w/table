@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:table_core/table_core.dart';
@@ -20,7 +19,7 @@ const _tokenSeconds = 30;
 String _two(int n) => n.toString().padLeft(2, '0');
 String _hm(DateTime t) => '${_two(t.toLocal().hour)}:${_two(t.toLocal().minute)}';
 
-/// Ekran „Wejdź na zmianę” na głównym stanowisku. Pracownik skanuje kod aplikacją
+/// Ekran „Wejdź na zmianę”. Pracownik skanuje kod aplikacją
 /// Table for employees albo wpisuje swój kod, zmiana się zaczyna, pracownik jest zalogowany
 /// w panelu, a ekran znika.
 class ShiftScreen extends ConsumerStatefulWidget {
@@ -167,9 +166,8 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
   }
 }
 
-/// Logowanie pracownika na głównym stanowisku: kod QR (zmienia się co 30 sekund) i obok
-/// klawiatura na czterocyfrowy kod pracownika. Zalogowanego pracownika (jego zmiana już trwa) dostaje [onLogin]. Na innym
-/// komputerze niż główne stanowisko pokazuje, gdzie się zalogować.
+/// Logowanie pracownika w panelu: kod QR (zmienia się co 30 sekund) i obok
+/// klawiatura na czterocyfrowy kod pracownika. Zalogowanego pracownika (jego zmiana już trwa) dostaje [onLogin].
 class StationLogin extends ConsumerStatefulWidget {
   const StationLogin({
     super.key,
@@ -230,12 +228,10 @@ class _StationLoginState extends ConsumerState<StationLogin> {
   }
 
   Future<void> _newToken() async {
-    if (_fetching || ref.read(isMainStationProvider(widget.restaurantId)) != true) return;
-    final device = ref.read(deviceIdProvider).value;
-    if (device == null) return;
+    if (_fetching) return;
     _fetching = true;
     try {
-      final token = await ref.read(repositoryProvider).newLoginToken(widget.restaurantId, device);
+      final token = await ref.read(repositoryProvider).newLoginToken(widget.restaurantId);
       if (!mounted) return;
       setState(() {
         _token = token;
@@ -324,8 +320,7 @@ class _StationLoginState extends ConsumerState<StationLogin> {
   }
 
   Future<void> _submit() async {
-    final device = ref.read(deviceIdProvider).value;
-    if (device == null || _code.length != 4) return;
+    if (_code.length != 4) return;
     setState(() {
       _busy = true;
       _formProblem = null;
@@ -334,7 +329,6 @@ class _StationLoginState extends ConsumerState<StationLogin> {
       final member = await ref.read(repositoryProvider).memberLogin(
         restaurantId: widget.restaurantId,
         code: _code,
-        deviceId: device,
       );
       if (!mounted) return;
       ref.invalidate(shiftsProvider);
@@ -355,13 +349,6 @@ class _StationLoginState extends ConsumerState<StationLogin> {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final isMain = ref.watch(isMainStationProvider(widget.restaurantId));
-    if (isMain == null) return const SizedBox(height: 200, child: LoadingView());
-    if (!isMain) {
-      return _NotMainStation(
-        station: ref.watch(mainStationProvider(widget.restaurantId)).value,
-      );
-    }
 
     final left = _issuedAt == null
         ? _tokenSeconds
@@ -567,52 +554,6 @@ class _StationLoginState extends ConsumerState<StationLogin> {
           ],
         );
       },
-    );
-  }
-}
-
-/// Ten komputer nie jest głównym stanowiskiem: pracownik loguje się gdzie indziej.
-class _NotMainStation extends ConsumerWidget {
-  const _NotMainStation({required this.station});
-
-  final MainStation? station;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final text = Theme.of(context).textTheme;
-    final canSet = ref.watch(currentRestaurantProvider)?.canManage ?? false;
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 520),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Glyph(AppIcons.lock, size: 36, color: AppColors.textMuted),
-          const SizedBox(height: 14),
-          Text(
-            station == null ? 'Nie ustawiono głównego stanowiska' : 'To nie jest główne stanowisko',
-            style: text.titleLarge,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            station == null
-                ? 'Pracownicy logują się tylko na głównym stanowisku. Ustaw je w Ustawieniach '
-                    'na komputerze, przy którym obsługa nabija zamówienia.'
-                : 'Pracownicy logują się tylko na głównym stanowisku: „${station!.label}”.',
-            style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
-            textAlign: TextAlign.center,
-          ),
-          if (canSet) ...[
-            const SizedBox(height: 18),
-            OutlinedButton.icon(
-              onPressed: () => context.go(PanelRoutes.settings),
-              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
-              icon: const Glyph(AppIcons.gear, size: 18),
-              label: const Text('Otwórz Ustawienia'),
-            ),
-          ],
-        ],
-      ),
     );
   }
 }

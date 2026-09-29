@@ -140,7 +140,6 @@ const _groups = <(String, List<_NavItem>)>[
     _NavItem(PanelRoutes.profile, 'Dane lokalu', AppIcons.storefront),
     _NavItem(PanelRoutes.menu, 'Menu', AppIcons.bookOpen),
     _NavItem(PanelRoutes.giftCards, 'Karty podarunkowe', AppIcons.envelope),
-    _NavItem(PanelRoutes.settings, 'Ustawienia', AppIcons.gear),
   ]),
   ('Wyniki', [
     _NavItem(PanelRoutes.reviews, 'Opinie', AppIcons.chatCircle),
@@ -219,7 +218,6 @@ class _Sidebar extends ConsumerWidget {
         : ref.watch(effectivePermissionsProvider(current.id)) ?? const <String>{};
     bool allowed(String route) => canOpenRoute(route, permissions);
 
-    final isMain = current == null ? false : ref.watch(isMainStationProvider(current.id)) ?? false;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -331,8 +329,8 @@ class _Sidebar extends ConsumerWidget {
             );
           },
         ),
-        // Tylko główne stanowisko: pracownicy wchodzą na zmianę kodem QR albo loginem i hasłem.
-        if (isMain)
+        // Pracownicy wchodzą na zmianę kodem QR albo czterocyfrowym kodem.
+        if (current != null)
           _IconRow(
             icon: AppIcons.timer,
             label: 'Wejdź na zmianę',

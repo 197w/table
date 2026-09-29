@@ -1,10 +1,6 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:window_manager/window_manager.dart';
@@ -567,86 +563,8 @@ final orderHistoryProvider = FutureProvider.autoDispose.family<List<PanelOrder>,
 );
 
 // ---------------------------------------------------------------
-// Główne stanowisko i „Wejdź na zmianę”: pracownicy logują się kodem QR albo loginem
+// Pracownicy: logowanie kodem albo kodem QR, kody, grafik
 // ---------------------------------------------------------------
-
-/// Stały identyfikator tego komputera. Po nim baza rozpoznaje główne stanowisko.
-///
-/// Leży we własnym pliku panelu (`stanowisko.id` w katalogu danych aplikacji), a nie w
-/// shared_preferences: do tamtego pliku zapisuje też logowanie Supabase i przy starcie panelu
-/// zapisy się ścigały, przez co panel potrafił odczytać inny identyfikator niż zapisany w bazie.
-/// Przy pierwszym uruchomieniu przenosimy identyfikator ze starego miejsca, żeby komputer
-/// nie przestał być głównym stanowiskiem.
-final deviceIdProvider = FutureProvider<String>((ref) async {
-  try {
-    final dir = await getApplicationSupportDirectory();
-    final file = File('${dir.path}${Platform.pathSeparator}stanowisko.id');
-    if (await file.exists()) {
-      final saved = (await file.readAsString()).trim();
-      if (saved.length >= 16) return saved;
-    }
-    final id = await _legacyDeviceId(dir) ?? _randomDeviceId();
-    await dir.create(recursive: true);
-    await file.writeAsString(id, flush: true);
-    return id;
-  } catch (_) {
-    // Bez zapisu na dysku komputer nie może być głównym stanowiskiem.
-    return 'bez-zapisu';
-  }
-});
-
-String _randomDeviceId() {
-  final random = Random.secure();
-  return List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
-}
-
-/// Identyfikator z wersji do 0.7.2 (klucz `panel_stanowisko_id` w shared_preferences).
-/// W Windows czytamy plik wprost, kilka razy, bo w chwili startu może go właśnie zapisywać Supabase.
-Future<String?> _legacyDeviceId(Directory dir) async {
-  const key = 'panel_stanowisko_id';
-  if (Platform.isWindows) {
-    final prefs = File('${dir.path}${Platform.pathSeparator}shared_preferences.json');
-    for (var attempt = 0; attempt < 5; attempt++) {
-      try {
-        if (!await prefs.exists()) return null;
-        final json = jsonDecode(await prefs.readAsString());
-        final value = json is Map ? json[key] : null;
-        return value is String && value.length >= 16 ? value : null;
-      } catch (_) {
-        await Future<void>.delayed(const Duration(milliseconds: 200));
-      }
-    }
-    return null;
-  }
-  try {
-    final value = await SharedPreferencesAsync().getString(key);
-    return value != null && value.length >= 16 ? value : null;
-  } catch (_) {
-    return null;
-  }
-}
-
-/// Nazwa komputera, np. „KASA-1”. Pokazujemy ją, żeby było wiadomo, gdzie jest główne stanowisko.
-final deviceNameProvider = Provider<String>((ref) {
-  try {
-    return Platform.localHostname;
-  } catch (_) {
-    return 'Komputer';
-  }
-});
-
-final mainStationProvider = FutureProvider.autoDispose.family<MainStation?, String>((ref, id) {
-  ref.cacheFor(const Duration(minutes: 30));
-  return ref.watch(repositoryProvider).mainStation(id);
-});
-
-/// Czy ten komputer jest głównym stanowiskiem lokalu. Null, dopóki się nie wczyta.
-final isMainStationProvider = Provider.autoDispose.family<bool?, String>((ref, id) {
-  final station = ref.watch(mainStationProvider(id));
-  final device = ref.watch(deviceIdProvider);
-  if (!station.hasValue || !device.hasValue) return null;
-  return station.value != null && station.value!.deviceId == device.value;
-});
 
 /// Kody pracowników lokalu według numeru pracownika.
 final staffCodesProvider = FutureProvider.autoDispose

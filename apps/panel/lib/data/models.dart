@@ -1024,7 +1024,6 @@ enum StaffPermission {
   profile('profile', 'Dane lokalu', 'Adres, godziny otwarcia i logo', 'Lokal'),
   menu('menu', 'Menu', 'Zmiana dań i cen', 'Lokal'),
   giftCards('gift_cards', 'Karty podarunkowe', 'Realizacja kart gości', 'Lokal'),
-  settings('settings', 'Ustawienia', 'Główne stanowisko i ustawienia komputera', 'Lokal'),
   reviews('reviews', 'Opinie', 'Odpowiadanie na opinie', 'Wyniki'),
   stats('stats', 'Statystyki', 'Sprzedaż, rezerwacje i historia zamówień', 'Wyniki');
 
@@ -1446,23 +1445,6 @@ class ActingMember {
     position: json['position'] as String?,
     permissions: {for (final p in json['permissions'] as List? ?? const []) p.toString()},
     shiftStartedAt: _toDateOrNull(json['shift_started_at']),
-  );
-}
-
-/// Główne stanowisko lokalu: komputer, na którym pracownicy wchodzą na zmianę.
-class MainStation {
-  const MainStation({required this.deviceId, this.deviceName, this.setAt});
-
-  final String deviceId;
-  final String? deviceName;
-  final DateTime? setAt;
-
-  String get label => deviceName ?? 'komputer bez nazwy';
-
-  factory MainStation.fromJson(Map<String, dynamic> json) => MainStation(
-    deviceId: json['device_id'] as String,
-    deviceName: json['device_name'] as String?,
-    setAt: _toDateOrNull(json['set_at']),
   );
 }
 

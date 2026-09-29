@@ -653,62 +653,23 @@ class PanelRepository {
   // Czas pracy i logowanie pracowników kodem QR
   // -------------------------------------------------------------
 
-  /// Nowy kod QR do zeskanowania aplikacją Table for employees. Działa tylko na głównym stanowisku.
-  Future<String> newLoginToken(String restaurantId, String deviceId) {
+  /// Nowy kod QR do zeskanowania aplikacją Table for employees.
+  Future<String> newLoginToken(String restaurantId) {
     return _guard(
-      () => _db.rpc<String>(
-        'panel_new_login_token',
-        params: {'p_restaurant_id': restaurantId, 'p_device': deviceId},
-      ),
+      () => _db.rpc<String>('panel_new_login_token', params: {'p_restaurant_id': restaurantId}),
     );
   }
 
-  /// Logowanie pracownika na głównym stanowisku czterocyfrowym kodem. Zaczyna jego zmianę.
-  Future<ActingMember> memberLogin({
-    required String restaurantId,
-    required String code,
-    required String deviceId,
-  }) {
+  /// Logowanie pracownika w panelu czterocyfrowym kodem. Zaczyna jego zmianę.
+  Future<ActingMember> memberLogin({required String restaurantId, required String code}) {
     return _guard(() async {
       final json = await _db.rpc<Map<String, dynamic>>(
         'panel_member_login',
-        params: {'p_restaurant_id': restaurantId, 'p_code': code, 'p_device': deviceId},
+        params: {'p_restaurant_id': restaurantId, 'p_code': code},
       );
       if (json['error'] case final String problem) throw AppFailure(problem);
       return ActingMember.fromJson(json);
     });
-  }
-
-  /// Główne stanowisko lokalu albo null, gdy nie jest ustawione.
-  Future<MainStation?> mainStation(String restaurantId) {
-    return _guard(() async {
-      final row = await _db
-          .from('main_stations')
-          .select('device_id, device_name, set_at')
-          .eq('restaurant_id', restaurantId)
-          .maybeSingle();
-      return row == null ? null : MainStation.fromJson(row);
-    });
-  }
-
-  /// Włącza albo wyłącza główne stanowisko na tym komputerze. [force]: przejęcie
-  /// stanowiska z komputera, który nie działa (tylko właściciel, po haśle).
-  Future<void> setMainStation({
-    required String restaurantId,
-    required String deviceId,
-    required String deviceName,
-    required bool enable,
-    bool force = false,
-  }) {
-    return _guard(
-      () => _db.rpc<void>('panel_set_main_station', params: {
-        'p_restaurant_id': restaurantId,
-        'p_device': deviceId,
-        'p_name': deviceName,
-        'p_enable': enable,
-        'p_force': force,
-      }),
-    );
   }
 
   // -------------------------------------------------------------

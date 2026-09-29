@@ -58,7 +58,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (result == null || !mounted) return;
     _refresh();
     final at = result.startedAt;
-    // Skan zaczyna zmianę i loguje na głównym stanowisku, jeśli nikt inny nie użył tego kodu.
+    // Skan zaczyna zmianę i loguje w panelu na komputerze, jeśli nikt inny nie użył tego kodu.
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
@@ -70,9 +70,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ? '${result.restaurant}, od ${at == null ? 'teraz' : _hm(at)}.'
                 : 'Twoja zmiana w ${result.restaurant} trwa${at == null ? '' : ' od ${_hm(at)}'}.',
             result.openedPanel
-                ? 'Jesteś zalogowany na głównym stanowisku. Po pracy wyloguj się tam ręcznie.'
-                : 'Na stanowisku ktoś już zalogował się tym kodem. Żeby pracować przy komputerze, '
-                      'zeskanuj nowy kod albo wpisz login i hasło.',
+                ? 'Jesteś zalogowany w panelu na komputerze. Po pracy wyloguj się tam ręcznie.'
+                : 'Ktoś już zalogował się tym kodem. Żeby pracować przy komputerze, '
+                      'zeskanuj nowy kod albo wpisz swój czterocyfrowy kod.',
           ].join('\n\n'),
         ),
         actions: [
@@ -226,7 +226,7 @@ class _JobCard extends StatelessWidget {
 
   final Job job;
 
-  /// Mój czterocyfrowy kod do głównego stanowiska.
+  /// Mój czterocyfrowy kod do panelu na komputerze.
   final String? code;
   final VoidCallback onEnd;
   final VoidCallback onOrders;
@@ -253,7 +253,7 @@ class _JobCard extends StatelessWidget {
                         Text(job.position!, style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
                       if (code != null)
                         Text(
-                          'Kod do stanowiska: $code',
+                          'Mój kod do panelu: $code',
                           style: text.bodyMedium?.copyWith(fontFeatures: _tabular, fontWeight: FontWeight.w600),
                         ),
                     ],

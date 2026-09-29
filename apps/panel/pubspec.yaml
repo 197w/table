@@ -26,7 +26,6 @@ dependencies:
   package_info_plus: ^10.2.1
   crypto: ^3.0.7
   qr_flutter: any
-  path_provider: any
 
 dev_dependencies:
   flutter_test:
