@@ -167,7 +167,7 @@ class _KioskLockScreenState extends ConsumerState<KioskLockScreen> {
 }
 
 /// Logowanie pracownika na głównym stanowisku: kod QR (zmienia się co 30 sekund) i obok
-/// login z hasłem. Po zalogowaniu zapisuje pracownika w [actingMemberProvider]. Na innym
+/// login z hasłem. Po zalogowaniu zapisuje pracownika w [actingMemberProvider] (albo robi [onLogin]). Na innym
 /// komputerze niż główne stanowisko pokazuje, gdzie się zalogować.
 class StationLogin extends ConsumerStatefulWidget {
   const StationLogin({
@@ -175,11 +175,16 @@ class StationLogin extends ConsumerStatefulWidget {
     required this.restaurantId,
     this.qrSize = 280,
     this.autofocus = false,
+    this.onLogin,
   });
 
   final String restaurantId;
   final double qrSize;
   final bool autofocus;
+
+  /// Co zrobić z zalogowanym pracownikiem. Domyślnie loguje go do całego panelu
+  /// i od razu do Zamówień.
+  final ValueChanged<ActingMember>? onLogin;
 
   @override
   ConsumerState<StationLogin> createState() => _StationLoginState();
@@ -259,13 +264,28 @@ class _StationLoginState extends ConsumerState<StationLogin> {
     try {
       final member = await ref.read(repositoryProvider).loginTokenStatus(token);
       if (member != null && mounted && _token == token) {
-        ref.read(actingMemberProvider.notifier).set(member);
+        // Ten kod jest już zużyty: następny pracownik dostanie nowy.
+        setState(() {
+          _token = null;
+          _issuedAt = null;
+        });
+        _done(member);
       }
     } catch (_) {
       // Chwilowy brak internetu: spróbujemy przy następnym sprawdzeniu.
     } finally {
       _checking = false;
     }
+  }
+
+  void _done(ActingMember member) {
+    if (widget.onLogin case final onLogin?) {
+      onLogin(member);
+      return;
+    }
+    ref.read(actingMemberProvider.notifier).set(member);
+    // Kto wszedł na zmianę, od razu może nabijać zamówienia.
+    ref.read(orderMemberProvider.notifier).set(member);
   }
 
   Future<void> _submit() async {
@@ -287,9 +307,10 @@ class _StationLoginState extends ConsumerState<StationLogin> {
         deviceId: device,
       );
       if (!mounted) return;
-      ref
-        ..invalidate(shiftsProvider)
-        ..read(actingMemberProvider.notifier).set(member);
+      ref.invalidate(shiftsProvider);
+      _login.clear();
+      _password.clear();
+      _done(member);
     } catch (e) {
       if (!mounted) return;
       _password.clear();

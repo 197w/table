@@ -71,7 +71,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     if (order != null) return order.id;
     return ref
         .read(repositoryProvider)
-        .openOrder(restaurantId, tableId, memberId: ref.read(actingMemberProvider)?.memberId);
+        .openOrder(restaurantId, tableId, memberId: ref.read(orderMemberProvider)?.memberId);
   }
 
   Future<void> _add(
@@ -107,7 +107,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
           addons: choice.addons,
           quantity: choice.quantity,
           note: choice.note,
-          memberId: ref.read(actingMemberProvider)?.memberId,
+          memberId: ref.read(orderMemberProvider)?.memberId,
         );
       }),
     );
@@ -144,7 +144,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         payment.method,
         giftCardId: payment.card?.id,
         giftAmount: payment.giftAmount,
-        memberId: ref.read(actingMemberProvider)?.memberId,
+        memberId: ref.read(orderMemberProvider)?.memberId,
       );
       ok = true;
     });
@@ -268,20 +268,35 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     }
 
     // Zamówienie nabija zawsze zalogowany pracownik: kodem QR z aplikacji albo loginem i hasłem
-    // na głównym stanowisku. Wylogowanie jest ręczne (boczne menu).
-    if (ref.watch(actingMemberProvider) == null) {
+    // na głównym stanowisku. To logowanie dotyczy tylko Zamówień, reszta panelu się nie zmienia.
+    final orderMember = ref.watch(orderMemberProvider);
+    if (orderMember == null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const PageHeader(
             title: 'Zamówienia',
-            subtitle: 'Zaloguj się jako pracownik, żeby nabijać zamówienia. Po pracy wyloguj się ręcznie.',
+            subtitle: 'Zaloguj się, żeby nabić zamówienie. Potem wyloguj się, żeby mógł się zalogować następny pracownik.',
           ),
           Expanded(
             child: Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
-                child: StationLogin(restaurantId: restaurant.id, autofocus: true),
+                child: StationLogin(
+                  restaurantId: restaurant.id,
+                  autofocus: true,
+                  onLogin: (member) {
+                    if (!member.permissions.contains('orders')) {
+                      showMessage(
+                        context,
+                        '${member.name} nie ma uprawnienia do zamówień'
+                        '${member.position == null ? '' : ' (stanowisko „${member.position}”)'}.',
+                      );
+                      return;
+                    }
+                    ref.read(orderMemberProvider.notifier).set(member);
+                  },
+                ),
               ),
             ),
           ),
@@ -319,8 +334,15 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       children: [
         PageHeader(
           title: 'Zamówienia',
-          subtitle: 'Wybierz stolik, nabij pozycje z menu i wyślij je na kuchnię.',
+          subtitle: 'Zamówienia nabija: ${orderMember.name}. Wybierz stolik, nabij pozycje i wyślij je na kuchnię.',
           actions: [
+            // Wylogowuje tylko z Zamówień: następny pracownik loguje się i składa swoje zamówienie.
+            OutlinedButton.icon(
+              onPressed: () => ref.read(orderMemberProvider.notifier).set(null),
+              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
+              icon: const Glyph(AppIcons.signOut, size: 16),
+              label: Text('Wyloguj (${orderMember.name.split(' ').first})'),
+            ),
             switch (live) {
               LiveStatus.live => const PanelPill('Na żywo', dotColor: Color(0xFF2FB673)),
               LiveStatus.connecting => const PanelPill('Łączenie…', dotColor: Color(0xFFD99A15)),

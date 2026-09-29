@@ -691,6 +691,12 @@ final actingMemberProvider = NotifierProvider<ActingMemberNotifier, ActingMember
   ActingMemberNotifier.new,
 );
 
+/// Pracownik zalogowany w „Zamówieniach”, osobno od logowania do całego panelu. Wylogowanie
+/// w Zamówieniach zwalnia je dla następnego pracownika, a reszta panelu zostaje bez zmian.
+final orderMemberProvider = NotifierProvider<ActingMemberNotifier, ActingMember?>(
+  ActingMemberNotifier.new,
+);
+
 /// Uprawnienia, według których panel pokazuje zakładki. Gdy na stanowisku jest zalogowany pracownik,
 /// są to uprawnienia jego stanowiska. Zablokowane stanowisko bez pracownika nie ma żadnych.
 /// Poza tym uprawnienia konta (kierownik i właściciel mają wszystkie).

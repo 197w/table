@@ -346,7 +346,7 @@ class _Sidebar extends ConsumerWidget {
             width: inner,
             fade: fade,
             muted: true,
-            onTap: () => ref.read(actingMemberProvider.notifier).set(null),
+            onTap: () => _signOutMember(ref, acting),
           ),
         ] else ...[
           // Tylko główne stanowisko: pracownicy wchodzą na zmianę kodem QR albo loginem i hasłem.
@@ -393,6 +393,14 @@ class _Sidebar extends ConsumerWidget {
   }
 }
 
+/// Wylogowuje pracownika z panelu, a z Zamówień tylko wtedy, gdy to on w nich jest zalogowany.
+void _signOutMember(WidgetRef ref, ActingMember member) {
+  ref.read(actingMemberProvider.notifier).set(null);
+  if (ref.read(orderMemberProvider)?.memberId == member.memberId) {
+    ref.read(orderMemberProvider.notifier).set(null);
+  }
+}
+
 Future<void> _endShift(BuildContext context, WidgetRef ref, ActingMember member) async {
   final ok = await confirm(
     context,
@@ -403,7 +411,7 @@ Future<void> _endShift(BuildContext context, WidgetRef ref, ActingMember member)
   if (!ok) return;
   try {
     await ref.read(repositoryProvider).endShift(member.memberId);
-    ref.read(actingMemberProvider.notifier).set(null);
+    _signOutMember(ref, member);
   } catch (e) {
     if (context.mounted) showMessage(context, errorText(e));
   }
