@@ -7,6 +7,7 @@ import 'package:table_core/table_core.dart';
 import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../ordering/order_screens.dart';
 
 class ReservationsScreen extends ConsumerWidget {
   const ReservationsScreen({super.key});
@@ -33,9 +34,17 @@ class ReservationsScreen extends ConsumerWidget {
     final reviewed =
         ref.watch(myReviewedReservationsProvider).value ?? const <String>{};
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Rezerwacje')),
-      body: async.when(
+    // Rezerwacje i zamówienia z dostawą albo na wynos w jednej zakładce.
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+      appBar: AppBar(
+        title: const Text('Moje'),
+        bottom: const TabBar(tabs: [Tab(text: 'Rezerwacje'), Tab(text: 'Zamówienia')]),
+      ),
+      body: TabBarView(
+        children: [
+          async.when(
         loading: () => const LoadingView(),
         error: (e, _) => ErrorView(
           error: e,
@@ -86,6 +95,10 @@ class ReservationsScreen extends ConsumerWidget {
             ),
           );
         },
+      ),
+          const MyOrdersList(),
+        ],
+      ),
       ),
     );
   }

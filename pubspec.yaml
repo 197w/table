@@ -9,4 +9,5 @@ workspace:
   - apps/guest
   - apps/panel
   - apps/staff
+  - packages/table_car
   - packages/table_core

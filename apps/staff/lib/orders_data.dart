@@ -208,6 +208,7 @@ class WaiterRepository {
         .from('orders')
         .select('id, table_id, order_items(*)')
         .eq('restaurant_id', restaurantId)
+        .eq('kind', 'dine_in')
         .eq('status', 'open');
     return [for (final r in rows) WOrder.fromJson(r)];
   });

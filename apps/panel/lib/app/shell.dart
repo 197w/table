@@ -8,6 +8,7 @@ import '../data/providers.dart';
 import '../features/kiosk/kiosk_screen.dart';
 import '../features/onboarding/create_restaurant_screen.dart';
 import 'app.dart';
+import 'reservation_alerts.dart';
 import '../shared/panel_widgets.dart';
 import 'panel_theme.dart';
 import 'updater.dart';
@@ -27,6 +28,18 @@ class PanelShell extends ConsumerWidget {
     final current = ref.watch(currentRestaurantProvider);
     if (current != null && current.isPro) {
       ref.watch(reservationsLiveProvider(current.id).select((s) => s.status));
+      // Nowe zamówienie na wynos (gotówka od razu, karta po opłaceniu): dźwięk i powiadomienie na każdej zakładce.
+      ref.listen(takeawayOrdersProvider(current.id), (previous, next) {
+        final before = previous?.value;
+        final now = next.value;
+        if (before == null || now == null) return;
+        final waiting = {for (final o in before) if (o.stage == TakeawayStage.placed) o.id};
+        for (final o in now) {
+          if (o.stage == TakeawayStage.placed && !waiting.contains(o.id)) {
+            ReservationAlerts.instance.onTakeaway(o, muted: ref.read(alertsMutedProvider));
+          }
+        }
+      });
     }
 
     // Ekran kuchni na cały ekran: bez bocznego menu, same bileciki.
@@ -130,6 +143,7 @@ const _groups = <(String, List<_NavItem>)>[
   ('Sala', [
     _NavItem(PanelRoutes.reservations, 'Rezerwacje', AppIcons.calendarDots),
     _NavItem(PanelRoutes.orders, 'Zamówienia', AppIcons.receipt),
+    _NavItem(PanelRoutes.deliveries, 'Dostawy', AppIcons.moped),
     _NavItem(PanelRoutes.kitchen, 'Kuchnia', AppIcons.cookingPot),
     _NavItem(PanelRoutes.floor, 'Edycja sali', AppIcons.squaresFour),
   ]),

@@ -2169,15 +2169,7 @@ class _PositionEditorState extends ConsumerState<_PositionEditor> {
                   dense: true,
                   activeColor: AppColors.accentFill,
                   checkColor: AppColors.onAccent,
-                  title: Row(
-                    children: [
-                      Text(p.label, style: text.bodyMedium),
-                      if (p.soon) ...[
-                        const SizedBox(width: 8),
-                        Tag('WKRÓTCE', color: AppColors.textMuted),
-                      ],
-                    ],
-                  ),
+                  title: Text(p.label, style: text.bodyMedium),
                   subtitle: Text(
                     p.description,
                     style: text.bodySmall?.copyWith(color: AppColors.textMuted),

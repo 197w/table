@@ -9,6 +9,7 @@ import 'package:table_core/table_core.dart';
 import '../features/auth/auth_screens.dart';
 import '../features/booking/booking_screen.dart';
 import '../features/discover/discover_screen.dart';
+import '../features/ordering/order_screens.dart';
 import '../features/reservations/reservation_detail_screen.dart';
 import '../features/reservations/reservations_screen.dart';
 import '../features/restaurant/menu_screen.dart';
@@ -99,7 +100,8 @@ class _TableAppState extends ConsumerState<TableApp>
 bool _requiresLogin(String path) {
   return path.endsWith('/rezerwuj') ||
       path.endsWith('/opinia') ||
-      path.endsWith('/karta');
+      path.endsWith('/koszyk') ||
+      path.startsWith('/zamowienia/');
 }
 
 bool _isAuthScreen(String path) =>
@@ -257,7 +259,21 @@ GoRouter _buildRouter(Listenable refresh) {
               reservationId: state.uri.queryParameters['rezerwacja'],
             ),
           ),
+          GoRoute(
+            path: 'zamow',
+            builder: (context, state) => OrderMenuScreen(restaurantId: state.pathParameters['id']!),
+            routes: [
+              GoRoute(
+                path: 'koszyk',
+                builder: (context, state) => CheckoutScreen(restaurantId: state.pathParameters['id']!),
+              ),
+            ],
+          ),
         ],
+      ),
+      GoRoute(
+        path: '/zamowienia/:orderId',
+        builder: (context, state) => OrderDetailScreen(orderId: state.pathParameters['orderId']!),
       ),
       GoRoute(
         path: AppRoutes.login,
@@ -323,6 +339,9 @@ abstract final class AppRoutes {
   static String reservationDetail(String id) => '/rezerwacje/$id';
   static String booking(String id) => '/restauracja/$id/rezerwuj';
   static String menu(String id) => '/restauracja/$id/menu';
+  static String orderMenu(String id) => '/restauracja/$id/zamow';
+  static String checkout(String id) => '/restauracja/$id/zamow/koszyk';
+  static String orderDetail(String id) => '/zamowienia/$id';
   static String review(String id, {String? reservationId}) => Uri(
     path: '/restauracja/$id/opinia',
     queryParameters: reservationId == null

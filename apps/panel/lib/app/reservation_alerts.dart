@@ -4,6 +4,8 @@ import 'package:local_notifier/local_notifier.dart';
 import 'package:table_core/table_core.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../data/models.dart';
+
 /// Dźwięk i powiadomienie, gdy gość zarezerwuje stolik w aplikacji: w panelu powiadomienie w stylu Table
 /// z przyciskiem „Pokaż”, a gdy panel jest w tle, także powiadomienie systemowe.
 /// Rezerwacje wpisane przez obsługę (telefon, gość z ulicy) nie dzwonią,
@@ -18,6 +20,45 @@ class ReservationAlerts {
 
   /// Otwiera zakładkę Rezerwacje. Ustawia ją aplikacja panelu (router).
   VoidCallback? onOpen;
+
+  /// Otwiera zakładkę Dostawy.
+  VoidCallback? onOpenTakeaway;
+
+  /// Nowe zamówienie z dostawą albo odbiorem osobistym z aplikacji Table.
+  Future<void> onTakeaway(TakeawayOrder order, {required bool muted}) async {
+    if (muted) return;
+    try {
+      await _player.play(AssetSource('sounds/nowa_rezerwacja.wav'));
+    } catch (_) {
+      // Bez dźwięku zostaje powiadomienie.
+    }
+    final details = [
+      order.customerName,
+      ?order.address,
+      Fmt.price(order.totalGrosze),
+      order.cash ? 'gotówka' : 'karta online',
+    ].join(' · ');
+    Toasts.instance.show(
+      details,
+      title: 'Nowe zamówienie: ${order.label}',
+      tone: ToastTone.success,
+      icon: AppIcons.moped,
+      actionLabel: onOpenTakeaway == null ? null : 'Pokaż',
+      onAction: onOpenTakeaway,
+      duration: const Duration(seconds: 15),
+    );
+    if (!_ready) return;
+    try {
+      if (await windowManager.isFocused()) return;
+    } catch (_) {
+      // Bez informacji o oknie pokazujemy też powiadomienie systemowe.
+    }
+    try {
+      await LocalNotification(title: 'Nowe zamówienie: ${order.label}', body: details).show();
+    } catch (_) {
+      // System odmówił powiadomienia.
+    }
+  }
 
   /// Przygotowuje powiadomienia systemowe. Wywołaj raz przy starcie panelu.
   static Future<void> setup() async {

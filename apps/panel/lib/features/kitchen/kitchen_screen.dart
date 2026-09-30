@@ -344,7 +344,7 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
     final stats = ref.watch(kitchenStatsProvider(restaurant.id)).value ?? const KitchenStats();
     final tables = ref.watch(tablesProvider(restaurant.id)).value ?? const <DiningTable>[];
     final labels = {for (final t in tables) ?t.id: '${t.isSeat ? 'Miejsce' : 'Stolik'} ${t.label}'};
-    String labelOf(KitchenTicket t) => labels[t.tableId] ?? 'Bez stolika';
+    String labelOf(KitchenTicket t) => t.takeawayLabel ?? labels[t.tableId] ?? 'Bez stolika';
     final live = ref.watch(ordersLiveProvider(restaurant.id).select((s) => s.status));
     final fullscreen = ref.watch(kitchenFullscreenProvider);
 

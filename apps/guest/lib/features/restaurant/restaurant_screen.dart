@@ -144,6 +144,21 @@ class _Body extends ConsumerWidget {
                   label: Text('Zobacz menu ($dishes)'),
                 ),
               ],
+              // Dostawa i odbiór osobisty: zamówienie z koszykiem i płatnością w aplikacji.
+              if (r.canOrder && dishes > 0) ...[
+                const SizedBox(height: 10),
+                FilledButton.icon(
+                  onPressed: () => context.push(AppRoutes.orderMenu(r.id)),
+                  icon: Glyph(r.deliveryEnabled ? AppIcons.moped : AppIcons.shoppingBag, size: 20),
+                  label: Text(
+                    r.deliveryEnabled && r.pickupEnabled
+                        ? 'Zamów z dostawą lub na wynos'
+                        : r.deliveryEnabled
+                        ? 'Zamów z dostawą'
+                        : 'Zamów na wynos',
+                  ),
+                ),
+              ],
             ],
           ),
         ),

@@ -78,7 +78,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     final async = ref.watch(orderHistoryProvider(query));
     final tables = ref.watch(tablesProvider(restaurant.id)).value ?? const <DiningTable>[];
     final labels = {for (final t in tables) ?t.id: '${t.isSeat ? 'Miejsce' : 'Stolik'} ${t.label}'};
-    String labelOf(PanelOrder o) => labels[o.tableId] ?? 'Bez stolika';
+    String labelOf(PanelOrder o) => o.takeawayLabel ?? labels[o.tableId] ?? 'Bez stolika';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

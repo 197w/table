@@ -226,6 +226,73 @@ final reservationDetailProvider = FutureProvider.autoDispose
       return ref.watch(repositoryProvider).reservationDetail(id);
     });
 
+// ---------------------------------------------------------------
+// Zamówienia z dostawą i na wynos
+// ---------------------------------------------------------------
+
+/// Koszyk w jednym lokalu. Trzyma się, dopóki gość nie złoży zamówienia albo go nie wyczyści.
+class CartNotifier extends Notifier<List<CartLine>> {
+  CartNotifier(this.restaurantId);
+
+  final String restaurantId;
+
+  @override
+  List<CartLine> build() => const [];
+
+  void add(CartLine line) {
+    final i = state.indexWhere((l) => l.key == line.key);
+    if (i < 0) {
+      state = [...state, line];
+    } else {
+      state = [
+        for (final (j, l) in state.indexed) j == i ? l.withQuantity((l.quantity + line.quantity).clamp(1, 99)) : l,
+      ];
+    }
+  }
+
+  void setQuantity(String key, int quantity) {
+    state = [
+      for (final l in state)
+        if (l.key != key) l else if (quantity > 0) l.withQuantity(quantity.clamp(1, 99)),
+    ];
+  }
+
+  void clear() => state = const [];
+}
+
+final cartProvider = NotifierProvider.family<CartNotifier, List<CartLine>, String>(CartNotifier.new);
+
+final myOrdersProvider = FutureProvider.autoDispose<List<GuestOrder>>((ref) {
+  if (ref.watch(userIdProvider) == null) return Future.value(const []);
+  return ref.watch(repositoryProvider).myOrders();
+});
+
+/// Numer zmiany zamówienia na żywo.
+class OrderLive extends Notifier<int> {
+  OrderLive(this.orderId);
+
+  final String orderId;
+
+  @override
+  int build() {
+    final stop = ref.watch(repositoryProvider).watchOrder(orderId, () => state++);
+    ref.onDispose(stop);
+    return 0;
+  }
+}
+
+final orderLiveProvider = NotifierProvider.autoDispose.family<OrderLive, int, String>(OrderLive.new);
+
+final guestOrderProvider = FutureProvider.autoDispose.family<GuestOrder?, String>((ref, id) {
+  ref.watch(orderLiveProvider(id));
+  if (ref.watch(userIdProvider) == null) return Future.value(null);
+  return ref.watch(repositoryProvider).order(id);
+});
+
+final paymentsTestModeProvider = FutureProvider<bool>(
+  (ref) => ref.watch(repositoryProvider).paymentsTestMode(),
+);
+
 final profileProvider = FutureProvider.autoDispose<Profile?>((ref) {
   if (ref.watch(userIdProvider) == null) return Future.value(null);
   return ref.watch(repositoryProvider).myProfile();

@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:table_core/table_core.dart';
 
 import '../features/auth/login_screen.dart';
+import '../features/deliveries/deliveries_screen.dart';
 import '../features/floor/floor_screen.dart';
 import '../features/inventory/inventory_screen.dart';
 import '../features/kitchen/kitchen_screen.dart';
@@ -43,12 +44,14 @@ class _PanelAppState extends ConsumerState<PanelApp>
     _router = _buildRouter(_authRefresh);
     // Przycisk „Pokaż” w powiadomieniu o nowej rezerwacji otwiera Rezerwacje.
     ReservationAlerts.instance.onOpen = () => _router.go(PanelRoutes.reservations);
+    ReservationAlerts.instance.onOpenTakeaway = () => _router.go(PanelRoutes.deliveries);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     ReservationAlerts.instance.onOpen = null;
+    ReservationAlerts.instance.onOpenTakeaway = null;
     _router.dispose();
     _authRefresh.dispose();
     super.dispose();
@@ -141,6 +144,7 @@ GoRouter _buildRouter(Listenable refresh) {
               child: OrdersScreen(tableId: state.uri.queryParameters['stolik']),
             ),
           ),
+          _page(PanelRoutes.deliveries, const DeliveriesScreen()),
           _page(PanelRoutes.kitchen, const KitchenScreen()),
           _page(PanelRoutes.staff, const StaffScreen()),
           _page(PanelRoutes.menu, const MenuScreen()),
@@ -165,6 +169,7 @@ abstract final class PanelRoutes {
   static const reservations = '/rezerwacje';
   static const floor = '/sala';
   static const orders = '/zamowienia';
+  static const deliveries = '/dostawy';
   static const kitchen = '/kuchnia';
   static const staff = '/pracownicy';
   static const menu = '/menu';
@@ -178,6 +183,7 @@ abstract final class PanelRoutes {
 const _routePermissions = {
   PanelRoutes.reservations: {'reservations'},
   PanelRoutes.orders: {'orders'},
+  PanelRoutes.deliveries: {'orders'},
   PanelRoutes.kitchen: {'kitchen'},
   PanelRoutes.floor: {'floor_edit'},
   // W Pracownikach każda część ma własne uprawnienie: zespół, loginy, grafik, czas pracy, stanowiska.
@@ -193,6 +199,7 @@ const _routePermissions = {
 const panelTabLabels = {
   PanelRoutes.reservations: 'Rezerwacje',
   PanelRoutes.orders: 'Zamówienia',
+  PanelRoutes.deliveries: 'Dostawy',
   PanelRoutes.kitchen: 'Kuchnia',
   PanelRoutes.floor: 'Edycja sali',
   PanelRoutes.staff: 'Pracownicy',

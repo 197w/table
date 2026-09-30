@@ -95,6 +95,7 @@ abstract final class AppIcons {
   static const confetti = AppIconData('assets/icons/confetti.svg');
   static const cookingPot = AppIconData('assets/icons/cooking-pot.svg');
   static const copy = AppIconData('assets/icons/copy.svg');
+  static const creditCard = AppIconData('assets/icons/credit-card.svg');
   static const deviceMobile = AppIconData('assets/icons/device-mobile.svg');
   static const doorOpen = AppIconData('assets/icons/door-open.svg');
   static const envelope = AppIconData('assets/icons/envelope-simple.svg');
@@ -117,7 +118,9 @@ abstract final class AppIcons {
   static const mapPin = AppIconData('assets/icons/map-pin.svg');
   static const megaphone = AppIconData('assets/icons/megaphone.svg');
   static const minus = AppIconData('assets/icons/minus.svg');
+  static const money = AppIconData('assets/icons/money.svg');
   static const moon = AppIconData('assets/icons/moon.svg');
+  static const moped = AppIconData('assets/icons/moped.svg');
   static const move = AppIconData('assets/icons/arrows-out-cardinal.svg');
   static const navigation = AppIconData('assets/icons/navigation-arrow.svg');
   static const notePencil = AppIconData('assets/icons/note-pencil.svg');
@@ -130,6 +133,7 @@ abstract final class AppIcons {
   static const prohibit = AppIconData('assets/icons/prohibit.svg');
   static const question = AppIconData('assets/icons/question.svg');
   static const receipt = AppIconData('assets/icons/receipt.svg');
+  static const shoppingBag = AppIconData('assets/icons/shopping-bag.svg');
   static const rectangle = AppIconData('assets/icons/rectangle.svg');
   static const refresh = AppIconData('assets/icons/arrow-clockwise.svg');
   static const search = AppIconData('assets/icons/magnifying-glass.svg');

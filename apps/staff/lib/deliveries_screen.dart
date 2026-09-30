@@ -1,0 +1,699 @@
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:table_car/table_car.dart';
+import 'package:table_core/table_core.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'data.dart';
+import 'deliveries_data.dart';
+
+const _tabular = [FontFeature.tabularFigures()];
+
+/// Kolor gotówki do pobrania: ciepły, żeby dostawca nie przeoczył kwoty.
+const _cash = Color(0xFFE08A1E);
+
+String _two(int n) => n.toString().padLeft(2, '0');
+String _hm(DateTime t) => '${_two(t.hour)}:${_two(t.minute)}';
+
+/// Zakładka „Dostawy” dla stanowiska Dostawca: moje kursy, kolejka i dzisiejsze podsumowanie.
+/// Kurs przydziela baza: kto pierwszy zaczął zmianę (albo najdawniej skończył kurs), ten dostaje pierwszy.
+class DeliveriesTab extends ConsumerWidget {
+  const DeliveriesTab({super.key, required this.onScan});
+
+  final VoidCallback onScan;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final jobs = ref.watch(jobsProvider).value ?? const <Job>[];
+    final couriers = jobs.where((j) => j.permissions.contains('deliveries')).toList();
+    final working = couriers.where((j) => j.working).firstOrNull;
+    if (working == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Dostawy')),
+        body: MessageView(
+          icon: AppIcons.moped,
+          title: couriers.isEmpty ? 'Nie rozwozisz zamówień' : 'Kursy po rozpoczęciu zmiany',
+          message: couriers.isEmpty
+              ? 'Kursy dostają osoby na stanowisku Dostawca. Jeśli to pomyłka, porozmawiaj z przełożonym.'
+              : 'Zeskanuj kod w lokalu, żeby zacząć zmianę. Kto pierwszy zacznie zmianę, dostaje pierwszy kurs.',
+          actionLabel: couriers.isEmpty ? null : 'Zeskanuj kod',
+          onAction: couriers.isEmpty ? null : onScan,
+        ),
+      );
+    }
+    return DeliveriesScreen(job: working);
+  }
+}
+
+class DeliveriesScreen extends ConsumerStatefulWidget {
+  const DeliveriesScreen({super.key, required this.job});
+
+  final Job job;
+
+  @override
+  ConsumerState<DeliveriesScreen> createState() => _DeliveriesScreenState();
+}
+
+class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
+  bool _busy = false;
+
+  CourierKey get _key => (memberId: widget.job.memberId, restaurantId: widget.job.restaurantId);
+
+  Future<void> _run(Future<void> Function() action, [String? done]) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await action();
+      ref.invalidate(deliveryBoardProvider(_key));
+      if (done != null && mounted) showMessage(context, done, tone: ToastTone.success);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _open(Uri uri, String problem) async {
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) showMessage(context, problem, tone: ToastTone.error);
+  }
+
+  Future<void> _delivered(Course course) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Dostarczone #${course.number}?'),
+        content: Text(
+          course.cash
+              ? 'Pobrałeś od gościa ${Fmt.price(course.totalGrosze)} gotówką?'
+              : 'Zamówienie jest opłacone kartą online. Nic nie pobierasz.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Jeszcze nie')),
+          FilledButton(
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(course.cash ? 'Tak, pobrałem' : 'Dostarczone'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    HapticFeedback.mediumImpact();
+    await _run(
+      () => ref.read(deliveriesRepositoryProvider).delivered(course.id, widget.job.memberId),
+      'Kurs #${course.number} zakończony. Wracasz do kolejki.',
+    );
+  }
+
+  Future<void> _handOver(Course course, DeliveryBoard board) async {
+    final others = board.queue.where((q) => q.memberId != widget.job.memberId).toList();
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) => _HandOverSheet(course: course, others: others),
+    );
+    if (choice == null) return;
+    await _run(() async {
+      final name = await ref.read(deliveriesRepositoryProvider).handOver(
+        course.id,
+        widget.job.memberId,
+        toMemberId: choice.isEmpty ? null : choice,
+      );
+      if (mounted) showMessage(context, 'Kurs #${course.number} przekazany: $name.', tone: ToastTone.success);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final async = ref.watch(deliveryBoardProvider(_key));
+
+    // Każdy nowy stan trafia też na ekran samochodu (Android Auto, CarPlay).
+    ref.listen(deliveryBoardProvider(_key), (_, next) {
+      if (next.value case final board?) showOnCar(board, widget.job.memberId);
+    });
+
+    // Nowy kurs: wibracja i powiadomienie, także gdy ekran jest otwarty na innej zakładce.
+    ref.listen(deliveryBoardProvider(_key), (previous, next) {
+      final before = {for (final c in previous?.value?.courses ?? const <Course>[]) c.id};
+      final added = (next.value?.courses ?? const <Course>[]).where((c) => !before.contains(c.id)).toList();
+      if (previous?.value != null && added.isNotEmpty) {
+        HapticFeedback.heavyImpact();
+        final c = added.first;
+        showMessage(
+          context,
+          c.address,
+          title: 'Nowy kurs #${c.number}',
+          tone: ToastTone.success,
+          icon: AppIcons.moped,
+        );
+      }
+    });
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Dostawy'),
+        actions: [
+          IconButton(
+            tooltip: 'Odśwież',
+            onPressed: () => ref.invalidate(deliveryBoardProvider(_key)),
+            icon: const Glyph(AppIcons.refresh, size: 20),
+          ),
+        ],
+      ),
+      body: async.when(
+        skipLoadingOnReload: true,
+        loading: () => const LoadingView(),
+        error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(deliveryBoardProvider(_key))),
+        data: (board) {
+          if (!board.isCourier) {
+            return const MessageView(
+              icon: AppIcons.moped,
+              title: 'Nie jesteś w kolejce dostawców',
+              message: 'Kursy dostają osoby na stanowisku Dostawca. Twoje stanowisko widzi tylko podgląd.',
+            );
+          }
+          return RefreshIndicator(
+            onRefresh: () async => ref.invalidate(deliveryBoardProvider(_key)),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+              children: [
+                if (board.courses.isEmpty)
+                  _WaitingCard(board: board, memberId: widget.job.memberId)
+                else
+                  for (final course in board.courses) ...[
+                    _CourseCard(
+                      course: course,
+                      busy: _busy,
+                      restaurantName: board.restaurantName,
+                      onNavigate: () => _open(course.navigationUri, 'Nie udało się otworzyć nawigacji.'),
+                      onCall: () => _open(course.phoneUri, 'Nie udało się zadzwonić. Numer: ${course.customerPhone}'),
+                      onPickUp: () => _run(
+                        () => ref.read(deliveriesRepositoryProvider).pickUp(course.id, widget.job.memberId),
+                        'Kurs #${course.number} w drodze. Szerokiej drogi!',
+                      ),
+                      onDelivered: () => _delivered(course),
+                      onHandOver: course.canHandOver ? () => _handOver(course, board) : null,
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                if (board.courses.isNotEmpty && board.waiting > 0)
+                  _Hint(
+                    icon: AppIcons.clock,
+                    text: board.waiting == 1
+                        ? 'Jedno zamówienie czeka na wolnego dostawcę.'
+                        : 'Zamówienia czekające na wolnego dostawcę: ${board.waiting}.',
+                  ),
+                const SizedBox(height: 18),
+                _QueueCard(board: board, memberId: widget.job.memberId),
+                const SizedBox(height: 14),
+                _TodayCard(board: board),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Bez kursu: miejsce w kolejce i spokojnie pulsująca kropka „na zmianie”.
+class _WaitingCard extends StatelessWidget {
+  const _WaitingCard({required this.board, required this.memberId});
+
+  final DeliveryBoard board;
+  final String memberId;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final position = board.positionOf(memberId);
+    final free = board.queue.where((q) => !q.busy).length;
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+        child: Column(
+          children: [
+            const _Pulse(),
+            const SizedBox(height: 16),
+            Text('Czekasz na kurs', style: text.headlineSmall),
+            const SizedBox(height: 6),
+            Text(
+              position == null
+                  ? 'Jesteś na zmianie w ${board.restaurantName}.'
+                  : position == 1
+                  ? 'Jesteś pierwszy w kolejce: następne zamówienie z dostawą jest Twoje.'
+                  : 'Jesteś $position. w kolejce. Wolnych dostawców na zmianie: $free.',
+              textAlign: TextAlign.center,
+              style: text.bodyLarge?.copyWith(color: AppColors.textMuted),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Pulse extends StatefulWidget {
+  const _Pulse();
+
+  @override
+  State<_Pulse> createState() => _PulseState();
+}
+
+class _PulseState extends State<_Pulse> with SingleTickerProviderStateMixin {
+  late final _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 64,
+      height: 64,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final t = Curves.easeOut.transform(_controller.value);
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 24 + 40 * t,
+                height: 24 + 40 * t,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.accent.withValues(alpha: 0.28 * (1 - t)),
+                ),
+              ),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.accent.withValues(alpha: 0.16)),
+                alignment: Alignment.center,
+                child: Glyph(AppIcons.moped, size: 24, color: AppColors.accent),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _CourseCard extends StatelessWidget {
+  const _CourseCard({
+    required this.course,
+    required this.busy,
+    required this.restaurantName,
+    required this.onNavigate,
+    required this.onCall,
+    required this.onPickUp,
+    required this.onDelivered,
+    required this.onHandOver,
+  });
+
+  final Course course;
+  final bool busy;
+  final String restaurantName;
+  final VoidCallback onNavigate;
+  final VoidCallback onCall;
+  final VoidCallback onPickUp;
+  final VoidCallback onDelivered;
+  final VoidCallback? onHandOver;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final c = course;
+    final stageColor = switch (c.stage) {
+      CourseStage.preparing => AppColors.textMuted,
+      CourseStage.ready => AppColors.accent,
+      CourseStage.onTheWay => const Color(0xFF3B82F6),
+    };
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Text('#${c.number}', style: text.headlineSmall?.copyWith(fontFeatures: _tabular)),
+                const SizedBox(width: 10),
+                Tag(c.stage.label, color: stageColor),
+                const Spacer(),
+                if (c.promisedAt != null)
+                  Text(
+                    'na ${_hm(c.promisedAt!)}',
+                    style: text.titleSmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(c.address, style: text.titleLarge),
+            if (c.note != null) ...[
+              const SizedBox(height: 4),
+              Text(c.note!, style: text.bodyMedium?.copyWith(color: _cash, fontStyle: FontStyle.italic)),
+            ],
+            const SizedBox(height: 6),
+            Text(
+              '${c.customerName} · ${c.customerPhone}',
+              style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
+                    onPressed: onNavigate,
+                    icon: const Glyph(AppIcons.navigation, size: 18),
+                    label: const Text('Nawiguj'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                    onPressed: onCall,
+                    icon: const Glyph(AppIcons.phone, size: 18),
+                    label: const Text('Zadzwoń'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _PaymentBox(course: c),
+            const SizedBox(height: 12),
+            for (final i in c.items)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 34,
+                      child: Text(
+                        '${i.quantity}×',
+                        style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(i.name, style: text.bodyMedium),
+                          if (i.details != null)
+                            Text(i.details!, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+                          if (i.note != null)
+                            Text(i.note!, style: text.bodySmall?.copyWith(color: _cash, fontStyle: FontStyle.italic)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 14),
+            if (c.stage == CourseStage.onTheWay)
+              FilledButton.icon(
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),
+                onPressed: busy ? null : onDelivered,
+                icon: const Glyph(AppIcons.checkCircle, size: 20),
+                label: const Text('Dostarczone'),
+              )
+            else ...[
+              if (c.stage == CourseStage.preparing)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'Kuchnia jeszcze przygotowuje. Zamówienie odbierasz w $restaurantName.',
+                    style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                  ),
+                ),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),
+                onPressed: busy ? null : onPickUp,
+                icon: const Glyph(AppIcons.shoppingBag, size: 20),
+                label: const Text('Odebrałem z lokalu'),
+              ),
+            ],
+            if (onHandOver != null) ...[
+              const SizedBox(height: 4),
+              TextButton(onPressed: busy ? null : onHandOver, child: const Text('Oddaj kurs')),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Kwota do pobrania gotówką albo informacja, że zamówienie jest opłacone kartą.
+class _PaymentBox extends StatelessWidget {
+  const _PaymentBox({required this.course});
+
+  final Course course;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final c = course;
+    final (color, icon, title) = c.cash
+        ? (_cash, AppIcons.money, 'Pobierz ${Fmt.price(c.totalGrosze)} gotówką')
+        : (AppColors.accent, AppIcons.creditCard, 'Opłacone kartą online · ${Fmt.price(c.totalGrosze)}');
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        children: [
+          Glyph(icon, size: 22, color: color),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: text.titleMedium?.copyWith(color: color, fontFeatures: _tabular)),
+                if (!c.cash && c.testPayment)
+                  Text('Płatność testowa', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Hint extends StatelessWidget {
+  const _Hint({required this.icon, required this.text});
+
+  final AppIconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Glyph(icon, size: 16, color: AppColors.textMuted),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(text, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textMuted)),
+        ),
+      ],
+    );
+  }
+}
+
+/// Kolejka dostawców na zmianie: wolni od najdłużej czekającego, potem zajęci.
+class _QueueCard extends StatelessWidget {
+  const _QueueCard({required this.board, required this.memberId});
+
+  final DeliveryBoard board;
+  final String memberId;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    var place = 0;
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Kolejka dostawców', style: text.titleMedium),
+            const SizedBox(height: 2),
+            Text(
+              'Kto dłużej czeka, dostaje następny kurs.',
+              style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 8),
+            for (final q in board.queue)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 28,
+                      child: Text(
+                        q.busy ? '–' : '${++place}.',
+                        style: text.titleSmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        q.memberId == memberId ? '${q.name} (Ty)' : q.name,
+                        style: text.bodyLarge?.copyWith(
+                          fontWeight: q.memberId == memberId ? FontWeight.w600 : null,
+                        ),
+                      ),
+                    ),
+                    Tag(q.busy ? 'W KURSIE' : 'WOLNY', color: q.busy ? const Color(0xFF3B82F6) : AppColors.accent),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TodayCard extends StatelessWidget {
+  const _TodayCard({required this.board});
+
+  final DeliveryBoard board;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    Widget stat(String label, String value) => Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+          Text(value, style: text.titleLarge?.copyWith(fontFeatures: _tabular)),
+        ],
+      ),
+    );
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          children: [
+            stat('Dziś kursów', '${board.todayCount}'),
+            stat('Gotówka do rozliczenia', Fmt.price(board.todayCashGrosze)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Oddanie kursu: następny wolny w kolejce albo wybrana osoba. Zwraca numer pracownika ('' = następny wolny).
+class _HandOverSheet extends StatelessWidget {
+  const _HandOverSheet({required this.course, required this.others});
+
+  final Course course;
+  final List<QueuedCourier> others;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + MediaQuery.viewPaddingOf(context).bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Oddaj kurs #${course.number}', style: text.titleLarge),
+          const SizedBox(height: 4),
+          Text(
+            'Po oddaniu wracasz na koniec kolejki.',
+            style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 12),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Glyph(AppIcons.arrowsClockwise, size: 22, color: AppColors.accent),
+            title: const Text('Następny wolny w kolejce'),
+            subtitle: const Text('Baza wybierze osobę, która najdłużej czeka'),
+            onTap: () => Navigator.pop(context, ''),
+          ),
+          if (others.isNotEmpty) Divider(height: 1, color: AppColors.ring),
+          for (final q in others)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Glyph(AppIcons.users, size: 22, color: AppColors.textMuted),
+              title: Text(q.name),
+              subtitle: Text(q.busy ? 'W kursie, dostanie go jako kolejny' : 'Wolny'),
+              onTap: () => Navigator.pop(context, q.memberId),
+            ),
+          if (others.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Nikt inny nie jest teraz na zmianie.',
+                style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bieżący kurs albo miejsce w kolejce na ekranie samochodu. Krótkie teksty, bez szczegółów zamówienia.
+void showOnCar(DeliveryBoard board, String memberId) {
+  final course = board.courses.firstOrNull;
+  final position = board.positionOf(memberId);
+  final status = !board.isCourier
+      ? 'Kursy dostają osoby na stanowisku Dostawca.'
+      : position == null
+      ? 'Na zmianie w ${board.restaurantName}.'
+      : position == 1
+      ? 'Czekasz na kurs: jesteś pierwszy w kolejce.'
+      : 'Czekasz na kurs: jesteś $position. w kolejce.';
+  TableCar.show(
+    status: status,
+    next: board.courses.length > 1 ? board.courses.length - 1 : 0,
+    course: course == null
+        ? null
+        : CarCourse(
+            number: course.number,
+            stage: switch (course.stage) {
+              CourseStage.preparing => 'W przygotowaniu',
+              CourseStage.ready => 'Gotowe do odbioru',
+              CourseStage.onTheWay => 'W drodze',
+            },
+            address: course.address,
+            customer: course.customerName,
+            phone: course.customerPhone,
+            payment: course.cash
+                ? 'Pobierz ${Fmt.price(course.totalGrosze)} gotówką'
+                : 'Opłacone kartą online',
+            items: switch (course.items.fold(0, (s, i) => s + i.quantity)) {
+              1 => '1 pozycja',
+              final n when n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) => '$n pozycje',
+              final n => '$n pozycji',
+            },
+            note: course.note,
+            promised: course.promisedAt == null ? null : 'na ${_hm(course.promisedAt!)}',
+          ),
+  );
+}

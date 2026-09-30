@@ -302,7 +302,8 @@ class PanelRepository {
           .from('restaurants')
           .select(
             'id, name, cuisine, description, address, city, phone, slot_interval_min, max_party_size, price_level, logo_url, '
-            'schedule_period, inventory_period, opening_hours(weekday, opens, closes)',
+            'schedule_period, inventory_period, delivery_enabled, pickup_enabled, takeaway_cash, '
+            'delivery_fee_grosze, delivery_min_grosze, delivery_area, opening_hours(weekday, opens, closes)',
           )
           .eq('id', restaurantId)
           .single();
@@ -551,6 +552,7 @@ class PanelRepository {
           .from('orders')
           .select('id, table_id, reservation_id, note, opened_at, order_items(*)')
           .eq('restaurant_id', restaurantId)
+          .eq('kind', 'dine_in')
           .eq('status', 'open')
           .order('opened_at');
       return rows.map(PanelOrder.fromJson).toList();
@@ -595,12 +597,70 @@ class PanelRepository {
     return () => unawaited(_db.removeChannel(channel));
   }
 
+  // -------------------------------------------------------------
+  // Dostawy i odbiór osobisty
+  // -------------------------------------------------------------
+
+  /// Zamówienia na wynos: aktywne i zakończone od [since].
+  Future<List<TakeawayOrder>> takeawayOrders(String restaurantId, {required DateTime since}) {
+    return _guard(() async {
+      final rows = await _db
+          .from('orders')
+          .select(
+            'id, kind, number, fulfillment, opened_at, closed_at, customer_name, customer_phone, delivery_address, '
+            'delivery_note, delivery_fee_grosze, payment_choice, payment_status, payment_test, promised_at, accepted_at, '
+            'picked_up_at, courier_member, reject_reason, courier:staff_members!orders_courier_member_fkey(name), order_items(*)',
+          )
+          .eq('restaurant_id', restaurantId)
+          .neq('kind', 'dine_in')
+          .neq('fulfillment', 'awaiting_payment')
+          .or('closed_at.is.null,closed_at.gte.${since.toUtc().toIso8601String()}')
+          .order('opened_at');
+      return rows.map(TakeawayOrder.fromJson).toList();
+    });
+  }
+
+  Future<List<Courier>> couriers(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>('panel_couriers', params: {'p_restaurant_id': restaurantId});
+      return [for (final r in rows) Courier.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
+  Future<void> acceptTakeaway(String orderId, int minutes, {String? memberId}) => _guard(
+    () => _db.rpc<void>('panel_takeaway_accept', params: {
+      'p_order_id': orderId,
+      'p_minutes': minutes,
+      'p_member_id': memberId,
+    }),
+  );
+
+  Future<void> rejectTakeaway(String orderId, {String? reason, String? memberId}) => _guard(
+    () => _db.rpc<void>('panel_takeaway_reject', params: {
+      'p_order_id': orderId,
+      'p_reason': reason,
+      'p_member_id': memberId,
+    }),
+  );
+
+  Future<void> takeawayReady(String orderId) =>
+      _guard(() => _db.rpc<void>('panel_takeaway_ready', params: {'p_order_id': orderId}));
+
+  Future<void> takeawayHanded(String orderId, {String? memberId}) => _guard(
+    () => _db.rpc<void>('panel_takeaway_handed', params: {'p_order_id': orderId, 'p_member_id': memberId}),
+  );
+
+  /// Ręczny przydział dostawcy. Null: kurs wraca do kolejki.
+  Future<void> assignCourier(String orderId, String? courierId) => _guard(
+    () => _db.rpc<void>('panel_takeaway_assign', params: {'p_order_id': orderId, 'p_courier': courierId}),
+  );
+
   /// Bileciki na ekran kuchni: pozycje wysłane w ostatnich godzinach z otwartych rachunków.
   Future<List<KitchenTicket>> kitchenTickets(String restaurantId) {
     return _guard(() async {
       final rows = await _db
           .from('order_items')
-          .select('*, menu_items(show_in_kitchen), member:staff_members(name), orders!inner(table_id, status, opener:staff_members!opened_by_member(name))')
+          .select('*, menu_items(show_in_kitchen), member:staff_members(name), orders!inner(table_id, status, kind, number, opener:staff_members!opened_by_member(name))')
           .eq('restaurant_id', restaurantId)
           .inFilter('status', ['sent', 'ready', 'cancelled'])
           .eq('orders.status', 'open')
@@ -989,7 +1049,7 @@ class PanelRepository {
           .from('orders')
           .select(
             'id, table_id, reservation_id, note, status, opened_at, closed_at, '
-            'payment_method, gift_card_grosze, order_items(*)',
+            'payment_method, gift_card_grosze, kind, number, order_items(*)',
           )
           .eq('restaurant_id', restaurantId)
           .inFilter('status', ['paid', 'cancelled'])

@@ -84,6 +84,13 @@ class ProfileScreen extends ConsumerWidget {
                         ),
                         const SizedBox(height: 20),
                         _SchedulePeriodCard(profile: profile, editable: restaurant.canManage),
+                        const SizedBox(height: 20),
+                        _DeliveryCard(
+                          key: ValueKey('dostawa-${profile.id}'),
+                          profile: profile,
+                          editable: restaurant.canManage,
+                          pro: restaurant.isPro,
+                        ),
                       ],
                     ),
                   ),
@@ -981,4 +988,143 @@ class _SchedulePeriodCardState extends ConsumerState<_SchedulePeriodCard> {
       ),
     );
   }
+}
+
+/// Dostawa i odbiór osobisty: goście zamawiają w aplikacji Table, płacą kartą online albo (jeśli lokal
+/// pozwoli) gotówką. Dostawy rozwożą dostawcy z kolejki w Table for employees.
+class _DeliveryCard extends ConsumerStatefulWidget {
+  const _DeliveryCard({super.key, required this.profile, required this.editable, required this.pro});
+
+  final RestaurantProfile profile;
+  final bool editable;
+  final bool pro;
+
+  @override
+  ConsumerState<_DeliveryCard> createState() => _DeliveryCardState();
+}
+
+class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
+  late DeliverySettings _s = widget.profile.delivery;
+  late final _fee = TextEditingController(text: groszeToText(widget.profile.delivery.feeGrosze));
+  late final _min = TextEditingController(text: groszeToText(widget.profile.delivery.minGrosze));
+  late final _area = TextEditingController(text: widget.profile.delivery.area ?? '');
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _fee.dispose();
+    _min.dispose();
+    _area.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final fee = _fee.text.trim().isEmpty ? 0 : parseGrosze(_fee.text);
+    final min = _min.text.trim().isEmpty ? 0 : parseGrosze(_min.text);
+    if (fee == null || min == null) {
+      showMessage(context, 'Wpisz kwoty, na przykład 8 albo 8,50.', tone: ToastTone.warning);
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await ref.read(repositoryProvider).updateProfile(widget.profile.id, {
+        'delivery_enabled': _s.deliveryEnabled,
+        'pickup_enabled': _s.pickupEnabled,
+        'takeaway_cash': _s.cash,
+        'delivery_fee_grosze': fee,
+        'delivery_min_grosze': min,
+        'delivery_area': _area.text.trim().isEmpty ? null : _area.text.trim(),
+      });
+      ref.invalidate(profileProvider(widget.profile.id));
+      if (mounted) showMessage(context, 'Ustawienia dostawy zapisane.', tone: ToastTone.success);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final enabled = widget.editable && widget.pro && !_busy;
+    Widget toggle(String title, String hint, bool value, ValueChanged<bool> onChanged) => Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: text.titleSmall),
+              Text(hint, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+            ],
+          ),
+        ),
+        Switch(value: value, onChanged: enabled ? onChanged : null),
+      ],
+    );
+    return PanelCard(
+      title: 'Dostawa i odbiór',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            widget.pro
+                ? 'Goście zamawiają w aplikacji Table. Zamówienia przyjmujesz w zakładce „Dostawy”.'
+                : 'Zamówienia z dostawą i na wynos są w planie Pro.',
+            style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 12),
+          toggle('Dostawa', 'Dostawcy z kolejki w Table for employees', _s.deliveryEnabled,
+              (v) => setState(() => _s = _copy(delivery: v))),
+          const SizedBox(height: 10),
+          toggle('Odbiór osobisty', 'Gość odbiera zamówienie w lokalu', _s.pickupEnabled,
+              (v) => setState(() => _s = _copy(pickup: v))),
+          const SizedBox(height: 10),
+          toggle('Gotówka', 'Karta online jest zawsze. Gotówka u dostawcy albo przy odbiorze', _s.cash,
+              (v) => setState(() => _s = _copy(cash: v))),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _fee,
+                  enabled: enabled,
+                  decoration: const InputDecoration(labelText: 'Opłata za dostawę', suffixText: 'zł'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _min,
+                  enabled: enabled,
+                  decoration: const InputDecoration(labelText: 'Minimalne zamówienie', suffixText: 'zł'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _area,
+            enabled: enabled,
+            maxLength: 120,
+            decoration: const InputDecoration(labelText: 'Obszar dostawy dla gości', hintText: 'Na przykład: Białystok, do 5 km'),
+          ),
+          if (widget.editable && widget.pro)
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(onPressed: _busy ? null : _save, child: const Text('Zapisz')),
+            ),
+        ],
+      ),
+    );
+  }
+
+  DeliverySettings _copy({bool? delivery, bool? pickup, bool? cash}) => DeliverySettings(
+    deliveryEnabled: delivery ?? _s.deliveryEnabled,
+    pickupEnabled: pickup ?? _s.pickupEnabled,
+    cash: cash ?? _s.cash,
+    feeGrosze: _s.feeGrosze,
+    minGrosze: _s.minGrosze,
+    area: _s.area,
+  );
 }

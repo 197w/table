@@ -138,6 +138,7 @@ class Repository {
             .from('restaurants')
             .select(
               'id, name, cuisine, price_level, description, address, city, phone, plan, is_example, logo_url, max_party_size, '
+              'delivery_enabled, pickup_enabled, takeaway_cash, delivery_fee_grosze, delivery_min_grosze, delivery_area, '
               'opening_hours(weekday, opens, closes), '
               'menu_sections(id, name, position, menu_items(id, name, description, price_grosze, allergens, position, variants, addons, available, photo_url))',
             )
@@ -480,6 +481,92 @@ class Repository {
   // -------------------------------------------------------------
   // Błędy
   // -------------------------------------------------------------
+
+  // -------------------------------------------------------------
+  // Zamówienia z dostawą i na wynos
+  // -------------------------------------------------------------
+
+  static const _orderColumns =
+      'id, restaurant_id, kind, number, fulfillment, opened_at, delivery_address, delivery_fee_grosze, '
+      'payment_choice, payment_status, payment_test, promised_at, reject_reason, '
+      'restaurants(name, phone, address, city), order_items(name, quantity, unit_price_grosze, variant, addons, note, status)';
+
+  /// Składa zamówienie. Ceny liczy baza z menu. Zwraca numer zamówienia.
+  Future<String> placeOrder({
+    required String restaurantId,
+    required OrderKind kind,
+    required List<CartLine> lines,
+    required PaymentChoice payment,
+    required String name,
+    required String phone,
+    String? address,
+    String? note,
+  }) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>('guest_place_order', params: {
+        'p_restaurant_id': restaurantId,
+        'p_kind': kind.db,
+        'p_items': [for (final l in lines) l.toJson()],
+        'p_payment': payment.db,
+        'p_name': name,
+        'p_phone': phone,
+        'p_address': address,
+        'p_note': note,
+      });
+      return json['id'] as String;
+    });
+  }
+
+  /// Tryb testowy płatności kartą: zamówienie jest opłacone bez pobierania pieniędzy.
+  Future<void> payOrderTest(String orderId) {
+    return _guard(() => _db.rpc<void>('guest_pay_order_test', params: {'p_order_id': orderId}));
+  }
+
+  Future<void> cancelOrder(String orderId) {
+    return _guard(() => _db.rpc<void>('guest_cancel_order', params: {'p_order_id': orderId}));
+  }
+
+  Future<List<GuestOrder>> myOrders() {
+    return _guard(() async {
+      final user = _db.auth.currentUser;
+      if (user == null) return const [];
+      final rows = await _db
+          .from('orders')
+          .select(_orderColumns)
+          .eq('guest_id', user.id)
+          .order('opened_at', ascending: false)
+          .limit(50);
+      return rows.map(GuestOrder.fromJson).toList();
+    });
+  }
+
+  Future<GuestOrder?> order(String orderId) {
+    return _guard(() async {
+      final row = await _db.from('orders').select(_orderColumns).eq('id', orderId).maybeSingle();
+      return row == null ? null : GuestOrder.fromJson(row);
+    });
+  }
+
+  /// Zmiany zamówienia na żywo: lokal przyjął, gotowe, dostawca w drodze.
+  void Function() watchOrder(String orderId, void Function() onChange) {
+    final channel = _db
+        .channel('zamowienie-$orderId-${_orderChannels++}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'orders',
+          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'id', value: orderId),
+          callback: (_) => onChange(),
+        )
+        .subscribe();
+    return () => _db.removeChannel(channel);
+  }
+
+  static int _orderChannels = 0;
+
+  Future<bool> paymentsTestMode() {
+    return _guard(() async => await _db.rpc<bool>('payments_test_mode'));
+  }
 
   Future<T> _guard<T>(Future<T> Function() action) async {
     try {

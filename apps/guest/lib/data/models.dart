@@ -261,7 +261,25 @@ class RestaurantDetail {
     required this.menu,
     required this.rating,
     this.description,
+    this.deliveryEnabled = false,
+    this.pickupEnabled = false,
+    this.takeawayCash = true,
+    this.deliveryFeeGrosze = 0,
+    this.deliveryMinGrosze = 0,
+    this.deliveryArea,
   });
+
+  /// Zamówienia w aplikacji: dostawa i odbiór osobisty (tylko plan Pro).
+  final bool deliveryEnabled;
+  final bool pickupEnabled;
+
+  /// Gotówka u dostawcy albo przy odbiorze. Karta online jest zawsze.
+  final bool takeawayCash;
+  final int deliveryFeeGrosze;
+  final int deliveryMinGrosze;
+  final String? deliveryArea;
+
+  bool get canOrder => isPro && (deliveryEnabled || pickupEnabled);
 
   final String id;
   final String name;
@@ -308,6 +326,12 @@ class RestaurantDetail {
       hours: hours,
       menu: menu,
       rating: rating,
+      deliveryEnabled: json['delivery_enabled'] == true,
+      pickupEnabled: json['pickup_enabled'] == true,
+      takeawayCash: json['takeaway_cash'] != false,
+      deliveryFeeGrosze: _toInt(json['delivery_fee_grosze']),
+      deliveryMinGrosze: _toInt(json['delivery_min_grosze']),
+      deliveryArea: json['delivery_area'] as String?,
     );
   }
 
@@ -640,5 +664,203 @@ class NotificationPreferences {
     'reservation_updates': reservationUpdates,
     'review_requests': reviewRequests,
     'news': news,
+  };
+}
+
+// ---------------------------------------------------------------
+// Zamówienia z dostawą i na wynos
+// ---------------------------------------------------------------
+
+enum OrderKind {
+  delivery('delivery', 'Dostawa'),
+  pickup('pickup', 'Odbiór osobisty');
+
+  const OrderKind(this.db, this.label);
+  final String db;
+  final String label;
+
+  static OrderKind from(Object? value) => value == 'pickup' ? OrderKind.pickup : OrderKind.delivery;
+}
+
+enum PaymentChoice {
+  card('card_online', 'Karta online'),
+  cash('cash', 'Gotówka');
+
+  const PaymentChoice(this.db, this.label);
+  final String db;
+  final String label;
+}
+
+/// Etap zamówienia widziany przez gościa.
+enum OrderStage {
+  awaitingPayment('awaiting_payment', 'Czeka na płatność'),
+  placed('placed', 'Czeka na lokal'),
+  accepted('accepted', 'Przygotowujemy'),
+  ready('ready', 'Gotowe'),
+  onTheWay('on_the_way', 'W drodze'),
+  delivered('delivered', 'Zakończone'),
+  rejected('rejected', 'Odrzucone'),
+  cancelled('cancelled', 'Odwołane');
+
+  const OrderStage(this.db, this.label);
+  final String db;
+  final String label;
+
+  bool get finished => this == delivered || this == rejected || this == cancelled;
+
+  static OrderStage from(Object? value) =>
+      values.firstWhere((s) => s.db == value, orElse: () => OrderStage.placed);
+}
+
+class GuestOrderItem {
+  const GuestOrderItem({
+    required this.name,
+    required this.quantity,
+    required this.unitPriceGrosze,
+    this.variant,
+    this.addons = const [],
+    this.note,
+  });
+
+  final String name;
+  final int quantity;
+  final int unitPriceGrosze;
+  final String? variant;
+  final List<String> addons;
+  final String? note;
+
+  int get totalGrosze => unitPriceGrosze * quantity;
+
+  String? get details {
+    final parts = [?variant, for (final a in addons) '+ ${a.toLowerCase()}'];
+    return parts.isEmpty ? null : parts.join(', ');
+  }
+
+  factory GuestOrderItem.fromJson(Map<String, dynamic> json) => GuestOrderItem(
+    name: json['name'] as String,
+    quantity: _toInt(json['quantity']),
+    unitPriceGrosze: _toInt(json['unit_price_grosze']),
+    variant: json['variant'] as String?,
+    addons: [
+      for (final a in (json['addons'] as List? ?? const []).cast<Map<String, dynamic>>()) a['name'] as String,
+    ],
+    note: json['note'] as String?,
+  );
+}
+
+/// Moje zamówienie z dostawą albo odbiorem osobistym.
+class GuestOrder {
+  const GuestOrder({
+    required this.id,
+    required this.restaurantId,
+    required this.restaurantName,
+    required this.restaurantPhone,
+    required this.restaurantAddress,
+    required this.kind,
+    required this.number,
+    required this.stage,
+    required this.openedAt,
+    required this.items,
+    required this.feeGrosze,
+    required this.payment,
+    required this.paid,
+    this.testPayment = false,
+    this.address,
+    this.promisedAt,
+    this.rejectReason,
+  });
+
+  final String id;
+  final String restaurantId;
+  final String restaurantName;
+  final String restaurantPhone;
+  final String restaurantAddress;
+  final OrderKind kind;
+  final int number;
+  final OrderStage stage;
+  final DateTime openedAt;
+  final List<GuestOrderItem> items;
+  final int feeGrosze;
+  final PaymentChoice payment;
+  final bool paid;
+  final bool testPayment;
+  final String? address;
+  final DateTime? promisedAt;
+  final String? rejectReason;
+
+  int get totalGrosze => feeGrosze + items.fold(0, (sum, i) => sum + i.totalGrosze);
+
+  bool get canCancel => stage == OrderStage.awaitingPayment || stage == OrderStage.placed;
+
+  factory GuestOrder.fromJson(Map<String, dynamic> json) {
+    final r = json['restaurants'] as Map<String, dynamic>? ?? const {};
+    return GuestOrder(
+      id: json['id'] as String,
+      restaurantId: json['restaurant_id'] as String,
+      restaurantName: r['name'] as String? ?? '',
+      restaurantPhone: r['phone'] as String? ?? '',
+      restaurantAddress: [r['address'], r['city']].whereType<String>().join(', '),
+      kind: OrderKind.from(json['kind']),
+      number: _toInt(json['number']),
+      stage: OrderStage.from(json['fulfillment']),
+      openedAt: DateTime.parse(json['opened_at'] as String).toLocal(),
+      items: [
+        for (final i in (json['order_items'] as List? ?? const []).cast<Map<String, dynamic>>())
+          if (i['status'] != 'cancelled' || json['fulfillment'] == 'cancelled' || json['fulfillment'] == 'rejected')
+            GuestOrderItem.fromJson(i),
+      ],
+      feeGrosze: _toInt(json['delivery_fee_grosze']),
+      payment: json['payment_choice'] == 'cash' ? PaymentChoice.cash : PaymentChoice.card,
+      paid: json['payment_status'] == 'paid',
+      testPayment: json['payment_test'] == true,
+      address: json['delivery_address'] as String?,
+      promisedAt: json['promised_at'] == null ? null : DateTime.parse(json['promised_at'] as String).toLocal(),
+      rejectReason: json['reject_reason'] as String?,
+    );
+  }
+}
+
+/// Pozycja w koszyku: danie z wybranym wariantem i dodatkami.
+class CartLine {
+  const CartLine({
+    required this.menuItemId,
+    required this.name,
+    required this.unitPriceGrosze,
+    required this.quantity,
+    this.variant,
+    this.addons = const [],
+  });
+
+  final String menuItemId;
+  final String name;
+  final int unitPriceGrosze;
+  final int quantity;
+  final String? variant;
+  final List<String> addons;
+
+  /// To samo danie z tymi samymi opcjami łączy się w jedną pozycję.
+  String get key => [menuItemId, variant ?? '', ...addons].join('|');
+
+  int get totalGrosze => unitPriceGrosze * quantity;
+
+  String? get details {
+    final parts = [?variant, for (final a in addons) '+ ${a.toLowerCase()}'];
+    return parts.isEmpty ? null : parts.join(', ');
+  }
+
+  CartLine withQuantity(int value) => CartLine(
+    menuItemId: menuItemId,
+    name: name,
+    unitPriceGrosze: unitPriceGrosze,
+    quantity: value,
+    variant: variant,
+    addons: addons,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'menu_item_id': menuItemId,
+    'quantity': quantity,
+    'variant': ?variant,
+    'addons': addons,
   };
 }

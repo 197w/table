@@ -7,12 +7,19 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   Na tablety przejdziemy, gdy panel na komputerach będzie ustalony. Nigdy na telefony.
 - `apps/staff`: Table for employees, aplikacja dla pracowników lokalu na telefony (Android `pl.table.table_staff`,
   iOS `pl.table.tableStaff`). Logowanie numerem telefonu (SMS), skan wspólnego kodu QR z panelu
-  zaczyna zmianę i loguje w panelu. Dolne menu: Zamówienia, Zeskanuj, Grafik, Ustawienia. Grafik to lista dni z okresu lokalu
+  zaczyna zmianę i loguje w panelu. Dolne menu: Zamówienia, Dostawy, Zeskanuj, Grafik, Ustawienia. Grafik to lista dni z okresu lokalu
   (tydzień, 2 tygodnie albo miesiąc, `restaurants.schedule_period`, ustawia „Dane lokalu”) ze zgłaszaniem godzin
   na cały okres naraz i „Moje godziny” na dole. Kelner nabija zamówienia (stoliki, menu, wysyłka na kuchnię, wydanie,
   zamknięcie rachunku; niewysłaną pozycję usuwa się przesunięciem w lewo, minus tylko zmniejsza ilość), mój grafik
   (zgłaszanie godzin), mój kod do panelu. Każda aktualizacja na S23 i iPhone'a, tak jak aplikacja dla gości.
 - `packages/table_core`: wspólny motyw, czcionka Geist, ikony Phosphor, formatery, widżety i konfiguracja.
+- `packages/table_car`: wtyczka Flutter tylko dla Table for employees: kurs dostawcy w Android Auto (Kotlin, Car App
+  Library, szablon Pane, kategoria POI) i CarPlay (Swift, CPInformationTemplate, scena `TableCarSceneDelegate`
+  w Info.plist) oraz rozpoznanie podłączenia do auta (`TableCar.connection`: aplikacja sama przechodzi na „Dostawy”).
+  CarPlay na iPhonie wymaga uprawnienia Apple (`com.apple.developer.carplay-driving-task`, płatne konto), więc
+  uprawnienie jest tylko dla symulatora (`CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]` w `ios/Flutter/Debug.xcconfig`).
+  Test: Android Auto w emulatorze DHU (telefon przez USB, tryb dewelopera Android Auto, „Nieznane źródła”),
+  CarPlay w symulatorze Xcode (I/O → External Displays → CarPlay). Nie edytujemy `.pbxproj`.
 
 Z użytkownikiem rozmawiamy po polsku. Teksty w aplikacjach i komentarze w kodzie też są po polsku.
 
@@ -69,7 +76,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0038, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0040, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
   Gdy użytkownik napisze „kod”, podaj najnowszy `otp` z tej tabeli (jego numer kończy się na 098).
@@ -82,12 +89,15 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `formatters.dart` (`Fmt`), `units.dart`, `env.dart`, `failure.dart` (`AppFailure`), `widgets.dart`
   (`PressScale`, `LoadingView`, `MessageView`, `ErrorView`, `Tag`, `DropdownPill`...), `app_icons.dart`
   (`Glyph` zamiast `Icon`, stałe `AppIcons`, SVG w `assets/icons`, nowe: `npx better-icons get ph:<nazwa>`).
-- `apps/guest/lib`: `app` (router, dolne menu, preferencje), `core` (mapy, lokalizacja), `data`, `features`.
+- `apps/guest/lib`: `app` (router, dolne menu, preferencje), `core` (mapy, lokalizacja), `data`, `features`
+  (m.in. `ordering`: zamawianie z dostawą i na wynos).
 - `apps/staff/lib`: `data.dart` (repozytorium i providery), `orders_data.dart`, `login_screen.dart`, `home_screen.dart`,
-  `scan_screen.dart`, `schedule_screen.dart`, `settings_screen.dart`, `shell.dart`, `waiter_screens.dart`
+  `scan_screen.dart`, `schedule_screen.dart`, `settings_screen.dart`, `shell.dart`, `waiter_screens.dart`,
+  `deliveries_data.dart`, `deliveries_screen.dart`
   (mobile_scanner). Podpis iOS: `DEVELOPMENT_TEAM` w `ios/Flutter/*.xcconfig`, nie w pbxproj.
 - `apps/panel/lib`: `app` (router, boczne menu, motyw na komputer), `data` (modele, `PanelRepository`, providery),
-  `features` (auth, onboarding, kiosk, reservations, orders, kitchen, floor, menu, inventory, profile, reviews, staff, stats),
+  `features` (auth, onboarding, kiosk, reservations, orders, deliveries, kitchen, floor, menu, inventory, profile, reviews,
+  staff, stats),
   `shared/panel_widgets.dart`.
 
 ## Panel restauracji
@@ -157,6 +167,20 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   w panelu ani w aplikacji Table, `purchase_gift_card` zwraca błąd, dane kart i stare płatności kartą zostają w bazie
   (historia zamówień i sprzedaż je pokazują). Historia zamkniętych rachunków: zakładka „Historia zamówień”.
   Paragon fiskalny jeszcze na kasie, integrację z drukarką fiskalną robimy później.
+- Dostawy i odbiór osobisty (0039, 0040, tylko Pro): lokal włącza je w „Dane lokalu” → „Dostawa i odbiór”
+  (`delivery_enabled`, `pickup_enabled`, `takeaway_cash` = gotówka, opłata, minimalne zamówienie, obszar). Gość zamawia
+  w aplikacji Table (przycisk „Zamów” w lokalu, koszyk, `guest_place_order`; ceny liczy baza z menu), płaci kartą online
+  albo gotówką. Operatora płatności jeszcze nie ma: `private.app_settings.payments_mode = 'test'`, karta opłaca się
+  w trybie testowym (`guest_pay_order_test`, `payment_test`). Zamówienie: `orders.kind` delivery/pickup,
+  `fulfillment`: awaiting_payment → placed → accepted → ready → on_the_way → delivered (albo rejected/cancelled),
+  numer dnia `number`. Panel „Dostawy” (`/dostawy`, uprawnienie `orders`, dźwięk i powiadomienie przy nowym):
+  przyjęcie z czasem (`panel_takeaway_accept`, pozycje idą na kuchnię), gotowe, wydanie odbioru, odrzucenie, ręczna
+  zmiana dostawcy (`panel_takeaway_assign`, `panel_couriers`). Gość śledzi zamówienie na żywo („Moje” → „Zamówienia”).
+  Dostawcy (stanowisko z `deliveries` wpisanym wprost, bez „ALL”): kolejka `private.courier_queue`: kto pierwszy zaczął
+  zmianę albo najdawniej skończył kurs, dostaje pierwszy kurs (`private.dispatch_deliveries`, triggery na zamówieniach
+  i zmianach; koniec zmiany oddaje nieodebrane kursy kolejce). W Table for employees zakładka „Dostawy”
+  (`staff_deliveries`, `staff_delivery_pickup`, `staff_delivery_done`, `staff_delivery_handover`: oddanie kursu wybranej
+  osobie albo następnemu w kolejce, dopóki zamówienie jest w lokalu).
 - Ekran kuchni (`/kuchnia`, uprawnienie `kitchen`, np. Kucharz): bileciki z pozycjami wysłanymi na kuchnię,
   pogrupowane po rachunku i chwili wysłania, najstarsze pierwsze. Czas liczony od wysłania z sekundami;
   kolory po progach z `restaurants.kitchen_warn_minutes`/`kitchen_late_minutes` (domyślnie 4 i 6 min).

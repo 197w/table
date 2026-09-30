@@ -561,7 +561,11 @@ class RestaurantProfile {
     this.logoUrl,
     this.schedulePeriod = 'week',
     this.inventoryPeriod = 'week',
+    this.delivery = const DeliverySettings(),
   });
+
+  /// Dostawa i odbiór osobisty.
+  final DeliverySettings delivery;
 
   final String? logoUrl;
 
@@ -606,8 +610,45 @@ class RestaurantProfile {
       logoUrl: json['logo_url'] as String?,
       schedulePeriod: json['schedule_period'] as String? ?? 'week',
       inventoryPeriod: json['inventory_period'] as String? ?? 'week',
+      delivery: DeliverySettings.fromJson(json),
     );
   }
+}
+
+/// Dostawa i odbiór osobisty lokalu. Karta online jest zawsze, gotówkę lokal włącza sam.
+class DeliverySettings {
+  const DeliverySettings({
+    this.deliveryEnabled = false,
+    this.pickupEnabled = false,
+    this.cash = true,
+    this.feeGrosze = 0,
+    this.minGrosze = 0,
+    this.area,
+  });
+
+  final bool deliveryEnabled;
+  final bool pickupEnabled;
+
+  /// Gotówka przy dostawie albo odbiorze.
+  final bool cash;
+  final int feeGrosze;
+
+  /// Minimalna wartość zamówienia z dostawą (bez opłaty za dostawę).
+  final int minGrosze;
+
+  /// Opis obszaru dostawy dla gości, np. „Białystok, do 5 km”.
+  final String? area;
+
+  bool get any => deliveryEnabled || pickupEnabled;
+
+  factory DeliverySettings.fromJson(Map<String, dynamic> json) => DeliverySettings(
+    deliveryEnabled: json['delivery_enabled'] == true,
+    pickupEnabled: json['pickup_enabled'] == true,
+    cash: json['takeaway_cash'] != false,
+    feeGrosze: _toInt(json['delivery_fee_grosze']),
+    minGrosze: _toInt(json['delivery_min_grosze']),
+    area: json['delivery_area'] as String?,
+  );
 }
 
 /// Wariant (np. rozmiar) albo płatny dodatek pozycji menu.
@@ -985,7 +1026,7 @@ enum StaffPermission {
   orders('orders', 'Zamówienia', 'Nabijanie pozycji i wysyłanie ich na kuchnię', 'Zamówienia'),
   ordersClose('orders_close', 'Zamykanie rachunków', 'Przyjmowanie płatności i zamykanie rachunku', 'Zamówienia'),
   ordersCancel('orders_cancel', 'Anulowanie pozycji', 'Anulowanie pozycji, które są już na kuchni', 'Zamówienia'),
-  deliveries('deliveries', 'Dostawy', 'Aplikacja dla kurierów', 'Zamówienia', soon: true),
+  deliveries('deliveries', 'Dostawy (kurier)', 'Kursy w aplikacji Table for employees, kolejka dostawców', 'Zamówienia'),
   kitchen('kitchen', 'Kuchnia', 'Ekran zamówień na kuchni', 'Kuchnia'),
   kitchenSettings('kitchen_settings', 'Ustawienia kuchni', 'Progi czasu i pozycje ukryte na kuchni', 'Kuchnia'),
   staff('staff', 'Pracownicy', 'Dodawanie i edycja pracowników, ich statystyki', 'Zespół'),
@@ -1002,7 +1043,7 @@ enum StaffPermission {
   reviews('reviews', 'Opinie', 'Odpowiadanie na opinie', 'Wyniki'),
   stats('stats', 'Statystyki', 'Sprzedaż, rezerwacje i historia zamówień', 'Wyniki');
 
-  const StaffPermission(this.key, this.label, this.description, this.group, {this.soon = false});
+  const StaffPermission(this.key, this.label, this.description, this.group);
 
   final String key;
   final String label;
@@ -1010,9 +1051,6 @@ enum StaffPermission {
 
   /// Część panelu, do której należy uprawnienie (nagłówek w oknie stanowiska).
   final String group;
-
-  /// Funkcja, której jeszcze nie ma w panelu.
-  final bool soon;
 
   static StaffPermission? fromKey(String key) {
     for (final p in values) {
@@ -1220,9 +1258,17 @@ class PanelOrder {
     this.closedAt,
     this.paymentMethod,
     this.giftCardGrosze,
+    this.kind = OrderKind.dineIn,
+    this.number,
   });
 
   final String id;
+
+  /// Na sali, dostawa albo odbiór osobisty.
+  final OrderKind kind;
+
+  /// Numer zamówienia na wynos w danym dniu, np. 12.
+  final int? number;
   final String? tableId;
   final String? reservationId;
   final String? note;
@@ -1283,8 +1329,142 @@ class PanelOrder {
       closedAt: _toDateOrNull(json['closed_at']),
       paymentMethod: PaymentMethod.fromDb(json['payment_method']),
       giftCardGrosze: json['gift_card_grosze'] == null ? null : _toInt(json['gift_card_grosze']),
+      kind: OrderKind.from(json['kind']),
+      number: json['number'] == null ? null : _toInt(json['number']),
     );
   }
+
+  /// „Dostawa #12” albo „Na wynos #12”. Null przy rachunku ze stolika.
+  String? get takeawayLabel => kind == OrderKind.dineIn ? null : '${kind.label} #${number ?? '?'}';
+}
+
+enum OrderKind {
+  dineIn('dine_in', 'Na sali'),
+  delivery('delivery', 'Dostawa'),
+  pickup('pickup', 'Na wynos');
+
+  const OrderKind(this.db, this.label);
+  final String db;
+  final String label;
+
+  static OrderKind from(Object? value) =>
+      values.firstWhere((k) => k.db == value, orElse: () => OrderKind.dineIn);
+}
+
+/// Etap zamówienia na wynos.
+enum TakeawayStage {
+  awaitingPayment('awaiting_payment', 'Czeka na płatność'),
+  placed('placed', 'Nowe'),
+  accepted('accepted', 'W przygotowaniu'),
+  ready('ready', 'Gotowe'),
+  onTheWay('on_the_way', 'W drodze'),
+  delivered('delivered', 'Zakończone'),
+  rejected('rejected', 'Odrzucone'),
+  cancelled('cancelled', 'Odwołane');
+
+  const TakeawayStage(this.db, this.label);
+  final String db;
+  final String label;
+
+  bool get finished => this == delivered || this == rejected || this == cancelled;
+
+  static TakeawayStage from(Object? value) =>
+      values.firstWhere((s) => s.db == value, orElse: () => TakeawayStage.placed);
+}
+
+/// Zamówienie gościa z aplikacji Table: dostawa albo odbiór osobisty.
+class TakeawayOrder {
+  const TakeawayOrder({
+    required this.id,
+    required this.kind,
+    required this.number,
+    required this.stage,
+    required this.openedAt,
+    required this.customerName,
+    required this.customerPhone,
+    required this.items,
+    required this.feeGrosze,
+    required this.cash,
+    required this.paid,
+    this.testPayment = false,
+    this.address,
+    this.note,
+    this.promisedAt,
+    this.acceptedAt,
+    this.pickedUpAt,
+    this.closedAt,
+    this.courierId,
+    this.courierName,
+    this.rejectReason,
+  });
+
+  final String id;
+  final OrderKind kind;
+  final int number;
+  final TakeawayStage stage;
+  final DateTime openedAt;
+  final String customerName;
+  final String customerPhone;
+  final String? address;
+  final String? note;
+  final List<OrderItem> items;
+  final int feeGrosze;
+
+  /// Gotówka przy dostawie/odbiorze (inaczej karta online).
+  final bool cash;
+  final bool paid;
+  final bool testPayment;
+  final DateTime? promisedAt;
+  final DateTime? acceptedAt;
+  final DateTime? pickedUpAt;
+  final DateTime? closedAt;
+  final String? courierId;
+  final String? courierName;
+  final String? rejectReason;
+
+  String get label => '${kind.label} #$number';
+
+  List<OrderItem> get active => items.where((i) => i.status != OrderItemStatus.cancelled).toList();
+
+  int get totalGrosze => feeGrosze + active.fold(0, (sum, i) => sum + i.totalGrosze);
+
+  factory TakeawayOrder.fromJson(Map<String, dynamic> json) => TakeawayOrder(
+    id: json['id'] as String,
+    kind: OrderKind.from(json['kind']),
+    number: _toInt(json['number']),
+    stage: TakeawayStage.from(json['fulfillment']),
+    openedAt: _toDate(json['opened_at']),
+    customerName: json['customer_name'] as String? ?? '',
+    customerPhone: json['customer_phone'] as String? ?? '',
+    address: json['delivery_address'] as String?,
+    note: json['delivery_note'] as String?,
+    items: [
+      for (final i in json['order_items'] as List? ?? const []) OrderItem.fromJson(i as Map<String, dynamic>),
+    ]..sort((a, b) => a.createdAt.compareTo(b.createdAt)),
+    feeGrosze: _toInt(json['delivery_fee_grosze']),
+    cash: json['payment_choice'] == 'cash',
+    paid: json['payment_status'] == 'paid',
+    testPayment: json['payment_test'] == true,
+    promisedAt: _toDateOrNull(json['promised_at']),
+    acceptedAt: _toDateOrNull(json['accepted_at']),
+    pickedUpAt: _toDateOrNull(json['picked_up_at']),
+    closedAt: _toDateOrNull(json['closed_at']),
+    courierId: json['courier_member'] as String?,
+    courierName: (json['courier'] as Map<String, dynamic>?)?['name'] as String?,
+    rejectReason: json['reject_reason'] as String?,
+  );
+}
+
+/// Dostawca na zmianie w kolejce lokalu.
+class Courier {
+  const Courier({required this.memberId, required this.name, required this.busy});
+
+  final String memberId;
+  final String name;
+  final bool busy;
+
+  factory Courier.fromJson(Map<String, dynamic> json) =>
+      Courier(memberId: json['member_id'] as String, name: json['name'] as String, busy: json['busy'] == true);
 }
 
 /// Bilecik na ekranie kuchni: pozycje jednego stolika wysłane za jednym razem.
@@ -1295,10 +1475,14 @@ class KitchenTicket {
     required this.items,
     this.tableId,
     this.waiter,
+    this.takeawayLabel,
   });
 
   final String orderId;
   final String? tableId;
+
+  /// „Dostawa #12” albo „Na wynos #12” zamiast stolika.
+  final String? takeawayLabel;
   final DateTime sentAt;
   final List<OrderItem> items;
 
@@ -1326,6 +1510,11 @@ class KitchenTicket {
         KitchenTicket(
           orderId: list.first['order_id'] as String,
           tableId: (list.first['orders'] as Map<String, dynamic>?)?['table_id'] as String?,
+          takeawayLabel: switch (list.first['orders'] as Map<String, dynamic>?) {
+            final o? when o['kind'] != null && o['kind'] != 'dine_in' =>
+              '${OrderKind.from(o['kind']).label} #${o['number'] ?? '?'}',
+            _ => null,
+          },
           sentAt: _toDate(list.first['sent_at']),
           waiter: {
             for (final r in list)

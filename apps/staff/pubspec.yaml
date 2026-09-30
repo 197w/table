@@ -13,11 +13,14 @@ dependencies:
     sdk: flutter
   table_core:
     path: ../../packages/table_core
+  table_car:
+    path: ../../packages/table_car
   material_ui: ^1.2.0
   supabase_flutter: ^2.17.2
   flutter_riverpod: ^3.4.3
   intl: any
   mobile_scanner: any
+  url_launcher: any
 
 dev_dependencies:
   flutter_test:

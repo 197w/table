@@ -561,6 +561,25 @@ final kitchenStatsProvider = FutureProvider.autoDispose.family<KitchenStats, Str
 );
 
 /// Zamknięte rachunki jednego dnia.
+/// Zamówienia na wynos: aktywne i zakończone dzisiaj. Odświeżają się na żywo razem z rachunkami.
+final takeawayOrdersProvider = FutureProvider.autoDispose.family<List<TakeawayOrder>, String>(
+  (ref, id) {
+    ref.cacheFor();
+    ref.watch(ordersLiveProvider(id).select((s) => s.version));
+    final now = DateTime.now();
+    return ref.watch(repositoryProvider).takeawayOrders(id, since: DateTime(now.year, now.month, now.day));
+  },
+);
+
+/// Dostawcy na zmianie. Odświeżają się razem z zamówieniami (koniec kursu zwalnia dostawcę).
+final couriersProvider = FutureProvider.autoDispose.family<List<Courier>, String>(
+  (ref, id) {
+    ref.cacheFor();
+    ref.watch(ordersLiveProvider(id).select((s) => s.version));
+    return ref.watch(repositoryProvider).couriers(id);
+  },
+);
+
 final orderHistoryProvider = FutureProvider.autoDispose.family<List<PanelOrder>, DayQuery>(
   (ref, q) {
     ref.cacheFor();
