@@ -9,6 +9,7 @@ import 'package:table_core/table_core.dart';
 import '../features/auth/login_screen.dart';
 import '../features/floor/floor_screen.dart';
 import '../features/gift_cards/gift_cards_screen.dart';
+import '../features/inventory/inventory_screen.dart';
 import '../features/kitchen/kitchen_screen.dart';
 import '../features/menu/menu_screen.dart';
 import '../features/orders/orders_screen.dart';
@@ -139,6 +140,7 @@ GoRouter _buildRouter(Listenable refresh) {
           _page(PanelRoutes.staff, const StaffScreen()),
           _page(PanelRoutes.giftCards, const GiftCardsScreen()),
           _page(PanelRoutes.menu, const MenuScreen()),
+          _page(PanelRoutes.inventory, const InventoryScreen()),
           _page(PanelRoutes.profile, const ProfileScreen()),
           _page(PanelRoutes.reviews, const ReviewsScreen()),
           _page(PanelRoutes.stats, const StatsScreen()),
@@ -163,6 +165,7 @@ abstract final class PanelRoutes {
   static const staff = '/pracownicy';
   static const giftCards = '/karty';
   static const menu = '/menu';
+  static const inventory = '/inwentaryzacja';
   static const profile = '/lokal';
   static const reviews = '/opinie';
   static const stats = '/statystyki';
@@ -178,6 +181,7 @@ const _routePermissions = {
   PanelRoutes.staff: {'staff', 'staff_logins', 'schedule', 'timesheet', 'positions'},
   PanelRoutes.profile: {'profile'},
   PanelRoutes.menu: {'menu'},
+  PanelRoutes.inventory: {'inventory_edit', 'inventory_count'},
   PanelRoutes.giftCards: {'gift_cards'},
   PanelRoutes.reviews: {'reviews'},
   PanelRoutes.stats: {'stats'},
@@ -192,6 +196,7 @@ const panelTabLabels = {
   PanelRoutes.staff: 'Pracownicy',
   PanelRoutes.profile: 'Dane lokalu',
   PanelRoutes.menu: 'Menu',
+  PanelRoutes.inventory: 'Inwentaryzacja',
   PanelRoutes.giftCards: 'Karty podarunkowe',
   PanelRoutes.reviews: 'Opinie',
   PanelRoutes.stats: 'Statystyki',

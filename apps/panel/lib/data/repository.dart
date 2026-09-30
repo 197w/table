@@ -302,7 +302,7 @@ class PanelRepository {
           .from('restaurants')
           .select(
             'id, name, cuisine, description, address, city, phone, slot_interval_min, max_party_size, price_level, logo_url, '
-            'schedule_period, opening_hours(weekday, opens, closes)',
+            'schedule_period, inventory_period, opening_hours(weekday, opens, closes)',
           )
           .eq('id', restaurantId)
           .single();
@@ -763,6 +763,102 @@ class PanelRepository {
 
   Future<void> deleteHours(String id) {
     return _guard(() => _db.rpc<void>('panel_delete_hours', params: {'p_id': id}));
+  }
+
+  // ---------------------------------------------------------------
+  // Inwentaryzacja
+  // ---------------------------------------------------------------
+
+  Future<List<InventoryItem>> inventoryItems(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db
+          .from('inventory_items')
+          .select('id, name, unit, capacity, sort')
+          .eq('restaurant_id', restaurantId)
+          .isFilter('deleted_at', null)
+          .order('sort')
+          .order('name');
+      return rows.map(InventoryItem.fromJson).toList();
+    });
+  }
+
+  /// Nowy składnik (bez [id]) albo zmiana istniejącego.
+  Future<void> saveInventoryItem(
+    String restaurantId, {
+    String? id,
+    required String name,
+    required InventoryUnit unit,
+    required double capacity,
+  }) {
+    return _guard(() async {
+      final fields = {'name': name.trim(), 'unit': unit.key, 'capacity': capacity};
+      try {
+        if (id == null) {
+          await _db.from('inventory_items').insert({...fields, 'restaurant_id': restaurantId});
+          return;
+        }
+        final rows = await _db.from('inventory_items').update(fields).eq('id', id).select('id');
+        if (rows.isEmpty) throw const AppFailure('Nie masz uprawnień do zmiany składników.');
+      } on PostgrestException catch (e) {
+        if (e.code == '23505') throw const AppFailure('Składnik o tej nazwie już jest na liście.');
+        rethrow;
+      }
+    });
+  }
+
+  /// Usunięty składnik znika z listy, ale zostaje w historii spisów.
+  Future<void> deleteInventoryItem(String id) {
+    return _guard(() async {
+      final rows = await _db
+          .from('inventory_items')
+          .update({'deleted_at': DateTime.now().toUtc().toIso8601String()})
+          .eq('id', id)
+          .select('id');
+      if (rows.isEmpty) throw const AppFailure('Nie masz uprawnień do usuwania składników.');
+    });
+  }
+
+  Future<void> setInventoryPeriod(String restaurantId, String period) {
+    return _guard(
+      () => _db.rpc<void>('panel_set_inventory_period', params: {'p_restaurant_id': restaurantId, 'p_period': period}),
+    );
+  }
+
+  /// Spisy od najnowszego. Trwający (jeśli jest) jest pierwszy.
+  Future<List<InventoryCount>> inventoryCounts(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>('panel_inventory_counts', params: {'p_restaurant_id': restaurantId});
+      return [for (final r in rows) InventoryCount.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
+  /// Zaczyna inwentaryzację albo zwraca tę, która już trwa.
+  Future<String> startInventory(String restaurantId, {String? memberId}) {
+    return _guard(
+      () => _db.rpc<String>('panel_inventory_start', params: {'p_restaurant_id': restaurantId, 'p_member_id': memberId}),
+    );
+  }
+
+  /// Ilość składnika w opakowaniach. Null czyści wpis.
+  Future<void> setInventoryQuantity(String countId, String itemId, double? quantity, {String? memberId}) {
+    return _guard(
+      () => _db.rpc<void>('panel_inventory_set', params: {
+        'p_count_id': countId,
+        'p_item_id': itemId,
+        'p_quantity': quantity,
+        'p_member_id': memberId,
+      }),
+    );
+  }
+
+  Future<void> finishInventory(String countId, {String? memberId}) {
+    return _guard(
+      () => _db.rpc<void>('panel_inventory_finish', params: {'p_count_id': countId, 'p_member_id': memberId}),
+    );
+  }
+
+  Future<void> discardInventory(String countId) {
+    return _guard(() => _db.rpc<void>('panel_inventory_discard', params: {'p_count_id': countId}));
   }
 
   /// Przełożony daje wolne w danym dniu. Zastępuje zgłoszenie albo przyjęte godziny.

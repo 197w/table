@@ -560,12 +560,16 @@ class RestaurantProfile {
     this.description,
     this.logoUrl,
     this.schedulePeriod = 'week',
+    this.inventoryPeriod = 'week',
   });
 
   final String? logoUrl;
 
   /// Na jaki okres pracownicy zgłaszają godziny: week, two_weeks albo month.
   final String schedulePeriod;
+
+  /// Co ile lokal robi inwentaryzację: day, week, two_weeks albo month.
+  final String inventoryPeriod;
 
   final String id;
   final String name;
@@ -601,6 +605,7 @@ class RestaurantProfile {
       hours: hours,
       logoUrl: json['logo_url'] as String?,
       schedulePeriod: json['schedule_period'] as String? ?? 'week',
+      inventoryPeriod: json['inventory_period'] as String? ?? 'week',
     );
   }
 }
@@ -1036,6 +1041,8 @@ enum StaffPermission {
   menuEdit('menu_edit', 'Edycja menu', 'Dodawanie i zmiana dań, cen, sekcji i zdjęć', 'Lokal'),
   menuAvailability('menu_availability', 'Dostępność dań', 'Oznaczanie „Skończyło się” i „Znowu dostępne”', 'Lokal'),
   giftCards('gift_cards', 'Karty podarunkowe', 'Realizacja kart gości', 'Lokal'),
+  inventoryEdit('inventory_edit', 'Edytowanie składników', 'Dodawanie, zmiana i usuwanie składników', 'Inwentaryzacja'),
+  inventoryCount('inventory_count', 'Wpisywanie ilości składników', 'Spis ilości składników w inwentaryzacji', 'Inwentaryzacja'),
   reviews('reviews', 'Opinie', 'Odpowiadanie na opinie', 'Wyniki'),
   stats('stats', 'Statystyki', 'Sprzedaż, rezerwacje i historia zamówień', 'Wyniki');
 
@@ -1704,4 +1711,164 @@ class SalesStats {
 extension _IfEmpty on String {
   /// Pusty napis zamienia na null.
   String? get ifEmpty => isEmpty ? null : this;
+}
+
+// ---------------------------------------------------------------
+// Inwentaryzacja
+// ---------------------------------------------------------------
+
+/// Jednostka pojemności składnika.
+enum InventoryUnit {
+  ml('ml', 'ml'),
+  l('l', 'l'),
+  g('g', 'g'),
+  kg('kg', 'kg'),
+  szt('szt', 'szt.');
+
+  const InventoryUnit(this.key, this.label);
+
+  final String key;
+  final String label;
+
+  static InventoryUnit fromKey(Object? key) =>
+      values.firstWhere((u) => u.key == key, orElse: () => InventoryUnit.szt);
+}
+
+/// Co ile lokal robi inwentaryzację.
+const inventoryPeriods = [
+  ('day', 'Codziennie'),
+  ('week', 'Co tydzień'),
+  ('two_weeks', 'Co 2 tygodnie'),
+  ('month', 'Co miesiąc'),
+];
+
+String inventoryPeriodLabel(String period) =>
+    inventoryPeriods.firstWhere((p) => p.$1 == period, orElse: () => inventoryPeriods[1]).$2;
+
+/// Liczba po polsku, bez zbędnych zer: 0,7; 2,45; 12.
+String inventoryNumber(double value) {
+  final fixed = value.toStringAsFixed(3).replaceFirst(RegExp(r'\.?0+$'), '');
+  return (fixed == '-0' ? '0' : fixed).replaceAll('.', ',');
+}
+
+/// Liczba wpisana z przecinkiem albo kropką. Null: to nie jest liczba.
+double? parseInventoryNumber(String text) {
+  final clean = text.replaceAll(RegExp(r'\s'), '').replaceAll(',', '.');
+  if (clean.isEmpty) return null;
+  return double.tryParse(clean);
+}
+
+/// Dzień następnej inwentaryzacji według okresu, licząc od dnia ostatniej. Null: jeszcze żadnej nie było.
+DateTime? nextInventoryDay(String period, DateTime? last) {
+  if (last == null) return null;
+  return switch (period) {
+    'day' => DateTime(last.year, last.month, last.day + 1),
+    'two_weeks' => DateTime(last.year, last.month, last.day + 14),
+    'month' => DateTime(last.year, last.month + 1, last.day),
+    _ => DateTime(last.year, last.month, last.day + 7),
+  };
+}
+
+/// Składnik lokalu. Ilość w spisie wpisuje się w opakowaniach, np. 2,5 butelki po 0,7 l.
+class InventoryItem {
+  const InventoryItem({
+    required this.id,
+    required this.name,
+    required this.unit,
+    required this.capacity,
+    this.sort = 0,
+  });
+
+  final String id;
+  final String name;
+  final InventoryUnit unit;
+
+  /// Pojemność jednego opakowania w jednostce.
+  final double capacity;
+  final int sort;
+
+  /// Opakowanie, np. „0,7 l” albo „24 szt.”.
+  String get package => '${inventoryNumber(capacity)} ${unit.label}';
+
+  factory InventoryItem.fromJson(Map<String, dynamic> json) => InventoryItem(
+    id: json['id'] as String,
+    name: json['name'] as String,
+    unit: InventoryUnit.fromKey(json['unit']),
+    capacity: _toDouble(json['capacity']) ?? 0,
+    sort: _toInt(json['sort']),
+  );
+}
+
+/// Ilość składnika w spisie. Jednostka i pojemność z chwili spisu.
+class InventoryLine {
+  const InventoryLine({
+    required this.itemId,
+    required this.name,
+    required this.unit,
+    required this.capacity,
+    required this.quantity,
+    this.countedBy,
+  });
+
+  final String itemId;
+  final String name;
+  final InventoryUnit unit;
+  final double capacity;
+
+  /// Liczba opakowań.
+  final double quantity;
+  final String? countedBy;
+
+  double get total => quantity * capacity;
+
+  /// Razem w jednostce, np. „1,75 l”.
+  String get totalText => '${inventoryNumber(total)} ${unit.label}';
+
+  factory InventoryLine.fromJson(Map<String, dynamic> json) => InventoryLine(
+    itemId: json['item_id'] as String,
+    name: json['name'] as String,
+    unit: InventoryUnit.fromKey(json['unit']),
+    capacity: _toDouble(json['capacity']) ?? 0,
+    quantity: _toDouble(json['quantity']) ?? 0,
+    countedBy: json['counted_by'] as String?,
+  );
+}
+
+/// Spis inwentaryzacji. Otwarty (bez [finishedAt]) może być najwyżej jeden na lokal.
+class InventoryCount {
+  const InventoryCount({
+    required this.id,
+    required this.startedAt,
+    required this.lines,
+    this.finishedAt,
+    this.startedBy,
+    this.finishedBy,
+  });
+
+  final String id;
+  final DateTime startedAt;
+  final DateTime? finishedAt;
+  final String? startedBy;
+  final String? finishedBy;
+  final List<InventoryLine> lines;
+
+  bool get open => finishedAt == null;
+
+  InventoryLine? line(String itemId) {
+    for (final l in lines) {
+      if (l.itemId == itemId) return l;
+    }
+    return null;
+  }
+
+  factory InventoryCount.fromJson(Map<String, dynamic> json) => InventoryCount(
+    id: json['id'] as String,
+    startedAt: _toDate(json['started_at']),
+    finishedAt: _toDateOrNull(json['finished_at']),
+    startedBy: json['started_by'] as String?,
+    finishedBy: json['finished_by'] as String?,
+    lines: [
+      for (final l in json['lines'] as List? ?? const []) InventoryLine.fromJson(l as Map<String, dynamic>),
+    ],
+  );
 }

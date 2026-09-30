@@ -201,6 +201,9 @@ class TableOrderScreen extends ConsumerStatefulWidget {
 class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
   bool _busy = false;
 
+  /// Pozycje usunięte przesunięciem. Znikają od razu, zanim baza potwierdzi usunięcie.
+  final _removed = <String>{};
+
   String get _rid => widget.job.restaurantId;
 
   WOrder? _order() {
@@ -221,6 +224,21 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
       if (mounted) showMessage(context, errorText(e));
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Usunięcie niewysłanej pozycji przesunięciem w lewo.
+  Future<void> _remove(WLine line) async {
+    setState(() => _removed.add(line.id));
+    HapticFeedback.lightImpact();
+    try {
+      await ref.read(waiterRepositoryProvider).updateItem(line.id, status: 'cancelled');
+      ref.invalidate(openOrdersProvider(_rid));
+      if (mounted) showMessage(context, 'Usunięto: ${line.name}.');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _removed.remove(line.id));
+      showMessage(context, errorText(e));
     }
   }
 
@@ -256,6 +274,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
     for (final o in orders.value ?? const <WOrder>[]) {
       if (o.tableId == widget.table.id) order = o;
     }
+    final lines = [...?order?.lines.where((l) => !_removed.contains(l.id))];
     final repo = ref.read(waiterRepositoryProvider);
     final groups = [
       (LineStatus.ready, 'DO WYDANIA'),
@@ -272,7 +291,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
             TextButton(onPressed: _busy ? null : () => _close(order!), child: const Text('Rachunek')),
         ],
       ),
-      body: order == null || order.lines.isEmpty
+      body: order == null || lines.isEmpty
           ? MessageView(
               icon: AppIcons.forkKnife,
               title: 'Rachunek jest pusty',
@@ -284,7 +303,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               children: [
                 for (final (status, title) in groups)
-                  if (order.lines.any((l) => l.status == status)) ...[
+                  if (lines.any((l) => l.status == status)) ...[
                     Padding(
                       padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
                       child: Row(
@@ -312,17 +331,28 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
                         ],
                       ),
                     ),
-                    for (final line in order.lines.where((l) => l.status == status))
-                      _LineTile(
-                        line: line,
-                        busy: _busy,
-                        onQuantity: (q) => _run(
-                          () => q < 1
-                              ? repo.updateItem(line.id, status: 'cancelled')
-                              : repo.updateItem(line.id, quantity: q),
+                    for (final line in lines.where((l) => l.status == status))
+                      if (line.status == LineStatus.fresh)
+                        // Niewysłaną pozycję usuwa się przesunięciem w lewo.
+                        Dismissible(
+                          key: ValueKey('line-${line.id}'),
+                          direction: _busy ? DismissDirection.none : DismissDirection.endToStart,
+                          onDismissed: (_) => _remove(line),
+                          background: const _RemoveBackground(),
+                          child: _LineTile(
+                            line: line,
+                            busy: _busy,
+                            onQuantity: (q) => _run(() => repo.updateItem(line.id, quantity: q)),
+                            onServed: () {},
+                          ),
+                        )
+                      else
+                        _LineTile(
+                          line: line,
+                          busy: _busy,
+                          onQuantity: (q) => _run(() => repo.updateItem(line.id, quantity: q)),
+                          onServed: () => _run(() => repo.updateItem(line.id, status: 'served')),
                         ),
-                        onServed: () => _run(() => repo.updateItem(line.id, status: 'served')),
-                      ),
                   ],
               ],
             ),
@@ -416,10 +446,11 @@ class _LineTile extends StatelessWidget {
             ),
           ),
           if (fresh) ...[
+            // Przy jednej sztuce minus jest wyłączony: pozycję usuwa się przesunięciem w lewo.
             IconButton(
-              tooltip: line.quantity == 1 ? 'Usuń' : 'Mniej',
-              onPressed: busy ? null : () => onQuantity(line.quantity - 1),
-              icon: Glyph(line.quantity == 1 ? AppIcons.trash : AppIcons.minus, size: 18),
+              tooltip: 'Mniej',
+              onPressed: busy || line.quantity <= 1 ? null : () => onQuantity(line.quantity - 1),
+              icon: const Glyph(AppIcons.minus, size: 18),
             ),
             Text('${line.quantity}', style: text.titleMedium?.copyWith(fontFeatures: _tabular)),
             IconButton(
@@ -434,6 +465,35 @@ class _LineTile extends StatelessWidget {
               onPressed: busy ? null : onServed,
               icon: Glyph(AppIcons.check, size: 22, color: AppColors.accent),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Czerwone tło pod pozycją przesuwaną w lewo.
+class _RemoveBackground extends StatelessWidget {
+  const _RemoveBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      alignment: Alignment.centerRight,
+      decoration: BoxDecoration(
+        color: AppColors.error,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Usuń',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.white),
+          ),
+          const SizedBox(width: 8),
+          const Glyph(AppIcons.trash, size: 20, color: Colors.white),
         ],
       ),
     );

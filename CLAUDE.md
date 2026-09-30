@@ -10,7 +10,8 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   zaczyna zmianę i loguje w panelu. Dolne menu: Zamówienia, Zeskanuj, Grafik, Ustawienia. Grafik to lista dni z okresu lokalu
   (tydzień, 2 tygodnie albo miesiąc, `restaurants.schedule_period`, ustawia „Dane lokalu”) ze zgłaszaniem godzin
   na cały okres naraz i „Moje godziny” na dole. Kelner nabija zamówienia (stoliki, menu, wysyłka na kuchnię, wydanie,
-  zamknięcie rachunku), mój grafik (zgłaszanie godzin), mój kod do panelu. Każda aktualizacja na S23 i iPhone'a, tak jak aplikacja dla gości.
+  zamknięcie rachunku; niewysłaną pozycję usuwa się przesunięciem w lewo, minus tylko zmniejsza ilość), mój grafik
+  (zgłaszanie godzin), mój kod do panelu. Każda aktualizacja na S23 i iPhone'a, tak jak aplikacja dla gości.
 - `packages/table_core`: wspólny motyw, czcionka Geist, ikony Phosphor, formatery, widżety i konfiguracja.
 
 Z użytkownikiem rozmawiamy po polsku. Teksty w aplikacjach i komentarze w kodzie też są po polsku.
@@ -68,7 +69,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0035, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0036, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
   Gdy użytkownik napisze „kod”, podaj najnowszy `otp` z tej tabeli (jego numer kończy się na 098).
@@ -84,7 +85,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `scan_screen.dart`, `schedule_screen.dart`, `settings_screen.dart`, `shell.dart`, `waiter_screens.dart`
   (mobile_scanner). Podpis iOS: `DEVELOPMENT_TEAM` w `ios/Flutter/*.xcconfig`, nie w pbxproj.
 - `apps/panel/lib`: `app` (router, boczne menu, motyw na komputer), `data` (modele, `PanelRepository`, providery),
-  `features` (auth, onboarding, kiosk, reservations, orders, kitchen, floor, menu, profile, reviews, staff, stats),
+  `features` (auth, onboarding, kiosk, reservations, orders, kitchen, floor, menu, inventory, profile, reviews, staff, stats),
   `shared/panel_widgets.dart`.
 
 ## Panel restauracji
@@ -162,6 +163,14 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   goście widzą je w aplikacji Table). Uprawnienia: `menu` (zakładka), `menu_edit` (dania, ceny, sekcje, zdjęcia),
   `menu_availability` („Skończyło się”). Warianty (np. rozmiary, każdy z ceną), płatne dodatki, stawka VAT i „dostępne teraz”. Przy wariantach
   `price_grosze` to najniższa cena wariantu. „Skończyło się” może ustawić też kelner i kuchnia (`panel_set_menu_item_available`).
+- Inwentaryzacja (`/inwentaryzacja`, `features/inventory`): zakładki Spis, Składniki, Historia (`IconTabs`).
+  Składniki (`inventory_items`: nazwa, jednostka ml/l/g/kg/szt, pojemność opakowania; usunięcie ustawia `deleted_at`,
+  w historii zostają). Spis (`inventory_counts`, jeden otwarty na lokal, `inventory_count_lines` z ilością w opakowaniach
+  oraz jednostką i pojemnością z chwili spisu): `panel_inventory_start`, `panel_inventory_set` (każda ilość zapisuje się
+  od razu), `panel_inventory_finish`, `panel_inventory_discard`, lista `panel_inventory_counts`. Okres
+  `restaurants.inventory_period` (day, week, two_weeks, month; `panel_set_inventory_period`), następna inwentaryzacja
+  liczona od ostatniej zakończonej. Uprawnienia: `inventory_edit` („Edytowanie składników”: składniki i okres)
+  i `inventory_count` („Wpisywanie ilości składników”), grupa „Inwentaryzacja”.
 
 ## Zasady projektu
 

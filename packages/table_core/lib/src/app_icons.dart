@@ -87,6 +87,7 @@ abstract final class AppIcons {
   static const circle = AppIconData('assets/icons/circle.svg');
   static const circleHalf = AppIconData('assets/icons/circle-half.svg');
   static const circleHalfTilt = AppIconData('assets/icons/circle-half-tilt.svg');
+  static const clipboardText = AppIconData('assets/icons/clipboard-text.svg');
   static const clock = AppIconData('assets/icons/clock.svg');
   static const close = AppIconData('assets/icons/x.svg');
   static const compass = AppIconData('assets/icons/compass.svg');
@@ -119,6 +120,7 @@ abstract final class AppIcons {
   static const move = AppIconData('assets/icons/arrows-out-cardinal.svg');
   static const navigation = AppIconData('assets/icons/navigation-arrow.svg');
   static const notePencil = AppIconData('assets/icons/note-pencil.svg');
+  static const package = AppIconData('assets/icons/package.svg');
   static const password = AppIconData('assets/icons/password.svg');
   static const pencil = AppIconData('assets/icons/pencil-simple.svg');
   static const phone = AppIconData('assets/icons/phone.svg');

@@ -305,6 +305,14 @@ final tablesProvider = FutureProvider.autoDispose
       (ref, id) => (ref..cacheFor()).watch(repositoryProvider).tables(id),
     );
 
+final inventoryItemsProvider = FutureProvider.autoDispose.family<List<InventoryItem>, String>(
+  (ref, id) => (ref..cacheFor()).watch(repositoryProvider).inventoryItems(id),
+);
+
+final inventoryCountsProvider = FutureProvider.autoDispose.family<List<InventoryCount>, String>(
+  (ref, id) => (ref..cacheFor()).watch(repositoryProvider).inventoryCounts(id),
+);
+
 final profileProvider = FutureProvider.autoDispose
     .family<RestaurantProfile, String>(
       (ref, id) => (ref..cacheFor()).watch(repositoryProvider).profile(id),
