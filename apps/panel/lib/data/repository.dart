@@ -426,7 +426,8 @@ class PanelRepository {
           .select(
             'id, name, position, '
             'menu_items(id, section_id, name, description, price_grosze, allergens, position, '
-            'variants, addons, vat_rate, available, show_in_kitchen, photo_url)',
+            'variants, addons, vat_rate, available, show_in_kitchen, photo_url, '
+            'menu_item_ingredients(item_id, amount, unit))',
           )
           .eq('restaurant_id', restaurantId)
           .order('position');
@@ -466,7 +467,8 @@ class PanelRepository {
     });
   }
 
-  Future<void> saveItem({
+  /// Zapisuje pozycję menu i zwraca jej numer (także nowej).
+  Future<String> saveItem({
     String? id,
     required String sectionId,
     required String name,
@@ -493,10 +495,23 @@ class PanelRepository {
       'available': available,
       'show_in_kitchen': showInKitchen,
     };
+    return _guard(() async {
+      if (id != null) {
+        await _db.from('menu_items').update(row).eq('id', id);
+        return id;
+      }
+      final created = await _db.from('menu_items').insert(row).select('id').single();
+      return created['id'] as String;
+    });
+  }
+
+  /// Receptura dania: cała lista składników naraz.
+  Future<void> setMenuItemIngredients(String menuItemId, List<RecipeLine> lines) {
     return _guard(
-      () => id == null
-          ? _db.from('menu_items').insert(row)
-          : _db.from('menu_items').update(row).eq('id', id),
+      () => _db.rpc<void>('panel_set_menu_item_ingredients', params: {
+        'p_menu_item_id': menuItemId,
+        'p_lines': [for (final l in lines) l.toJson()],
+      }),
     );
   }
 
@@ -782,8 +797,8 @@ class PanelRepository {
     });
   }
 
-  /// Nowy składnik (bez [id]) albo zmiana istniejącego.
-  Future<void> saveInventoryItem(
+  /// Nowy składnik (bez [id]) albo zmiana istniejącego. Zwraca numer składnika.
+  Future<String> saveInventoryItem(
     String restaurantId, {
     String? id,
     required String name,
@@ -794,11 +809,16 @@ class PanelRepository {
       final fields = {'name': name.trim(), 'unit': unit.key, 'capacity': capacity};
       try {
         if (id == null) {
-          await _db.from('inventory_items').insert({...fields, 'restaurant_id': restaurantId});
-          return;
+          final created = await _db
+              .from('inventory_items')
+              .insert({...fields, 'restaurant_id': restaurantId})
+              .select('id')
+              .single();
+          return created['id'] as String;
         }
         final rows = await _db.from('inventory_items').update(fields).eq('id', id).select('id');
         if (rows.isEmpty) throw const AppFailure('Nie masz uprawnień do zmiany składników.');
+        return id;
       } on PostgrestException catch (e) {
         if (e.code == '23505') throw const AppFailure('Składnik o tej nazwie już jest na liście.');
         rethrow;
@@ -815,6 +835,14 @@ class PanelRepository {
           .eq('id', id)
           .select('id');
       if (rows.isEmpty) throw const AppFailure('Nie masz uprawnień do usuwania składników.');
+    });
+  }
+
+  /// Stan składników teraz: z ostatniej inwentaryzacji minus sprzedaż.
+  Future<List<InventoryStock>> inventoryStock(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>('panel_inventory_stock', params: {'p_restaurant_id': restaurantId});
+      return [for (final r in rows) InventoryStock.fromJson(r as Map<String, dynamic>)];
     });
   }
 

@@ -309,6 +309,10 @@ final inventoryItemsProvider = FutureProvider.autoDispose.family<List<InventoryI
   (ref, id) => (ref..cacheFor()).watch(repositoryProvider).inventoryItems(id),
 );
 
+final inventoryStockProvider = FutureProvider.autoDispose.family<List<InventoryStock>, String>(
+  (ref, id) => (ref..cacheFor()).watch(repositoryProvider).inventoryStock(id),
+);
+
 final inventoryCountsProvider = FutureProvider.autoDispose.family<List<InventoryCount>, String>(
   (ref, id) => (ref..cacheFor()).watch(repositoryProvider).inventoryCounts(id),
 );

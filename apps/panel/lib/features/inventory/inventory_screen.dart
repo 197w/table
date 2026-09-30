@@ -73,7 +73,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     if (ok != true) return;
     await _run(() async {
       await ref.read(repositoryProvider).finishInventory(count.id, memberId: _memberId);
-      ref.invalidate(inventoryCountsProvider(restaurantId));
+      ref
+        ..invalidate(inventoryCountsProvider(restaurantId))
+        ..invalidate(inventoryStockProvider(restaurantId));
       if (mounted) setState(() => _tab = 1);
     }, 'Inwentaryzacja zapisana.');
   }
@@ -102,11 +104,14 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   }
 
   Future<void> _editItem(String restaurantId, [InventoryItem? item]) async {
-    final saved = await showDialog<bool>(
+    final saved = await showDialog<String>(
       context: context,
-      builder: (_) => _ItemDialog(restaurantId: restaurantId, item: item),
+      builder: (_) => InventoryItemDialog(restaurantId: restaurantId, item: item),
     );
-    if (saved == true) ref.invalidate(inventoryItemsProvider(restaurantId));
+    if (saved == null) return;
+    ref
+      ..invalidate(inventoryItemsProvider(restaurantId))
+      ..invalidate(inventoryStockProvider(restaurantId));
   }
 
   Future<void> _setPeriod(String restaurantId, String period) => _run(() async {
@@ -124,6 +129,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final canCount = permissions.contains('inventory_count');
 
     final itemsAsync = ref.watch(inventoryItemsProvider(rid));
+    final stock = {for (final s in ref.watch(inventoryStockProvider(rid)).value ?? const <InventoryStock>[]) s.itemId: s};
     final countsAsync = ref.watch(inventoryCountsProvider(rid));
     final period = ref.watch(profileProvider(rid)).value?.inventoryPeriod ?? 'week';
     final items = itemsAsync.value ?? const <InventoryItem>[];
@@ -243,7 +249,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   ),
                   1 => _ItemsTable(
                     items: items,
-                    last: last,
+                    stock: stock,
                     canEdit: canEdit,
                     onEdit: (item) => _editItem(rid, item),
                     onAdd: () => _editItem(rid),
@@ -648,18 +654,20 @@ class _QuantityFieldState extends State<_QuantityField> {
   }
 }
 
-/// Składniki ze stanem z ostatniej zakończonej inwentaryzacji.
+/// Składniki: ilość z ostatniej inwentaryzacji, sprzedaż od niej (z receptur dań) i stan teraz.
 class _ItemsTable extends StatelessWidget {
   const _ItemsTable({
     required this.items,
-    required this.last,
+    required this.stock,
     required this.canEdit,
     required this.onEdit,
     required this.onAdd,
   });
 
   final List<InventoryItem> items;
-  final InventoryCount? last;
+
+  /// Stan teraz według numeru składnika.
+  final Map<String, InventoryStock> stock;
   final bool canEdit;
   final ValueChanged<InventoryItem> onEdit;
   final VoidCallback onAdd;
@@ -688,13 +696,14 @@ class _ItemsTable extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _HeaderRow(
-              labels: [
+              labels: const [
                 ('Składnik', TextAlign.left),
                 ('Opakowanie', TextAlign.left),
-                (last == null ? 'Stan' : 'Stan z ${Fmt.dayShort(last!.finishedAt!)}', TextAlign.left),
-                ('Razem', TextAlign.right),
+                ('Inwentaryzacja', TextAlign.left),
+                ('Sprzedaż od niej', TextAlign.right),
+                ('Stan teraz', TextAlign.right),
               ],
-              trailing: canEdit ? 88 : 0,
+              trailing: canEdit ? 56 : 0,
             ),
             for (final item in items) ...[
               Divider(height: 1, color: AppColors.ring),
@@ -712,24 +721,50 @@ class _ItemsTable extends StatelessWidget {
                       Expanded(
                         flex: _flex[2],
                         child: Text(
-                          switch (last?.line(item.id)) {
-                            null => '—',
-                            final l => '${inventoryNumber(l.quantity)} op.',
+                          switch (stock[item.id]) {
+                            InventoryStock(counted: final c?, countedAt: final at?) =>
+                              '${inventoryNumber(c)} ${item.unit.label} · ${Fmt.dayShort(at)}',
+                            _ => 'jeszcze nie liczono',
                           },
-                          style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
+                          style: muted,
                         ),
                       ),
                       Expanded(
                         flex: _flex[3],
                         child: Text(
-                          last?.line(item.id)?.totalText ?? '—',
+                          switch (stock[item.id]?.used) {
+                            final u? when u > 0.0005 => '−${inventoryNumber(u)} ${item.unit.label}',
+                            _ => '—',
+                          },
                           textAlign: TextAlign.right,
-                          style: text.titleSmall?.copyWith(fontFeatures: _tabular),
+                          style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
                         ),
+                      ),
+                      Expanded(
+                        flex: _flex[4],
+                        child: switch (stock[item.id]?.stock) {
+                          final v? => Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${inventoryNumber(v)} ${item.unit.label}',
+                                style: text.titleSmall?.copyWith(
+                                  fontFeatures: _tabular,
+                                  color: v < 0 ? AppColors.error : null,
+                                ),
+                              ),
+                              Text(
+                                '${inventoryNumber((v / item.capacity * 10).round() / 10)} op.',
+                                style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                              ),
+                            ],
+                          ),
+                          _ => Text('—', textAlign: TextAlign.right, style: text.titleSmall),
+                        },
                       ),
                       if (canEdit)
                         SizedBox(
-                          width: 88,
+                          width: 56,
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
@@ -859,7 +894,7 @@ class _CountDialog extends StatelessWidget {
     return AlertDialog(
       title: Text('Inwentaryzacja ${Fmt.dayShort(count.finishedAt!)}'),
       content: SizedBox(
-        width: 640,
+        width: 780,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -877,7 +912,9 @@ class _CountDialog extends StatelessWidget {
                 cell('Składnik', flex: 4, align: TextAlign.left, style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
                 cell('Ilość', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
                 cell('Razem', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
-                cell('Zmiana', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
+                cell('Sprzedaż', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
+                cell('Wg sprzedaży', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
+                cell('Różnica', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
               ],
             ),
             const SizedBox(height: 6),
@@ -894,13 +931,30 @@ class _CountDialog extends StatelessWidget {
                             cell(l.name, flex: 4, align: TextAlign.left, style: text.titleSmall),
                             cell('${inventoryNumber(l.quantity)} op.', style: muted),
                             cell(l.totalText),
-                            _Change(line: l, previous: previous?.line(l.itemId)),
+                            cell(
+                              switch (l.used) {
+                                final u? when u > 0.0005 => '−${inventoryNumber(u)} ${l.unit.label}',
+                                _ => '—',
+                              },
+                              style: muted,
+                            ),
+                            cell(
+                              l.expected == null ? '—' : '${inventoryNumber(l.expected!)} ${l.unit.label}',
+                              style: muted,
+                            ),
+                            _Difference(line: l),
                           ],
                         ),
                       ),
                   ],
                 ),
               ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Wg sprzedaży: poprzednia inwentaryzacja minus składniki z wysłanych dań (receptury w Menu). '
+              'Różnica na minusie to braki, na plusie na przykład dostawa.',
+              style: text.bodySmall?.copyWith(color: AppColors.textMuted),
             ),
           ],
         ),
@@ -912,24 +966,22 @@ class _CountDialog extends StatelessWidget {
   }
 }
 
-/// Zmiana od poprzedniej inwentaryzacji w jednostce składnika.
-class _Change extends StatelessWidget {
-  const _Change({required this.line, required this.previous});
+/// Różnica między policzonym a wynikającym ze sprzedaży, w jednostce składnika.
+class _Difference extends StatelessWidget {
+  const _Difference({required this.line});
 
   final InventoryLine line;
-  final InventoryLine? previous;
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final p = previous;
-    if (p == null || p.unit != line.unit) {
+    final diff = line.difference;
+    if (diff == null) {
       return Expanded(
         flex: 2,
         child: Text('—', textAlign: TextAlign.right, style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
       );
     }
-    final diff = line.total - p.total;
     final color = diff.abs() < 0.0005 ? AppColors.textMuted : (diff > 0 ? AppColors.accent : AppColors.error);
     final sign = diff > 0.0005 ? '+' : (diff < -0.0005 ? '−' : '');
     return Expanded(
@@ -944,17 +996,19 @@ class _Change extends StatelessWidget {
 }
 
 /// Dodanie albo zmiana składnika: nazwa, jednostka, pojemność opakowania. Przy zmianie także usuwanie.
-class _ItemDialog extends ConsumerStatefulWidget {
-  const _ItemDialog({required this.restaurantId, this.item});
+/// Zwraca numer zapisanego (albo usuniętego) składnika, null po anulowaniu. Używa go też okno dania w Menu.
+class InventoryItemDialog extends ConsumerStatefulWidget {
+  const InventoryItemDialog({super.key, required this.restaurantId, this.item, this.canDelete = true});
 
   final String restaurantId;
   final InventoryItem? item;
+  final bool canDelete;
 
   @override
-  ConsumerState<_ItemDialog> createState() => _ItemDialogState();
+  ConsumerState<InventoryItemDialog> createState() => _InventoryItemDialogState();
 }
 
-class _ItemDialogState extends ConsumerState<_ItemDialog> {
+class _InventoryItemDialogState extends ConsumerState<InventoryItemDialog> {
   late final _name = TextEditingController(text: widget.item?.name ?? '');
   late final _capacity = TextEditingController(
     text: widget.item == null ? '' : inventoryNumber(widget.item!.capacity),
@@ -983,7 +1037,7 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
     if (_nameError != null || _capacityError != null) return;
     setState(() => _busy = true);
     try {
-      await ref.read(repositoryProvider).saveInventoryItem(
+      final id = await ref.read(repositoryProvider).saveInventoryItem(
         widget.restaurantId,
         id: widget.item?.id,
         name: name,
@@ -991,7 +1045,7 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
         capacity: capacity!,
       );
       if (!mounted) return;
-      Navigator.pop(context, true);
+      Navigator.pop(context, id);
       showMessage(context, widget.item == null ? 'Dodano: $name.' : 'Zapisano: $name.');
     } catch (e) {
       if (mounted) showMessage(context, errorText(e));
@@ -1022,7 +1076,7 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
     try {
       await ref.read(repositoryProvider).deleteInventoryItem(item.id);
       if (!mounted) return;
-      Navigator.pop(context, true);
+      Navigator.pop(context, item.id);
       showMessage(context, 'Usunięto: ${item.name}.');
     } catch (e) {
       if (mounted) showMessage(context, errorText(e));
@@ -1087,14 +1141,14 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
         ),
       ),
       actions: [
-        if (widget.item != null)
+        if (widget.item != null && widget.canDelete)
           TextButton(
             onPressed: _busy ? null : _delete,
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: const Text('Usuń'),
           ),
         TextButton(
-          onPressed: () => Navigator.pop(context, false),
+          onPressed: () => Navigator.pop(context),
           style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
           child: const Text('Anuluj'),
         ),

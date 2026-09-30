@@ -646,10 +646,14 @@ class MenuItem {
     this.available = true,
     this.showInKitchen = true,
     this.photoUrl,
+    this.ingredients = const [],
   });
 
   final String id;
   final String sectionId;
+
+  /// Receptura: składniki z inwentaryzacji zużywane na jedną porcję. Widzi ją tylko panel.
+  final List<RecipeLine> ingredients;
 
   /// Zdjęcie dania (publiczny adres w Storage). Goście widzą je w aplikacji.
   final String? photoUrl;
@@ -695,6 +699,10 @@ class MenuItem {
       available: json['available'] != false,
       showInKitchen: json['show_in_kitchen'] != false,
       photoUrl: json['photo_url'] as String?,
+      ingredients: [
+        for (final r in json['menu_item_ingredients'] as List? ?? const [])
+          RecipeLine.fromJson(r as Map<String, dynamic>),
+      ],
     );
   }
 }
@@ -1732,6 +1740,62 @@ enum InventoryUnit {
 
   static InventoryUnit fromKey(Object? key) =>
       values.firstWhere((u) => u.key == key, orElse: () => InventoryUnit.szt);
+
+  /// Jednostki, w których można wpisać zużycie tego składnika: litry i mililitry, kilogramy i gramy.
+  List<InventoryUnit> get compatible => switch (this) {
+    InventoryUnit.l || InventoryUnit.ml => const [InventoryUnit.ml, InventoryUnit.l],
+    InventoryUnit.kg || InventoryUnit.g => const [InventoryUnit.g, InventoryUnit.kg],
+    InventoryUnit.szt => const [InventoryUnit.szt],
+  };
+
+  /// Mniejsza jednostka do wpisywania porcji: ml dla litrów, g dla kilogramów.
+  InventoryUnit get portion => switch (this) {
+    InventoryUnit.l => InventoryUnit.ml,
+    InventoryUnit.kg => InventoryUnit.g,
+    _ => this,
+  };
+}
+
+/// Składnik w recepturze dania: ile zużywa jedna porcja, w jednostce [unit].
+class RecipeLine {
+  const RecipeLine({required this.itemId, required this.amount, required this.unit});
+
+  final String itemId;
+  final double amount;
+  final InventoryUnit unit;
+
+  Map<String, dynamic> toJson() => {'item_id': itemId, 'amount': amount, 'unit': unit.key};
+
+  factory RecipeLine.fromJson(Map<String, dynamic> json) => RecipeLine(
+    itemId: json['item_id'] as String,
+    amount: _toDouble(json['amount']) ?? 0,
+    unit: InventoryUnit.fromKey(json['unit']),
+  );
+}
+
+/// Stan składnika teraz: ostatnia inwentaryzacja, w której go policzono, minus sprzedaż od tej chwili.
+class InventoryStock {
+  const InventoryStock({required this.itemId, required this.used, this.counted, this.countedAt, this.stock});
+
+  final String itemId;
+
+  /// Ilość z inwentaryzacji w jednostce składnika. Null: jeszcze go nie liczono.
+  final double? counted;
+  final DateTime? countedAt;
+
+  /// Zużycie ze sprzedaży od inwentaryzacji (albo od dodania składnika).
+  final double used;
+
+  /// Stan teraz. Null: bez inwentaryzacji nie wiadomo, od czego odjąć.
+  final double? stock;
+
+  factory InventoryStock.fromJson(Map<String, dynamic> json) => InventoryStock(
+    itemId: json['item_id'] as String,
+    counted: _toDouble(json['counted']),
+    countedAt: _toDateOrNull(json['counted_at']),
+    used: _toDouble(json['used']) ?? 0,
+    stock: _toDouble(json['stock']),
+  );
 }
 
 /// Co ile lokal robi inwentaryzację.
@@ -1808,6 +1872,8 @@ class InventoryLine {
     required this.capacity,
     required this.quantity,
     this.countedBy,
+    this.used,
+    this.expected,
   });
 
   final String itemId;
@@ -1819,7 +1885,16 @@ class InventoryLine {
   final double quantity;
   final String? countedBy;
 
+  /// Zużycie ze sprzedaży od poprzedniej inwentaryzacji, w jednostce pozycji. Null: nie było poprzedniej.
+  final double? used;
+
+  /// Stan wynikający z poprzedniej inwentaryzacji i sprzedaży.
+  final double? expected;
+
   double get total => quantity * capacity;
+
+  /// Ile jest więcej (plus) albo mniej (minus), niż wynika ze sprzedaży. Null: nie było poprzedniej.
+  double? get difference => expected == null ? null : total - expected!;
 
   /// Razem w jednostce, np. „1,75 l”.
   String get totalText => '${inventoryNumber(total)} ${unit.label}';
@@ -1831,6 +1906,8 @@ class InventoryLine {
     capacity: _toDouble(json['capacity']) ?? 0,
     quantity: _toDouble(json['quantity']) ?? 0,
     countedBy: json['counted_by'] as String?,
+    used: _toDouble(json['used']),
+    expected: _toDouble(json['expected']),
   );
 }
 

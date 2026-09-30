@@ -69,7 +69,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0036, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0037, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
   Gdy użytkownik napisze „kod”, podaj najnowszy `otp` z tej tabeli (jego numer kończy się na 098).
@@ -171,6 +171,13 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `restaurants.inventory_period` (day, week, two_weeks, month; `panel_set_inventory_period`), następna inwentaryzacja
   liczona od ostatniej zakończonej. Uprawnienia: `inventory_edit` („Edytowanie składników”: składniki i okres)
   i `inventory_count` („Wpisywanie ilości składników”), grupa „Inwentaryzacja”.
+- Receptury (0037): w oknie dania w Menu sekcja „Składniki” (tylko w panelu): składnik z inwentaryzacji, ilość na
+  porcję i jednostka (ml/l, g/kg, szt; `private.inventory_factor`), „Nowy składnik” dodaje go do Inwentaryzacji
+  (insert z `menu_edit` albo `inventory_edit`). Tabela `menu_item_ingredients` (RLS: tylko obsługa lokalu, goście jej
+  nie czytają), zapis `panel_set_menu_item_ingredients`. Trigger `order_items_inventory`: wysłanie pozycji (sent, ready,
+  served) zapisuje zużycie w `inventory_movements` (ujemne, `kind = 'sale'`), anulowanie je usuwa. Stan teraz
+  (`panel_inventory_stock`) = ostatnia inwentaryzacja składnika + ruchy od chwili, gdy go policzono. Historia pokazuje
+  sprzedaż, stan „wg sprzedaży” i różnicę. Dostaw jeszcze nie ma (różnica na plusie). Warianty dania mają tę samą recepturę.
 
 ## Zasady projektu
 

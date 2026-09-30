@@ -49,4 +49,43 @@ void main() {
     expect(StaffPermission.fromKey('inventory_edit')?.label, 'Edytowanie składników');
     expect(StaffPermission.fromKey('inventory_count')?.label, 'Wpisywanie ilości składników');
   });
+
+  test('receptura dania: jednostki porcji i zapis', () {
+    expect(InventoryUnit.l.portion, InventoryUnit.ml);
+    expect(InventoryUnit.kg.portion, InventoryUnit.g);
+    expect(InventoryUnit.szt.compatible, [InventoryUnit.szt]);
+    expect(InventoryUnit.ml.compatible, containsAll([InventoryUnit.ml, InventoryUnit.l]));
+
+    final item = MenuItem.fromJson({
+      'id': 'm1',
+      'section_id': 's1',
+      'name': 'Wódka 50 ml',
+      'price_grosze': 1200,
+      'position': 0,
+      'menu_item_ingredients': [
+        {'item_id': 'i1', 'amount': 50, 'unit': 'ml'},
+      ],
+    });
+    expect(item.ingredients.single.amount, 50);
+    expect(item.ingredients.single.unit, InventoryUnit.ml);
+    expect(item.ingredients.single.toJson(), {'item_id': 'i1', 'amount': 50.0, 'unit': 'ml'});
+  });
+
+  test('inwentaryzacja porównana ze sprzedażą', () {
+    final line = InventoryLine.fromJson({
+      'item_id': 'i1', 'name': 'Wódka', 'unit': 'l', 'capacity': 0.7, 'quantity': 4,
+      'used': 1.2, 'expected': 3.0,
+    });
+    expect(line.total, closeTo(2.8, 1e-9));
+    expect(line.difference, closeTo(-0.2, 1e-9));
+
+    final first = InventoryLine.fromJson({'item_id': 'i2', 'name': 'Mleko', 'unit': 'l', 'capacity': 1, 'quantity': 5});
+    expect(first.difference, isNull);
+
+    final stock = InventoryStock.fromJson({
+      'item_id': 'i1', 'counted': 4.2, 'counted_at': '2026-09-23T08:10:00Z', 'used': 0.35, 'stock': 3.85,
+    });
+    expect(stock.stock, 3.85);
+    expect(InventoryStock.fromJson({'item_id': 'i3', 'used': 0}).stock, isNull);
+  });
 }

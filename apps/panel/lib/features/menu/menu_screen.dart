@@ -7,6 +7,7 @@ import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/menu_photo.dart';
 import '../../shared/panel_widgets.dart';
+import '../inventory/inventory_screen.dart';
 
 class MenuScreen extends ConsumerStatefulWidget {
   const MenuScreen({super.key});
@@ -86,10 +87,12 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
   Future<void> _editItem(String restaurantId, MenuSection section, [MenuItem? item]) async {
     final saved = await showDialog<bool>(
       context: context,
-      builder: (_) => _ItemDialog(section: section, item: item),
+      builder: (_) => _ItemDialog(restaurantId: restaurantId, section: section, item: item),
     );
     if (saved == true) {
-      ref.invalidate(menuProvider(restaurantId));
+      ref
+        ..invalidate(menuProvider(restaurantId))
+        ..invalidate(inventoryItemsProvider(restaurantId));
       if (mounted) showMessage(context, item == null ? 'Pozycja dodana.' : 'Pozycja zapisana.');
     }
   }
@@ -365,7 +368,7 @@ String _positions(int n) {
   return '$n pozycji';
 }
 
-class _ItemRow extends StatelessWidget {
+class _ItemRow extends ConsumerWidget {
   const _ItemRow({
     required this.item,
     required this.editable,
@@ -391,8 +394,20 @@ class _ItemRow extends StatelessWidget {
   final VoidCallback? onDown;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final text = Theme.of(context).textTheme;
+    // Receptura: nazwy składników z inwentaryzacji. Goście w aplikacji jej nie widzą.
+    final restaurant = ref.watch(currentRestaurantProvider);
+    final stock = item.ingredients.isEmpty || restaurant == null
+        ? const <String, InventoryItem>{}
+        : {
+            for (final i in ref.watch(inventoryItemsProvider(restaurant.id)).value ?? const <InventoryItem>[])
+              i.id: i,
+          };
+    final recipe = [
+      for (final r in item.ingredients)
+        if (stock[r.itemId] case final i?) '${i.name.toLowerCase()} ${inventoryNumber(r.amount)} ${r.unit.label}',
+    ];
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
@@ -445,6 +460,26 @@ class _ItemRow extends StatelessWidget {
                       color: AppColors.textMuted,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
+                  ),
+                ],
+                if (recipe.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Glyph(AppIcons.package, size: 13, color: AppColors.textMuted),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          recipe.join(', '),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: text.bodySmall?.copyWith(
+                            color: AppColors.textMuted,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
                 if (item.allergens.isNotEmpty) ...[
@@ -585,8 +620,9 @@ class _NameDialogState extends State<_NameDialog> {
 }
 
 class _ItemDialog extends ConsumerStatefulWidget {
-  const _ItemDialog({required this.section, this.item});
+  const _ItemDialog({required this.restaurantId, required this.section, this.item});
 
+  final String restaurantId;
   final MenuSection section;
   final MenuItem? item;
 
@@ -603,6 +639,7 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
   late final Set<String> _allergens = {...?widget.item?.allergens};
   late final _variants = [for (final v in widget.item?.variants ?? const <MenuOption>[]) _OptionRow(v)];
   late final _addons = [for (final a in widget.item?.addons ?? const <MenuOption>[]) _OptionRow(a)];
+  late final _recipe = [for (final r in widget.item?.ingredients ?? const <RecipeLine>[]) _RecipeRow(r)];
   late int _vat = widget.item?.vatRate ?? 8;
   late bool _available = widget.item?.available ?? true;
   late bool _showInKitchen = widget.item?.showInKitchen ?? true;
@@ -616,7 +653,67 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
     for (final r in [..._variants, ..._addons]) {
       r.dispose();
     }
+    for (final r in _recipe) {
+      r.dispose();
+    }
     super.dispose();
+  }
+
+  /// Receptura z wierszy. Null i komunikat, gdy któryś wiersz jest źle wpisany.
+  List<RecipeLine>? _readRecipe(Map<String, InventoryItem> items) {
+    final lines = <RecipeLine>[];
+    final seen = <String>{};
+    for (final r in _recipe) {
+      final amount = parseInventoryNumber(r.amount.text);
+      if (r.itemId == null && r.amount.text.trim().isEmpty) continue;
+      final item = items[r.itemId];
+      if (item == null) {
+        showMessage(context, 'Wybierz składnik w każdym wierszu receptury.');
+        return null;
+      }
+      if (amount == null || amount <= 0) {
+        showMessage(context, 'Wpisz, ile „${item.name}” zużywa jedna porcja.');
+        return null;
+      }
+      if (!seen.add(item.id)) {
+        showMessage(context, 'Składnik „${item.name}” jest w recepturze dwa razy.');
+        return null;
+      }
+      lines.add(RecipeLine(itemId: item.id, amount: amount, unit: r.unit ?? item.unit.portion));
+    }
+    return lines;
+  }
+
+  bool _sameRecipe(List<RecipeLine> lines) {
+    final before = widget.item?.ingredients ?? const <RecipeLine>[];
+    if (before.length != lines.length) return false;
+    for (var i = 0; i < lines.length; i++) {
+      final a = before[i];
+      final b = lines[i];
+      if (a.itemId != b.itemId || a.unit != b.unit || (a.amount - b.amount).abs() > 0.0005) return false;
+    }
+    return true;
+  }
+
+  /// Nowy składnik prosto z okna dania. Trafia do „Inwentaryzacja” → „Składniki”.
+  Future<void> _newIngredient() async {
+    final id = await showDialog<String>(
+      context: context,
+      builder: (_) => InventoryItemDialog(restaurantId: widget.restaurantId, canDelete: false),
+    );
+    if (id == null || !mounted) return;
+    ref.invalidate(inventoryItemsProvider(widget.restaurantId));
+    final items = await ref.read(inventoryItemsProvider(widget.restaurantId).future);
+    final item = items.where((i) => i.id == id).firstOrNull;
+    if (!mounted) return;
+    setState(() {
+      // Pusty wiersz dostaje nowy składnik, inaczej dochodzi nowy wiersz.
+      final empty = _recipe.where((r) => r.itemId == null).firstOrNull;
+      final row = empty ?? _RecipeRow();
+      row.itemId = id;
+      row.unit = item?.unit.portion;
+      if (empty == null) _recipe.add(row);
+    });
   }
 
   /// Wiersze z opcjami zamienione na listę. Null i komunikat, gdy któryś jest źle wpisany.
@@ -653,6 +750,16 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
     if (variants == null) return;
     final addons = _read(_addons, 'Dodatki');
     if (addons == null) return;
+    final List<InventoryItem> stock;
+    try {
+      stock = _recipe.isEmpty ? const [] : await ref.read(inventoryItemsProvider(widget.restaurantId).future);
+    } catch (e) {
+      if (mounted) showMessage(context, errorText(e));
+      return;
+    }
+    if (!mounted) return;
+    final recipe = _readRecipe({for (final i in stock) i.id: i});
+    if (recipe == null) return;
     // Przy wariantach cena pozycji to najniższa z nich: tak gość widzi „od 25 zł”.
     final price = variants.isEmpty
         ? parseGrosze(_price.text)
@@ -663,7 +770,8 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
     }
     setState(() => _busy = true);
     try {
-      await ref.read(repositoryProvider).saveItem(
+      final repo = ref.read(repositoryProvider);
+      final id = await repo.saveItem(
         id: widget.item?.id,
         sectionId: widget.section.id,
         name: _name.text,
@@ -677,6 +785,7 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
         available: _available,
         showInKitchen: _showInKitchen,
       );
+      if (!_sameRecipe(recipe)) await repo.setMenuItemIngredients(id, recipe);
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) showMessage(context, errorText(e));
@@ -757,6 +866,13 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
                 namePlaceholder: 'Ser',
                 rows: _addons,
                 onChanged: () => setState(() {}),
+              ),
+              const SizedBox(height: 16),
+              _RecipeEditor(
+                items: ref.watch(inventoryItemsProvider(widget.restaurantId)).value ?? const [],
+                rows: _recipe,
+                onChanged: () => setState(() {}),
+                onNew: _newIngredient,
               ),
               const SizedBox(height: 18),
               Row(
@@ -849,6 +965,155 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
           child: const Text('Anuluj'),
         ),
         FilledButton(onPressed: _busy ? null : _save, child: const Text('Zapisz')),
+      ],
+    );
+  }
+}
+
+/// Jeden wiersz receptury: składnik, ilość na porcję i jednostka.
+class _RecipeRow {
+  _RecipeRow([RecipeLine? line])
+    : itemId = line?.itemId,
+      unit = line?.unit,
+      amount = TextEditingController(text: line == null ? '' : inventoryNumber(line.amount));
+
+  String? itemId;
+
+  /// Null: jednostka porcji składnika (ml dla litrów, g dla kilogramów).
+  InventoryUnit? unit;
+  final TextEditingController amount;
+
+  void dispose() => amount.dispose();
+}
+
+/// Receptura dania: ile czego zużywa jedna porcja. Po wysłaniu dania panel odejmuje to ze stanu
+/// w Inwentaryzacji. Goście w aplikacji tego nie widzą.
+class _RecipeEditor extends StatelessWidget {
+  const _RecipeEditor({required this.items, required this.rows, required this.onChanged, required this.onNew});
+
+  final List<InventoryItem> items;
+  final List<_RecipeRow> rows;
+  final VoidCallback onChanged;
+  final VoidCallback onNew;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final byId = {for (final i in items) i.id: i};
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Text('Składniki', style: text.titleSmall),
+            const SizedBox(width: 8),
+            Tag('TYLKO W PANELU', color: AppColors.textMuted),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: onNew,
+              icon: const Glyph(AppIcons.package, size: 14),
+              label: const Text('Nowy składnik'),
+            ),
+            if (items.isNotEmpty && rows.length < 50)
+              TextButton.icon(
+                onPressed: () {
+                  rows.add(_RecipeRow());
+                  onChanged();
+                },
+                icon: const Glyph(AppIcons.plus, size: 14),
+                label: const Text('Dodaj'),
+              ),
+          ],
+        ),
+        Text(
+          'Ile czego zużywa jedna porcja, np. wódka 50 ml. Po wysłaniu dania panel odejmuje to ze stanu '
+          'w „Inwentaryzacja” → „Składniki”. Goście tego nie widzą.',
+          style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+        ),
+        for (final row in rows) ...[
+          const SizedBox(height: 8),
+          Row(
+            key: ObjectKey(row),
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  // Klucz ze składnikiem: wybór wstawiony z „Nowy składnik” odświeża pole.
+                  key: ValueKey('${identityHashCode(row)}-${row.itemId}'),
+                  initialValue: byId.containsKey(row.itemId) ? row.itemId : null,
+                  isExpanded: true,
+                  isDense: true,
+                  icon: Glyph(AppIcons.caretDown, size: 14, color: AppColors.textMuted),
+                  hint: const Text('Wybierz składnik'),
+                  decoration: const InputDecoration(isDense: true),
+                  items: [
+                    for (final i in items)
+                      DropdownMenuItem(
+                        value: i.id,
+                        child: Text('${i.name} · ${i.package}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: (id) {
+                    row.itemId = id;
+                    // Po zmianie składnika jednostka wraca do jego jednostki porcji.
+                    row.unit = byId[id]?.unit.portion;
+                    onChanged();
+                  },
+                ),
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                width: 88,
+                child: TextField(
+                  controller: row.amount,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+                  textAlign: TextAlign.right,
+                  decoration: const InputDecoration(hintText: '0', isDense: true),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 96,
+                child: switch (byId[row.itemId]) {
+                  final item? when item.unit.compatible.length > 1 => DropdownButtonFormField<InventoryUnit>(
+                    key: ValueKey('${row.itemId}-unit'),
+                    initialValue: row.unit ?? item.unit.portion,
+                    isDense: true,
+                    isExpanded: true,
+                    icon: Glyph(AppIcons.caretDown, size: 14, color: AppColors.textMuted),
+                    decoration: const InputDecoration(isDense: true),
+                    items: [
+                      for (final u in item.unit.compatible) DropdownMenuItem(value: u, child: Text(u.label)),
+                    ],
+                    onChanged: (u) {
+                      row.unit = u;
+                      onChanged();
+                    },
+                  ),
+                  final item? => Text(item.unit.label, style: text.bodyMedium),
+                  null => const SizedBox.shrink(),
+                },
+              ),
+              IconButton(
+                tooltip: 'Usuń',
+                icon: Glyph(AppIcons.close, size: 16, color: AppColors.textMuted),
+                onPressed: () {
+                  rows.remove(row);
+                  onChanged();
+                  WidgetsBinding.instance.addPostFrameCallback((_) => row.dispose());
+                },
+              ),
+            ],
+          ),
+        ],
+        if (items.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'Nie ma jeszcze składników. Kliknij „Nowy składnik”, np. mąka 25 kg albo wódka 0,7 l.',
+              style: text.bodySmall,
+            ),
+          ),
       ],
     );
   }
