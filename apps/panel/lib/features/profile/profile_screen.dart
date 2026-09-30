@@ -155,7 +155,7 @@ class _DetailsFormState extends ConsumerState<_DetailsForm> {
         ..invalidate(restaurantsProvider);
       if (mounted) showMessage(context, 'Dane lokalu zapisane.');
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -442,7 +442,7 @@ class _HoursFormState extends ConsumerState<_HoursForm> {
         reason: 'Odwołana przez lokal: zmiana godzin otwarcia',
       );
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -559,7 +559,7 @@ class _ExceptionsCard extends ConsumerWidget {
             : 'Odwołana przez lokal: zmiana godzin $day',
       );
     } catch (e) {
-      if (context.mounted) showMessage(context, errorText(e));
+      if (context.mounted) showError(context, e);
     }
   }
 
@@ -568,7 +568,7 @@ class _ExceptionsCard extends ConsumerWidget {
       await ref.read(repositoryProvider).deleteException(profile.id, e.day);
       ref.invalidate(exceptionsProvider(profile.id));
     } catch (err) {
-      if (context.mounted) showMessage(context, errorText(err));
+      if (context.mounted) showError(context, err);
     }
   }
 
@@ -847,7 +847,7 @@ class _LogoCardState extends ConsumerState<_LogoCard> {
         ..invalidate(restaurantsProvider);
       if (mounted) showMessage(context, 'Logo zapisane. Goście zobaczą je w aplikacji.');
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -869,7 +869,7 @@ class _LogoCardState extends ConsumerState<_LogoCard> {
         ..invalidate(profileProvider(widget.profile.id))
         ..invalidate(restaurantsProvider);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -948,7 +948,7 @@ class _SchedulePeriodCardState extends ConsumerState<_SchedulePeriodCard> {
       ref.invalidate(profileProvider(widget.profile.id));
       if (mounted) showMessage(context, 'Okres grafiku zapisany.');
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

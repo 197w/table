@@ -77,6 +77,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 ## Struktura
 
 - `packages/table_core/lib/src`: `theme.dart` (`AppPalette`, `AppColors`, `AppTheme`), `theme_setting.dart`,
+  `toasts.dart` (powiadomienia w stylu Table: `showMessage` z `tone`, `showError`, `Toasts`, `ToastHost` w
+  `MaterialApp.builder` każdej aplikacji; komputer: prawy dolny róg, telefon: góra ekranu),
   `formatters.dart` (`Fmt`), `units.dart`, `env.dart`, `failure.dart` (`AppFailure`), `widgets.dart`
   (`PressScale`, `LoadingView`, `MessageView`, `ErrorView`, `Tag`, `DropdownPill`...), `app_icons.dart`
   (`Glyph` zamiast `Icon`, stałe `AppIcons`, SVG w `assets/icons`, nowe: `npx better-icons get ph:<nazwa>`).
@@ -135,6 +137,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Rezerwacje i plan sali tylko w planie Pro. Plan Free widzi opinie, menu, lokal i statystyki wyświetleń.
 - Limit osób w jednej rezerwacji z aplikacji ustawia lokal (`restaurants.max_party_size`, 1–30, domyślnie 12).
 - Rezerwacje odświeżają się na żywo (Supabase Realtime na tabeli `reservations`).
+  Nowa rezerwacja z aplikacji: dźwięk i powiadomienie Table z przyciskiem „Pokaż” (`ReservationAlerts`), systemowe
+  powiadomienie Windows tylko, gdy okno panelu jest w tle.
 - Plan sali: strefy w `floor_zones`, stoliki w `dining_tables` z pozycją środka w cm (`x_cm`, `y_cm`),
   obrotem i kształtem. Stolika z przyszłymi rezerwacjami nie da się usunąć (trigger), trzeba go wyłączyć.
 - Kliknięcie stolika na planie w „Rezerwacjach” otwiera menu tylko w obszarze planu, obok stolika i jego krzeseł.

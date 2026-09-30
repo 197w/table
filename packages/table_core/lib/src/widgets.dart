@@ -10,12 +10,6 @@ String errorText(Object error) => error is AppFailure
     ? error.message
     : 'Coś poszło nie tak. Spróbuj ponownie.';
 
-void showMessage(BuildContext context, String message) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message)));
-}
-
 /// Delikatne zmniejszenie przy naciśnięciu: 0.96, 150 ms, ease-out.
 class PressScale extends StatefulWidget {
   const PressScale({super.key, required this.child, this.onTap});

@@ -38,7 +38,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await ref.read(staffRepositoryProvider).sendCode(phone);
       if (mounted) setState(() => _sentTo = phone);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -57,7 +57,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await repo.verifyCode(phone, _code.text.trim());
     } catch (e) {
       // Sesja już jest, więc kod zadziałał przy wcześniejszej próbie.
-      if (mounted && repo.session == null) showMessage(context, errorText(e));
+      if (mounted && repo.session == null) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

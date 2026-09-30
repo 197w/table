@@ -125,7 +125,7 @@ class _NewReservationDialogState extends ConsumerState<NewReservationDialog> {
       );
       if (mounted) Navigator.pop(context, id);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -552,7 +552,7 @@ class _MoveReservationDialogState extends ConsumerState<MoveReservationDialog> {
           .moveReservation(widget.reservation.id, _selected.toList());
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

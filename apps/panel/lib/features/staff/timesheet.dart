@@ -54,7 +54,7 @@ class Timesheet extends ConsumerWidget {
     try {
       await ref.read(repositoryProvider).endShift(member.id);
     } catch (e) {
-      if (context.mounted) showMessage(context, errorText(e));
+      if (context.mounted) showError(context, e);
     }
   }
 
@@ -70,7 +70,7 @@ class Timesheet extends ConsumerWidget {
     try {
       await ref.read(repositoryProvider).deleteShift(shift.id);
     } catch (e) {
-      if (context.mounted) showMessage(context, errorText(e));
+      if (context.mounted) showError(context, e);
     }
   }
 
@@ -349,7 +349,7 @@ class _ShiftDialogState extends ConsumerState<_ShiftDialog> {
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

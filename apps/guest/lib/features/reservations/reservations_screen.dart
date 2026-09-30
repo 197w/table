@@ -135,7 +135,7 @@ class _ReservationCard extends ConsumerWidget {
       ref.invalidate(myReservationsProvider);
       if (context.mounted) showMessage(context, 'Rezerwacja odwołana.');
     } catch (e) {
-      if (context.mounted) showMessage(context, errorText(e));
+      if (context.mounted) showError(context, e);
     }
   }
 

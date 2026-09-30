@@ -744,7 +744,7 @@ class TabSessionBar extends ConsumerWidget {
       ref.read(panelMemberProvider.notifier).signOutMember(member.memberId);
       if (context.mounted) showMessage(context, 'Zmiana zakończona.');
     } catch (e) {
-      if (context.mounted) showMessage(context, errorText(e));
+      if (context.mounted) showError(context, e);
     }
   }
 

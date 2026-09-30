@@ -52,7 +52,7 @@ class _NotificationFormState extends ConsumerState<_NotificationForm> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _prefs = previous);
-      showMessage(context, errorText(e));
+      showError(context, e);
     }
   }
 

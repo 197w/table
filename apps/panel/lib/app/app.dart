@@ -18,6 +18,7 @@ import '../features/reviews/reviews_screen.dart';
 import '../features/staff/staff_screen.dart';
 import '../features/stats/stats_screen.dart';
 import 'panel_theme.dart';
+import 'reservation_alerts.dart';
 import 'shell.dart';
 
 class PanelApp extends ConsumerStatefulWidget {
@@ -40,11 +41,14 @@ class _PanelAppState extends ConsumerState<PanelApp>
       Supabase.instance.client.auth.onAuthStateChange,
     );
     _router = _buildRouter(_authRefresh);
+    // Przycisk „Pokaż” w powiadomieniu o nowej rezerwacji otwiera Rezerwacje.
+    ReservationAlerts.instance.onOpen = () => _router.go(PanelRoutes.reservations);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    ReservationAlerts.instance.onOpen = null;
     _router.dispose();
     _authRefresh.dispose();
     super.dispose();
@@ -82,6 +86,8 @@ class _PanelAppState extends ConsumerState<PanelApp>
       supportedLocales: const [Locale('pl', 'PL')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       routerConfig: _router,
+      // Powiadomienia w stylu Table nad całym panelem, także nad oknami dialogowymi.
+      builder: (context, child) => ToastHost(child: child ?? const SizedBox.shrink()),
       ),
     );
   }

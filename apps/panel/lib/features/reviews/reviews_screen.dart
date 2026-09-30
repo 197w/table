@@ -198,7 +198,7 @@ class _ReviewCardState extends ConsumerState<_ReviewCard> {
         showMessage(context, body.trim().isEmpty ? 'Odpowiedź usunięta.' : 'Odpowiedź opublikowana.');
       }
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

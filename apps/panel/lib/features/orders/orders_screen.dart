@@ -54,7 +54,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       try {
         await action();
       } catch (e) {
-        if (mounted) showMessage(context, errorText(e));
+        if (mounted) showError(context, e);
       } finally {
         if (mounted) ref.invalidate(openOrdersProvider(restaurantId));
       }
@@ -237,7 +237,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         );
       }
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     }
   }
 

@@ -41,7 +41,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       await action();
       if (done != null && mounted) showMessage(context, done);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -232,7 +232,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         ref.invalidate(inventoryCountsProvider(rid));
                         return true;
                       } catch (e) {
-                        if (context.mounted) showMessage(context, errorText(e));
+                        if (context.mounted) showError(context, e);
                         return false;
                       }
                     },
@@ -1048,7 +1048,7 @@ class _InventoryItemDialogState extends ConsumerState<InventoryItemDialog> {
       Navigator.pop(context, id);
       showMessage(context, widget.item == null ? 'Dodano: $name.' : 'Zapisano: $name.');
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1079,7 +1079,7 @@ class _InventoryItemDialogState extends ConsumerState<InventoryItemDialog> {
       Navigator.pop(context, item.id);
       showMessage(context, 'Usunięto: ${item.name}.');
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

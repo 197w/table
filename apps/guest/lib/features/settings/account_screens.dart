@@ -106,7 +106,7 @@ class _NameFormState extends ConsumerState<_NameForm> {
       ref.invalidate(profileProvider);
       if (mounted) showMessage(context, 'Zapisano.');
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -275,7 +275,7 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
       showMessage(context, 'Hasło zostało zmienione.');
       context.pop();
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -376,7 +376,7 @@ class AdvancedSettingsScreen extends ConsumerWidget {
       await ref.read(repositoryProvider).signOut();
       if (context.mounted) context.go(AppRoutes.settings);
     } catch (e) {
-      if (context.mounted) showMessage(context, errorText(e));
+      if (context.mounted) showError(context, e);
     }
   }
 
@@ -412,7 +412,7 @@ class AdvancedSettingsScreen extends ConsumerWidget {
       showMessage(context, 'Konto zostało usunięte.');
       context.go(AppRoutes.settings);
     } catch (e) {
-      if (context.mounted) showMessage(context, errorText(e));
+      if (context.mounted) showError(context, e);
     }
   }
 

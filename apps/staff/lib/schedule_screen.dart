@@ -102,7 +102,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       ref.invalidate(schedulePeriodProvider);
       if (mounted) showMessage(context, 'Zgłoszenie wycofane.');
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     }
   }
 
@@ -465,7 +465,7 @@ class _PeriodSheetState extends ConsumerState<_PeriodSheet> {
       }
       if (mounted) Navigator.pop(context, done);
     } catch (e) {
-      if (mounted) showMessage(context, done == 0 ? errorText(e) : 'Zapisano $done dni. ${errorText(e)}');
+      if (mounted) showMessage(context, done == 0 ? errorText(e) : 'Zapisano $done dni. ${errorText(e)}', tone: ToastTone.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -747,7 +747,7 @@ class _HoursSheetState extends ConsumerState<HoursSheet> {
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

@@ -668,7 +668,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
-      showMessage(context, errorText(e));
+      showError(context, e);
     }
   }
 

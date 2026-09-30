@@ -89,7 +89,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
       context.go(AppRoutes.reservations);
     } catch (e) {
       if (!mounted) return;
-      showMessage(context, errorText(e));
+      showError(context, e);
       setState(() => _slot = null);
       ref.invalidate(slotsProvider(_query));
     } finally {

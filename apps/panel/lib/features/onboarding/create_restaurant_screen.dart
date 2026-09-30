@@ -88,7 +88,7 @@ class _CreateRestaurantScreenState extends ConsumerState<CreateRestaurantScreen>
       await ref.read(selectedRestaurantIdProvider.notifier).select(id);
       ref.invalidate(restaurantsProvider);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

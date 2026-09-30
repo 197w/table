@@ -86,7 +86,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
       showMessage(context, 'Dziękujemy za opinię.');
       context.pop();
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

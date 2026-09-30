@@ -77,7 +77,7 @@ class _ReportBugScreenState extends ConsumerState<ReportBugScreen> {
       );
       context.pop();
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _sending = false);
     }

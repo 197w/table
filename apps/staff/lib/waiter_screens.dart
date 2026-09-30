@@ -221,7 +221,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
       ref.invalidate(openOrdersProvider(_rid));
       if (done != null && mounted) showMessage(context, done);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -238,7 +238,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _removed.remove(line.id));
-      showMessage(context, errorText(e));
+      showError(context, e);
     }
   }
 
@@ -659,7 +659,7 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
             ..showSnackBar(SnackBar(content: Text('Dodano: ${item.name}'), duration: const Duration(seconds: 1)));
         }
       } catch (e) {
-        if (mounted) showMessage(context, errorText(e));
+        if (mounted) showError(context, e);
       }
     });
   }

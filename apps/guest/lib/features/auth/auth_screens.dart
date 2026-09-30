@@ -223,7 +223,7 @@ class _PhoneLoginScreenState extends ConsumerState<PhoneLoginScreen> {
         AppRoutes.withNext('${AppRoutes.login}/kod', widget.next, phone: phone),
       );
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -302,7 +302,7 @@ class _PasswordLoginScreenState extends ConsumerState<PasswordLoginScreen> {
           .signInWithPassword(phone: widget.phone, password: _password.text);
       if (mounted) context.go(_safeNext(widget.next));
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -376,7 +376,7 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
         AppRoutes.withNext(AppRoutes.changePhoneCode, null, phone: phone),
       );
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -481,7 +481,7 @@ class _SmsCodeScreenState extends ConsumerState<SmsCodeScreen> {
         showMessage(context, 'Numer telefonu został zmieniony.');
         context.go(AppRoutes.loginInfo);
       } catch (e) {
-        if (mounted) showMessage(context, errorText(e));
+        if (mounted) showError(context, e);
       } finally {
         if (mounted) setState(() => _busy = false);
       }
@@ -498,7 +498,7 @@ class _SmsCodeScreenState extends ConsumerState<SmsCodeScreen> {
         context.go(_safeNext(widget.next));
         return;
       }
-      showMessage(context, errorText(e));
+      showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -519,7 +519,7 @@ class _SmsCodeScreenState extends ConsumerState<SmsCodeScreen> {
       _startTimer();
       showMessage(context, 'Wysłaliśmy nowy kod.');
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     }
   }
 
@@ -635,7 +635,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         ),
       );
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

@@ -469,7 +469,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       });
       showMessage(context, 'Układ sali zapisany.');
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
       // Część zmian mogła się zapisać, więc odświeżamy dane z bazy.
       ref
         ..invalidate(zonesProvider(restaurantId))

@@ -87,6 +87,8 @@ class _TableAppState extends ConsumerState<TableApp>
         supportedLocales: const [Locale('pl', 'PL')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         routerConfig: _router,
+        // Powiadomienia w stylu Table nad całą aplikacją.
+        builder: (context, child) => ToastHost(child: child ?? const SizedBox.shrink()),
       ),
     );
   }

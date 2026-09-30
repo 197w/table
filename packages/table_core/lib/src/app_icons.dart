@@ -107,6 +107,7 @@ abstract final class AppIcons {
   static const gearFill = AppIconData('assets/icons/gear-six-fill.svg');
   static const gpsSlash = AppIconData('assets/icons/gps-slash.svg');
   static const identification = AppIconData('assets/icons/identification-card.svg');
+  static const info = AppIconData('assets/icons/info.svg');
   static const list = AppIconData('assets/icons/list-bullets.svg');
 
   /// Trzy kreski: zwijanie i rozwijanie bocznego menu.

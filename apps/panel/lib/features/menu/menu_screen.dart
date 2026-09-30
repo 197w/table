@@ -28,7 +28,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
       ref.invalidate(menuProvider(restaurantId));
       if (done != null && mounted) showMessage(context, done);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -754,7 +754,7 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
     try {
       stock = _recipe.isEmpty ? const [] : await ref.read(inventoryItemsProvider(widget.restaurantId).future);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
       return;
     }
     if (!mounted) return;
@@ -788,7 +788,7 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
       if (!_sameRecipe(recipe)) await repo.setMenuItemIngredients(id, recipe);
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

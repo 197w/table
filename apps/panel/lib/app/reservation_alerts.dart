@@ -1,8 +1,11 @@
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
 import 'package:local_notifier/local_notifier.dart';
 import 'package:table_core/table_core.dart';
+import 'package:window_manager/window_manager.dart';
 
-/// Dźwięk i powiadomienie systemowe, gdy gość zarezerwuje stolik w aplikacji.
+/// Dźwięk i powiadomienie, gdy gość zarezerwuje stolik w aplikacji: w panelu powiadomienie w stylu Table
+/// z przyciskiem „Pokaż”, a gdy panel jest w tle, także powiadomienie systemowe.
 /// Rezerwacje wpisane przez obsługę (telefon, gość z ulicy) nie dzwonią,
 /// bo obsługa i tak wie, że je dodała.
 class ReservationAlerts {
@@ -12,6 +15,9 @@ class ReservationAlerts {
 
   final _player = AudioPlayer();
   bool _ready = false;
+
+  /// Otwiera zakładkę Rezerwacje. Ustawia ją aplikacja panelu (router).
+  VoidCallback? onOpen;
 
   /// Przygotowuje powiadomienia systemowe. Wywołaj raz przy starcie panelu.
   static Future<void> setup() async {
@@ -36,13 +42,30 @@ class ReservationAlerts {
       // Brak głośników albo sterownika dźwięku: zostaje powiadomienie.
     }
 
-    if (!_ready) return;
     final startsAt = DateTime.tryParse(row['starts_at'] as String? ?? '')?.toLocal();
     final party = (row['party_size'] as num?)?.toInt();
     final details = [
       if (party != null) Fmt.people(party),
       if (startsAt != null) '${Fmt.dayShort(startsAt)}, ${Fmt.time(startsAt)}',
     ].join(' · ');
+
+    Toasts.instance.show(
+      details.isEmpty ? 'Zajrzyj do rezerwacji.' : details,
+      title: 'Nowa rezerwacja z aplikacji',
+      tone: ToastTone.success,
+      icon: AppIcons.calendarPlus,
+      actionLabel: onOpen == null ? null : 'Pokaż',
+      onAction: onOpen,
+      duration: const Duration(seconds: 12),
+    );
+
+    // Systemowe powiadomienie tylko wtedy, gdy panel jest w tle albo zminimalizowany.
+    if (!_ready) return;
+    try {
+      if (await windowManager.isFocused()) return;
+    } catch (_) {
+      // Bez informacji o oknie pokazujemy też powiadomienie systemowe.
+    }
     try {
       await LocalNotification(
         title: 'Nowa rezerwacja z aplikacji',

@@ -105,7 +105,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _refresh();
       if (mounted) showMessage(context, 'Zmiana zakończona. Dobrego odpoczynku!');
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     }
   }
 

@@ -105,7 +105,7 @@ class _BodyState extends ConsumerState<_Body> {
       ok = false;
     }
     if (!ok && mounted) {
-      showMessage(context, 'Nie udało się otworzyć kalendarza.');
+      showMessage(context, 'Nie udało się otworzyć kalendarza.', tone: ToastTone.error);
     }
   }
 
@@ -142,7 +142,7 @@ class _BodyState extends ConsumerState<_Body> {
         ..invalidate(reservationDetailProvider(d.id));
       if (mounted) showMessage(context, 'Rezerwacja odwołana.');
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _cancelling = false);
     }

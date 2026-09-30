@@ -43,6 +43,8 @@ class StaffApp extends ConsumerWidget {
       locale: const Locale('pl', 'PL'),
       supportedLocales: const [Locale('pl', 'PL')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      // Powiadomienia w stylu Table nad całą aplikacją.
+      builder: (context, child) => ToastHost(child: child ?? const SizedBox.shrink()),
       home: signedIn ? const StaffShell() : const LoginScreen(),
     );
   }

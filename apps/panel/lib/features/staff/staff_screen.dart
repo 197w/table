@@ -1486,7 +1486,7 @@ class _HoursDialogState extends ConsumerState<_HoursDialog> {
       Navigator.pop(context);
       showMessage(context, done);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1739,7 +1739,7 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
       );
       if (mounted) Navigator.pop(context, id);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1759,7 +1759,7 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
       await ref.read(repositoryProvider).deleteStaffMember(widget.member!.id);
       if (mounted) Navigator.pop(context, _MemberDialog.deleted);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     }
   }
 
@@ -1943,6 +1943,7 @@ class _PositionsDialog extends ConsumerWidget {
         raw.contains('foreign key') || raw.contains('violates')
             ? 'To stanowisko ma przypisanych pracowników. Najpierw zmień im stanowisko.'
             : errorText(e),
+        tone: ToastTone.error,
       );
     }
   }
@@ -2105,6 +2106,7 @@ class _PositionEditorState extends ConsumerState<_PositionEditor> {
         raw.contains('duplicate') || raw.contains('unique')
             ? 'Stanowisko o tej nazwie już istnieje.'
             : errorText(e),
+        tone: ToastTone.error,
       );
     } finally {
       if (mounted) setState(() => _busy = false);

@@ -108,7 +108,7 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
       ref.invalidate(kitchenTicketsProvider(restaurantId));
       await ref.read(kitchenTicketsProvider(restaurantId).future);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) {
         setState(() {
@@ -1059,7 +1059,7 @@ class _KitchenSettingsDialogState extends ConsumerState<_KitchenSettingsDialog> 
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

@@ -118,7 +118,7 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                   'przenieś je ręcznie w szczegółach rezerwacji.',
       );
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     }
   }
 
@@ -885,7 +885,7 @@ class _ReservationDetailState extends ConsumerState<ReservationDetail> {
       widget.onChanged();
       if (mounted) showMessage(context, done);
     } catch (e) {
-      if (mounted) showMessage(context, errorText(e));
+      if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
