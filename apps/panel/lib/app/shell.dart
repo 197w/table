@@ -140,7 +140,6 @@ const _groups = <(String, List<_NavItem>)>[
     _NavItem(PanelRoutes.profile, 'Dane lokalu', AppIcons.storefront),
     _NavItem(PanelRoutes.menu, 'Menu', AppIcons.bookOpen),
     _NavItem(PanelRoutes.inventory, 'Inwentaryzacja', AppIcons.package),
-    _NavItem(PanelRoutes.giftCards, 'Karty podarunkowe', AppIcons.envelope),
   ]),
   ('Wyniki', [
     _NavItem(PanelRoutes.reviews, 'Opinie', AppIcons.chatCircle),

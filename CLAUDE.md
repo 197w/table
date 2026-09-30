@@ -69,7 +69,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0037, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0038, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
   Gdy użytkownik napisze „kod”, podaj najnowszy `otp` z tej tabeli (jego numer kończy się na 098).
@@ -98,7 +98,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Ja nadal nie zakładam kont ani nie wymyślam haseł: konto zakłada sama restauracja albo użytkownik.
 - Pracownicy nie mają kont w panelu. Dodaje ich osoba z uprawnieniem `staff` w „Pracownicy” → „Zespół”
   (kafelki albo lista, przełącznik po prawej w wierszu zakładek; szczegóły ze statystykami `panel_member_stats`).
-  Zakładki Zespół, Grafik i Czas pracy to same ikony (`IconTabs` w `panel_widgets.dart`): wybrana rozsuwa się z nazwą. Każdy pracownik ma czterocyfrowy kod, unikalny w lokalu
+  Zakładki Zespół, Grafik i Czas pracy to same ikony (`IconTabs` w `panel_widgets.dart`): wybrana rozsuwa się z nazwą.
+  `SegmentedTabs` i `IconTabs` mają wspólne podświetlenie (`_SlidingSegments`), które przesuwa się do wybranej opcji. Każdy pracownik ma czterocyfrowy kod, unikalny w lokalu
   (nadaje go baza przy dodaniu, trigger `staff_members_code`; zmiana: `panel_set_staff_code`, wpisany albo losowy).
   Kod widać stale w szczegółach (uprawnienie `staff_logins`, „Kody pracowników”, `panel_staff_codes`) i w aplikacji
   pracownika (`staff_my_codes`). Kod leży zaszyfrowany w Supabase Vault (`staff_codes.code_secret`), logowanie szuka
@@ -139,7 +140,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Kliknięcie stolika na planie w „Rezerwacjach” otwiera menu tylko w obszarze planu, obok stolika i jego krzeseł.
   W menu „Nowa rezerwacja” otwiera okno z tym stolikiem. W „Nowej rezerwacji” stolik: „Dobierz automatycznie”
   albo „Wybierz stolik”. „Edycja sali” pokazuje zajętość stolików tylko teraz (bez innej godziny).
-- Stanowiska (`staff_positions`) mają uprawnienia, np. Kelner: rezerwacje, plan, zamówienia, karty. Pracownika łączy się
+- Stanowiska (`staff_positions`) mają uprawnienia, np. Kelner: rezerwacje, plan, zamówienia. Pracownika łączy się
   z kontem w oknie pracownika („Konto w panelu”, `panel_link_staff_account`). Konto obsługi ma wtedy uprawnienia
   stanowiska (`private.has_permission`, `panel_my_permissions`). Kierownik i właściciel mają wszystkie.
 - Zamówienia (`orders`, `order_items`, tylko Pro): zakładka „Zamówienia” widoczna z uprawnieniem `orders`.
@@ -148,8 +149,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (kuchnia zbiła, „do wydania”) → served (kelner zaniósł). Pozycje z `menu_items.show_in_kitchen = false`
   (np. napoje) po wysłaniu od razu są „do wydania”.
   Pozycję wysłaną na kuchnię anuluje tylko kierownik. Zamknięcie rachunku kończy rezerwację gości przy stoliku.
-  Zamknięcie rachunku (`panel_close_order`) przyjmuje kartę podarunkową z kwotą; gdy karta nie pokrywa
-  całości, reszta inną metodą. Historia zamkniętych rachunków: zakładka „Historia zamówień”.
+  Zamknięcie rachunku (`panel_close_order`): gotówka, karta albo inne. Karty podarunkowe usunięte (0038): nie ma ich
+  w panelu ani w aplikacji Table, `purchase_gift_card` zwraca błąd, dane kart i stare płatności kartą zostają w bazie
+  (historia zamówień i sprzedaż je pokazują). Historia zamkniętych rachunków: zakładka „Historia zamówień”.
   Paragon fiskalny jeszcze na kasie, integrację z drukarką fiskalną robimy później.
 - Ekran kuchni (`/kuchnia`, uprawnienie `kitchen`, np. Kucharz): bileciki z pozycjami wysłanymi na kuchnię,
   pogrupowane po rachunku i chwili wysłania, najstarsze pierwsze. Czas liczony od wysłania z sekundami;

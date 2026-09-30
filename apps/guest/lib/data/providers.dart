@@ -237,7 +237,3 @@ final notificationPreferencesProvider =
       return ref.watch(repositoryProvider).notificationPreferences();
     });
 
-final myGiftCardsProvider = FutureProvider.autoDispose<List<GuestGiftCard>>((ref) {
-  if (ref.watch(userIdProvider) == null) return Future.value(const []);
-  return ref.watch(repositoryProvider).myGiftCards();
-});

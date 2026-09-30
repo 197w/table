@@ -353,11 +353,6 @@ final availabilityProvider = FutureProvider.autoDispose
       ),
     );
 
-final giftCardsProvider = FutureProvider.autoDispose
-    .family<List<GiftCard>, String>(
-      (ref, id) => (ref..cacheFor()).watch(repositoryProvider).giftCards(id),
-    );
-
 typedef StatsQuery = ({String restaurantId, int days});
 
 final statsProvider = FutureProvider.autoDispose

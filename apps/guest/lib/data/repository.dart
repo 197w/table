@@ -300,39 +300,6 @@ class Repository {
   }
 
   // -------------------------------------------------------------
-  // Karty podarunkowe
-  // -------------------------------------------------------------
-
-  /// Tryb testowy: karta powstaje bez płatności. Zwraca identyfikator karty.
-  Future<String> purchaseGiftCard({
-    required String restaurantId,
-    required int amountGrosze,
-    String? recipientName,
-    String? message,
-  }) {
-    return _guard(
-      () => _db.rpc<String>(
-        'purchase_gift_card',
-        params: {
-          'p_restaurant_id': restaurantId,
-          'p_amount_grosze': amountGrosze,
-          'p_recipient_name': recipientName,
-          'p_message': message,
-        },
-      ),
-    );
-  }
-
-  Future<List<GuestGiftCard>> myGiftCards() {
-    return _guard(() async {
-      final rows = await _db.rpc<List<dynamic>>('my_gift_cards');
-      return rows
-          .map((e) => GuestGiftCard.fromJson(e as Map<String, dynamic>))
-          .toList();
-    });
-  }
-
-  // -------------------------------------------------------------
   // Profil
   // -------------------------------------------------------------
 

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/rendering.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
@@ -451,7 +452,7 @@ class StatTile extends StatelessWidget {
   }
 }
 
-/// Wybór jednej opcji z kilku, jak zakładki w pigułce.
+/// Wybór jednej opcji z kilku, jak zakładki w pigułce. Podświetlenie przesuwa się do wybranej opcji.
 class SegmentedTabs<T> extends StatelessWidget {
   const SegmentedTabs({
     super.key,
@@ -466,76 +467,22 @@ class SegmentedTabs<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceRaised,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final (value, label) in options)
-            MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
-                onTap: () => onChanged(value),
-                child: PanelPress(
-                  scale: 0.96,
-                  child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  curve: AppMotion.easeOut,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    // Ten sam kolor z inną przezroczystością, żeby przejście
-                    // nie przechodziło przez szarość ani czerń.
-                    color: (AppColors.palette.brightness == Brightness.dark
-                            ? const Color(0xFF26262B)
-                            : AppColors.surface)
-                        .withValues(alpha: value == selected ? 1 : 0),
-                    borderRadius: BorderRadius.circular(9),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.accent.withValues(
-                          alpha: value == selected ? 1 : 0,
-                        ),
-                        blurRadius: 0,
-                        spreadRadius: 1,
-                      ),
-                      // Wybrana opcja unosi się nad pigułką.
-                      BoxShadow(
-                        color: Colors.black.withValues(
-                          alpha: value == selected ? 0.35 : 0,
-                        ),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Text(
-                    label,
-                    style: text.labelLarge?.copyWith(
-                      color: value == selected
-                          ? AppColors.text
-                          : AppColors.textMuted,
-                    ),
-                  ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+    return _SlidingSegments(
+      selectedIndex: options.indexWhere((o) => o.$1 == selected),
+      children: [
+        for (final (value, label) in options)
+          _TextSegment(
+            label: label,
+            selected: value == selected,
+            onTap: () => onChanged(value),
+          ),
+      ],
     );
   }
 }
 
-/// Zakładki jako same ikony. Wybrana rozsuwa się i pokazuje nazwę obok ikony,
-/// pozostałe mają nazwę w podpowiedzi po najechaniu myszą.
+/// Zakładki jako same ikony. Wybrana rozsuwa się i pokazuje nazwę obok ikony, a podświetlenie
+/// płynie do niej od poprzedniej. Pozostałe mają nazwę w podpowiedzi po najechaniu myszą.
 class IconTabs<T> extends StatelessWidget {
   const IconTabs({
     super.key,
@@ -550,30 +497,340 @@ class IconTabs<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _SlidingSegments(
+      selectedIndex: options.indexWhere((o) => o.$1 == selected),
+      children: [
+        for (final (value, icon, label) in options)
+          _IconSegment(
+            icon: icon,
+            label: label,
+            selected: value == selected,
+            onTap: () => onChanged(value),
+          ),
+      ],
+    );
+  }
+}
+
+/// Czas ruchu podświetlenia i zmian w opcjach.
+const _segmentDuration = Duration(milliseconds: 340);
+
+/// Pigułka z opcjami. Jedno podświetlenie przesuwa się między opcjami i dopasowuje szerokość,
+/// zamiast gasnąć w jednej opcji i zapalać się w drugiej.
+class _SlidingSegments extends StatefulWidget {
+  const _SlidingSegments({required this.selectedIndex, required this.children});
+
+  /// -1: nic nie jest wybrane.
+  final int selectedIndex;
+  final List<Widget> children;
+
+  @override
+  State<_SlidingSegments> createState() => _SlidingSegmentsState();
+}
+
+class _SlidingSegmentsState extends State<_SlidingSegments> with SingleTickerProviderStateMixin {
+  late final _controller = AnimationController(vsync: this, duration: _segmentDuration, value: 1);
+  late final _progress = CurvedAnimation(parent: _controller, curve: AppMotion.easeOut);
+
+  @override
+  void didUpdateWidget(_SlidingSegments old) {
+    super.didUpdateWidget(old);
+    if (old.selectedIndex == widget.selectedIndex) return;
+    // Przy włączonym ograniczeniu ruchu podświetlenie przeskakuje od razu.
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.value = 1;
+    } else {
+      _controller.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _progress.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = AppColors.palette.brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: AppColors.surfaceRaised,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final (value, icon, label) in options)
-            _IconTab(
-              icon: icon,
-              label: label,
-              selected: value == selected,
-              onTap: () => onChanged(value),
+      child: _IndicatorRow(
+        selected: widget.selectedIndex,
+        progress: _progress,
+        decoration: BoxDecoration(
+          color: dark ? const Color(0xFF26262B) : AppColors.surface,
+          borderRadius: BorderRadius.circular(9),
+          boxShadow: [
+            // Cienki pierścień w kolorze akcentu i cień: wybrana opcja unosi się nad pigułką.
+            BoxShadow(color: AppColors.accent, spreadRadius: 1),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: dark ? 0.35 : 0.12),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
-        ],
+          ],
+        ),
+        children: widget.children,
       ),
     );
   }
 }
 
-class _IconTab extends StatelessWidget {
-  const _IconTab({
+/// Rząd opcji, pod którymi rysuje się podświetlenie wybranej. Podświetlenie idzie od miejsca,
+/// w którym było w chwili zmiany, do bieżącego miejsca wybranej opcji, więc nadąża też za opcjami,
+/// które w tym czasie zmieniają szerokość (np. rozsuwająca się nazwa w IconTabs).
+class _IndicatorRow extends MultiChildRenderObjectWidget {
+  const _IndicatorRow({
+    required this.selected,
+    required this.progress,
+    required this.decoration,
+    required super.children,
+  });
+
+  final int selected;
+  final Animation<double> progress;
+  final BoxDecoration decoration;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderIndicatorRow(selected, progress, decoration, createLocalImageConfiguration(context));
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderIndicatorRow renderObject) {
+    renderObject
+      ..selected = selected
+      ..progress = progress
+      ..decoration = decoration
+      ..configuration = createLocalImageConfiguration(context);
+  }
+}
+
+class _IndicatorParentData extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderIndicatorRow extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _IndicatorParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _IndicatorParentData> {
+  _RenderIndicatorRow(this._selected, this._progress, this._decoration, this._configuration);
+
+  int _selected;
+  set selected(int value) {
+    if (value == _selected) return;
+    // Nowa droga zaczyna się tam, gdzie podświetlenie jest teraz, także w połowie poprzedniego ruchu.
+    _from = _painted;
+    _selected = value;
+    markNeedsPaint();
+  }
+
+  Animation<double> _progress;
+  set progress(Animation<double> value) {
+    if (value == _progress) return;
+    if (attached) {
+      _progress.removeListener(markNeedsPaint);
+      value.addListener(markNeedsPaint);
+    }
+    _progress = value;
+    markNeedsPaint();
+  }
+
+  BoxDecoration _decoration;
+  set decoration(BoxDecoration value) {
+    if (value == _decoration) return;
+    _decoration = value;
+    _painter?.dispose();
+    _painter = null;
+    markNeedsPaint();
+  }
+
+  ImageConfiguration _configuration;
+  set configuration(ImageConfiguration value) {
+    if (value == _configuration) return;
+    _configuration = value;
+    markNeedsPaint();
+  }
+
+  BoxPainter? _painter;
+
+  /// Miejsce podświetlenia w chwili zmiany wyboru i ostatnio narysowane.
+  Rect? _from;
+  Rect? _painted;
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _IndicatorParentData) child.parentData = _IndicatorParentData();
+  }
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    _progress.addListener(markNeedsPaint);
+  }
+
+  @override
+  void detach() {
+    _progress.removeListener(markNeedsPaint);
+    super.detach();
+  }
+
+  @override
+  void dispose() {
+    _painter?.dispose();
+    super.dispose();
+  }
+
+  Iterable<RenderBox> get _children sync* {
+    var child = firstChild;
+    while (child != null) {
+      yield child;
+      child = childAfter(child);
+    }
+  }
+
+  @override
+  double computeMinIntrinsicWidth(double height) =>
+      _children.fold(0, (sum, c) => sum + c.getMinIntrinsicWidth(height));
+
+  @override
+  double computeMaxIntrinsicWidth(double height) =>
+      _children.fold(0, (sum, c) => sum + c.getMaxIntrinsicWidth(height));
+
+  @override
+  double computeMinIntrinsicHeight(double width) =>
+      _children.fold(0, (m, c) => math.max(m, c.getMinIntrinsicHeight(double.infinity)));
+
+  @override
+  double computeMaxIntrinsicHeight(double width) =>
+      _children.fold(0, (m, c) => math.max(m, c.getMaxIntrinsicHeight(double.infinity)));
+
+  @override
+  double? computeDistanceToActualBaseline(TextBaseline baseline) =>
+      defaultComputeDistanceToHighestActualBaseline(baseline);
+
+  @override
+  Size computeDryLayout(covariant BoxConstraints constraints) {
+    final loose = BoxConstraints(maxHeight: constraints.maxHeight);
+    var width = 0.0;
+    var height = 0.0;
+    for (final c in _children) {
+      final s = c.getDryLayout(loose);
+      width += s.width;
+      height = math.max(height, s.height);
+    }
+    return constraints.constrain(Size(width, height));
+  }
+
+  @override
+  void performLayout() {
+    final loose = BoxConstraints(maxHeight: constraints.maxHeight);
+    var height = 0.0;
+    for (final c in _children) {
+      c.layout(loose, parentUsesSize: true);
+      height = math.max(height, c.size.height);
+    }
+    var x = 0.0;
+    for (final c in _children) {
+      (c.parentData! as _IndicatorParentData).offset = Offset(x, (height - c.size.height) / 2);
+      x += c.size.width;
+    }
+    size = constraints.constrain(Size(x, height));
+  }
+
+  Rect? _rectOf(int index) {
+    if (index < 0) return null;
+    var i = 0;
+    for (final c in _children) {
+      if (i++ == index) return (c.parentData! as _IndicatorParentData).offset & c.size;
+    }
+    return null;
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final target = _rectOf(_selected);
+    if (target != null) {
+      final t = _progress.value;
+      final from = _from;
+      final rect = from == null || t >= 1 ? target : Rect.lerp(from, target, t)!;
+      if (t >= 1) _from = null;
+      _painted = rect;
+      _painter ??= _decoration.createBoxPainter(markNeedsPaint);
+      _painter!.paint(context.canvas, offset + rect.topLeft, _configuration.copyWith(size: rect.size));
+    } else {
+      _painted = null;
+    }
+    defaultPaint(context, offset);
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      defaultHitTestChildren(result, position: position);
+}
+
+/// Kolor napisu albo ikony opcji: wybrana jasna, najechana myszą jaśniejsza niż pozostałe.
+Color _segmentColor({required bool selected, required bool hovered, Color? selectedColor}) => selected
+    ? (selectedColor ?? AppColors.text)
+    : hovered
+    ? Color.lerp(AppColors.textMuted, AppColors.text, 0.6)!
+    : AppColors.textMuted;
+
+/// Opcja z samym napisem.
+class _TextSegment extends StatefulWidget {
+  const _TextSegment({required this.label, required this.selected, required this.onTap});
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  State<_TextSegment> createState() => _TextSegmentState();
+}
+
+class _TextSegmentState extends State<_TextSegment> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Semantics(
+      button: true,
+      selected: widget.selected,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: PanelPress(
+            scale: 0.95,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              child: TweenAnimationBuilder<Color?>(
+                tween: ColorTween(end: _segmentColor(selected: widget.selected, hovered: _hovered)),
+                duration: const Duration(milliseconds: 200),
+                curve: AppMotion.easeOut,
+                builder: (context, color, _) => Text(
+                  widget.label,
+                  style: text.labelLarge?.copyWith(color: color),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Opcja z ikoną. Wybrana rozsuwa się: nazwa wysuwa się zza ikony.
+class _IconSegment extends StatefulWidget {
+  const _IconSegment({
     required this.icon,
     required this.label,
     required this.selected,
@@ -585,57 +842,47 @@ class _IconTab extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  static const _duration = Duration(milliseconds: 280);
+  @override
+  State<_IconSegment> createState() => _IconSegmentState();
+}
+
+class _IconSegmentState extends State<_IconSegment> {
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final selected = widget.selected;
     final tab = Semantics(
       button: true,
       selected: selected,
-      label: label,
+      label: widget.label,
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
         child: GestureDetector(
-          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
           child: PanelPress(
-            scale: 0.94,
-            child: AnimatedContainer(
-              duration: _duration,
-              curve: AppMotion.easeOut,
+            scale: 0.92,
+            child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-              decoration: BoxDecoration(
-                // Jak w SegmentedTabs: ten sam kolor z inną przezroczystością.
-                color: (AppColors.palette.brightness == Brightness.dark
-                        ? const Color(0xFF26262B)
-                        : AppColors.surface)
-                    .withValues(alpha: selected ? 1 : 0),
-                borderRadius: BorderRadius.circular(9),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.accent.withValues(alpha: selected ? 1 : 0),
-                    blurRadius: 0,
-                    spreadRadius: 1,
-                  ),
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: selected ? 0.35 : 0),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TweenAnimationBuilder<Color?>(
-                    tween: ColorTween(end: selected ? AppColors.accent : AppColors.textMuted),
-                    duration: _duration,
+                    tween: ColorTween(
+                      end: _segmentColor(selected: selected, hovered: _hovered, selectedColor: AppColors.accent),
+                    ),
+                    duration: const Duration(milliseconds: 200),
                     curve: AppMotion.easeOut,
                     builder: (context, color, _) => AnimatedScale(
-                      scale: selected ? 1.08 : 1,
-                      duration: _duration,
-                      curve: AppMotion.easeOut,
-                      child: Glyph(icon, size: 18, color: color),
+                      // Wybrana ikona lekko rośnie, najechana myszą odrobinę.
+                      scale: selected ? 1.1 : (_hovered ? 1.05 : 1),
+                      duration: _segmentDuration,
+                      curve: Curves.easeOutBack,
+                      child: Glyph(widget.icon, size: 18, color: color),
                     ),
                   ),
                   // Nazwa wysuwa się zza ikony: szerokość rośnie, tekst pojawia się i przesuwa w prawo.
@@ -643,20 +890,20 @@ class _IconTab extends StatelessWidget {
                     child: AnimatedAlign(
                       alignment: Alignment.centerLeft,
                       widthFactor: selected ? 1 : 0,
-                      duration: _duration,
+                      duration: _segmentDuration,
                       curve: AppMotion.easeOut,
                       child: AnimatedOpacity(
                         opacity: selected ? 1 : 0,
-                        duration: _duration,
+                        duration: selected ? _segmentDuration : const Duration(milliseconds: 120),
                         curve: AppMotion.easeOut,
                         child: AnimatedSlide(
-                          offset: selected ? Offset.zero : const Offset(-0.25, 0),
-                          duration: _duration,
+                          offset: selected ? Offset.zero : const Offset(-0.3, 0),
+                          duration: _segmentDuration,
                           curve: AppMotion.easeOut,
                           child: Padding(
                             padding: const EdgeInsets.only(left: 8),
                             child: Text(
-                              label,
+                              widget.label,
                               maxLines: 1,
                               softWrap: false,
                               style: text.labelLarge?.copyWith(color: AppColors.text),
@@ -673,7 +920,7 @@ class _IconTab extends StatelessWidget {
         ),
       ),
     );
-    return selected ? tab : Tooltip(message: label, child: tab);
+    return selected ? tab : Tooltip(message: widget.label, child: tab);
   }
 }
 

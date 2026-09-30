@@ -131,35 +131,24 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   }
 
   Future<void> _close(String restaurantId, DiningTable table, PanelOrder order) async {
-    final payment = await showDialog<_Payment>(
+    final method = await showDialog<PaymentMethod>(
       context: context,
-      builder: (_) => _CloseOrderDialog(restaurantId: restaurantId, table: table, order: order),
+      builder: (_) => _CloseOrderDialog(table: table, order: order),
     );
-    if (payment == null || !mounted) return;
+    if (method == null || !mounted) return;
     var ok = false;
     await _enqueue(restaurantId, () async {
       await ref.read(repositoryProvider).closeOrder(
         order.id,
-        payment.method,
-        giftCardId: payment.card?.id,
-        giftAmount: payment.giftAmount,
+        method,
         memberId: ref.read(panelMemberProvider)?.dbMemberId,
       );
       ok = true;
     });
     if (!ok || !mounted) return;
     // Zamknięty rachunek kończy też wizytę z rezerwacji, więc plan sali musi się odświeżyć.
-    ref
-      ..invalidate(reservationsProvider((restaurantId: restaurantId, day: dateOnly(DateTime.now()))))
-      ..invalidate(giftCardsProvider(restaurantId));
-    final gift = payment.giftAmount;
-    showMessage(
-      context,
-      gift == null
-          ? 'Rachunek zamknięty: ${Fmt.price(order.totalGrosze)}, ${payment.method.label.toLowerCase()}.'
-          : 'Rachunek zamknięty: ${Fmt.price(gift)} z karty podarunkowej'
-                '${gift < order.totalGrosze ? ', reszta: ${payment.method.label.toLowerCase()}' : ''}.',
-    );
+    ref.invalidate(reservationsProvider((restaurantId: restaurantId, day: dateOnly(DateTime.now()))));
+    showMessage(context, 'Rachunek zamknięty: ${Fmt.price(order.totalGrosze)}, ${method.label.toLowerCase()}.');
   }
 
   /// Kelner zaniósł wszystko, co kuchnia zbiła.
@@ -1490,109 +1479,40 @@ class _NoteDialogState extends State<_NoteDialog> {
 // Zamknięcie rachunku i przeniesienie
 // ---------------------------------------------------------------
 
-/// Wynik okna zamknięcia: forma płatności i ewentualnie karta podarunkowa z kwotą.
-/// Gdy karta pokrywa część rachunku, [method] mówi, jak gość dopłacił resztę.
-typedef _Payment = ({PaymentMethod method, GiftCard? card, int? giftAmount});
+/// Zamknięcie rachunku: forma płatności, a przy gotówce wyliczenie reszty. Zwraca formę płatności.
+class _CloseOrderDialog extends StatefulWidget {
+  const _CloseOrderDialog({required this.table, required this.order});
 
-class _CloseOrderDialog extends ConsumerStatefulWidget {
-  const _CloseOrderDialog({required this.restaurantId, required this.table, required this.order});
-
-  final String restaurantId;
   final DiningTable table;
   final PanelOrder order;
 
   @override
-  ConsumerState<_CloseOrderDialog> createState() => _CloseOrderDialogState();
+  State<_CloseOrderDialog> createState() => _CloseOrderDialogState();
 }
 
-class _CloseOrderDialogState extends ConsumerState<_CloseOrderDialog> {
+class _CloseOrderDialogState extends State<_CloseOrderDialog> {
   PaymentMethod? _method;
-
-  /// Jak gość dopłaca, gdy karta podarunkowa nie pokrywa całości.
-  PaymentMethod? _rest;
   final _received = TextEditingController();
-  final _code = TextEditingController();
-  GiftCard? _card;
-  String? _cardProblem;
-  bool _checking = false;
 
   @override
   void dispose() {
     _received.dispose();
-    _code.dispose();
     super.dispose();
   }
 
   /// VAT zawarty w kwocie brutto przy danej stawce.
   static int _vatOf(int gross, int rate) => (gross * rate / (100 + rate)).round();
 
-  /// Kwota pobierana z karty: całość albo tyle, ile na niej zostało.
-  int? get _giftAmount {
-    final card = _card;
-    if (_method != PaymentMethod.giftCard || card == null || !card.isUsable) return null;
-    return card.balanceGrosze < widget.order.totalGrosze ? card.balanceGrosze : widget.order.totalGrosze;
-  }
-
-  Future<void> _checkCard() async {
-    final code = _code.text.trim();
-    if (code.isEmpty) {
-      setState(() => _cardProblem = 'Wpisz kod z karty gościa.');
-      return;
-    }
-    setState(() {
-      _checking = true;
-      _cardProblem = null;
-      _card = null;
-    });
-    try {
-      final found = await ref.read(repositoryProvider).giftCards(widget.restaurantId, code: code);
-      if (!mounted) return;
-      final card = found.isEmpty ? null : found.first;
-      setState(() {
-        _card = card;
-        _cardProblem = card == null
-            ? 'Nie ma karty z takim kodem w tym lokalu.'
-            : card.status != 'active'
-            ? 'Ta karta jest unieważniona.'
-            : card.isExpired
-            ? 'Karta straciła ważność ${Fmt.dayShort(card.expiresAt)}.'
-            : card.balanceGrosze <= 0
-            ? 'Na karcie nie ma już środków.'
-            : null;
-      });
-    } catch (e) {
-      if (mounted) setState(() => _cardProblem = errorText(e));
-    } finally {
-      if (mounted) setState(() => _checking = false);
-    }
-  }
-
-  _Payment? get _result {
-    final method = _method;
-    if (method == null) return null;
-    if (method != PaymentMethod.giftCard) return (method: method, card: null, giftAmount: null);
-    final gift = _giftAmount;
-    if (gift == null) return null;
-    if (gift >= widget.order.totalGrosze) {
-      return (method: PaymentMethod.giftCard, card: _card, giftAmount: gift);
-    }
-    final rest = _rest;
-    return rest == null ? null : (method: rest, card: _card, giftAmount: gift);
-  }
-
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final order = widget.order;
     final total = order.totalGrosze;
-    final gift = _giftAmount;
-    // Gotówka przy dopłacie po karcie: reszta liczona od dopłaty, nie od całego rachunku.
-    final cashDue = gift == null ? total : total - gift;
-    final cash = _method == PaymentMethod.cash || (gift != null && gift < total && _rest == PaymentMethod.cash);
+    final cash = _method == PaymentMethod.cash;
     final received = parseGrosze(_received.text);
-    final change = received == null ? null : received - cashDue;
+    final change = received == null ? null : received - total;
     final vat = order.byVat.entries.toList()..sort((a, b) => b.key.compareTo(a.key));
-    final result = _result;
+    final result = _method;
 
     return AlertDialog(
       title: Text('Rachunek · stolik ${widget.table.label}'),
@@ -1666,101 +1586,20 @@ class _CloseOrderDialogState extends ConsumerState<_CloseOrderDialog> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  for (final m in PaymentMethod.values)
+                  // Karta podarunkowa została tylko w historii starych rachunków.
+                  for (final m in PaymentMethod.values.where((m) => m != PaymentMethod.giftCard))
                     _OptionButton(
                       label: m.label,
                       price: switch (m) {
                         PaymentMethod.cash => 'wydaj resztę',
                         PaymentMethod.card => 'terminal',
-                        PaymentMethod.giftCard => 'kod z karty',
-                        PaymentMethod.other => 'np. przelew',
+                        PaymentMethod.giftCard || PaymentMethod.other => 'np. przelew',
                       },
                       selected: _method == m,
                       onTap: () => setState(() => _method = m),
                     ),
                 ],
               ),
-              // Karta podarunkowa: kod wpisuje się od razu tutaj, bez przechodzenia do innej zakładki.
-              if (_method == PaymentMethod.giftCard) ...[
-                const SizedBox(height: 14),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _code,
-                        autofocus: true,
-                        textCapitalization: TextCapitalization.characters,
-                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\- ]'))],
-                        decoration: InputDecoration(
-                          labelText: 'Kod karty podarunkowej',
-                          errorText: _cardProblem,
-                        ),
-                        onSubmitted: (_) => _checkCard(),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      height: 56,
-                      child: OutlinedButton(
-                        onPressed: _checking ? null : _checkCard,
-                        child: Text(_checking ? 'Sprawdzam…' : 'Sprawdź'),
-                      ),
-                    ),
-                  ],
-                ),
-                if (gift != null) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.accentTint,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Z karty ${_card!.code}: ${Fmt.price(gift)}',
-                          style: text.titleSmall?.copyWith(
-                            color: AppColors.accent,
-                            fontFeatures: _tabular,
-                          ),
-                        ),
-                        Text(
-                          'Na karcie zostanie ${Fmt.price(_card!.balanceGrosze - gift)}'
-                          '${_card!.testMode ? ' · karta testowa' : ''}',
-                          style: text.bodySmall?.copyWith(
-                            color: AppColors.textMuted,
-                            fontFeatures: _tabular,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (gift < total) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      'Dopłata ${Fmt.price(total - gift)}: jak gość płaci resztę?',
-                      style: text.titleSmall?.copyWith(fontFeatures: _tabular),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final m in [PaymentMethod.cash, PaymentMethod.card, PaymentMethod.other])
-                          _OptionButton(
-                            label: m.label,
-                            price: Fmt.price(total - gift),
-                            selected: _rest == m,
-                            onTap: () => setState(() => _rest = m),
-                          ),
-                      ],
-                    ),
-                  ],
-                ],
-              ],
               if (cash) ...[
                 const SizedBox(height: 14),
                 Row(

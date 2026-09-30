@@ -8,7 +8,6 @@ import 'package:table_core/table_core.dart';
 
 import '../features/auth/login_screen.dart';
 import '../features/floor/floor_screen.dart';
-import '../features/gift_cards/gift_cards_screen.dart';
 import '../features/inventory/inventory_screen.dart';
 import '../features/kitchen/kitchen_screen.dart';
 import '../features/menu/menu_screen.dart';
@@ -138,7 +137,6 @@ GoRouter _buildRouter(Listenable refresh) {
           ),
           _page(PanelRoutes.kitchen, const KitchenScreen()),
           _page(PanelRoutes.staff, const StaffScreen()),
-          _page(PanelRoutes.giftCards, const GiftCardsScreen()),
           _page(PanelRoutes.menu, const MenuScreen()),
           _page(PanelRoutes.inventory, const InventoryScreen()),
           _page(PanelRoutes.profile, const ProfileScreen()),
@@ -163,7 +161,6 @@ abstract final class PanelRoutes {
   static const orders = '/zamowienia';
   static const kitchen = '/kuchnia';
   static const staff = '/pracownicy';
-  static const giftCards = '/karty';
   static const menu = '/menu';
   static const inventory = '/inwentaryzacja';
   static const profile = '/lokal';
@@ -182,7 +179,6 @@ const _routePermissions = {
   PanelRoutes.profile: {'profile'},
   PanelRoutes.menu: {'menu'},
   PanelRoutes.inventory: {'inventory_edit', 'inventory_count'},
-  PanelRoutes.giftCards: {'gift_cards'},
   PanelRoutes.reviews: {'reviews'},
   PanelRoutes.stats: {'stats'},
 };
@@ -197,7 +193,6 @@ const panelTabLabels = {
   PanelRoutes.profile: 'Dane lokalu',
   PanelRoutes.menu: 'Menu',
   PanelRoutes.inventory: 'Inwentaryzacja',
-  PanelRoutes.giftCards: 'Karty podarunkowe',
   PanelRoutes.reviews: 'Opinie',
   PanelRoutes.stats: 'Statystyki',
 };

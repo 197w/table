@@ -144,14 +144,6 @@ class _Body extends ConsumerWidget {
                   label: Text('Zobacz menu ($dishes)'),
                 ),
               ],
-              if (r.isPro) ...[
-                SizedBox(height: dishes > 0 ? 10 : 14),
-                OutlinedButton.icon(
-                  onPressed: () => context.push(AppRoutes.buyGiftCard(r.id)),
-                  icon: const Glyph(AppIcons.envelope, size: 18),
-                  label: const Text('Kup kartę podarunkową'),
-                ),
-              ],
             ],
           ),
         ),

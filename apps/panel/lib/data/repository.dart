@@ -1075,22 +1075,16 @@ class PanelRepository {
     );
   }
 
-  /// Zamyka rachunek. Z [giftCardId] pobiera [giftAmount], resztę gość płaci metodą [method].
-  Future<void> closeOrder(
-    String orderId,
-    PaymentMethod method, {
-    String? giftCardId,
-    int? giftAmount,
-    String? memberId,
-  }) {
+  /// Zamyka rachunek płatnością [method].
+  Future<void> closeOrder(String orderId, PaymentMethod method, {String? memberId}) {
     return _guard(
       () => _db.rpc<void>(
         'panel_close_order',
         params: {
           'p_order_id': orderId,
           'p_payment_method': method.db,
-          'p_gift_card_id': giftCardId,
-          'p_gift_amount': giftAmount,
+          'p_gift_card_id': null,
+          'p_gift_amount': null,
           'p_member_id': memberId,
         },
       ),
@@ -1388,32 +1382,6 @@ class PanelRepository {
 
   Future<void> deleteAvailability(String id) {
     return _guard(() => _db.from('staff_availability').delete().eq('id', id));
-  }
-
-  // -------------------------------------------------------------
-  // Karty podarunkowe
-  // -------------------------------------------------------------
-
-  Future<List<GiftCard>> giftCards(String restaurantId, {String? code}) {
-    return _guard(() async {
-      final rows = await _db.rpc<List<dynamic>>(
-        'panel_gift_cards',
-        params: {'p_restaurant_id': restaurantId, 'p_code': code},
-      );
-      return rows
-          .map((e) => GiftCard.fromJson(e as Map<String, dynamic>))
-          .toList();
-    });
-  }
-
-  /// Pobiera kwotę z karty. Zwraca saldo po operacji w groszach.
-  Future<int> redeemGiftCard(String cardId, int amountGrosze) {
-    return _guard(
-      () => _db.rpc<int>(
-        'panel_redeem_gift_card',
-        params: {'p_card_id': cardId, 'p_amount_grosze': amountGrosze},
-      ),
-    );
   }
 
   // -------------------------------------------------------------

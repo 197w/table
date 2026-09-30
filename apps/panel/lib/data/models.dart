@@ -965,57 +965,6 @@ class Availability {
   }
 }
 
-// ---------------------------------------------------------------
-// Karty podarunkowe
-// ---------------------------------------------------------------
-
-class GiftCard {
-  const GiftCard({
-    required this.id,
-    required this.code,
-    required this.initialGrosze,
-    required this.balanceGrosze,
-    required this.testMode,
-    required this.status,
-    required this.expiresAt,
-    required this.createdAt,
-    this.recipientName,
-    this.message,
-    this.lastUsedAt,
-  });
-
-  final String id;
-  final String code;
-  final int initialGrosze;
-  final int balanceGrosze;
-  final String? recipientName;
-  final String? message;
-  final bool testMode;
-  final String status;
-  final DateTime expiresAt;
-  final DateTime createdAt;
-  final DateTime? lastUsedAt;
-
-  bool get isExpired => expiresAt.isBefore(DateTime.now());
-  bool get isUsable => status == 'active' && !isExpired && balanceGrosze > 0;
-
-  factory GiftCard.fromJson(Map<String, dynamic> json) {
-    return GiftCard(
-      id: json['id'] as String,
-      code: json['code'] as String,
-      initialGrosze: _toInt(json['initial_grosze']),
-      balanceGrosze: _toInt(json['balance_grosze']),
-      recipientName: json['recipient_name'] as String?,
-      message: json['message'] as String?,
-      testMode: json['test_mode'] == true,
-      status: json['status'] as String? ?? 'active',
-      expiresAt: _toDate(json['expires_at']),
-      createdAt: _toDate(json['created_at']),
-      lastUsedAt: _toDateOrNull(json['last_used_at']),
-    );
-  }
-}
-
 /// Stan połączenia na żywo z bazą rezerwacji.
 enum LiveStatus {
   /// Łączymy się albo wracamy po zerwaniu.
@@ -1048,7 +997,6 @@ enum StaffPermission {
   menu('menu', 'Menu', 'Podgląd menu lokalu', 'Lokal'),
   menuEdit('menu_edit', 'Edycja menu', 'Dodawanie i zmiana dań, cen, sekcji i zdjęć', 'Lokal'),
   menuAvailability('menu_availability', 'Dostępność dań', 'Oznaczanie „Skończyło się” i „Znowu dostępne”', 'Lokal'),
-  giftCards('gift_cards', 'Karty podarunkowe', 'Realizacja kart gości', 'Lokal'),
   inventoryEdit('inventory_edit', 'Edytowanie składników', 'Dodawanie, zmiana i usuwanie składników', 'Inwentaryzacja'),
   inventoryCount('inventory_count', 'Wpisywanie ilości składników', 'Spis ilości składników w inwentaryzacji', 'Inwentaryzacja'),
   reviews('reviews', 'Opinie', 'Odpowiadanie na opinie', 'Wyniki'),
