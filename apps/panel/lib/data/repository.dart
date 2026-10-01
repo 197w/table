@@ -670,6 +670,32 @@ class PanelRepository {
     });
   }
 
+  /// Dane właściciela lokalu (tylko kierownik i właściciel; inni dostają puste).
+  Future<OwnerDetails> ownerDetails(String restaurantId) {
+    return _guard(() async {
+      final row = await _db
+          .from('restaurant_owner_details')
+          .select()
+          .eq('restaurant_id', restaurantId)
+          .maybeSingle();
+      return OwnerDetails.fromJson(row);
+    });
+  }
+
+  Future<void> saveOwnerDetails(String restaurantId, OwnerDetails d) {
+    return _guard(
+      () => _db.rpc<void>('panel_set_owner_details', params: {
+        'p_restaurant_id': restaurantId,
+        'p_owner_name': d.ownerName,
+        'p_owner_phone': d.ownerPhone,
+        'p_owner_email': d.ownerEmail,
+        'p_company_name': d.companyName,
+        'p_nip': d.nip,
+        'p_company_address': d.companyAddress,
+      }),
+    );
+  }
+
   /// Ekran „Wydanie”: pozycje z otwartych rachunków, które są na kuchni albo już gotowe.
   Future<List<ServingTicket>> servingTickets(String restaurantId) {
     return _guard(() async {
@@ -755,12 +781,14 @@ class PanelRepository {
   // -------------------------------------------------------------
 
   /// Nowy kod QR do zeskanowania aplikacją Table for employees.
-  /// Kod QR do zeskanowania aplikacją: [endShift] false zaczyna zmianę i loguje, true kończy zmianę.
-  Future<String> newLoginToken(String restaurantId, {bool endShift = false}) {
+  /// Kod QR do zeskanowania aplikacją: zaczyna zmianę i loguje, a z [endShiftOf] kończy zmianę tej osoby
+  /// (zeskanować go może tylko ona).
+  Future<String> newLoginToken(String restaurantId, {String? endShiftOf}) {
     return _guard(
       () => _db.rpc<String>('panel_new_login_token', params: {
         'p_restaurant_id': restaurantId,
-        'p_purpose': endShift ? 'end_shift' : 'login',
+        'p_purpose': endShiftOf == null ? 'login' : 'end_shift',
+        'p_member_id': endShiftOf,
       }),
     );
   }
@@ -777,12 +805,13 @@ class PanelRepository {
     });
   }
 
-  /// „Zakończ zmianę” czterocyfrowym kodem pracownika. Zwraca pracownika z godzinami zakończonej zmiany.
-  Future<ActingMember> memberEndShift({required String restaurantId, required String code}) {
+  /// „Zakończ zmianę” czterocyfrowym kodem pracownika [memberId] (kod innej osoby nie zadziała).
+  /// Zwraca pracownika z godzinami zakończonej zmiany.
+  Future<ActingMember> memberEndShift({required String restaurantId, required String code, String? memberId}) {
     return _guard(() async {
       final json = await _db.rpc<Map<String, dynamic>>(
         'panel_member_end_shift',
-        params: {'p_restaurant_id': restaurantId, 'p_code': code},
+        params: {'p_restaurant_id': restaurantId, 'p_code': code, 'p_member_id': memberId},
       );
       if (json['error'] case final String problem) throw AppFailure(problem);
       return ActingMember.fromJson(json);

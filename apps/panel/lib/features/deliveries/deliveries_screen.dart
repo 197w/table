@@ -101,7 +101,6 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
       return const Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PageHeader(title: 'Dostawy'),
           Expanded(child: ProGate(feature: 'Dostawy i odbiór osobisty')),
         ],
       );
@@ -129,7 +128,6 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          title: 'Dostawy',
           subtitle: Fmt.capitalize(subtitle),
           below: Row(
             children: [

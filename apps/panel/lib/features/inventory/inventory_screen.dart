@@ -157,7 +157,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          title: 'Inwentaryzacja',
           subtitle: subtitle,
           below: Row(
             children: [

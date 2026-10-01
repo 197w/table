@@ -250,7 +250,6 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       return const Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PageHeader(title: 'Zamówienia'),
           Expanded(child: ProGate(feature: 'Zamówienia przy stoliku')),
         ],
       );
@@ -290,7 +289,6 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          title: 'Zamówienia',
           subtitle: 'Wybierz stolik, nabij pozycje z menu i wyślij je na kuchnię.',
           actions: [
             switch (live) {

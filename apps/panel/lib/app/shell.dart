@@ -344,8 +344,8 @@ class _Sidebar extends ConsumerWidget {
             );
           },
         ),
-        // Pracownicy wchodzą na zmianę i kończą ją kodem QR albo czterocyfrowym kodem.
-        if (current != null) ...[
+        // Pracownicy wchodzą na zmianę kodem QR albo czterocyfrowym kodem. Kończą ją na pasku nad zakładką.
+        if (current != null)
           _IconRow(
             icon: AppIcons.signIn,
             label: 'Wejdź na zmianę',
@@ -354,15 +354,6 @@ class _Sidebar extends ConsumerWidget {
             muted: true,
             onTap: () => ShiftScreen.open(context),
           ),
-          _IconRow(
-            icon: AppIcons.doorOpen,
-            label: 'Zakończ zmianę',
-            width: inner,
-            fade: fade,
-            muted: true,
-            onTap: () => ShiftScreen.open(context, end: true),
-          ),
-        ],
         _IconRow(
           icon: AppIcons.signOut,
           label: 'Wyloguj się',

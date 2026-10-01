@@ -136,7 +136,6 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          title: 'Pracownicy',
           subtitle: tab == 0
               ? '${all.where((m) => m.active).length} w zespole · ${working.length} teraz w pracy'
               : '${tab == 1 ? 'Grafik' : 'Czas pracy'} ${Fmt.dayShort(_week)} – ${Fmt.dayShort(weekEnd)}'

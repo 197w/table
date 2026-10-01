@@ -71,6 +71,23 @@ void main() {
     expect(panelTabLabels[PanelRoutes.serving], 'Wydanie');
   });
 
+  test('dane właściciela: puste, gdy wiersza nie ma, i wypełnione z bazy', () {
+    final empty = OwnerDetails.fromJson(null);
+    expect(empty.ownerName, isNull);
+    expect(empty.nip, isNull);
+    final d = OwnerDetails.fromJson({
+      'owner_name': 'Jan Kowalski',
+      'owner_phone': '600100200',
+      'owner_email': 'jan@firma.pl',
+      'company_name': 'Firma',
+      'nip': '1234567890',
+      'company_address': 'Rynek 1',
+    });
+    expect(d.ownerName, 'Jan Kowalski');
+    expect(d.nip, '1234567890');
+    expect(d.companyAddress, 'Rynek 1');
+  });
+
   test('koniec zmiany: godziny zakończonej zmiany z odpowiedzi bazy', () {
     final m = ActingMember.fromJson({
       'member_id': 'm1',

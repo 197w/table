@@ -76,7 +76,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0042, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0043, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -106,6 +106,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 ## Panel restauracji
 
 - Logowanie e-mailem i hasłem. Obowiązkowe 2FA dodajemy przed wydaniem.
+- Zakładki nie mają tytułów (`PageHeader` bez tytułu: opis, akcje i rząd zakładek); nazwę zakładki widać w menu bocznym.
 - Restauracja zakłada konto w panelu mailem firmowym („Nowa restauracja? Załóż konto”), potwierdza mail
   i tworzy lokal (`panel_create_restaurant`: nazwa, NIP, miasto, adres, telefon, kuchnia; plan Free).
   Nowy lokal ma `restaurants.listed = false`: działa w panelu, ale goście go nie widzą, dopóki Table go
@@ -129,9 +130,10 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   pracownika każda zakładka pokazuje logowanie (`TabLoginGate`); wejść może tylko osoba z uprawnieniem do zakładki.
   Menu boczne pokazuje zakładki zalogowanego pracownika. Pasek nad zakładką (`TabSessionBar`): „Wyloguj”
   i „Zakończ zmianę”. Właściciel otwiera panel hasłem konta restauracji (`ActingMember.account()`).
-  „Wejdź na zmianę” (menu boczne, `ShiftScreen`) zaczyna zmianę i loguje pracownika. „Zakończ zmianę” (menu boczne,
-  `ShiftScreen(end: true)`) kończy zmianę kodem (`panel_member_end_shift`) albo kodem QR (`panel_login_tokens.purpose =
-  'end_shift'`, `staff_scan` kończy wtedy zmianę), a zalogowany pracownik kończy ją jednym przyciskiem.
+  „Wejdź na zmianę” (menu boczne, `ShiftScreen`) zaczyna zmianę i loguje pracownika. „Zakończ zmianę” jest tylko
+  na pasku nad zakładką (`EndShiftDialog`): pracownik potwierdza swoim kodem (`panel_member_end_shift` z `p_member_id`,
+  kod innej osoby nie działa) albo kodem QR, który może zeskanować tylko on (`panel_login_tokens.purpose = 'end_shift'`,
+  `for_member`; `staff_scan` kończy wtedy zmianę).
   Po 30 sekundach bez ruchu myszy i klawiatury panel sam wylogowuje pracownika i zamyka otwarte okna
   (`IdleLogout` w `MaterialApp.builder`, `kIdleLogoutSeconds`; ostatnie 10 s odlicza pasek nad zakładką).
   Kuchnia i Wydanie nie wylogowują. Klawisze tylko liczą ruch, handler zwraca false (nic nie połyka).
@@ -153,6 +155,10 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Role w `restaurant_staff`: owner, manager, staff. Kierownik i właściciel zmieniają salę, menu, dane lokalu
   i odpowiadają na opinie. Obsługa prowadzi rezerwacje. Uprawnień pilnuje baza (RLS i funkcje `panel_*`).
 - Rezerwacje i plan sali tylko w planie Pro. Plan Free widzi opinie, menu, lokal i statystyki wyświetleń.
+- Dane właściciela („Dane lokalu” → „Dane właściciela”, 0043): tabela `restaurant_owner_details` (imię i nazwisko,
+  telefon, e-mail, nazwa firmy, NIP, adres firmy), RLS: czyta tylko kierownik i właściciel (`has_staff_role manager`),
+  zapis `panel_set_owner_details`. Nie ma ich w aplikacji Table ani w Table for employees. NIP z rejestracji lokalu
+  trafia tutaj (`restaurants.nip` jest puste, bo kolumny `restaurants` są publiczne dla gości).
 - Limit osób w jednej rezerwacji z aplikacji ustawia lokal (`restaurants.max_party_size`, 1–30, domyślnie 12).
 - Rezerwacje odświeżają się na żywo (Supabase Realtime na tabeli `reservations`).
   Nowa rezerwacja z aplikacji: dźwięk i powiadomienie Table z przyciskiem „Pokaż” (`ReservationAlerts`), systemowe

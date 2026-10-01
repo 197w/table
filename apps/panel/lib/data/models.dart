@@ -1535,6 +1535,34 @@ class KitchenTicket {
   }
 }
 
+/// Dane właściciela lokalu. Widać je tylko w panelu, u kierownika i właściciela.
+class OwnerDetails {
+  const OwnerDetails({
+    this.ownerName,
+    this.ownerPhone,
+    this.ownerEmail,
+    this.companyName,
+    this.nip,
+    this.companyAddress,
+  });
+
+  final String? ownerName;
+  final String? ownerPhone;
+  final String? ownerEmail;
+  final String? companyName;
+  final String? nip;
+  final String? companyAddress;
+
+  factory OwnerDetails.fromJson(Map<String, dynamic>? json) => OwnerDetails(
+    ownerName: json?['owner_name'] as String?,
+    ownerPhone: json?['owner_phone'] as String?,
+    ownerEmail: json?['owner_email'] as String?,
+    companyName: json?['company_name'] as String?,
+    nip: json?['nip'] as String?,
+    companyAddress: json?['company_address'] as String?,
+  );
+}
+
 /// Karta na ekranie „Wydanie”: dania gotowe z kuchni dla jednego stolika albo zamówienie na wynos do spakowania.
 class ServingTicket {
   const ServingTicket({

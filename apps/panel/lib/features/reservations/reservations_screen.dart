@@ -165,7 +165,6 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
       return const Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PageHeader(title: 'Rezerwacje'),
           Expanded(child: ProGate(feature: 'Rezerwacje w aplikacji')),
         ],
       );
@@ -186,7 +185,6 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          title: 'Rezerwacje',
           subtitle:
               '${Fmt.capitalize(Fmt.dayLong(day))}${isToday ? ' · dziś' : ''}',
           actions: [

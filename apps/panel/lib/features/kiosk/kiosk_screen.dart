@@ -9,7 +9,6 @@ import 'package:table_core/table_core.dart';
 import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
-import '../../shared/panel_widgets.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -30,15 +29,13 @@ String _endedText(ActingMember member) {
 
 /// Ekran „Wejdź na zmianę”. Pracownik skanuje kod aplikacją
 /// Table for employees albo wpisuje swój kod, zmiana się zaczyna, pracownik jest zalogowany
-/// w panelu, a ekran znika. Z [end] to ekran „Zakończ zmianę”: kod kończy zmianę i wylogowuje.
+/// w panelu, a ekran znika.
 class ShiftScreen extends ConsumerStatefulWidget {
-  const ShiftScreen({super.key, this.end = false});
-
-  final bool end;
+  const ShiftScreen({super.key});
 
   /// Otwiera ekran na całe okno.
-  static Future<void> open(BuildContext context, {bool end = false}) => Navigator.of(context).push(
-    MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => ShiftScreen(end: end)),
+  static Future<void> open(BuildContext context) => Navigator.of(context).push(
+    MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => const ShiftScreen()),
   );
 
   @override
@@ -69,40 +66,6 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
     showMessage(context, '${member.name}: zmiana trwa${since == null ? '' : ' od ${_hm(since)}'}.');
   }
 
-  /// Zmiana zakończona kodem albo kodem QR: pracownik znika z panelu.
-  void _ended(ActingMember member) {
-    ref.read(panelMemberProvider.notifier).signOutMember(member.memberId);
-    ref.invalidate(shiftsProvider);
-    Navigator.of(context).pop();
-    showMessage(context, _endedText(member), tone: ToastTone.success, title: 'Zmiana zakończona');
-  }
-
-  /// Zalogowany pracownik kończy zmianę jednym przyciskiem, bez kodu.
-  Future<void> _endLoggedIn(ActingMember member) async {
-    final ok = await confirm(
-      context,
-      title: 'Zakończyć zmianę?',
-      message: '${member.name} kończy pracę teraz i zostanie wylogowany z panelu.',
-      action: 'Zakończ zmianę',
-    );
-    if (!ok || !mounted) return;
-    try {
-      await ref.read(repositoryProvider).endShift(member.memberId);
-      if (!mounted) return;
-      _ended(
-        ActingMember(
-          memberId: member.memberId,
-          name: member.name,
-          permissions: member.permissions,
-          endedShiftStartedAt: member.shiftStartedAt,
-          shiftEndedAt: DateTime.now(),
-        ),
-      );
-    } catch (e) {
-      if (mounted) showError(context, e);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
@@ -117,10 +80,6 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
     final staff = ref.watch(staffProvider(restaurant.id)).value ?? const <StaffMember>[];
     final names = {for (final m in staff) m.id: m.name};
     final working = shifts.where((s) => s.isOpen).toList();
-    final end = widget.end;
-    // Kto jest zalogowany w panelu i ma trwającą zmianę, kończy ją bez kodu.
-    final member = ref.watch(panelMemberProvider);
-    final loggedIn = end && member != null && !member.isAccount && member.shiftStartedAt != null ? member : null;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -160,44 +119,23 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Text(
-                            end ? 'Zakończ zmianę' : 'Wejdź na zmianę',
+                            'Wejdź na zmianę',
                             textAlign: TextAlign.center,
                             style: text.displaySmall?.copyWith(fontSize: 44, fontWeight: FontWeight.w600),
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            end
-                                ? 'Zeskanuj kod aplikacją Table for employees albo wpisz swój czterocyfrowy kod. '
-                                      'Zmiana zakończy się od razu.'
-                                : 'Zeskanuj kod aplikacją Table for employees na telefonie prywatnym albo służbowym '
-                                      'albo wpisz swój czterocyfrowy kod. Zmiana zacznie się od razu.',
+                            'Zeskanuj kod aplikacją Table for employees na telefonie prywatnym albo służbowym '
+                            'albo wpisz swój czterocyfrowy kod. Zmiana zacznie się od razu.',
                             textAlign: TextAlign.center,
                             style: text.titleMedium?.copyWith(color: AppColors.textMuted, fontSize: 18),
                           ),
-                          if (loggedIn != null) ...[
-                            const SizedBox(height: 24),
-                            FilledButton.icon(
-                              onPressed: () => _endLoggedIn(loggedIn),
-                              style: FilledButton.styleFrom(minimumSize: const Size(0, 56)),
-                              icon: const Glyph(AppIcons.doorOpen, size: 20),
-                              label: Text(
-                                'Zakończ zmianę: ${loggedIn.name}',
-                                style: const TextStyle(fontSize: 17),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Inna osoba: zeskanuj kod albo wpisz swój kod poniżej.',
-                              style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
-                            ),
-                          ],
                           const SizedBox(height: 32),
                           StationLogin(
                             restaurantId: restaurant.id,
                             qrSize: 340,
                             autofocus: true,
-                            endShift: end,
-                            onLogin: end ? _ended : _started,
+                            onLogin: _started,
                           ),
                         ],
                       ),
@@ -240,21 +178,24 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
 
 /// Logowanie pracownika w panelu: kod QR (zmienia się co 30 sekund) i obok
 /// klawiatura na czterocyfrowy kod pracownika. Zalogowanego pracownika (jego zmiana już trwa) dostaje [onLogin].
-/// Z [endShift] kod kończy zmianę, a [onLogin] dostaje pracownika z godzinami zakończonej zmiany.
+/// Z [endShiftOf] kod (albo kod QR) tej osoby kończy jej zmianę, a [onLogin] dostaje pracownika
+/// z godzinami zakończonej zmiany.
 class StationLogin extends ConsumerStatefulWidget {
   const StationLogin({
     super.key,
     required this.restaurantId,
     this.qrSize = 280,
     this.autofocus = false,
-    this.endShift = false,
+    this.endShiftOf,
     required this.onLogin,
   });
 
   final String restaurantId;
   final double qrSize;
   final bool autofocus;
-  final bool endShift;
+
+  /// Pracownik, którego zmianę kończy potwierdzenie. Null: zwykłe logowanie.
+  final String? endShiftOf;
 
   /// Co zrobić z zalogowanym pracownikiem, np. zalogować go w zakładce.
   final ValueChanged<ActingMember> onLogin;
@@ -308,7 +249,7 @@ class _StationLoginState extends ConsumerState<StationLogin> {
     try {
       final token = await ref.read(repositoryProvider).newLoginToken(
         widget.restaurantId,
-        endShift: widget.endShift,
+        endShiftOf: widget.endShiftOf,
       );
       if (!mounted) return;
       setState(() {
@@ -405,8 +346,9 @@ class _StationLoginState extends ConsumerState<StationLogin> {
     });
     try {
       final repo = ref.read(repositoryProvider);
-      final member = widget.endShift
-          ? await repo.memberEndShift(restaurantId: widget.restaurantId, code: _code)
+      final endOf = widget.endShiftOf;
+      final member = endOf != null
+          ? await repo.memberEndShift(restaurantId: widget.restaurantId, code: _code, memberId: endOf)
           : await repo.memberLogin(restaurantId: widget.restaurantId, code: _code);
       if (!mounted) return;
       ref.invalidate(shiftsProvider);
@@ -754,12 +696,10 @@ class TabLoginGate extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(label, style: text.headlineSmall),
-                    const SizedBox(height: 4),
                     Text(
-                      'Zaloguj się kodem albo kodem QR. Zostaniesz zalogowany we wszystkich zakładkach, '
-                      'do których masz uprawnienia. Po pracy wyloguj się.',
-                      style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                      'Zaloguj się kodem albo kodem QR, żeby otworzyć „$label”. Zostaniesz zalogowany we wszystkich '
+                      'zakładkach, do których masz uprawnienia. Panel wyloguje Cię sam po 30 sekundach bez ruchu.',
+                      style: text.bodyLarge?.copyWith(color: AppColors.textMuted),
                     ),
                   ],
                 ),
@@ -801,28 +741,82 @@ class TabLoginGate extends ConsumerWidget {
   }
 }
 
+/// „Zakończ zmianę” z paska nad zakładką. Pracownik potwierdza swoim czterocyfrowym kodem albo kodem QR
+/// zeskanowanym własnym telefonem, więc nikt nie zakończy cudzej zmiany jednym kliknięciem.
+class EndShiftDialog extends ConsumerWidget {
+  const EndShiftDialog({super.key, required this.member});
+
+  final ActingMember member;
+
+  static Future<void> open(BuildContext context, ActingMember member) =>
+      showDialog<void>(context: context, builder: (_) => EndShiftDialog(member: member));
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final restaurant = ref.watch(currentRestaurantProvider);
+    return Dialog(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 860),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(32, 24, 24, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Zakończyć zmianę?', style: text.headlineSmall),
+                        const SizedBox(height: 6),
+                        Text(
+                          '${member.name}: potwierdź swoim czterocyfrowym kodem albo zeskanuj kod '
+                          'aplikacją Table for employees. Zmiana skończy się od razu.',
+                          style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Anuluj',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Glyph(AppIcons.close, size: 20),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 28),
+              if (restaurant == null)
+                const LoadingView()
+              else
+                StationLogin(
+                  restaurantId: restaurant.id,
+                  qrSize: 240,
+                  autofocus: true,
+                  endShiftOf: member.memberId,
+                  onLogin: (ended) {
+                    ref.read(panelMemberProvider.notifier).signOutMember(ended.memberId);
+                    ref.invalidate(shiftsProvider);
+                    Navigator.pop(context);
+                    showMessage(context, _endedText(ended), tone: ToastTone.success, title: 'Zmiana zakończona');
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Pasek nad zakładką: kto jest zalogowany w panelu, „Wyloguj” i „Zakończ zmianę”.
 class TabSessionBar extends ConsumerWidget {
   const TabSessionBar({super.key, required this.member});
 
   final ActingMember member;
-
-  Future<void> _endShift(BuildContext context, WidgetRef ref) async {
-    final ok = await confirm(
-      context,
-      title: 'Zakończyć zmianę?',
-      message: '${member.name} kończy pracę teraz i zostanie wylogowany z panelu.',
-      action: 'Zakończ zmianę',
-    );
-    if (!ok) return;
-    try {
-      await ref.read(repositoryProvider).endShift(member.memberId);
-      ref.read(panelMemberProvider.notifier).signOutMember(member.memberId);
-      if (context.mounted) showMessage(context, 'Zmiana zakończona.');
-    } catch (e) {
-      if (context.mounted) showError(context, e);
-    }
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -892,7 +886,7 @@ class TabSessionBar extends ConsumerWidget {
           ],
           if (!member.isAccount && since != null)
             TextButton.icon(
-              onPressed: () => _endShift(context, ref),
+              onPressed: () => EndShiftDialog.open(context, member),
               style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
               icon: const Glyph(AppIcons.doorOpen, size: 16),
               label: const Text('Zakończ zmianę'),

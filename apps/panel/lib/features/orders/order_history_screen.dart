@@ -68,7 +68,6 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
       return const Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PageHeader(title: 'Historia zamówień'),
           Expanded(child: ProGate(feature: 'Historia zamówień')),
         ],
       );
@@ -113,7 +112,6 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
           )
         else
         PageHeader(
-          title: 'Historia zamówień',
           subtitle: '${Fmt.capitalize(Fmt.dayLong(_day))}${_day == today ? ' · dziś' : ''}',
           actions: [
             GlowButton(icon: AppIcons.caretLeft, tooltip: 'Poprzedni dzień', onPressed: () => _shift(-1)),

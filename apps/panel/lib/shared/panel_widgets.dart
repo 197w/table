@@ -41,61 +41,52 @@ class _PanelPressState extends State<PanelPress> {
   }
 }
 
-/// Nagłówek strony panelu: tytuł, podtytuł i akcje po prawej.
+/// Pasek nad treścią zakładki: krótki opis (np. dzień albo liczba osób), akcje po prawej
+/// i rząd zakładek albo filtrów. Bez tytułu: nazwę zakładki widać w menu bocznym.
 class PageHeader extends StatelessWidget {
   const PageHeader({
     super.key,
-    required this.title,
     this.subtitle,
     this.actions = const [],
     this.below,
   });
 
-  final String title;
   final String? subtitle;
   final List<Widget> actions;
 
-  /// Dodatkowy rząd pod tytułem, na przykład zakładki albo filtry.
+  /// Dodatkowy rząd, na przykład zakładki albo filtry.
   final Widget? below;
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final top = subtitle != null || actions.isNotEmpty;
+    if (!top && below == null) return const SizedBox(height: 20);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(32, 28, 32, below == null ? 20 : 16),
+          padding: EdgeInsets.fromLTRB(32, 18, 32, below == null ? 18 : 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(title, style: text.headlineMedium),
-                        if (subtitle != null) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            subtitle!,
-                            style: text.bodyMedium?.copyWith(
-                              color: AppColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ],
+              if (top)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        subtitle ?? '',
+                        style: text.bodyLarge?.copyWith(color: AppColors.textMuted),
+                      ),
                     ),
-                  ),
-                  for (var i = 0; i < actions.length; i++) ...[
-                    if (i > 0) const SizedBox(width: 8),
-                    PanelPress(child: actions[i]),
+                    for (var i = 0; i < actions.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 8),
+                      PanelPress(child: actions[i]),
+                    ],
                   ],
-                ],
-              ),
-              if (below != null) ...[const SizedBox(height: 16), below!],
+                ),
+              if (below != null) ...[if (top) const SizedBox(height: 16), below!],
             ],
           ),
         ),

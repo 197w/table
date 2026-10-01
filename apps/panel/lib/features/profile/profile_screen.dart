@@ -32,8 +32,7 @@ class ProfileScreen extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const PageHeader(
-          title: 'Dane lokalu',
-          subtitle: 'Dane widoczne dla gości w aplikacji Table.',
+          subtitle: 'Dane lokalu widzą goście w aplikacji Table. Dane właściciela widać tylko w panelu.',
         ),
         if (!restaurant.canManage)
           const ReadOnlyBanner(
@@ -63,6 +62,11 @@ class ProfileScreen extends ConsumerWidget {
                           profile: profile,
                           editable: restaurant.canManage,
                         ),
+                        // Dane właściciela czyta i zmienia tylko kierownik i właściciel.
+                        if (restaurant.canManage) ...[
+                          const SizedBox(height: 20),
+                          _OwnerCard(restaurantId: profile.id),
+                        ],
                       ],
                     ),
                   ),
@@ -983,6 +987,167 @@ class _SchedulePeriodCardState extends ConsumerState<_SchedulePeriodCard> {
                 if (v != widget.profile.schedulePeriod) _set(v);
               },
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Dane właściciela lokalu: osoba, kontakt i firma. Widać je tylko w panelu, u kierownika i właściciela.
+/// Nie ma ich w aplikacji Table ani w Table for employees.
+class _OwnerCard extends ConsumerWidget {
+  const _OwnerCard({required this.restaurantId});
+
+  final String restaurantId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(ownerDetailsProvider(restaurantId));
+    return async.when(
+      loading: () => const PanelCard(title: 'Dane właściciela', child: SizedBox(height: 120, child: LoadingView())),
+      error: (e, _) => PanelCard(
+        title: 'Dane właściciela',
+        child: ErrorView(error: e, onRetry: () => ref.invalidate(ownerDetailsProvider(restaurantId))),
+      ),
+      data: (details) => _OwnerForm(key: ValueKey('wlasciciel-$restaurantId'), restaurantId: restaurantId, details: details),
+    );
+  }
+}
+
+class _OwnerForm extends ConsumerStatefulWidget {
+  const _OwnerForm({super.key, required this.restaurantId, required this.details});
+
+  final String restaurantId;
+  final OwnerDetails details;
+
+  @override
+  ConsumerState<_OwnerForm> createState() => _OwnerFormState();
+}
+
+class _OwnerFormState extends ConsumerState<_OwnerForm> {
+  late final _name = TextEditingController(text: widget.details.ownerName ?? '');
+  late final _phone = TextEditingController(text: widget.details.ownerPhone ?? '');
+  late final _email = TextEditingController(text: widget.details.ownerEmail ?? '');
+  late final _company = TextEditingController(text: widget.details.companyName ?? '');
+  late final _nip = TextEditingController(text: widget.details.nip ?? '');
+  late final _address = TextEditingController(text: widget.details.companyAddress ?? '');
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    for (final c in [_name, _phone, _email, _company, _nip, _address]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    String? value(TextEditingController c) => c.text.trim().isEmpty ? null : c.text.trim();
+    final nip = _nip.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (nip.isNotEmpty && nip.length != 10) {
+      showMessage(context, 'NIP ma 10 cyfr.', tone: ToastTone.warning);
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await ref.read(repositoryProvider).saveOwnerDetails(
+        widget.restaurantId,
+        OwnerDetails(
+          ownerName: value(_name),
+          ownerPhone: value(_phone),
+          ownerEmail: value(_email),
+          companyName: value(_company),
+          nip: nip.isEmpty ? null : nip,
+          companyAddress: value(_address),
+        ),
+      );
+      ref.invalidate(ownerDetailsProvider(widget.restaurantId));
+      if (mounted) showMessage(context, 'Dane właściciela zapisane.', tone: ToastTone.success);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return PanelCard(
+      title: 'Dane właściciela',
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Glyph(AppIcons.lock, size: 14, color: AppColors.textMuted),
+          const SizedBox(width: 6),
+          Text('Tylko w panelu', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Goście i pracownicy nie widzą tych danych. Widzi je tylko kierownik i właściciel lokalu.',
+            style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _name,
+                  maxLength: 120,
+                  decoration: const InputDecoration(labelText: 'Imię i nazwisko', counterText: ''),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _phone,
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]'))],
+                  decoration: const InputDecoration(labelText: 'Telefon'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _email,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(labelText: 'E-mail'),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: _company,
+                  maxLength: 200,
+                  decoration: const InputDecoration(labelText: 'Nazwa firmy', counterText: ''),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _nip,
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9 -]'))],
+                  decoration: const InputDecoration(labelText: 'NIP'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _address,
+            maxLength: 300,
+            decoration: const InputDecoration(labelText: 'Adres firmy', counterText: ''),
+          ),
+          const SizedBox(height: 16),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(onPressed: _busy ? null : _save, child: const Text('Zapisz')),
           ),
         ],
       ),

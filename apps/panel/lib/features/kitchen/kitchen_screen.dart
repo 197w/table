@@ -328,7 +328,6 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
       return const Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PageHeader(title: 'Kuchnia'),
           Expanded(child: ProGate(feature: 'Ekran kuchni')),
         ],
       );
@@ -453,8 +452,6 @@ class _KitchenBar extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(28, 18, 20, 16),
       child: Row(
         children: [
-          Text('Kuchnia', style: text.headlineMedium?.copyWith(fontSize: 34)),
-          const SizedBox(width: 20),
           // Napis zajmuje całe wolne miejsce, więc przyciski i zegar stoją przy prawej krawędzi.
           Expanded(
             child: Text(

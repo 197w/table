@@ -161,7 +161,6 @@ class _ServingScreenState extends ConsumerState<ServingScreen> {
       return const Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PageHeader(title: 'Wydanie'),
           Expanded(child: ProGate(feature: 'Wydanie')),
         ],
       );
@@ -260,8 +259,6 @@ class _ServingBar extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(28, 18, 20, 16),
       child: Row(
         children: [
-          Text('Wydanie', style: text.headlineMedium?.copyWith(fontSize: 32)),
-          const SizedBox(width: 20),
           Expanded(
             child: Text(
               tickets == 0

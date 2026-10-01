@@ -65,7 +65,6 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          title: 'Statystyki',
           subtitle: switch (_tab) {
             0 => 'Sprzedaż z rachunków zamkniętych w panelu. Dzień liczony według czasu lokalu.',
             1 => 'Rezerwacje i ruch z aplikacji Table.',

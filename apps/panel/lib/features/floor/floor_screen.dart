@@ -487,7 +487,6 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       return const Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PageHeader(title: 'Edycja sali'),
           Expanded(child: ProGate(feature: 'Edycja sali')),
         ],
       );
@@ -529,7 +528,6 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          title: 'Edycja sali',
           subtitle: editing
               ? 'Przeciągaj stoliki, krzesła i stałe elementy. Ctrl+C i Ctrl+V kopiują, Ctrl+Z cofa (na Macu Cmd).'
               : 'Zajętość stolików teraz. Odświeża się sama.',

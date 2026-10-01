@@ -494,6 +494,11 @@ final kitchenTicketsProvider = FutureProvider.autoDispose.family<List<KitchenTic
   },
 );
 
+/// Dane właściciela w „Dane lokalu”.
+final ownerDetailsProvider = FutureProvider.autoDispose.family<OwnerDetails, String>(
+  (ref, id) => (ref..cacheFor()).watch(repositoryProvider).ownerDetails(id),
+);
+
 /// Karty na ekranie „Wydanie”. Odświeżają się na żywo razem z rachunkami.
 final servingTicketsProvider = FutureProvider.autoDispose.family<List<ServingTicket>, String>(
   (ref, id) {
