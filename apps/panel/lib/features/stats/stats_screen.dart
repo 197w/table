@@ -65,11 +65,6 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          subtitle: switch (_tab) {
-            0 => 'Sprzedaż z rachunków zamkniętych w panelu. Dzień liczony według czasu lokalu.',
-            1 => 'Rezerwacje i ruch z aplikacji Table.',
-            _ => 'Zamknięte i anulowane rachunki z wybranego dnia.',
-          },
           actions: [
             if (_tab != 2)
               SegmentedTabs<int>(
@@ -87,17 +82,16 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
             ),
           ),
         ),
-        if (_tab == 0)
-          Expanded(
-            child: restaurant.isPro
-                ? SalesView(restaurantId: restaurant.id, days: _days)
-                : const ProGate(feature: 'Sprzedaż i zamówienia'),
-          )
-        else if (_tab == 2)
-          const Expanded(child: OrderHistoryScreen(embedded: true))
-        else
         Expanded(
-          child: async.when(
+          child: TabContent(
+            tab: _tab,
+            child: _tab == 0
+              ? (restaurant.isPro
+                    ? SalesView(restaurantId: restaurant.id, days: _days)
+                    : const ProGate(feature: 'Sprzedaż i zamówienia'))
+              : _tab == 2
+              ? const OrderHistoryScreen(embedded: true)
+              : async.when(
             skipLoadingOnReload: true,
             loading: () => const LoadingView(),
             error: (e, _) => ErrorView(
@@ -220,6 +214,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                 ],
               );
             },
+          ),
           ),
         ),
       ],

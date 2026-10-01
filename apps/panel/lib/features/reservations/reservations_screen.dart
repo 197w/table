@@ -185,31 +185,6 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          subtitle:
-              '${Fmt.capitalize(Fmt.dayLong(day))}${isToday ? ' · dziś' : ''}',
-          actions: [
-            _DayStrip(
-              day: day,
-              onSelect: (d) => ref.read(selectedDayProvider.notifier).set(d),
-            ),
-            GlowButton(
-              icon: AppIcons.calendar,
-              tooltip: 'Wybierz dzień',
-              onPressed: () => _pickDay(day),
-            ),
-            const SizedBox(width: 8),
-            GlowButton(
-              icon: AppIcons.doorOpen,
-              tooltip: 'Gość z ulicy',
-              onPressed: () => _create(restaurant.id, ReservationSource.walkIn),
-            ),
-            GlowButton(
-              icon: AppIcons.plus,
-              tooltip: 'Nowa rezerwacja',
-              primary: true,
-              onPressed: () => _create(restaurant.id, ReservationSource.phone),
-            ),
-          ],
           below: Row(
             children: [
               SegmentedTabs<_Filter>(
@@ -217,7 +192,7 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                 selected: _filter,
                 onChanged: (f) => setState(() => _filter = f),
               ),
-              const SizedBox(width: 12),
+              const Spacer(),
               _LivePill(restaurantId: restaurant.id),
               const SizedBox(width: 8),
               // Ratunek, gdyby odświeżanie na żywo przestało działać.
@@ -282,9 +257,62 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                       (r) => group == null || r.tableIds.any(groupTableIds.contains),
                     )
                     .toList();
+                // Prawa kolumna: wybór dnia, „Gość z ulicy” i „Nowa rezerwacja” z liczbą rezerwacji i gości,
+                // a pod spodem lista albo szczegóły rezerwacji.
+                final controls = Card(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                        child: Row(
+                          children: [
+                            _DayStrip(
+                              day: day,
+                              onSelect: (d) => ref.read(selectedDayProvider.notifier).set(d),
+                            ),
+                            const Spacer(),
+                            PanelPress(
+                              child: GlowButton(
+                                icon: AppIcons.calendar,
+                                tooltip: 'Wybierz dzień',
+                                onPressed: () => _pickDay(day),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            PanelPress(
+                              child: GlowButton(
+                                icon: AppIcons.doorOpen,
+                                tooltip: 'Gość z ulicy',
+                                onPressed: () => _create(restaurant.id, ReservationSource.walkIn),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            PanelPress(
+                              child: GlowButton(
+                                icon: AppIcons.plus,
+                                tooltip: 'Nowa rezerwacja',
+                                primary: true,
+                                onPressed: () => _create(restaurant.id, ReservationSource.phone),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Divider(height: 1, color: AppColors.ring),
+                      _Counts(items: all, today: isToday),
+                    ],
+                  ),
+                );
                 final side = SizedBox(
                   width: 440,
-                  child: selected != null
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      controls,
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: selected != null
                       ? ReservationDetail(
                           key: ValueKey(selected.id),
                           reservation: selected,
@@ -296,8 +324,6 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              _Counts(items: all),
-                              Divider(height: 1, color: AppColors.ring),
                               Expanded(
                                 child: visible.isEmpty
                               ? MessageView(
@@ -319,6 +345,9 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                             ],
                           ),
                         ),
+                      ),
+                    ],
+                  ),
                 );
 
                 // Dopóki stoliki się wczytują, nie pokazujemy komunikatu o pustej sali.
@@ -521,11 +550,12 @@ class _DayStrip extends StatelessWidget {
   }
 }
 
-/// Liczba rezerwacji i gości w dniu, jako ikona i liczba nad listą.
+/// Liczba rezerwacji i gości w dniu, jako ikona i liczba nad listą. „Dziś” przy dzisiejszym dniu.
 class _Counts extends StatelessWidget {
-  const _Counts({required this.items});
+  const _Counts({required this.items, required this.today});
 
   final List<PanelReservation> items;
+  final bool today;
 
   @override
   Widget build(BuildContext context) {
@@ -560,6 +590,9 @@ class _Counts extends StatelessWidget {
           count(AppIcons.calendarCheck, booked.length, 'Rezerwacje w tym dniu'),
           const SizedBox(width: 20),
           count(AppIcons.users, guests, 'Goście w tym dniu'),
+          const Spacer(),
+          if (today)
+            Text('Dziś', style: text.labelMedium?.copyWith(color: AppColors.accent)),
         ],
       ),
     );

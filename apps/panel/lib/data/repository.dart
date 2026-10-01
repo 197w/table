@@ -670,7 +670,7 @@ class PanelRepository {
     });
   }
 
-  /// Dane właściciela lokalu (tylko kierownik i właściciel; inni dostają puste).
+  /// Dane właściciela lokalu, tylko do odczytu (kierownik i właściciel; inni dostają puste). Zmiana w Table Dev.
   Future<OwnerDetails> ownerDetails(String restaurantId) {
     return _guard(() async {
       final row = await _db
@@ -680,20 +680,6 @@ class PanelRepository {
           .maybeSingle();
       return OwnerDetails.fromJson(row);
     });
-  }
-
-  Future<void> saveOwnerDetails(String restaurantId, OwnerDetails d) {
-    return _guard(
-      () => _db.rpc<void>('panel_set_owner_details', params: {
-        'p_restaurant_id': restaurantId,
-        'p_owner_name': d.ownerName,
-        'p_owner_phone': d.ownerPhone,
-        'p_owner_email': d.ownerEmail,
-        'p_company_name': d.companyName,
-        'p_nip': d.nip,
-        'p_company_address': d.companyAddress,
-      }),
-    );
   }
 
   /// Ekran „Wydanie”: pozycje z otwartych rachunków, które są na kuchni albo już gotowe.

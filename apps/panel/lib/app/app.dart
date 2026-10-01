@@ -20,6 +20,7 @@ import '../features/serving/serving_screen.dart';
 import '../features/staff/staff_screen.dart';
 import '../features/stats/stats_screen.dart';
 import 'idle_logout.dart';
+import '../shared/panel_widgets.dart';
 import 'panel_theme.dart';
 import 'reservation_alerts.dart';
 import 'shell.dart';
@@ -151,14 +152,14 @@ GoRouter _buildRouter(
             path: PanelRoutes.floor,
             // Wyjście z edycji z niezapisanymi zmianami wymaga potwierdzenia.
             onExit: (context, state) => confirmLeaveFloor(context),
-            pageBuilder: (context, state) =>
-                const NoTransitionPage(child: FloorScreen()),
+            pageBuilder: (context, state) => _tabPage(state, const FloorScreen()),
           ),
           GoRoute(
             path: PanelRoutes.orders,
             // ?stolik=<id> otwiera od razu rachunek stolika klikniętego na planie sali.
-            pageBuilder: (context, state) => NoTransitionPage(
-              child: OrdersScreen(tableId: state.uri.queryParameters['stolik']),
+            pageBuilder: (context, state) => _tabPage(
+              state,
+              OrdersScreen(tableId: state.uri.queryParameters['stolik']),
             ),
           ),
           _page(PanelRoutes.deliveries, const DeliveriesScreen()),
@@ -176,10 +177,22 @@ GoRouter _buildRouter(
   );
 }
 
-/// Zmiana sekcji bez animacji: w panelu przełącza się często, animacja by spowalniała.
 GoRoute _page(String path, Widget child) => GoRoute(
   path: path,
-  pageBuilder: (context, state) => NoTransitionPage(child: child),
+  pageBuilder: (context, state) => _tabPage(state, child),
+);
+
+/// Zmiana zakładki w menu bocznym: stara treść szybko gaśnie, nowa pojawia się lekko z dołu.
+/// Krótko (220 ms), bo w panelu przełącza się często. Ten sam ruch co zakładki wewnątrz ekranu.
+Page<void> _tabPage(GoRouterState state, Widget child) => CustomTransitionPage<void>(
+  key: state.pageKey,
+  child: child,
+  transitionDuration: PanelMotion.tab,
+  reverseTransitionDuration: PanelMotion.tabOut,
+  transitionsBuilder: (context, animation, secondaryAnimation, child) => PanelMotion.tabTransition(
+    child,
+    CurvedAnimation(parent: animation, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic),
+  ),
 );
 
 abstract final class PanelRoutes {

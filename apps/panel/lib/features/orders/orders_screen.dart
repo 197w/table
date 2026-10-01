@@ -289,7 +289,6 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          subtitle: 'Wybierz stolik, nabij pozycje z menu i wyślij je na kuchnię.',
           actions: [
             switch (live) {
               LiveStatus.live => const PanelPill('Na żywo', dotColor: Color(0xFF2FB673)),

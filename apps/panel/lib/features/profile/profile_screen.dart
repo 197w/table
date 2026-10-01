@@ -31,9 +31,7 @@ class ProfileScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const PageHeader(
-          subtitle: 'Dane lokalu widzą goście w aplikacji Table. Dane właściciela widać tylko w panelu.',
-        ),
+        const PageHeader(),
         if (!restaurant.canManage)
           const ReadOnlyBanner(
             message: 'Dane lokalu i godziny zmienia kierownik albo właściciel.',
@@ -994,8 +992,8 @@ class _SchedulePeriodCardState extends ConsumerState<_SchedulePeriodCard> {
   }
 }
 
-/// Dane właściciela lokalu: osoba, kontakt i firma. Widać je tylko w panelu, u kierownika i właściciela.
-/// Nie ma ich w aplikacji Table ani w Table for employees.
+/// Dane właściciela lokalu: osoba, kontakt i firma. Widać je tylko w panelu, u kierownika i właściciela,
+/// tylko do odczytu (zmiana w Table Dev). Nie ma ich w aplikacji Table ani w Table for employees.
 class _OwnerCard extends ConsumerWidget {
   const _OwnerCard({required this.restaurantId});
 
@@ -1010,70 +1008,37 @@ class _OwnerCard extends ConsumerWidget {
         title: 'Dane właściciela',
         child: ErrorView(error: e, onRetry: () => ref.invalidate(ownerDetailsProvider(restaurantId))),
       ),
-      data: (details) => _OwnerForm(key: ValueKey('wlasciciel-$restaurantId'), restaurantId: restaurantId, details: details),
+      data: (details) => _OwnerView(details: details),
     );
   }
 }
 
-class _OwnerForm extends ConsumerStatefulWidget {
-  const _OwnerForm({super.key, required this.restaurantId, required this.details});
+/// Dane właściciela tylko do odczytu. Zmienia je zespół Table w Table Dev.
+class _OwnerView extends StatelessWidget {
+  const _OwnerView({required this.details});
 
-  final String restaurantId;
   final OwnerDetails details;
-
-  @override
-  ConsumerState<_OwnerForm> createState() => _OwnerFormState();
-}
-
-class _OwnerFormState extends ConsumerState<_OwnerForm> {
-  late final _name = TextEditingController(text: widget.details.ownerName ?? '');
-  late final _phone = TextEditingController(text: widget.details.ownerPhone ?? '');
-  late final _email = TextEditingController(text: widget.details.ownerEmail ?? '');
-  late final _company = TextEditingController(text: widget.details.companyName ?? '');
-  late final _nip = TextEditingController(text: widget.details.nip ?? '');
-  late final _address = TextEditingController(text: widget.details.companyAddress ?? '');
-  bool _busy = false;
-
-  @override
-  void dispose() {
-    for (final c in [_name, _phone, _email, _company, _nip, _address]) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    String? value(TextEditingController c) => c.text.trim().isEmpty ? null : c.text.trim();
-    final nip = _nip.text.replaceAll(RegExp(r'[^0-9]'), '');
-    if (nip.isNotEmpty && nip.length != 10) {
-      showMessage(context, 'NIP ma 10 cyfr.', tone: ToastTone.warning);
-      return;
-    }
-    setState(() => _busy = true);
-    try {
-      await ref.read(repositoryProvider).saveOwnerDetails(
-        widget.restaurantId,
-        OwnerDetails(
-          ownerName: value(_name),
-          ownerPhone: value(_phone),
-          ownerEmail: value(_email),
-          companyName: value(_company),
-          nip: nip.isEmpty ? null : nip,
-          companyAddress: value(_address),
-        ),
-      );
-      ref.invalidate(ownerDetailsProvider(widget.restaurantId));
-      if (mounted) showMessage(context, 'Dane właściciela zapisane.', tone: ToastTone.success);
-    } catch (e) {
-      if (mounted) showError(context, e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    Widget field(String label, String? value) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
+        const SizedBox(height: 3),
+        SelectableText(
+          value == null || value.isEmpty ? '—' : value,
+          style: text.bodyLarge?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+        ),
+      ],
+    );
+    Widget row(Widget a, Widget b) => Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [Expanded(child: a), const SizedBox(width: 16), Expanded(child: b)],
+    );
+    final nip = details.nip;
+
     return PanelCard(
       title: 'Dane właściciela',
       trailing: Row(
@@ -1081,78 +1046,31 @@ class _OwnerFormState extends ConsumerState<_OwnerForm> {
         children: [
           Glyph(AppIcons.lock, size: 14, color: AppColors.textMuted),
           const SizedBox(width: 6),
-          Text('Tylko w panelu', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
+          Text('Tylko do odczytu', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Goście i pracownicy nie widzą tych danych. Widzi je tylko kierownik i właściciel lokalu.',
+            'Widzi je tylko kierownik i właściciel lokalu w panelu. Zmienić je można tylko w Table Dev.',
             style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _name,
-                  maxLength: 120,
-                  decoration: const InputDecoration(labelText: 'Imię i nazwisko', counterText: ''),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _phone,
-                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]'))],
-                  decoration: const InputDecoration(labelText: 'Telefon'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _email,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(labelText: 'E-mail'),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: TextField(
-                  controller: _company,
-                  maxLength: 200,
-                  decoration: const InputDecoration(labelText: 'Nazwa firmy', counterText: ''),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _nip,
-                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9 -]'))],
-                  decoration: const InputDecoration(labelText: 'NIP'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _address,
-            maxLength: 300,
-            decoration: const InputDecoration(labelText: 'Adres firmy', counterText: ''),
-          ),
           const SizedBox(height: 16),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton(onPressed: _busy ? null : _save, child: const Text('Zapisz')),
-          ),
+          row(field('Imię i nazwisko', details.ownerName), field('Telefon', details.ownerPhone)),
+          const SizedBox(height: 14),
+          row(field('E-mail', details.ownerEmail), field('NIP', nip == null ? null : _formatNip(nip))),
+          const SizedBox(height: 14),
+          row(field('Nazwa firmy', details.companyName), field('Adres firmy', details.companyAddress)),
         ],
       ),
     );
   }
+
+  /// NIP w grupach, np. 542-345-67-89.
+  static String _formatNip(String nip) => nip.length == 10
+      ? '${nip.substring(0, 3)}-${nip.substring(3, 6)}-${nip.substring(6, 8)}-${nip.substring(8)}'
+      : nip;
 }
 
 /// Dostawa i odbiór osobisty: goście zamawiają w aplikacji Table, płacą kartą online albo (jeśli lokal

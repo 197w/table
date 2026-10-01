@@ -35,8 +35,6 @@ class _ReviewsScreenState extends ConsumerState<ReviewsScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          subtitle:
-              'Opinii nie da się ukryć ani usunąć. Możesz na nie publicznie odpowiedzieć.',
           below: Align(
             alignment: Alignment.centerLeft,
             child: SegmentedTabs<_ReviewFilter>(

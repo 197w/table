@@ -528,9 +528,6 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          subtitle: editing
-              ? 'Przeciągaj stoliki, krzesła i stałe elementy. Ctrl+C i Ctrl+V kopiują, Ctrl+Z cofa (na Macu Cmd).'
-              : 'Zajętość stolików teraz. Odświeża się sama.',
           actions: [
             if (!editing && restaurant.canManage)
               OutlinedButton.icon(

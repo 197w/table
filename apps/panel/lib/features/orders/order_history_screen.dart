@@ -112,8 +112,12 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
           )
         else
         PageHeader(
-          subtitle: '${Fmt.capitalize(Fmt.dayLong(_day))}${_day == today ? ' · dziś' : ''}',
           actions: [
+            // Dzień historii obok strzałek.
+            Text(
+              '${Fmt.capitalize(Fmt.dayLong(_day))}${_day == today ? ' · dziś' : ''}',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             GlowButton(icon: AppIcons.caretLeft, tooltip: 'Poprzedni dzień', onPressed: () => _shift(-1)),
             GlowButton(
               icon: AppIcons.caretRight,

@@ -6,6 +6,7 @@ import 'package:table_panel/app/app.dart';
 import 'package:table_panel/app/idle_logout.dart';
 import 'package:table_panel/data/models.dart';
 import 'package:table_panel/data/providers.dart';
+import 'package:table_panel/shared/panel_widgets.dart';
 
 Map<String, dynamic> _item(
   String id,
@@ -99,6 +100,22 @@ void main() {
     });
     expect(m.shiftStartedAt, isNull);
     expect(m.shiftEndedAt!.difference(m.endedShiftStartedAt!), const Duration(hours: 8, minutes: 10));
+  });
+
+  testWidgets('zmiana zakładki: stara treść gaśnie, nowa się pojawia', (tester) async {
+    Widget app(int tab) => MaterialApp(
+      home: TabContent(tab: tab, child: Text('zakładka $tab')),
+    );
+    await tester.pumpWidget(app(0));
+    expect(find.text('zakładka 0'), findsOneWidget);
+    await tester.pumpWidget(app(1));
+    await tester.pump(const Duration(milliseconds: 60));
+    // W trakcie przejścia widać obie treści.
+    expect(find.text('zakładka 0'), findsOneWidget);
+    expect(find.text('zakładka 1'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('zakładka 0'), findsNothing);
+    expect(find.text('zakładka 1'), findsOneWidget);
   });
 
   testWidgets('panel wylogowuje po 30 s bez ruchu, ruch liczy od nowa, kuchnia nie wylogowuje', (tester) async {

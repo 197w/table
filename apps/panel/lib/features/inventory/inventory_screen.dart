@@ -142,14 +142,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final due = last == null || !today.isBefore(next!);
     final tab = _tab ?? (open != null ? 0 : 1);
 
-    final subtitle = open != null
-        ? 'Inwentaryzacja trwa od ${Fmt.dayShort(open.startedAt)}, ${_hm(open.startedAt)}'
-              '${open.startedBy == null ? '' : ' · zaczął(a) ${open.startedBy}'}'
-        : last == null
-        ? 'Jeszcze nie było inwentaryzacji · ${inventoryPeriodLabel(period).toLowerCase()}'
-        : 'Ostatnia ${Fmt.dayShort(last.finishedAt!)} · następna ${Fmt.dayShort(next!)}'
-              '${due ? ' · czas na inwentaryzację' : ''}';
-
     final loading = (itemsAsync.isLoading && !itemsAsync.hasValue) || (countsAsync.isLoading && !countsAsync.hasValue);
     final error = itemsAsync.error ?? countsAsync.error;
 
@@ -157,7 +149,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          subtitle: subtitle,
           below: Row(
             children: [
               IconTabs<int>(
@@ -170,6 +161,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 onChanged: (t) => setState(() => _tab = t),
               ),
               const Spacer(),
+              // Przypomnienie, gdy minął okres od ostatniej inwentaryzacji.
+              if (open == null && due) ...[
+                const PanelPill('Czas na inwentaryzację', dotColor: Color(0xFFE0A21B)),
+                const SizedBox(width: 12),
+              ],
               _PeriodPicker(
                 period: period,
                 onChanged: canEdit && !_busy ? (p) => _setPeriod(rid, p) : null,
@@ -205,7 +201,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           ],
         ),
         Expanded(
-          child: error != null
+          child: TabContent(
+            tab: tab,
+            child: error != null
               ? ErrorView(
                   error: error,
                   onRetry: () => ref
@@ -255,6 +253,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   ),
                   _ => _History(counts: finished),
                 },
+          ),
         ),
       ],
     );

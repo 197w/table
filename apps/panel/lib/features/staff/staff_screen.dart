@@ -119,7 +119,6 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     final tab = tabs.any((t) => t.$1 == _tab) ? _tab : tabs.first.$1;
 
     final staffAsync = ref.watch(staffProvider(restaurant.id));
-    final all = staffAsync.value ?? const <StaffMember>[];
     final weekEnd = DateTime(_week.year, _week.month, _week.day + 6);
     final isThisWeek = _week == _weekStart(DateTime.now());
     final thisWeek = _weekStart(DateTime.now());
@@ -136,10 +135,6 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          subtitle: tab == 0
-              ? '${all.where((m) => m.active).length} w zespole · ${working.length} teraz w pracy'
-              : '${tab == 1 ? 'Grafik' : 'Czas pracy'} ${Fmt.dayShort(_week)} – ${Fmt.dayShort(weekEnd)}'
-                    '${isThisWeek ? ' · ten tydzień' : ''}',
           below: tabs.length < 2 && tab != 0
               ? null
               : Row(
@@ -172,6 +167,13 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                   label: const Text('Dodaj pracownika'),
                 ),
             ] else ...[
+              // Tydzień grafiku albo czasu pracy obok strzałek.
+              Text(
+                '${Fmt.dayShort(_week)} – ${Fmt.dayShort(weekEnd)}',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
               IconButton(
                 tooltip: 'Poprzedni tydzień',
                 icon: const Glyph(AppIcons.caretLeft, size: 18),
@@ -190,7 +192,9 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
           ],
         ),
         Expanded(
-          child: staffAsync.when(
+          child: TabContent(
+            tab: tab,
+            child: staffAsync.when(
             skipLoadingOnReload: true,
             loading: () => const LoadingView(),
             error: (e, _) => ErrorView(
@@ -287,6 +291,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                 ),
               );
             },
+          ),
           ),
         ),
       ],

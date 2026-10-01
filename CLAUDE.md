@@ -76,7 +76,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0043, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0044, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -106,7 +106,11 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 ## Panel restauracji
 
 - Logowanie e-mailem i hasłem. Obowiązkowe 2FA dodajemy przed wydaniem.
-- Zakładki nie mają tytułów (`PageHeader` bez tytułu: opis, akcje i rząd zakładek); nazwę zakładki widać w menu bocznym.
+- Zakładki nie mają tytułów ani opisów (`PageHeader`: tylko akcje i rząd zakładek); nazwę widać w menu bocznym.
+  Przejście między zakładkami menu (`_tabPage` w `app.dart`) i zakładkami w ekranie (`TabContent`) ma ten sam ruch:
+  wygaszenie i wjazd o kilka pikseli z dołu (`PanelMotion`, 220 ms). W Rezerwacjach wybór dnia, „Gość z ulicy”
+  i „Nowa rezerwacja” są nad listą po prawej (z liczbą rezerwacji i gości), a „Na żywo”, odświeżanie i dźwięk
+  na końcu rzędu filtrów.
 - Restauracja zakłada konto w panelu mailem firmowym („Nowa restauracja? Załóż konto”), potwierdza mail
   i tworzy lokal (`panel_create_restaurant`: nazwa, NIP, miasto, adres, telefon, kuchnia; plan Free).
   Nowy lokal ma `restaurants.listed = false`: działa w panelu, ale goście go nie widzą, dopóki Table go
@@ -156,8 +160,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   i odpowiadają na opinie. Obsługa prowadzi rezerwacje. Uprawnień pilnuje baza (RLS i funkcje `panel_*`).
 - Rezerwacje i plan sali tylko w planie Pro. Plan Free widzi opinie, menu, lokal i statystyki wyświetleń.
 - Dane właściciela („Dane lokalu” → „Dane właściciela”, 0043): tabela `restaurant_owner_details` (imię i nazwisko,
-  telefon, e-mail, nazwa firmy, NIP, adres firmy), RLS: czyta tylko kierownik i właściciel (`has_staff_role manager`),
-  zapis `panel_set_owner_details`. Nie ma ich w aplikacji Table ani w Table for employees. NIP z rejestracji lokalu
+  telefon, e-mail, nazwa firmy, NIP, adres firmy), RLS: czyta tylko kierownik i właściciel (`has_staff_role manager`).
+  W panelu tylko do odczytu; zmiana tylko w Table Dev (narzędzie zespołu Table, jeszcze go nie ma):
+  `panel_set_owner_details` ma tylko rola serwisowa (0044). Nie ma ich w aplikacji Table ani w Table for employees. NIP z rejestracji lokalu
   trafia tutaj (`restaurants.nip` jest puste, bo kolumny `restaurants` są publiczne dla gości).
 - Limit osób w jednej rezerwacji z aplikacji ustawia lokal (`restaurants.max_party_size`, 1–30, domyślnie 12).
 - Rezerwacje odświeżają się na żywo (Supabase Realtime na tabeli `reservations`).

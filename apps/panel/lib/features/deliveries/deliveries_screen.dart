@@ -115,20 +115,10 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
     final finished = orders.where((o) => o.stage.finished).toList()
       ..sort((a, b) => (b.closedAt ?? b.openedAt).compareTo(a.closedAt ?? a.openedAt));
 
-    final subtitle = !settings.any
-        ? 'Dostawa i odbiór osobisty są wyłączone. Włącz je w „Dane lokalu” → „Dostawa i odbiór”.'
-        : [
-            if (settings.deliveryEnabled) 'dostawa',
-            if (settings.pickupEnabled) 'odbiór osobisty',
-            settings.cash ? 'gotówka i karta online' : 'tylko karta online',
-            '${couriers.length} ${couriers.length == 1 ? 'dostawca' : 'dostawców'} na zmianie',
-          ].join(' · ');
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          subtitle: Fmt.capitalize(subtitle),
           below: Row(
             children: [
               IconTabs<int>(
@@ -145,7 +135,9 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
           ),
         ),
         Expanded(
-          child: async.when(
+          child: TabContent(
+            tab: _tab,
+            child: async.when(
             skipLoadingOnReload: true,
             loading: () => const LoadingView(),
             error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(takeawayOrdersProvider(rid))),
@@ -210,6 +202,7 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
                 ),
               );
             },
+          ),
           ),
         ),
       ],

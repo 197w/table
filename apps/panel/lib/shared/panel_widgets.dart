@@ -41,17 +41,15 @@ class _PanelPressState extends State<PanelPress> {
   }
 }
 
-/// Pasek nad treścią zakładki: krótki opis (np. dzień albo liczba osób), akcje po prawej
-/// i rząd zakładek albo filtrów. Bez tytułu: nazwę zakładki widać w menu bocznym.
+/// Pasek nad treścią zakładki: akcje po prawej i rząd zakładek albo filtrów.
+/// Bez tytułu i opisu: nazwę zakładki widać w menu bocznym.
 class PageHeader extends StatelessWidget {
   const PageHeader({
     super.key,
-    this.subtitle,
     this.actions = const [],
     this.below,
   });
 
-  final String? subtitle;
   final List<Widget> actions;
 
   /// Dodatkowy rząd, na przykład zakładki albo filtry.
@@ -59,8 +57,7 @@ class PageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final top = subtitle != null || actions.isNotEmpty;
+    final top = actions.isNotEmpty;
     if (!top && below == null) return const SizedBox(height: 20);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -74,12 +71,7 @@ class PageHeader extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Expanded(
-                      child: Text(
-                        subtitle ?? '',
-                        style: text.bodyLarge?.copyWith(color: AppColors.textMuted),
-                      ),
-                    ),
+                    const Spacer(),
                     for (var i = 0; i < actions.length; i++) ...[
                       if (i > 0) const SizedBox(width: 8),
                       PanelPress(child: actions[i]),
@@ -101,6 +93,49 @@ class PageHeader extends StatelessWidget {
         ),
         const SizedBox(height: 20),
       ],
+    );
+  }
+}
+
+/// Treść zakładki wewnątrz ekranu (np. Zespół, Grafik, Czas pracy). Przy zmianie zakładki stara treść
+/// gaśnie, a nowa pojawia się lekko z dołu, tak jak przy przejściu między zakładkami w menu bocznym.
+class TabContent extends StatelessWidget {
+  const TabContent({super.key, required this.tab, required this.child});
+
+  /// Wybrana zakładka. Animacja rusza tylko przy jej zmianie, nie przy odświeżeniu danych.
+  final Object tab;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: PanelMotion.tab,
+      reverseDuration: PanelMotion.tabOut,
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: PanelMotion.tabTransition,
+      layoutBuilder: (current, previous) => Stack(
+        fit: StackFit.expand,
+        children: [...previous, ?current],
+      ),
+      child: KeyedSubtree(key: ValueKey(tab), child: child),
+    );
+  }
+}
+
+/// Ruch przy zmianie zakładki: krótkie wygaszenie i wjazd o kilka pikseli z dołu.
+/// Nowa treść ma tło strony, więc zakrywa starą zamiast na nią nachodzić.
+abstract final class PanelMotion {
+  static const tab = Duration(milliseconds: 220);
+  static const tabOut = Duration(milliseconds: 140);
+
+  static Widget tabTransition(Widget child, Animation<double> animation) {
+    return FadeTransition(
+      opacity: animation,
+      child: SlideTransition(
+        position: Tween<Offset>(begin: const Offset(0, 0.012), end: Offset.zero).animate(animation),
+        child: ColoredBox(color: AppColors.background, child: child),
+      ),
     );
   }
 }

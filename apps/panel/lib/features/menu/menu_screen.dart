@@ -157,7 +157,6 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          subtitle: 'Ceny, warianty i alergeny widoczne dla gości i przy nabijaniu zamówień.',
           actions: [
             if (editable && async.hasValue)
               FilledButton.icon(
