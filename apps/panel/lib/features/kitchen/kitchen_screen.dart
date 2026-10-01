@@ -455,7 +455,7 @@ class _KitchenBar extends ConsumerWidget {
           // Napis zajmuje całe wolne miejsce, więc przyciski i zegar stoją przy prawej krawędzi.
           Expanded(
             child: Text(
-              tickets == 0 ? 'Nic nie czeka' : '${_orders(tickets)} · ${_dishes(items)}',
+              tickets == 0 ? 'Brak zamówień' : '${_orders(tickets)} · ${_dishes(items)}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: text.titleLarge?.copyWith(
@@ -596,11 +596,6 @@ class _Empty extends StatelessWidget {
           Glyph(AppIcons.cookingPot, size: 72, color: AppColors.textDisabled),
           const SizedBox(height: 20),
           Text('Brak zamówień na kuchni', style: text.headlineMedium?.copyWith(fontSize: 34)),
-          const SizedBox(height: 8),
-          Text(
-            'Nowe zamówienie pojawi się tu samo, z dźwiękiem.',
-            style: text.titleLarge?.copyWith(color: AppColors.textMuted),
-          ),
         ],
       ),
     );

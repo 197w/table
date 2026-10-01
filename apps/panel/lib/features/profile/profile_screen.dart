@@ -250,13 +250,6 @@ class _DetailsFormState extends ConsumerState<_DetailsForm> {
             ],
           ),
           const SizedBox(height: 6),
-          Padding(
-            padding: const EdgeInsets.only(left: 4, top: 6),
-            child: Text(
-              'Punkt na mapie ustawia zespół Table po zmianie adresu.',
-              style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-            ),
-          ),
           const SizedBox(height: 18),
           Text('Rezerwacje w aplikacji', style: text.titleSmall),
           const SizedBox(height: 8),
@@ -1052,11 +1045,6 @@ class _OwnerView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Widzi je tylko kierownik i właściciel lokalu w panelu. Zmienić je można tylko w Table Dev.',
-            style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 16),
           row(field('Imię i nazwisko', details.ownerName), field('Telefon', details.ownerPhone)),
           const SizedBox(height: 14),
           row(field('E-mail', details.ownerEmail), field('NIP', nip == null ? null : _formatNip(nip))),
@@ -1131,17 +1119,9 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final enabled = widget.editable && widget.pro && !_busy;
-    Widget toggle(String title, String hint, bool value, ValueChanged<bool> onChanged) => Row(
+    Widget toggle(String title, bool value, ValueChanged<bool> onChanged) => Row(
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: text.titleSmall),
-              Text(hint, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
-            ],
-          ),
-        ),
+        Expanded(child: Text(title, style: text.titleSmall)),
         Switch(value: value, onChanged: enabled ? onChanged : null),
       ],
     );
@@ -1150,21 +1130,18 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            widget.pro
-                ? 'Goście zamawiają w aplikacji Table. Zamówienia przyjmujesz w zakładce „Dostawy”.'
-                : 'Zamówienia z dostawą i na wynos są w planie Pro.',
-            style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 12),
-          toggle('Dostawa', 'Dostawcy z kolejki w Table for employees', _s.deliveryEnabled,
-              (v) => setState(() => _s = _copy(delivery: v))),
-          const SizedBox(height: 10),
-          toggle('Odbiór osobisty', 'Gość odbiera zamówienie w lokalu', _s.pickupEnabled,
-              (v) => setState(() => _s = _copy(pickup: v))),
-          const SizedBox(height: 10),
-          toggle('Gotówka', 'Karta online jest zawsze. Gotówka u dostawcy albo przy odbiorze', _s.cash,
-              (v) => setState(() => _s = _copy(cash: v))),
+          if (!widget.pro) ...[
+            Text(
+              'Zamówienia z dostawą i na wynos są w planie Pro.',
+              style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 12),
+          ],
+          toggle('Dostawa', _s.deliveryEnabled, (v) => setState(() => _s = _copy(delivery: v))),
+          const SizedBox(height: 6),
+          toggle('Odbiór osobisty', _s.pickupEnabled, (v) => setState(() => _s = _copy(pickup: v))),
+          const SizedBox(height: 6),
+          toggle('Gotówka', _s.cash, (v) => setState(() => _s = _copy(cash: v))),
           const SizedBox(height: 14),
           Row(
             children: [

@@ -207,7 +207,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                   icon: AppIcons.users,
                   title: 'Brak pracowników',
                   message: canStaff
-                      ? 'Dodaj pracownika. Dostanie czterocyfrowy kod do logowania na głównym stanowisku.'
+                      ? 'Dodaj pracownika.'
                       : 'Kierownik jeszcze nie dodał pracowników.',
                   actionLabel: canStaff ? 'Dodaj pracownika' : null,
                   onAction: canStaff ? () => _addMember(restaurant.id, withLogin: canLogins) : null,
@@ -1879,11 +1879,6 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
                 ],
               ),
             ] else ...[
-              const SizedBox(height: 14),
-              Text(
-                'Po zapisaniu pracownik dostanie czterocyfrowy kod do głównego stanowiska.',
-                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-              ),
             ],
           ],
         ),

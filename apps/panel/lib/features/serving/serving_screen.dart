@@ -262,7 +262,7 @@ class _ServingBar extends ConsumerWidget {
           Expanded(
             child: Text(
               tickets == 0
-                  ? 'Nic nie czeka'
+                  ? 'Brak zamówień'
                   : '${_plural(dishes, 'gotowe danie', 'gotowe dania', 'gotowych dań')} · '
                         '${_plural(tickets, 'zamówienie', 'zamówienia', 'zamówień')}',
               maxLines: 1,
@@ -321,12 +321,7 @@ class _Empty extends StatelessWidget {
         children: [
           Glyph(AppIcons.callBell.duotone, size: 72, color: AppColors.textDisabled),
           const SizedBox(height: 20),
-          Text('Nic nie czeka na wydanie', style: text.headlineMedium?.copyWith(fontSize: 30)),
-          const SizedBox(height: 8),
-          Text(
-            'Gotowe dania z kuchni pojawią się tu same, z dźwiękiem.',
-            style: text.titleLarge?.copyWith(color: AppColors.textMuted),
-          ),
+          Text('Brak zamówień do wydania', style: text.headlineMedium?.copyWith(fontSize: 30)),
         ],
       ),
     );

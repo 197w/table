@@ -529,12 +529,6 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       children: [
         PageHeader(
           actions: [
-            if (!editing && restaurant.canManage)
-              OutlinedButton.icon(
-                onPressed: startEditing,
-                icon: const Glyph(AppIcons.pencil, size: 16),
-                label: const Text('Edytuj układ'),
-              ),
             if (editing) ...[
               IconButton(
                 tooltip: 'Cofnij (Ctrl+Z)',
@@ -572,6 +566,12 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
                 ),
               ],
               const Spacer(),
+              if (!editing && restaurant.canManage && zoneList.isNotEmpty)
+                OutlinedButton.icon(
+                  onPressed: startEditing,
+                  icon: const Glyph(AppIcons.pencil, size: 16),
+                  label: const Text('Edytuj układ'),
+                ),
               if (editing && zoneList.isNotEmpty) ...[
                 OutlinedButton.icon(
                   onPressed: () => _addElement(_currentZone(zoneList)),
