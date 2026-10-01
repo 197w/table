@@ -76,7 +76,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0041, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0042, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -89,7 +89,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `MaterialApp.builder` każdej aplikacji; komputer: prawy dolny róg, telefon: góra ekranu),
   `formatters.dart` (`Fmt`), `units.dart`, `env.dart`, `failure.dart` (`AppFailure`), `widgets.dart`
   (`PressScale`, `LoadingView`, `MessageView`, `ErrorView`, `Tag`, `DropdownPill`...), `app_icons.dart`
-  (`Glyph` zamiast `Icon`, stałe `AppIcons`, SVG w `assets/icons`, nowe: `npx better-icons get ph:<nazwa>`).
+  (`Glyph` zamiast `Icon`, stałe `AppIcons`, SVG w `assets/icons`, nowe: `npx better-icons get ph:<nazwa>`;
+  każda ikona ma też wersję duotone w `assets/icons/duotone` (`ph:<nazwa>-duotone`, `AppIcons.x.duotone`):
+  wybrane zakładki i dolne menu, powiadomienia, puste ekrany, kafle `IconBadge`).
 - `apps/guest/lib`: `app` (router, dolne menu, preferencje), `core` (mapy, lokalizacja), `data`, `features`
   (m.in. `ordering`: zamawianie z dostawą i na wynos).
 - `apps/staff/lib`: `data.dart` (repozytorium i providery), `orders_data.dart`, `login_screen.dart`, `home_screen.dart`,
@@ -97,8 +99,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `deliveries_data.dart`, `deliveries_screen.dart`
   (mobile_scanner). Podpis iOS: `DEVELOPMENT_TEAM` w `ios/Flutter/*.xcconfig`, nie w pbxproj.
 - `apps/panel/lib`: `app` (router, boczne menu, motyw na komputer), `data` (modele, `PanelRepository`, providery),
-  `features` (auth, onboarding, kiosk, reservations, orders, deliveries, kitchen, floor, menu, inventory, profile, reviews,
-  staff, stats),
+  `features` (auth, onboarding, kiosk, reservations, orders, deliveries, kitchen, serving, floor, menu, inventory, profile,
+  reviews, staff, stats),
   `shared/panel_widgets.dart`.
 
 ## Panel restauracji
@@ -127,7 +129,12 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   pracownika każda zakładka pokazuje logowanie (`TabLoginGate`); wejść może tylko osoba z uprawnieniem do zakładki.
   Menu boczne pokazuje zakładki zalogowanego pracownika. Pasek nad zakładką (`TabSessionBar`): „Wyloguj”
   i „Zakończ zmianę”. Właściciel otwiera panel hasłem konta restauracji (`ActingMember.account()`).
-  „Wejdź na zmianę” (menu boczne, `ShiftScreen`) zaczyna zmianę i loguje pracownika.
+  „Wejdź na zmianę” (menu boczne, `ShiftScreen`) zaczyna zmianę i loguje pracownika. „Zakończ zmianę” (menu boczne,
+  `ShiftScreen(end: true)`) kończy zmianę kodem (`panel_member_end_shift`) albo kodem QR (`panel_login_tokens.purpose =
+  'end_shift'`, `staff_scan` kończy wtedy zmianę), a zalogowany pracownik kończy ją jednym przyciskiem.
+  Po 30 sekundach bez ruchu myszy i klawiatury panel sam wylogowuje pracownika i zamyka otwarte okna
+  (`IdleLogout` w `MaterialApp.builder`, `kIdleLogoutSeconds`; ostatnie 10 s odlicza pasek nad zakładką).
+  Kuchnia i Wydanie nie wylogowują. Klawisze tylko liczą ruch, handler zwraca false (nic nie połyka).
 - Uprawnienia (`StaffPermission`, grupy Sala, Zamówienia, Kuchnia, Zespół, Lokal, Wyniki): m.in. `orders_close`
   (zamykanie rachunków), `orders_cancel` (anulowanie pozycji z kuchni), `kitchen_settings`, `staff_logins`,
   `schedule`, `timesheet`, `positions`. Menu boczne pokazuje zakładki według uprawnień konta,
@@ -190,6 +197,11 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (1–9, strzałki, Spacja, Enter, Backspace, F, M, Esc; strzałki przechodzą między bilecikami, Spacja zbija
   i schodzi niżej, Enter zamyka bilecik i zaznacza następny), dolny pasek ze średnim czasem (`panel_kitchen_stats`),
   ustawienia (progi i pozycje ukryte, `panel_set_kitchen_config`). Pełny ekran chowa menu. Nowy bilecik dzwoni.
+- Wydanie (`/wydanie`, `features/serving`, uprawnienie `serving`, grupa Kuchnia; w 0042 dostały je stanowiska
+  z `orders`): karty stolików z daniami gotowymi z kuchni (najdłużej czekające pierwsze, żółte po 2 min, czerwone
+  po 4 min), stuknięcie pozycji albo „Wydane” wywołuje `panel_serve_items` (ready → served, `p_undo` cofa),
+  pod kartą „Jeszcze na kuchni”. Zamówienia na wynos w przygotowaniu: „Spakowane” (`panel_takeaway_ready`),
+  gdy kuchnia zrobi wszystko. Nowe gotowe danie dzwoni (wyciszenie `servingMutedProvider`).
 - Menu: zdjęcia dań (`menu_items.photo_url`, bucket `menu-photos`, panel zmniejsza zdjęcie do 1200 px JPG,
   goście widzą je w aplikacji Table). Uprawnienia: `menu` (zakładka), `menu_edit` (dania, ceny, sekcje, zdjęcia),
   `menu_availability` („Skończyło się”). Warianty (np. rozmiary, każdy z ceną), płatne dodatki, stawka VAT i „dostępne teraz”. Przy wariantach

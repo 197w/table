@@ -89,7 +89,7 @@ class MessageView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Glyph(icon, size: 40, color: AppColors.textMuted),
+            Glyph(icon.duotone, size: 44, color: AppColors.textMuted),
             const SizedBox(height: 16),
             Text(title, style: text.titleMedium, textAlign: TextAlign.center),
             const SizedBox(height: 8),

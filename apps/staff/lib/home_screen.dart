@@ -59,22 +59,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (result == null || !mounted) return;
     _refresh();
     final at = result.startedAt;
+    final ended = result.endedAt;
     // Skan zaczyna zmianę i loguje w panelu na komputerze, jeśli nikt inny nie użył tego kodu.
+    // Kod z ekranu „Zakończ zmianę” kończy zmianę.
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        icon: Glyph(AppIcons.checkCircle, size: 40, color: AppColors.accent),
-        title: Text(result.startedNow ? 'Zmiana rozpoczęta' : 'Zmiana trwa'),
+        icon: Glyph(
+          (result.endedNow ? AppIcons.doorOpen : AppIcons.checkCircle).duotone,
+          size: 44,
+          color: AppColors.accent,
+        ),
+        title: Text(
+          result.endedNow
+              ? 'Zmiana zakończona'
+              : result.startedNow
+              ? 'Zmiana rozpoczęta'
+              : 'Zmiana trwa',
+        ),
         content: Text(
-          [
-            result.startedNow
-                ? '${result.restaurant}, od ${at == null ? 'teraz' : _hm(at)}.'
-                : 'Twoja zmiana w ${result.restaurant} trwa${at == null ? '' : ' od ${_hm(at)}'}.',
-            result.openedPanel
-                ? 'Jesteś zalogowany w panelu na komputerze. Po pracy wyloguj się tam ręcznie.'
-                : 'Ktoś już zalogował się tym kodem. Żeby pracować przy komputerze, '
-                      'zeskanuj nowy kod albo wpisz swój czterocyfrowy kod.',
-          ].join('\n\n'),
+          result.endedNow
+              ? [
+                  '${result.restaurant}'
+                      '${at == null || ended == null ? '' : ', ${_hm(at)}–${_hm(ended)} (${_hours(ended.difference(at))} h)'}.',
+                  'Dobrego odpoczynku!',
+                ].join('\n\n')
+              : [
+                  result.startedNow
+                      ? '${result.restaurant}, od ${at == null ? 'teraz' : _hm(at)}.'
+                      : 'Twoja zmiana w ${result.restaurant} trwa${at == null ? '' : ' od ${_hm(at)}'}.',
+                  result.openedPanel
+                      ? 'Jesteś zalogowany w panelu na komputerze. Panel wyloguje Cię sam po 30 sekundach bez ruchu.'
+                      : 'Ktoś już zalogował się tym kodem. Żeby pracować przy komputerze, '
+                            'zeskanuj nowy kod albo wpisz swój czterocyfrowy kod.',
+                ].join('\n\n'),
         ),
         actions: [
           FilledButton(
@@ -162,7 +180,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   height: 60,
                   child: FilledButton.icon(
                     onPressed: _scan,
-                    icon: const Glyph(AppIcons.squaresFour, size: 22),
+                    icon: const Glyph(AppIcons.qrCode, size: 22),
                     label: Text(
                       list.any((j) => j.working) ? 'Zeskanuj kod' : 'Zeskanuj kod i zacznij zmianę',
                       style: const TextStyle(fontSize: 17),

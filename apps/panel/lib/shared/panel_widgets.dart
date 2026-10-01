@@ -322,7 +322,7 @@ class IconBadge extends StatelessWidget {
           ),
         ],
       ),
-      child: Glyph(icon, size: size * 0.52, color: Colors.white),
+      child: Glyph(icon.duotone, size: size * 0.52, color: Colors.white),
     );
   }
 }
@@ -882,7 +882,7 @@ class _IconSegmentState extends State<_IconSegment> {
                       scale: selected ? 1.1 : (_hovered ? 1.05 : 1),
                       duration: _segmentDuration,
                       curve: Curves.easeOutBack,
-                      child: Glyph(widget.icon, size: 18, color: color),
+                      child: Glyph(selected ? widget.icon.duotone : widget.icon, size: 18, color: color),
                     ),
                   ),
                   // Nazwa wysuwa się zza ikony: szerokość rośnie, tekst pojawia się i przesuwa w prawo.

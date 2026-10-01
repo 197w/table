@@ -494,6 +494,48 @@ final kitchenTicketsProvider = FutureProvider.autoDispose.family<List<KitchenTic
   },
 );
 
+/// Karty na ekranie „Wydanie”. Odświeżają się na żywo razem z rachunkami.
+final servingTicketsProvider = FutureProvider.autoDispose.family<List<ServingTicket>, String>(
+  (ref, id) {
+    ref.cacheFor();
+    ref.watch(ordersLiveProvider(id).select((s) => s.version));
+    return ref.watch(repositoryProvider).servingTickets(id);
+  },
+);
+
+/// Wyciszony dźwięk nowych dań na ekranie „Wydanie”. Pamiętany na komputerze.
+class ServingMutedNotifier extends Notifier<bool> {
+  static const _key = 'panel_wydanie_wyciszone';
+
+  @override
+  bool build() {
+    _load();
+    return false;
+  }
+
+  Future<void> _load() async {
+    try {
+      final saved = await SharedPreferencesAsync().getBool(_key);
+      if (saved != null) state = saved;
+    } catch (_) {
+      // Bez zapisu dźwięk jest włączony.
+    }
+  }
+
+  Future<void> toggle() async {
+    state = !state;
+    try {
+      await SharedPreferencesAsync().setBool(_key, state);
+    } catch (_) {
+      // Wybór działa do zamknięcia panelu.
+    }
+  }
+}
+
+final servingMutedProvider = NotifierProvider<ServingMutedNotifier, bool>(
+  ServingMutedNotifier.new,
+);
+
 /// Ekran kuchni na cały ekran, bez bocznego menu. Wyjście przyciskiem albo klawiszem Esc.
 class KitchenFullscreenNotifier extends Notifier<bool> {
   @override
@@ -632,8 +674,8 @@ final memberStatsProvider = FutureProvider.autoDispose.family<MemberStats, Membe
 });
 
 /// Pracownik zalogowany teraz w panelu (kodem albo kodem QR). Logowanie jest jedno dla wszystkich
-/// zakładek: kto zalogował się w Rezerwacjach, jest zalogowany także w Menu. Wylogowanie jest ręczne.
-/// Zmiana lokalu wylogowuje.
+/// zakładek: kto zalogował się w Rezerwacjach, jest zalogowany także w Menu. Wylogowuje przycisk,
+/// zmiana lokalu i [IdleLogout] po [kIdleLogoutSeconds] sekundach bez ruchu.
 class PanelMemberNotifier extends Notifier<ActingMember?> {
   @override
   ActingMember? build() {
@@ -652,6 +694,21 @@ class PanelMemberNotifier extends Notifier<ActingMember?> {
 }
 
 final panelMemberProvider = NotifierProvider<PanelMemberNotifier, ActingMember?>(PanelMemberNotifier.new);
+
+/// Po tylu sekundach bez ruchu myszy i klawiatury panel wylogowuje pracownika (`IdleLogout`).
+const kIdleLogoutSeconds = 30;
+
+/// Ile sekund panel stoi bez ruchu, gdy ktoś jest zalogowany. Liczy `IdleLogout`, pokazuje pasek nad zakładką.
+class IdleSecondsNotifier extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void set(int value) {
+    if (state != value) state = value;
+  }
+}
+
+final idleSecondsProvider = NotifierProvider<IdleSecondsNotifier, int>(IdleSecondsNotifier.new);
 
 /// Uprawnienia zalogowanego pracownika: według nich zakładki pokazują przyciski.
 final memberPermissionsProvider = Provider<Set<String>>(

@@ -334,7 +334,7 @@ class _ToastViewState extends State<_ToastView> with TickerProviderStateMixin {
                           borderRadius: BorderRadius.circular(10),
                         ),
                         alignment: Alignment.center,
-                        child: Glyph(t.icon ?? defaultIcon, size: 19, color: color),
+                        child: Glyph((t.icon ?? defaultIcon).duotone, size: 19, color: color),
                       ),
                       const SizedBox(width: 12),
                       Expanded(

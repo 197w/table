@@ -25,6 +25,7 @@ dev_dependencies:
 flutter:
   assets:
     - assets/icons/
+    - assets/icons/duotone/
   fonts:
     - family: Geist
       fonts:

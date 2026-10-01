@@ -91,6 +91,8 @@ class ScanResult {
     required this.startedNow,
     this.openedPanel = false,
     this.startedAt,
+    this.endedNow = false,
+    this.endedAt,
   });
 
   final String restaurant;
@@ -99,7 +101,13 @@ class ScanResult {
 
   /// Skan zalogował mnie też w panelu na komputerze (nikt inny nie użył tego kodu).
   final bool openedPanel;
+
+  /// Początek zmiany: trwającej albo (przy [endedNow]) właśnie zakończonej.
   final DateTime? startedAt;
+
+  /// Kod z ekranu „Zakończ zmianę” w panelu: skan zakończył moją zmianę.
+  final bool endedNow;
+  final DateTime? endedAt;
 }
 
 /// Moje godziny w grafiku. Zgłaszam, od której do której mogę pracować, przełożony przyjmuje
@@ -200,7 +208,9 @@ class StaffRepository {
       member: j['member'] as String,
       startedNow: j['started_now'] == true,
       openedPanel: j['opened_panel'] == true,
-      startedAt: _date(j['shift_started_at']),
+      startedAt: _date(j['shift_started_at'] ?? j['ended_shift_started_at']),
+      endedNow: j['ended_now'] == true,
+      endedAt: _date(j['ended_at']),
     );
   });
 

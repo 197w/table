@@ -80,12 +80,20 @@ class _StaffShellState extends ConsumerState<StaffShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: _go,
-        destinations: const [
-          NavigationDestination(icon: Glyph(AppIcons.receipt, size: 22), label: 'Zamówienia'),
-          NavigationDestination(icon: Glyph(AppIcons.moped, size: 22), label: 'Dostawy'),
-          NavigationDestination(icon: Glyph(AppIcons.squaresFour, size: 22), label: 'Zeskanuj'),
-          NavigationDestination(icon: Glyph(AppIcons.calendarDots, size: 22), label: 'Grafik'),
-          NavigationDestination(icon: Glyph(AppIcons.gear, size: 22), label: 'Ustawienia'),
+        destinations: [
+          // Wybrana zakładka ma ikonę z wypełnieniem (duotone).
+          for (final (icon, label) in const [
+            (AppIcons.receipt, 'Zamówienia'),
+            (AppIcons.moped, 'Dostawy'),
+            (AppIcons.qrCode, 'Zeskanuj'),
+            (AppIcons.calendarDots, 'Grafik'),
+            (AppIcons.gear, 'Ustawienia'),
+          ])
+            NavigationDestination(
+              icon: Glyph(icon, size: 22),
+              selectedIcon: Glyph(icon.duotone, size: 22),
+              label: label,
+            ),
         ],
       ),
     );

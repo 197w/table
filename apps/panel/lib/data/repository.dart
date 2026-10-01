@@ -670,6 +670,32 @@ class PanelRepository {
     });
   }
 
+  /// Ekran „Wydanie”: pozycje z otwartych rachunków, które są na kuchni albo już gotowe.
+  Future<List<ServingTicket>> servingTickets(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db
+          .from('order_items')
+          .select(
+            '*, member:staff_members(name), '
+            'orders!inner(table_id, status, kind, number, fulfillment, promised_at, '
+            'opener:staff_members!opened_by_member(name))',
+          )
+          .eq('restaurant_id', restaurantId)
+          .inFilter('status', ['sent', 'ready'])
+          .eq('orders.status', 'open')
+          .gte('sent_at', DateTime.now().subtract(const Duration(hours: 12)).toUtc().toIso8601String())
+          .order('sent_at');
+      return ServingTicket.fromRows(rows);
+    });
+  }
+
+  /// Gotowe pozycje zaniesione gościom (ready → served). [undo] cofa pomyłkę.
+  Future<int> serveItems(List<String> ids, {bool undo = false}) {
+    return _guard(
+      () => _db.rpc<int>('panel_serve_items', params: {'p_item_ids': ids, 'p_undo': undo}),
+    );
+  }
+
   /// Progi czasu na ekranie kuchni.
   Future<KitchenConfig> kitchenConfig(String restaurantId) {
     return _guard(() async {
@@ -729,9 +755,13 @@ class PanelRepository {
   // -------------------------------------------------------------
 
   /// Nowy kod QR do zeskanowania aplikacją Table for employees.
-  Future<String> newLoginToken(String restaurantId) {
+  /// Kod QR do zeskanowania aplikacją: [endShift] false zaczyna zmianę i loguje, true kończy zmianę.
+  Future<String> newLoginToken(String restaurantId, {bool endShift = false}) {
     return _guard(
-      () => _db.rpc<String>('panel_new_login_token', params: {'p_restaurant_id': restaurantId}),
+      () => _db.rpc<String>('panel_new_login_token', params: {
+        'p_restaurant_id': restaurantId,
+        'p_purpose': endShift ? 'end_shift' : 'login',
+      }),
     );
   }
 
@@ -740,6 +770,18 @@ class PanelRepository {
     return _guard(() async {
       final json = await _db.rpc<Map<String, dynamic>>(
         'panel_member_login',
+        params: {'p_restaurant_id': restaurantId, 'p_code': code},
+      );
+      if (json['error'] case final String problem) throw AppFailure(problem);
+      return ActingMember.fromJson(json);
+    });
+  }
+
+  /// „Zakończ zmianę” czterocyfrowym kodem pracownika. Zwraca pracownika z godzinami zakończonej zmiany.
+  Future<ActingMember> memberEndShift({required String restaurantId, required String code}) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>(
+        'panel_member_end_shift',
         params: {'p_restaurant_id': restaurantId, 'p_code': code},
       );
       if (json['error'] case final String problem) throw AppFailure(problem);

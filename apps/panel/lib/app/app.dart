@@ -16,8 +16,10 @@ import '../features/orders/orders_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/reservations/reservations_screen.dart';
 import '../features/reviews/reviews_screen.dart';
+import '../features/serving/serving_screen.dart';
 import '../features/staff/staff_screen.dart';
 import '../features/stats/stats_screen.dart';
+import 'idle_logout.dart';
 import 'panel_theme.dart';
 import 'reservation_alerts.dart';
 import 'shell.dart';
@@ -33,6 +35,8 @@ class _PanelAppState extends ConsumerState<PanelApp>
     with WidgetsBindingObserver {
   late final _AuthRefresh _authRefresh;
   late final GoRouter _router;
+  final _rootNavigator = GlobalKey<NavigatorState>(debugLabel: 'panel');
+  final _shellNavigator = GlobalKey<NavigatorState>(debugLabel: 'zakładki');
 
   @override
   void initState() {
@@ -41,7 +45,7 @@ class _PanelAppState extends ConsumerState<PanelApp>
     _authRefresh = _AuthRefresh(
       Supabase.instance.client.auth.onAuthStateChange,
     );
-    _router = _buildRouter(_authRefresh);
+    _router = _buildRouter(_authRefresh, root: _rootNavigator, shell: _shellNavigator);
     // Przycisk „Pokaż” w powiadomieniu o nowej rezerwacji otwiera Rezerwacje.
     ReservationAlerts.instance.onOpen = () => _router.go(PanelRoutes.reservations);
     ReservationAlerts.instance.onOpenTakeaway = () => _router.go(PanelRoutes.deliveries);
@@ -90,14 +94,26 @@ class _PanelAppState extends ConsumerState<PanelApp>
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       routerConfig: _router,
       // Powiadomienia w stylu Table nad całym panelem, także nad oknami dialogowymi.
-      builder: (context, child) => ToastHost(child: child ?? const SizedBox.shrink()),
+      // Automatyczne wylogowanie pracownika liczy ruch w całym oknie, także w oknach dialogowych.
+      builder: (context, child) => ToastHost(
+        child: IdleLogout(
+          location: () => _router.routerDelegate.currentConfiguration.uri.path,
+          navigators: [_rootNavigator, _shellNavigator],
+          child: child ?? const SizedBox.shrink(),
+        ),
+      ),
       ),
     );
   }
 }
 
-GoRouter _buildRouter(Listenable refresh) {
+GoRouter _buildRouter(
+  Listenable refresh, {
+  required GlobalKey<NavigatorState> root,
+  required GlobalKey<NavigatorState> shell,
+}) {
   return GoRouter(
+    navigatorKey: root,
     initialLocation: PanelRoutes.reservations,
     refreshListenable: refresh,
     redirect: (context, state) {
@@ -126,6 +142,7 @@ GoRouter _buildRouter(Listenable refresh) {
             const NoTransitionPage(child: LoginScreen()),
       ),
       ShellRoute(
+        navigatorKey: shell,
         builder: (context, state, child) =>
             PanelShell(location: state.uri.path, child: child),
         routes: [
@@ -146,6 +163,7 @@ GoRouter _buildRouter(Listenable refresh) {
           ),
           _page(PanelRoutes.deliveries, const DeliveriesScreen()),
           _page(PanelRoutes.kitchen, const KitchenScreen()),
+          _page(PanelRoutes.serving, const ServingScreen()),
           _page(PanelRoutes.staff, const StaffScreen()),
           _page(PanelRoutes.menu, const MenuScreen()),
           _page(PanelRoutes.inventory, const InventoryScreen()),
@@ -171,6 +189,7 @@ abstract final class PanelRoutes {
   static const orders = '/zamowienia';
   static const deliveries = '/dostawy';
   static const kitchen = '/kuchnia';
+  static const serving = '/wydanie';
   static const staff = '/pracownicy';
   static const menu = '/menu';
   static const inventory = '/inwentaryzacja';
@@ -185,6 +204,7 @@ const _routePermissions = {
   PanelRoutes.orders: {'orders'},
   PanelRoutes.deliveries: {'orders'},
   PanelRoutes.kitchen: {'kitchen'},
+  PanelRoutes.serving: {'serving'},
   PanelRoutes.floor: {'floor_edit'},
   // W Pracownikach każda część ma własne uprawnienie: zespół, loginy, grafik, czas pracy, stanowiska.
   PanelRoutes.staff: {'staff', 'staff_logins', 'schedule', 'timesheet', 'positions'},
@@ -201,6 +221,7 @@ const panelTabLabels = {
   PanelRoutes.orders: 'Zamówienia',
   PanelRoutes.deliveries: 'Dostawy',
   PanelRoutes.kitchen: 'Kuchnia',
+  PanelRoutes.serving: 'Wydanie',
   PanelRoutes.floor: 'Edycja sali',
   PanelRoutes.staff: 'Pracownicy',
   PanelRoutes.profile: 'Dane lokalu',

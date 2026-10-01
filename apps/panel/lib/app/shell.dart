@@ -144,11 +144,12 @@ const _groups = <(String, List<_NavItem>)>[
     _NavItem(PanelRoutes.reservations, 'Rezerwacje', AppIcons.calendarDots),
     _NavItem(PanelRoutes.orders, 'Zamówienia', AppIcons.receipt),
     _NavItem(PanelRoutes.deliveries, 'Dostawy', AppIcons.moped),
-    _NavItem(PanelRoutes.kitchen, 'Kuchnia', AppIcons.cookingPot),
-    _NavItem(PanelRoutes.floor, 'Edycja sali', AppIcons.squaresFour),
+    _NavItem(PanelRoutes.kitchen, 'Kuchnia', AppIcons.chefHat),
+    _NavItem(PanelRoutes.serving, 'Wydanie', AppIcons.callBell),
+    _NavItem(PanelRoutes.floor, 'Edycja sali', AppIcons.blueprint),
   ]),
   ('Zespół', [
-    _NavItem(PanelRoutes.staff, 'Pracownicy', AppIcons.users),
+    _NavItem(PanelRoutes.staff, 'Pracownicy', AppIcons.usersThree),
   ]),
   ('Lokal', [
     _NavItem(PanelRoutes.profile, 'Dane lokalu', AppIcons.storefront),
@@ -157,7 +158,7 @@ const _groups = <(String, List<_NavItem>)>[
   ]),
   ('Wyniki', [
     _NavItem(PanelRoutes.reviews, 'Opinie', AppIcons.chatCircle),
-    _NavItem(PanelRoutes.stats, 'Statystyki', AppIcons.chartBar),
+    _NavItem(PanelRoutes.stats, 'Statystyki', AppIcons.chartLineUp),
   ]),
 ];
 
@@ -343,16 +344,25 @@ class _Sidebar extends ConsumerWidget {
             );
           },
         ),
-        // Pracownicy wchodzą na zmianę kodem QR albo czterocyfrowym kodem.
-        if (current != null)
+        // Pracownicy wchodzą na zmianę i kończą ją kodem QR albo czterocyfrowym kodem.
+        if (current != null) ...[
           _IconRow(
-            icon: AppIcons.timer,
+            icon: AppIcons.signIn,
             label: 'Wejdź na zmianę',
             width: inner,
             fade: fade,
             muted: true,
             onTap: () => ShiftScreen.open(context),
           ),
+          _IconRow(
+            icon: AppIcons.doorOpen,
+            label: 'Zakończ zmianę',
+            width: inner,
+            fade: fade,
+            muted: true,
+            onTap: () => ShiftScreen.open(context, end: true),
+          ),
+        ],
         _IconRow(
           icon: AppIcons.signOut,
           label: 'Wyloguj się',
@@ -454,8 +464,9 @@ class _IconRow extends StatelessWidget {
                     SizedBox(
                       width: slot,
                       child: Center(
+                        // Wybrana zakładka ma ikonę z wypełnieniem (duotone), pozostałe sam kontur.
                         child: Glyph(
-                          icon,
+                          selected ? icon.duotone : icon,
                           size: 19,
                           color: selected
                               ? AppColors.accent

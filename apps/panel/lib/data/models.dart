@@ -1029,6 +1029,7 @@ enum StaffPermission {
   deliveries('deliveries', 'Dostawy (kurier)', 'Kursy w aplikacji Table for employees, kolejka dostawców', 'Zamówienia'),
   kitchen('kitchen', 'Kuchnia', 'Ekran zamówień na kuchni', 'Kuchnia'),
   kitchenSettings('kitchen_settings', 'Ustawienia kuchni', 'Progi czasu i pozycje ukryte na kuchni', 'Kuchnia'),
+  serving('serving', 'Wydanie', 'Ekran dań gotowych z kuchni do zaniesienia gościom', 'Kuchnia'),
   staff('staff', 'Pracownicy', 'Dodawanie i edycja pracowników, ich statystyki', 'Zespół'),
   staffLogins('staff_logins', 'Kody pracowników', 'Podgląd i zmiana czterocyfrowych kodów pracowników', 'Zespół'),
   schedule('schedule', 'Grafik', 'Przyjmowanie, zmiana i odrzucanie godzin pracowników', 'Zespół'),
@@ -1534,6 +1535,100 @@ class KitchenTicket {
   }
 }
 
+/// Karta na ekranie „Wydanie”: dania gotowe z kuchni dla jednego stolika albo zamówienie na wynos do spakowania.
+class ServingTicket {
+  const ServingTicket({
+    required this.orderId,
+    required this.items,
+    required this.readySince,
+    this.tableId,
+    this.takeawayKind,
+    this.takeawayNumber,
+    this.promisedAt,
+    this.waiter,
+    this.cooking = 0,
+  });
+
+  final String orderId;
+  final String? tableId;
+
+  /// Dostawa albo odbiór osobisty. Null: rachunek na sali.
+  final OrderKind? takeawayKind;
+  final int? takeawayNumber;
+
+  /// Na wynos: na którą lokal obiecał zamówienie.
+  final DateTime? promisedAt;
+
+  /// Na sali: gotowe pozycje do zaniesienia. Na wynos: wszystkie pozycje, także te jeszcze na kuchni.
+  final List<OrderItem> items;
+
+  /// Od kiedy czeka najstarsza gotowa pozycja.
+  final DateTime readySince;
+
+  /// Kto nabił zamówienie (kilka osób: po przecinku).
+  final String? waiter;
+
+  /// Na sali: ile sztuk z tego rachunku jest jeszcze na kuchni.
+  final int cooking;
+
+  bool get isTakeaway => takeawayKind != null;
+
+  String? get takeawayLabel => takeawayKind == null ? null : '${takeawayKind!.label} #${takeawayNumber ?? '?'}';
+
+  /// Na wynos: kuchnia zrobiła już wszystko, można pakować.
+  bool get allReady => items.every((i) => i.status != OrderItemStatus.sent);
+
+  List<String> get readyIds => [for (final i in items) if (i.status == OrderItemStatus.ready) i.id];
+
+  /// Wiersze pozycji (z `orders` i `member`) zebrane w karty, najdłużej czekające pierwsze.
+  /// Pokazują się rachunki, w których jest coś gotowego. Na wynos tylko zamówienia w przygotowaniu.
+  static List<ServingTicket> fromRows(List<Map<String, dynamic>> rows) {
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final row in rows) {
+      groups.putIfAbsent(row['order_id'] as String, () => []).add(row);
+    }
+    final tickets = <ServingTicket>[];
+    for (final list in groups.values) {
+      final order = list.first['orders'] as Map<String, dynamic>? ?? const {};
+      final kind = OrderKind.from(order['kind']);
+      final takeaway = kind != OrderKind.dineIn;
+      if (takeaway && order['fulfillment'] != 'accepted') continue;
+      final all = list.map(OrderItem.fromJson).toList()
+        ..sort((a, b) {
+          final byCourse = a.course.compareTo(b.course);
+          return byCourse != 0 ? byCourse : a.createdAt.compareTo(b.createdAt);
+        });
+      final ready = all.where((i) => i.status == OrderItemStatus.ready).toList();
+      if (ready.isEmpty) continue;
+      final since = ready
+          .map((i) => i.readyAt ?? i.sentAt ?? i.createdAt)
+          .reduce((a, b) => a.isBefore(b) ? a : b);
+      final waiter = {
+        for (final r in list)
+          if ((r['member'] as Map<String, dynamic>?)?['name'] case final String name) name,
+      }.join(', ');
+      tickets.add(
+        ServingTicket(
+          orderId: list.first['order_id'] as String,
+          tableId: order['table_id'] as String?,
+          takeawayKind: takeaway ? kind : null,
+          takeawayNumber: takeaway ? _toInt(order['number']) : null,
+          promisedAt: _toDateOrNull(order['promised_at']),
+          items: takeaway ? all : ready,
+          readySince: since,
+          waiter: waiter.isNotEmpty
+              ? waiter
+              : (order['opener'] as Map<String, dynamic>?)?['name'] as String?,
+          cooking: takeaway
+              ? 0
+              : all.where((i) => i.status == OrderItemStatus.sent).fold(0, (sum, i) => sum + i.quantity),
+        ),
+      );
+    }
+    return tickets..sort((a, b) => a.readySince.compareTo(b.readySince));
+  }
+}
+
 /// Ustawienia ekranu kuchni: po ilu minutach bilecik żółknie i czerwienieje.
 class KitchenConfig {
   const KitchenConfig({this.warnMinutes = 4, this.lateMinutes = 6});
@@ -1582,6 +1677,8 @@ class ActingMember {
     required this.permissions,
     this.position,
     this.shiftStartedAt,
+    this.endedShiftStartedAt,
+    this.shiftEndedAt,
   });
 
   final String memberId;
@@ -1589,6 +1686,10 @@ class ActingMember {
   final String? position;
   final Set<String> permissions;
   final DateTime? shiftStartedAt;
+
+  /// Po „Zakończ zmianę”: od kiedy do kiedy trwała zakończona zmiana.
+  final DateTime? endedShiftStartedAt;
+  final DateTime? shiftEndedAt;
 
   /// Właściciel odblokował zakładkę hasłem konta restauracji: pełny dostęp, bez pracownika.
   factory ActingMember.account() => ActingMember(
@@ -1609,6 +1710,8 @@ class ActingMember {
     position: json['position'] as String?,
     permissions: {for (final p in json['permissions'] as List? ?? const []) p.toString()},
     shiftStartedAt: _toDateOrNull(json['shift_started_at']),
+    endedShiftStartedAt: _toDateOrNull(json['ended_shift_started_at']),
+    shiftEndedAt: _toDateOrNull(json['ended_at']),
   );
 }
 

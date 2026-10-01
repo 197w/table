@@ -7,6 +7,18 @@ class AppIconData {
   const AppIconData(this.asset);
 
   final String asset;
+
+  /// Ta sama ikona w wersji duotone: kontur i lekkie wypełnienie w tym samym kolorze.
+  /// Na wybrane zakładki, puste ekrany, powiadomienia i duże ikony. Ikony „-fill” zostają bez zmian.
+  AppIconData get duotone => asset.endsWith('-fill.svg') || asset.contains('/duotone/')
+      ? this
+      : AppIconData(asset.replaceFirst('assets/icons/', 'assets/icons/duotone/'));
+
+  @override
+  bool operator ==(Object other) => other is AppIconData && other.asset == asset;
+
+  @override
+  int get hashCode => asset.hashCode;
 }
 
 /// Rysuje [AppIconData] jak [Icon]: rozmiar i kolor domyślnie z [IconTheme],
@@ -57,7 +69,8 @@ class Glyph extends StatelessWidget {
 }
 
 /// Ikony Phosphor z Iconify, pobrane skillem better-icons do assets/icons.
-/// Nowa ikona: `npx better-icons get ph:<nazwa> > assets/icons/<nazwa>.svg` i wpis poniżej.
+/// Nowa ikona: `npx better-icons get ph:<nazwa> > assets/icons/<nazwa>.svg`,
+/// `npx better-icons get ph:<nazwa>-duotone > assets/icons/duotone/<nazwa>.svg` i wpis poniżej.
 abstract final class AppIcons {
   static const alarm = AppIconData('assets/icons/alarm.svg');
   static const armchair = AppIconData('assets/icons/armchair.svg');
@@ -68,8 +81,10 @@ abstract final class AppIcons {
   static const bellSlash = AppIconData('assets/icons/bell-slash.svg');
   static const bookOpen = AppIconData('assets/icons/book-open-text.svg');
   static const bowlFood = AppIconData('assets/icons/bowl-food.svg');
+  static const blueprint = AppIconData('assets/icons/blueprint.svg');
   static const bug = AppIconData('assets/icons/bug.svg');
   static const calendar = AppIconData('assets/icons/calendar-blank.svg');
+  static const callBell = AppIconData('assets/icons/call-bell.svg');
   static const calendarCheck = AppIconData('assets/icons/calendar-check.svg');
   static const calendarDots = AppIconData('assets/icons/calendar-dots.svg');
   static const calendarDotsFill = AppIconData('assets/icons/calendar-dots-fill.svg');
@@ -80,10 +95,12 @@ abstract final class AppIcons {
   static const caretUp = AppIconData('assets/icons/caret-up.svg');
   static const caretRight = AppIconData('assets/icons/caret-right.svg');
   static const chartBar = AppIconData('assets/icons/chart-bar.svg');
+  static const chartLineUp = AppIconData('assets/icons/chart-line-up.svg');
   static const chatCircle = AppIconData('assets/icons/chat-circle-text.svg');
   static const chatText = AppIconData('assets/icons/chat-text.svg');
   static const check = AppIconData('assets/icons/check.svg');
   static const checkCircle = AppIconData('assets/icons/check-circle.svg');
+  static const chefHat = AppIconData('assets/icons/chef-hat.svg');
   static const circle = AppIconData('assets/icons/circle.svg');
   static const circleHalf = AppIconData('assets/icons/circle-half.svg');
   static const circleHalfTilt = AppIconData('assets/icons/circle-half-tilt.svg');
@@ -131,6 +148,7 @@ abstract final class AppIcons {
   static const phoneSwap = AppIconData('assets/icons/swap.svg');
   static const plus = AppIconData('assets/icons/plus.svg');
   static const prohibit = AppIconData('assets/icons/prohibit.svg');
+  static const qrCode = AppIconData('assets/icons/qr-code.svg');
   static const question = AppIconData('assets/icons/question.svg');
   static const receipt = AppIconData('assets/icons/receipt.svg');
   static const shoppingBag = AppIconData('assets/icons/shopping-bag.svg');
@@ -138,6 +156,7 @@ abstract final class AppIcons {
   static const refresh = AppIconData('assets/icons/arrow-clockwise.svg');
   static const search = AppIconData('assets/icons/magnifying-glass.svg');
   static const send = AppIconData('assets/icons/paper-plane-tilt.svg');
+  static const signIn = AppIconData('assets/icons/sign-in.svg');
   static const signOut = AppIconData('assets/icons/sign-out.svg');
   static const sliders = AppIconData('assets/icons/sliders-horizontal.svg');
   static const sort = AppIconData('assets/icons/arrows-down-up.svg');
@@ -153,6 +172,7 @@ abstract final class AppIcons {
   static const userGear = AppIconData('assets/icons/user-gear.svg');
   static const userMinus = AppIconData('assets/icons/user-minus.svg');
   static const users = AppIconData('assets/icons/users.svg');
+  static const usersThree = AppIconData('assets/icons/users-three.svg');
   static const warning = AppIconData('assets/icons/warning-circle.svg');
   static const wifiOff = AppIconData('assets/icons/wifi-slash.svg');
   static const wrench = AppIconData('assets/icons/wrench.svg');
