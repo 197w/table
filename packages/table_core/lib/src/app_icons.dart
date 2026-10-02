@@ -99,6 +99,7 @@ abstract final class AppIcons {
   static const caretRight = AppIconData('assets/icons/caret-right.svg');
   static const chartBar = AppIconData('assets/icons/chart-bar.svg');
   static const chartBarHorizontal = AppIconData('assets/icons/chart-bar-horizontal.svg');
+  static const chartPie = AppIconData('assets/icons/chart-pie-slice.svg');
   static const chartLineUp = AppIconData('assets/icons/chart-line-up.svg');
   static const chatCircle = AppIconData('assets/icons/chat-circle-text.svg');
   static const chatText = AppIconData('assets/icons/chat-text.svg');
@@ -110,6 +111,7 @@ abstract final class AppIcons {
   static const circleHalfTilt = AppIconData('assets/icons/circle-half-tilt.svg');
   static const clipboardText = AppIconData('assets/icons/clipboard-text.svg');
   static const clock = AppIconData('assets/icons/clock.svg');
+  static const clockBack = AppIconData('assets/icons/clock-counter-clockwise.svg');
   static const close = AppIconData('assets/icons/x.svg');
   static const compass = AppIconData('assets/icons/compass.svg');
   static const compassFill = AppIconData('assets/icons/compass-fill.svg');

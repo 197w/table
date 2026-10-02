@@ -76,7 +76,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0046, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0047, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -109,7 +109,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Logowanie e-mailem i hasłem. Obowiązkowe 2FA dodajemy przed wydaniem.
 - Układ jak w UniFi (`shell.dart`, `sections.dart`, 0.11.0). Górny pasek: lokal po lewej (logo, kropka połączenia
   na żywo, plan; strzałka i lista tylko przy kilku lokalach konta), grupy zakładek (`PanelSection`, `_SectionTab`: same ikony bez ramek, wybrana w kolorze akcentu z nazwą):
-  Rezerwacje (Rezerwacje, Zamówienia, Wydanie), Kuchnia (Kuchnia, Menu, Inwentaryzacja), Dostawy (Dostawy, Flota),
+  Rezerwacje (Rezerwacje, Zamówienia, Historia zamówień `/historia`, Wydanie), Kuchnia (Kuchnia, Menu, Inwentaryzacja), Dostawy (Dostawy, Flota),
   Pracownicy (Pracownicy, Statystyki zespołu `/zespol`), Baza klientów (Klienci `/klienci`, Statystyki, Opinie);
   „Table” na środku; po prawej nowa wersja, odliczanie do wylogowania, motyw i kółko pracownika (inicjały; menu:
   kod pracownika, „Zakończ zmianę”, „Wyloguj”, „Wejdź na zmianę”, e-mail i wersja, wylogowanie konta restauracji).
@@ -119,10 +119,17 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Ustawienia lokalu: rezerwacje w aplikacji (co ile minut, największa grupa), grafik pracowników, okres inwentaryzacji,
   dostawa i odbiór. Dane lokalu: logo, dane, poziom cen, dane właściciela, godziny, dni wyjątkowe.
 - Flota (`/flota`, uprawnienie `fleet`, 0045): `vehicles` (auto, skuter, rower, inny; nazwa, rejestracja unikalna
-  w lokalu, VIN 17 znaków bez I/O/Q unikalny w lokalu (0046), dostawca, uwagi, w użyciu), `panel_save_vehicle`,
-  `panel_delete_vehicle`.
-- Stawki i zarobki (0046): stawka za godzinę w oknie pracownika („Stawka za godzinę”, zł/h), tabela `staff_rates`
-  (czyta tylko uprawnienie `staff`, bo `staff_members` widzą wszyscy pracownicy), zapis `panel_set_staff_rate`.
+  w lokalu, VIN 17 znaków bez I/O/Q unikalny w lokalu (0046), dostawca, w użyciu), `panel_save_vehicle`,
+  `panel_delete_vehicle`. Notatki o pojeździe (0047): `vehicle_notes` (autor z zalogowanego pracownika albo
+  „Konto restauracji”, `private.note_author`), `panel_add_vehicle_note`, `panel_delete_vehicle_note`; w oknie pojazdu
+  po prawej, karta pokazuje ostatnią. Stare „Uwagi” (`vehicles.note`) przeszły do notatek z autorem „Uwagi”.
+- Stawki i zarobki (0046, 0047): w oknie pracownika rodzaj umowy („Umowa”: zlecenie, zlecenie – student do 26 lat,
+  umowa o pracę; `staff_rates.contract`) oraz stawka brutto i netto za godzinę: wpisanie jednej liczy drugą
+  (`Payroll` w `models.dart`, 2026 w przybliżeniu: składki 13,71%, zdrowotna 9%, PIT 12%; zlecenie koszty 20%;
+  umowa o pracę koszty 250 zł i kwota zmniejszająca 300 zł miesięcznie, stawka liczona dla 168 h; student netto = brutto).
+  W bazie tylko brutto: tabela `staff_rates` (czyta tylko uprawnienie `staff`, bo `staff_members` widzą wszyscy
+  pracownicy), zapis `panel_set_staff_rate(member, grosze, contract)`. Netto zarobku liczy panel z umowy (szczegóły
+  pracownika, kolumna „Zarobek” i kafel „Wynagrodzenia brutto” w statystykach zespołu).
   Statystyki pracownika (szczegóły w Zespole) i zespołu liczone za miesiąc kalendarzowy od 1. do ostatniego dnia
   w strefie czasowej lokalu (`private.month_range`, `p_month`; zmiana przez północ dzieli się między miesiące),
   przełącznik `MonthSwitcher`; zarobek = godziny × obecna stawka, w zespole tylko z uprawnieniem `staff`.
@@ -131,9 +138,15 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`allowEndOfDay`, `TimeOfDay(hour: 24)`, w bazie `time '24:00'`, kolumny i sprawdzenia `closes > opens` to przyjmują).
 - Klienci (`/klienci`, uprawnienie `customers`, 0045): `panel_customers` łączy rezerwacje (bez blokad) i dostarczone
   zamówienia na wynos po koncie w aplikacji, telefonie (ostatnie 9 cyfr) albo imieniu: wizyty, nieobecności,
-  zamówienia, wydatki, ostatnia wizyta, najbliższa rezerwacja. Statystyki zespołu (`/zespol`, uprawnienie `stats`):
+  zamówienia, wydatki, ostatnia wizyta, najbliższa rezerwacja. Układ: lista z wyszukiwaniem po lewej, po prawej
+  wybrany klient (liczby, historia `panel_customer_history`, notatki) albo podsumowanie wszystkich. Klucz klienta
+  liczy `private.customer_key` (0047). Notatki o kliencie: `customer_notes` (RLS: tylko obsługa lokalu,
+  `has_staff_role`; goście ich nie widzą), `panel_add_customer_note`, `panel_delete_customer_note`, wspólny widżet
+  `NotesView` (`shared/notes_view.dart`, Enter dodaje). Statystyki zespołu (`/zespol`, uprawnienie `stats`):
   `panel_team_stats` (godziny, zmiany, rachunki, pozycje, kursy, sprzedaż na osobę, 7/30/90 dni).
 - Zakładki nie mają tytułów ani opisów (`PageHeader`: tylko akcje i rząd zakładek); nazwę widać w menu bocznym.
+  Przyciski (`actions`) stoją po prawej w tym samym rzędzie co zakładki i filtry (`below`); osobny rząd nad nimi
+  tylko z `actionsInRow: false` (Edycja sali).
   Przejście między zakładkami menu (`_tabPage` w `app.dart`) i zakładkami w ekranie (`TabContent`) ma ten sam ruch:
   wygaszenie i wjazd o kilka pikseli z dołu (`PanelMotion`, 220 ms). W Rezerwacjach wybór dnia, „Gość z ulicy”
   i „Nowa rezerwacja” są nad listą po prawej (z liczbą rezerwacji i gości), a „Na żywo”, odświeżanie i dźwięk
@@ -182,7 +195,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Po decyzji pracownik nie może zmienić tego dnia. Okres, na który pracownicy zgłaszają
   godziny, ustawia lokal w „Ustawienia lokalu” → „Grafik pracowników” (`schedule_period`: week, two_weeks, month;
   pary tygodni liczone od poniedziałku 5.01.2026, `staff_my_jobs` zwraca okres). Czas pracy: „Pracownicy” → „Czas pracy”.
-- Statystyki mają zakładki: Sprzedaż (`panel_sales_stats`), Rezerwacje i goście, Historia zamówień.
+- Statystyki (Baza klientów) mają zakładki: Sprzedaż (`panel_sales_stats`) i Rezerwacje i goście; okres 7/30/90 dni
+  w rzędzie zakładek. Historia zamówień jest osobną zakładką w grupie Rezerwacje.
 - Role w `restaurant_staff`: owner, manager, staff. Kierownik i właściciel zmieniają salę, menu, dane lokalu
   i odpowiadają na opinie. Obsługa prowadzi rezerwacje. Uprawnień pilnuje baza (RLS i funkcje `panel_*`).
 - Rezerwacje i plan sali tylko w planie Pro. Plan Free widzi opinie, menu, lokal i statystyki wyświetleń.
@@ -211,7 +225,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Pozycję wysłaną na kuchnię anuluje tylko kierownik. Zamknięcie rachunku kończy rezerwację gości przy stoliku.
   Zamknięcie rachunku (`panel_close_order`): gotówka, karta albo inne. Karty podarunkowe usunięte (0038): nie ma ich
   w panelu ani w aplikacji Table, `purchase_gift_card` zwraca błąd, dane kart i stare płatności kartą zostają w bazie
-  (historia zamówień i sprzedaż je pokazują). Historia zamkniętych rachunków: zakładka „Historia zamówień”.
+  (historia zamówień i sprzedaż je pokazują). Historia zamkniętych rachunków: „Rezerwacje” → „Historia zamówień”.
   Paragon fiskalny jeszcze na kasie, integrację z drukarką fiskalną robimy później.
 - Dostawy i odbiór osobisty (0039, 0040, tylko Pro): lokal włącza je w „Ustawienia lokalu” → „Dostawa i odbiór”
   (`delivery_enabled`, `pickup_enabled`, `takeaway_cash` = gotówka, opłata, minimalne zamówienie, obszar). Gość zamawia

@@ -1002,11 +1002,12 @@ class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
                           '${stats.shifts} zmian${stats.openSince == null ? '' : ' · w pracy od ${_hm(stats.openSince!)}'}'),
                       // Zarobek w miesiącu: przepracowane godziny × stawka.
                       (
-                        'Zarobek',
+                        'Zarobek brutto',
                         stats.earningsGrosze == null ? '—' : Fmt.price(stats.earningsGrosze!),
                         stats.rateGrosze == null
                             ? 'ustaw stawkę w „Edytuj”'
-                            : '${hoursText(Duration(seconds: stats.seconds))} h × ${Fmt.price(stats.rateGrosze!)}/h',
+                            : 'netto ${Fmt.price(Payroll.monthlyNet(stats.contract, stats.earningsGrosze!))} · '
+                                  '${Fmt.price(stats.rateGrosze!)}/h',
                       ),
                       ('Sprzedaż', Fmt.price(stats.revenueGrosze), '${stats.ordersClosed} zamkniętych rachunków'),
                       ('Średni rachunek', stats.ordersClosed == 0 ? '—' : Fmt.price(stats.averageOrder), 'na zamknięty rachunek'),
@@ -1703,10 +1704,13 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
   late String? _positionId = widget.member?.positionId;
   late int _color = widget.member?.color ?? 0;
   late bool _active = widget.member?.active ?? true;
-  final _rate = TextEditingController();
+  /// Stawka brutto i netto za godzinę: wpisanie jednej liczy drugą według rodzaju umowy.
+  final _gross = TextEditingController();
+  final _net = TextEditingController();
+  Contract _contract = Contract.zlecenie;
 
   /// Stawka z bazy, żeby nie zapisywać jej bez zmiany. Null: jeszcze się wczytuje albo jej nie ma.
-  int? _savedRate;
+  StaffRate? _savedRate;
   bool _rateLoaded = false;
   bool _busy = false;
 
@@ -1723,7 +1727,11 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
       setState(() {
         _savedRate = rates[id];
         _rateLoaded = true;
-        if (_savedRate != null) _rate.text = groszeToText(_savedRate!);
+        if (_savedRate case final rate?) {
+          _contract = rate.contract;
+          _gross.text = groszeToText(rate.grossGrosze);
+          _net.text = groszeToText(rate.netGrosze);
+        }
       });
     }).catchError((_) {
       if (mounted) setState(() => _rateLoaded = true);
@@ -1735,8 +1743,27 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
     _firstName.dispose();
     _lastName.dispose();
     _phone.dispose();
-    _rate.dispose();
+    _gross.dispose();
+    _net.dispose();
     super.dispose();
+  }
+
+  /// Brutto wpisane: netto liczy się samo.
+  void _grossChanged(String text) {
+    final gross = parseGrosze(text);
+    _net.text = text.trim().isEmpty || gross == null ? '' : groszeToText(Payroll.hourlyNet(_contract, gross));
+  }
+
+  /// Netto wpisane: brutto liczy się samo.
+  void _netChanged(String text) {
+    final net = parseGrosze(text);
+    _gross.text = text.trim().isEmpty || net == null ? '' : groszeToText(Payroll.hourlyGross(_contract, net));
+  }
+
+  /// Zmiana umowy przelicza netto z brutto.
+  void _contractChanged(Contract contract) {
+    setState(() => _contract = contract);
+    _grossChanged(_gross.text);
   }
 
   Future<void> _save(List<StaffPosition> positions) async {
@@ -1752,7 +1779,7 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
       problem = 'Wpisz numer telefonu, co najmniej 9 cyfr.';
     } else if (position == null) {
       problem = 'Wybierz stanowisko.';
-    } else if (_rate.text.trim().isNotEmpty && (parseGrosze(_rate.text) == null || parseGrosze(_rate.text)! > 100000)) {
+    } else if (_gross.text.trim().isNotEmpty && (parseGrosze(_gross.text) == null || parseGrosze(_gross.text)! > 100000)) {
       problem = 'Wpisz stawkę za godzinę, na przykład 30 albo 32,50.';
     } else {
       problem = null;
@@ -1774,9 +1801,9 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
         color: _color,
         active: _active,
       );
-      final rate = _rate.text.trim().isEmpty ? null : parseGrosze(_rate.text);
-      if (_rateLoaded && rate != _savedRate) {
-        await ref.read(repositoryProvider).setStaffRate(id, rate);
+      final rate = _gross.text.trim().isEmpty ? null : parseGrosze(_gross.text);
+      if (_rateLoaded && (rate != _savedRate?.grossGrosze || (rate != null && _contract != _savedRate?.contract))) {
+        await ref.read(repositoryProvider).setStaffRate(id, rate, _contract);
         ref.invalidate(staffRatesProvider(widget.restaurantId));
         ref.invalidate(memberStatsProvider);
         ref.invalidate(teamStatsProvider);
@@ -1884,17 +1911,40 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
               onChanged: (v) => setState(() => _positionId = v),
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: _rate,
-              enabled: _rateLoaded,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
-              style: const TextStyle(fontFeatures: _tabular),
-              decoration: const InputDecoration(
-                labelText: 'Stawka za godzinę',
-                hintText: 'Na przykład 30',
-                suffixText: 'zł/h',
-              ),
+            DropdownButtonFormField<Contract>(
+              initialValue: _contract,
+              decoration: const InputDecoration(labelText: 'Umowa'),
+              icon: const Glyph(AppIcons.caretDown, size: 16),
+              items: [for (final c in Contract.values) DropdownMenuItem(value: c, child: Text(c.label))],
+              onChanged: _rateLoaded ? (c) => _contractChanged(c!) : null,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _gross,
+                    enabled: _rateLoaded,
+                    onChanged: _grossChanged,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+                    style: const TextStyle(fontFeatures: _tabular),
+                    decoration: const InputDecoration(labelText: 'Stawka brutto', suffixText: 'zł/h'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _net,
+                    enabled: _rateLoaded,
+                    onChanged: _netChanged,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+                    style: const TextStyle(fontFeatures: _tabular),
+                    decoration: const InputDecoration(labelText: 'Stawka netto', suffixText: 'zł/h'),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             Text('Kolor w grafiku', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),

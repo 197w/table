@@ -16,6 +16,7 @@ enum PanelSection {
   reservations('Rezerwacje', AppIcons.calendarDots, [
     PanelTab(PanelRoutes.reservations, 'Rezerwacje', AppIcons.calendarDots),
     PanelTab(PanelRoutes.orders, 'Zamówienia', AppIcons.receipt),
+    PanelTab(PanelRoutes.history, 'Historia zamówień', AppIcons.clockBack),
     PanelTab(PanelRoutes.serving, 'Wydanie', AppIcons.callBell),
   ]),
   kitchen('Kuchnia', AppIcons.chefHat, [
@@ -33,7 +34,7 @@ enum PanelSection {
   ]),
   customers('Baza klientów', AppIcons.addressBook, [
     PanelTab(PanelRoutes.customers, 'Klienci', AppIcons.userList),
-    PanelTab(PanelRoutes.stats, 'Statystyki', AppIcons.chartLineUp),
+    PanelTab(PanelRoutes.stats, 'Statystyki', AppIcons.chartPie),
     PanelTab(PanelRoutes.reviews, 'Opinie', AppIcons.chatCircle),
   ]);
 

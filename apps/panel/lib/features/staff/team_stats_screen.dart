@@ -61,6 +61,10 @@ class _TeamStatsScreenState extends ConsumerState<TeamStatsScreen> {
               final closed = people.fold(0, (sum, s) => sum + s.ordersClosed);
               final deliveries = people.fold(0, (sum, s) => sum + s.deliveries);
               final payroll = people.fold(0, (sum, s) => sum + (s.earningsGrosze ?? 0));
+              final payrollNet = people.fold(
+                0,
+                (sum, s) => sum + (s.earningsGrosze == null ? 0 : Payroll.monthlyNet(s.contract, s.earningsGrosze!)),
+              );
               final pay = canPay && people.any((s) => s.rateGrosze != null);
               final best = people.fold(0, (m, s) => s.revenueGrosze > m ? s.revenueGrosze : m);
 
@@ -101,9 +105,9 @@ class _TeamStatsScreenState extends ConsumerState<TeamStatsScreen> {
                           const SizedBox(width: 14),
                           Expanded(
                             child: StatTile(
-                              label: 'Wynagrodzenia',
+                              label: 'Wynagrodzenia brutto',
                               value: Fmt.price(payroll),
-                              hint: 'godziny × stawka',
+                              hint: 'netto ok. ${Fmt.price(payrollNet)}',
                               icon: AppIcons.creditCard,
                               color: TileColors.violet,
                             ),
@@ -216,10 +220,27 @@ class _MemberRow extends StatelessWidget {
           cell('${s.deliveries}', muted: s.deliveries == 0),
           if (pay)
             Tooltip(
-              message: s.rateGrosze == null ? 'Bez stawki' : 'Stawka ${Fmt.price(s.rateGrosze!)}/h',
-              child: cell(
-                s.earningsGrosze == null ? '—' : Fmt.price(s.earningsGrosze!),
-                muted: s.earningsGrosze == null || s.earningsGrosze == 0,
+              message: s.rateGrosze == null
+                  ? 'Bez stawki'
+                  : '${s.contract.label} · ${Fmt.price(s.rateGrosze!)}/h brutto',
+              child: SizedBox(
+                width: _column,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      s.earningsGrosze == null ? '—' : Fmt.price(s.earningsGrosze!),
+                      style: value?.copyWith(
+                        color: s.earningsGrosze == null || s.earningsGrosze == 0 ? AppColors.textMuted : null,
+                      ),
+                    ),
+                    if (s.earningsGrosze != null)
+                      Text(
+                        'netto ${Fmt.price(Payroll.monthlyNet(s.contract, s.earningsGrosze!))}',
+                        style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                      ),
+                  ],
+                ),
               ),
             ),
           SizedBox(

@@ -14,6 +14,7 @@ import '../features/floor/floor_screen.dart';
 import '../features/inventory/inventory_screen.dart';
 import '../features/kitchen/kitchen_screen.dart';
 import '../features/menu/menu_screen.dart';
+import '../features/orders/order_history_screen.dart';
 import '../features/orders/orders_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/reservations/reservations_screen.dart';
@@ -165,6 +166,7 @@ GoRouter _buildRouter(
               OrdersScreen(tableId: state.uri.queryParameters['stolik']),
             ),
           ),
+          _page(PanelRoutes.history, const OrderHistoryScreen()),
           _page(PanelRoutes.deliveries, const DeliveriesScreen()),
           _page(PanelRoutes.fleet, const FleetScreen()),
           _page(PanelRoutes.kitchen, const KitchenScreen()),
@@ -207,6 +209,7 @@ abstract final class PanelRoutes {
   static const reservations = '/rezerwacje';
   static const floor = '/sala';
   static const orders = '/zamowienia';
+  static const history = '/historia';
   static const deliveries = '/dostawy';
   static const fleet = '/flota';
   static const kitchen = '/kuchnia';
@@ -226,6 +229,7 @@ abstract final class PanelRoutes {
 const _routePermissions = {
   PanelRoutes.reservations: {'reservations'},
   PanelRoutes.orders: {'orders'},
+  PanelRoutes.history: {'orders', 'stats'},
   PanelRoutes.deliveries: {'orders'},
   PanelRoutes.fleet: {'fleet'},
   PanelRoutes.kitchen: {'kitchen'},
@@ -247,6 +251,7 @@ const _routePermissions = {
 const panelTabLabels = {
   PanelRoutes.reservations: 'Rezerwacje',
   PanelRoutes.orders: 'Zamówienia',
+  PanelRoutes.history: 'Historia zamówień',
   PanelRoutes.deliveries: 'Dostawy',
   PanelRoutes.fleet: 'Flota',
   PanelRoutes.kitchen: 'Kuchnia',

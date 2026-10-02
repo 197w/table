@@ -1445,19 +1445,102 @@ class PanelRepository {
     });
   }
 
-  /// Stawki za godzinę według numeru pracownika (tylko z uprawnieniem „Pracownicy”).
-  Future<Map<String, int>> staffRates(String restaurantId) {
+  /// Stawki brutto za godzinę i rodzaje umów według numeru pracownika (tylko z uprawnieniem „Pracownicy”).
+  Future<Map<String, StaffRate>> staffRates(String restaurantId) {
     return _guard(() async {
-      final rows = await _db.from('staff_rates').select('member_id, hourly_rate_grosze').eq('restaurant_id', restaurantId);
-      return {for (final r in rows) r['member_id'] as String: (r['hourly_rate_grosze'] as num).toInt()};
+      final rows = await _db
+          .from('staff_rates')
+          .select('member_id, hourly_rate_grosze, contract')
+          .eq('restaurant_id', restaurantId);
+      return {
+        for (final r in rows)
+          r['member_id'] as String: StaffRate(
+            grossGrosze: (r['hourly_rate_grosze'] as num).toInt(),
+            contract: Contract.from(r['contract']),
+          ),
+      };
     });
   }
 
-  /// Stawka za godzinę w groszach. Null usuwa stawkę.
-  Future<void> setStaffRate(String memberId, int? grosze) {
+  /// Stawka brutto za godzinę w groszach i rodzaj umowy. Null usuwa stawkę.
+  Future<void> setStaffRate(String memberId, int? grosze, Contract contract) {
     return _guard(
-      () => _db.rpc<void>('panel_set_staff_rate', params: {'p_member_id': memberId, 'p_rate_grosze': grosze}),
+      () => _db.rpc<void>('panel_set_staff_rate', params: {
+        'p_member_id': memberId,
+        'p_rate_grosze': grosze,
+        'p_contract': contract.db,
+      }),
     );
+  }
+
+  /// Wizyty i zamówienia klienta, najnowsze pierwsze.
+  Future<List<CustomerEvent>> customerHistory(String restaurantId, String key) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>(
+        'panel_customer_history',
+        params: {'p_restaurant_id': restaurantId, 'p_key': key},
+      );
+      return [for (final r in rows) CustomerEvent.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
+  /// Notatki o kliencie, najnowsze pierwsze.
+  Future<List<Note>> customerNotes(String restaurantId, String key) {
+    return _guard(() async {
+      final rows = await _db
+          .from('customer_notes')
+          .select()
+          .eq('restaurant_id', restaurantId)
+          .eq('customer_key', key)
+          .order('created_at', ascending: false);
+      return rows.map(Note.fromJson).toList();
+    });
+  }
+
+  Future<void> addCustomerNote(String restaurantId, String key, String body, {String? memberId}) {
+    return _guard(
+      () => _db.rpc<String>('panel_add_customer_note', params: {
+        'p_restaurant_id': restaurantId,
+        'p_key': key,
+        'p_body': body,
+        'p_member_id': memberId,
+      }),
+    );
+  }
+
+  Future<void> deleteCustomerNote(String id) {
+    return _guard(() => _db.rpc<void>('panel_delete_customer_note', params: {'p_id': id}));
+  }
+
+  /// Notatki o pojazdach lokalu według pojazdu, najnowsze pierwsze.
+  Future<Map<String, List<Note>>> vehicleNotes(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db
+          .from('vehicle_notes')
+          .select()
+          .eq('restaurant_id', restaurantId)
+          .order('created_at', ascending: false);
+      final notes = <String, List<Note>>{};
+      for (final r in rows) {
+        final note = Note.fromJson(r);
+        notes.putIfAbsent(note.parentId ?? '', () => []).add(note);
+      }
+      return notes;
+    });
+  }
+
+  Future<void> addVehicleNote(String vehicleId, String body, {String? memberId}) {
+    return _guard(
+      () => _db.rpc<String>('panel_add_vehicle_note', params: {
+        'p_vehicle_id': vehicleId,
+        'p_body': body,
+        'p_member_id': memberId,
+      }),
+    );
+  }
+
+  Future<void> deleteVehicleNote(String id) {
+    return _guard(() => _db.rpc<void>('panel_delete_vehicle_note', params: {'p_id': id}));
   }
 
   Future<void> deleteStaffMember(String id) {

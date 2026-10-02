@@ -41,24 +41,36 @@ class _PanelPressState extends State<PanelPress> {
   }
 }
 
-/// Pasek nad treścią zakładki: akcje po prawej i rząd zakładek albo filtrów.
-/// Bez tytułu i opisu: nazwę zakładki widać w menu bocznym.
+/// Pasek nad treścią zakładki: rząd zakładek albo filtrów i przyciski po prawej, w jednym rzędzie.
+/// Bez tytułu i opisu: nazwę zakładki widać w menu bocznym. [actionsInRow] false zostawia przyciski
+/// w osobnym rzędzie nad zakładkami (np. dużo przycisków w Edycji sali).
 class PageHeader extends StatelessWidget {
   const PageHeader({
     super.key,
     this.actions = const [],
     this.below,
+    this.actionsInRow = true,
   });
 
   final List<Widget> actions;
 
   /// Dodatkowy rząd, na przykład zakładki albo filtry.
   final Widget? below;
+  final bool actionsInRow;
 
   @override
   Widget build(BuildContext context) {
-    final top = actions.isNotEmpty;
-    if (!top && below == null) return const SizedBox(height: 20);
+    final inRow = actionsInRow && below != null && actions.isNotEmpty;
+    final top = actions.isNotEmpty && !inRow;
+    final row = inRow
+        ? Row(
+            children: [
+              Expanded(child: below!),
+              for (final a in actions) ...[const SizedBox(width: 8), PanelPress(child: a)],
+            ],
+          )
+        : below;
+    if (!top && row == null) return const SizedBox(height: 20);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -78,7 +90,7 @@ class PageHeader extends StatelessWidget {
                     ],
                   ],
                 ),
-              if (below != null) ...[if (top) const SizedBox(height: 16), below!],
+              if (row != null) ...[if (top) const SizedBox(height: 16), row],
             ],
           ),
         ),

@@ -7,7 +7,6 @@ import 'package:table_core/table_core.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
-import '../orders/order_history_screen.dart';
 import 'sales_view.dart';
 
 enum _Metric {
@@ -66,8 +65,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       children: [
         PageHeader(
           actions: [
-            if (_tab != 2)
-              SegmentedTabs<int>(
+            SegmentedTabs<int>(
                 options: const [(7, '7 dni'), (30, '30 dni'), (90, '90 dni')],
                 selected: _days,
                 onChanged: (d) => setState(() => _days = d),
@@ -76,7 +74,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           below: Align(
             alignment: Alignment.centerLeft,
             child: SegmentedTabs<int>(
-              options: const [(0, 'Sprzedaż'), (1, 'Rezerwacje i goście'), (2, 'Historia zamówień')],
+              options: const [(0, 'Sprzedaż'), (1, 'Rezerwacje i goście')],
               selected: _tab,
               onChanged: (t) => setState(() => _tab = t),
             ),
@@ -89,8 +87,6 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
               ? (restaurant.isPro
                     ? SalesView(restaurantId: restaurant.id, days: _days)
                     : const ProGate(feature: 'Sprzedaż i zamówienia'))
-              : _tab == 2
-              ? const OrderHistoryScreen(embedded: true)
               : async.when(
             skipLoadingOnReload: true,
             loading: () => const LoadingView(),

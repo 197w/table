@@ -5,6 +5,7 @@ import 'package:table_core/table_core.dart';
 
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../shared/notes_view.dart';
 import '../../shared/panel_widgets.dart';
 
 /// Wpisywane litery od razu zamieniają się na wielkie (rejestracja, VIN), jak przy włączonym Caps Locku.
@@ -28,8 +29,8 @@ Color _kindColor(VehicleKind kind) => switch (kind) {
   VehicleKind.other => TileColors.violet,
 };
 
-/// Flota: pojazdy dostawców (auto, skuter, rower), rejestracja i kto nim jeździ.
-/// Zmiany tylko z uprawnieniem „Flota”.
+/// Flota: pojazdy dostawców (auto, skuter, rower), rejestracja, kto nim jeździ i notatki zespołu
+/// (np. przegląd, usterki). Zmiany i notatki tylko z uprawnieniem „Flota”.
 class FleetScreen extends ConsumerWidget {
   const FleetScreen({super.key});
 
@@ -39,6 +40,7 @@ class FleetScreen extends ConsumerWidget {
       builder: (_) => _VehicleDialog(restaurantId: restaurantId, vehicle: vehicle),
     );
     if (saved == true) ref.invalidate(vehiclesProvider(restaurantId));
+    ref.invalidate(vehicleNotesProvider(restaurantId));
   }
 
   @override
@@ -49,6 +51,7 @@ class FleetScreen extends ConsumerWidget {
     final async = ref.watch(vehiclesProvider(restaurant.id));
     final staff = ref.watch(staffProvider(restaurant.id)).value ?? const <StaffMember>[];
     final names = {for (final m in staff) m.id: m.name};
+    final notes = ref.watch(vehicleNotesProvider(restaurant.id)).value ?? const <String, List<Note>>{};
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -93,6 +96,7 @@ class FleetScreen extends ConsumerWidget {
                                 child: _VehicleCard(
                                   vehicle: v,
                                   courier: v.memberId == null ? null : names[v.memberId],
+                                  notes: notes[v.id] ?? const [],
                                   onTap: canEdit ? () => _edit(context, ref, restaurant.id, v) : null,
                                 ),
                               ),
@@ -109,10 +113,13 @@ class FleetScreen extends ConsumerWidget {
 }
 
 class _VehicleCard extends StatelessWidget {
-  const _VehicleCard({required this.vehicle, required this.courier, required this.onTap});
+  const _VehicleCard({required this.vehicle, required this.courier, required this.notes, required this.onTap});
 
   final Vehicle vehicle;
   final String? courier;
+
+  /// Notatki od najnowszej. Karta pokazuje ostatnią i ile ich jest.
+  final List<Note> notes;
   final VoidCallback? onTap;
 
   @override
@@ -176,7 +183,9 @@ class _VehicleCard extends StatelessWidget {
                           courier ?? 'Bez dostawcy',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: text.bodyMedium?.copyWith(color: courier == null ? AppColors.textMuted : AppColors.text),
+                          style: text.bodyMedium?.copyWith(
+                            color: courier == null ? AppColors.textMuted : AppColors.text,
+                          ),
                         ),
                       ),
                     ],
@@ -192,9 +201,36 @@ class _VehicleCard extends StatelessWidget {
                       ),
                     ),
                   ],
-                  if (v.note != null) ...[
-                    const SizedBox(height: 8),
-                    Text(v.note!, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+                  if (notes.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 1),
+                          child: Glyph(AppIcons.notePencil, size: 16, color: AppColors.textMuted),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            notes.first.body,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.bodySmall?.copyWith(color: AppColors.text),
+                          ),
+                        ),
+                        if (notes.length > 1) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            '+${notes.length - 1}',
+                            style: text.bodySmall?.copyWith(
+                              color: AppColors.textMuted,
+                              fontFeatures: const [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ],
                 ],
               ),
@@ -206,7 +242,8 @@ class _VehicleCard extends StatelessWidget {
   }
 }
 
-/// Nowy pojazd albo zmiana istniejącego: rodzaj, nazwa, rejestracja, dostawca, uwagi i czy jest używany.
+/// Nowy pojazd albo zmiana istniejącego: rodzaj, nazwa, rejestracja, dostawca i czy jest używany.
+/// Istniejący pojazd ma obok notatki (dopisują się od razu, bez „Zapisz”).
 class _VehicleDialog extends ConsumerStatefulWidget {
   const _VehicleDialog({required this.restaurantId, this.vehicle});
 
@@ -222,7 +259,6 @@ class _VehicleDialogState extends ConsumerState<_VehicleDialog> {
   late final _name = TextEditingController(text: widget.vehicle?.name ?? '');
   late final _plate = TextEditingController(text: widget.vehicle?.plate ?? '');
   late final _vin = TextEditingController(text: widget.vehicle?.vin ?? '');
-  late final _note = TextEditingController(text: widget.vehicle?.note ?? '');
   late String? _memberId = widget.vehicle?.memberId;
   late bool _active = widget.vehicle?.active ?? true;
   bool _busy = false;
@@ -232,7 +268,6 @@ class _VehicleDialogState extends ConsumerState<_VehicleDialog> {
     _name.dispose();
     _plate.dispose();
     _vin.dispose();
-    _note.dispose();
     super.dispose();
   }
 
@@ -248,17 +283,18 @@ class _VehicleDialogState extends ConsumerState<_VehicleDialog> {
     }
     setState(() => _busy = true);
     try {
-      await ref.read(repositoryProvider).saveVehicle(
-        restaurantId: widget.restaurantId,
-        id: widget.vehicle?.id,
-        kind: _kind,
-        name: _name.text.trim(),
-        plate: _kind == VehicleKind.bike || _plate.text.trim().isEmpty ? null : _plate.text.trim(),
-        vin: _kind == VehicleKind.bike || vin.isEmpty ? null : vin,
-        memberId: _memberId,
-        note: _note.text.trim().isEmpty ? null : _note.text.trim(),
-        active: _active,
-      );
+      await ref
+          .read(repositoryProvider)
+          .saveVehicle(
+            restaurantId: widget.restaurantId,
+            id: widget.vehicle?.id,
+            kind: _kind,
+            name: _name.text.trim(),
+            plate: _kind == VehicleKind.bike || _plate.text.trim().isEmpty ? null : _plate.text.trim(),
+            vin: _kind == VehicleKind.bike || vin.isEmpty ? null : vin,
+            memberId: _memberId,
+            active: _active,
+          );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) showError(context, e);
@@ -295,75 +331,89 @@ class _VehicleDialogState extends ConsumerState<_VehicleDialog> {
         if (m.active || m.id == _memberId) m,
     ]..sort((a, b) => a.name.compareTo(b.name));
 
-    return AlertDialog(
-      title: Text(widget.vehicle == null ? 'Nowy pojazd' : 'Pojazd'),
-      content: SizedBox(
-        width: 460,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: IconTabs<VehicleKind>(
-                options: [for (final k in VehicleKind.values) (k, vehicleIcon(k), k.label)],
-                selected: _kind,
-                onChanged: (k) => setState(() => _kind = k),
-              ),
+    final vehicle = widget.vehicle;
+    final form = SizedBox(
+      width: 460,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IconTabs<VehicleKind>(
+              options: [for (final k in VehicleKind.values) (k, vehicleIcon(k), k.label)],
+              selected: _kind,
+              onChanged: (k) => setState(() => _kind = k),
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _name,
-              autofocus: widget.vehicle == null,
-              maxLength: 80,
-              decoration: const InputDecoration(labelText: 'Nazwa', hintText: 'Na przykład Fiat Panda', counterText: ''),
-            ),
-            if (_kind != VehicleKind.bike) ...[
-              const SizedBox(height: 14),
-              TextField(
-                controller: _plate,
-                maxLength: 15,
-                textCapitalization: TextCapitalization.characters,
-                inputFormatters: [UpperCaseFormatter()],
-                decoration: const InputDecoration(labelText: 'Rejestracja', hintText: 'BI 12345', counterText: ''),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: _vin,
-                maxLength: 17,
-                textCapitalization: TextCapitalization.characters,
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')), UpperCaseFormatter()],
-                style: const TextStyle(letterSpacing: 1, fontFeatures: [FontFeature.tabularFigures()]),
-                decoration: const InputDecoration(labelText: 'VIN', hintText: '17 znaków, z dowodu rejestracyjnego'),
-              ),
-            ],
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _name,
+            autofocus: widget.vehicle == null,
+            maxLength: 80,
+            decoration: const InputDecoration(labelText: 'Nazwa', hintText: 'Na przykład Fiat Panda', counterText: ''),
+          ),
+          if (_kind != VehicleKind.bike) ...[
             const SizedBox(height: 14),
-            DropdownButtonFormField<String?>(
-              initialValue: staff.any((m) => m.id == _memberId) ? _memberId : null,
-              decoration: const InputDecoration(labelText: 'Dostawca'),
-              icon: const Glyph(AppIcons.caretDown, size: 16),
-              items: [
-                const DropdownMenuItem<String?>(value: null, child: Text('Bez dostawcy')),
-                for (final m in staff) DropdownMenuItem<String?>(value: m.id, child: Text(m.name)),
-              ],
-              onChanged: (v) => setState(() => _memberId = v),
+            TextField(
+              controller: _plate,
+              maxLength: 15,
+              textCapitalization: TextCapitalization.characters,
+              inputFormatters: [UpperCaseFormatter()],
+              decoration: const InputDecoration(labelText: 'Rejestracja', hintText: 'BI 12345', counterText: ''),
             ),
             const SizedBox(height: 14),
             TextField(
-              controller: _note,
-              maxLength: 200,
-              decoration: const InputDecoration(labelText: 'Uwagi', hintText: 'Na przykład przegląd w marcu', counterText: ''),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(child: Text('Pojazd w użyciu', style: Theme.of(context).textTheme.titleSmall)),
-                Switch(value: _active, onChanged: (v) => setState(() => _active = v)),
-              ],
+              controller: _vin,
+              maxLength: 17,
+              textCapitalization: TextCapitalization.characters,
+              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')), UpperCaseFormatter()],
+              style: const TextStyle(letterSpacing: 1, fontFeatures: [FontFeature.tabularFigures()]),
+              decoration: const InputDecoration(labelText: 'VIN', hintText: '17 znaków, z dowodu rejestracyjnego'),
             ),
           ],
-        ),
+          const SizedBox(height: 14),
+          DropdownButtonFormField<String?>(
+            initialValue: staff.any((m) => m.id == _memberId) ? _memberId : null,
+            decoration: const InputDecoration(labelText: 'Dostawca'),
+            icon: const Glyph(AppIcons.caretDown, size: 16),
+            items: [
+              const DropdownMenuItem<String?>(value: null, child: Text('Bez dostawcy')),
+              for (final m in staff) DropdownMenuItem<String?>(value: m.id, child: Text(m.name)),
+            ],
+            onChanged: (v) => setState(() => _memberId = v),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: Text('Pojazd w użyciu', style: Theme.of(context).textTheme.titleSmall)),
+              Switch(value: _active, onChanged: (v) => setState(() => _active = v)),
+            ],
+          ),
+        ],
       ),
+    );
+
+    return AlertDialog(
+      title: Text(vehicle == null ? 'Nowy pojazd' : 'Pojazd'),
+      content: vehicle == null
+          ? form
+          : SizedBox(
+              height: 470,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SingleChildScrollView(child: form),
+                  const SizedBox(width: 24),
+                  VerticalDivider(width: 1, color: AppColors.ring),
+                  const SizedBox(width: 24),
+                  SizedBox(
+                    width: 340,
+                    child: _VehicleNotes(restaurantId: widget.restaurantId, vehicleId: vehicle.id),
+                  ),
+                ],
+              ),
+            ),
       actions: [
         if (widget.vehicle != null)
           TextButton(
@@ -377,6 +427,42 @@ class _VehicleDialogState extends ConsumerState<_VehicleDialog> {
           child: const Text('Anuluj'),
         ),
         FilledButton(onPressed: _busy ? null : _save, child: const Text('Zapisz')),
+      ],
+    );
+  }
+}
+
+/// Notatki o pojeździe w oknie pojazdu, od najnowszej.
+class _VehicleNotes extends ConsumerWidget {
+  const _VehicleNotes({required this.restaurantId, required this.vehicleId});
+
+  final String restaurantId;
+  final String vehicleId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notes = ref.watch(vehicleNotesProvider(restaurantId)).whenData((all) => all[vehicleId] ?? const <Note>[]);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Notatki', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 12),
+        Expanded(
+          child: NotesView(
+            notes: notes,
+            hint: 'Na przykład przegląd w marcu',
+            onAdd: (body) async {
+              await ref
+                  .read(repositoryProvider)
+                  .addVehicleNote(vehicleId, body, memberId: ref.read(panelMemberProvider)?.dbMemberId);
+              ref.invalidate(vehicleNotesProvider(restaurantId));
+            },
+            onDelete: (note) async {
+              await ref.read(repositoryProvider).deleteVehicleNote(note.id);
+              ref.invalidate(vehicleNotesProvider(restaurantId));
+            },
+          ),
+        ),
       ],
     );
   }

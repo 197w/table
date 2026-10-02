@@ -528,6 +528,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
+          actionsInRow: false,
           actions: [
             if (editing) ...[
               IconButton(

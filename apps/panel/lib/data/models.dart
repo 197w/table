@@ -1665,6 +1665,7 @@ class TeamStat {
     this.position,
     this.rateGrosze,
     this.earningsGrosze,
+    this.contract = Contract.zlecenie,
   });
 
   final String memberId;
@@ -1672,9 +1673,10 @@ class TeamStat {
   final String? position;
   final bool active;
 
-  /// Stawka i zarobek w miesiącu. Null bez stawki albo bez uprawnienia „Pracownicy”.
+  /// Stawka i zarobek brutto w miesiącu. Null bez stawki albo bez uprawnienia „Pracownicy”.
   final int? rateGrosze;
   final int? earningsGrosze;
+  final Contract contract;
   final int seconds;
   final int shifts;
   final int ordersOpened;
@@ -1699,6 +1701,121 @@ class TeamStat {
     deliveries: _toInt(json['deliveries']),
     rateGrosze: json['rate'] == null ? null : _toInt(json['rate']),
     earningsGrosze: json['earnings'] == null ? null : _toInt(json['earnings']),
+    contract: Contract.from(json['contract']),
+  );
+}
+
+/// Rodzaj umowy pracownika. Od niego zależy, ile z brutto zostaje na rękę.
+enum Contract {
+  zlecenie('zlecenie', 'Umowa zlecenie'),
+  student('zlecenie_student', 'Zlecenie – student do 26 lat'),
+  praca('praca', 'Umowa o pracę');
+
+  const Contract(this.db, this.label);
+  final String db;
+  final String label;
+
+  static Contract from(Object? value) => values.firstWhere((c) => c.db == value, orElse: () => Contract.zlecenie);
+}
+
+/// Stawka pracownika: brutto za godzinę i rodzaj umowy.
+class StaffRate {
+  const StaffRate({required this.grossGrosze, required this.contract});
+
+  final int grossGrosze;
+  final Contract contract;
+
+  int get netGrosze => Payroll.hourlyNet(contract, grossGrosze);
+}
+
+/// Przeliczanie brutto ↔ netto (2026, w przybliżeniu, bez indywidualnych ulg, PPK i progu 32%).
+/// Składki pracownika: emerytalna 9,76%, rentowa 1,5%, chorobowa 2,45% (razem 13,71%), zdrowotna 9% od podstawy
+/// po składkach, PIT 12%. Zlecenie: koszty 20% podstawy. Umowa o pracę: koszty 250 zł i kwota zmniejszająca 300 zł
+/// miesięcznie, więc stawkę godzinową liczymy dla pełnego etatu (168 h), a zarobek z całego miesiąca.
+/// Student do 26 lat na zleceniu: bez składek i PIT, netto = brutto.
+abstract final class Payroll {
+  static const fullTimeHours = 168;
+
+  /// Netto z brutto za miesiąc, w groszach.
+  static int monthlyNet(Contract contract, int gross) {
+    if (contract == Contract.student || gross <= 0) return gross < 0 ? 0 : gross;
+    final social = gross * 0.1371;
+    final base = gross - social;
+    final health = base * 0.09;
+    final double pit;
+    if (contract == Contract.zlecenie) {
+      pit = base * 0.8 * 0.12;
+    } else {
+      // Podstawa i podatek zaokrąglone do pełnych złotych, jak w PIT.
+      final taxBase = ((base - 25000) / 100).round() * 100;
+      pit = taxBase <= 0 ? 0 : ((taxBase * 0.12 - 30000) / 100).round() * 100.0;
+    }
+    final net = gross - social - health - (pit < 0 ? 0 : pit);
+    return net.round();
+  }
+
+  /// Netto za godzinę z brutto za godzinę.
+  static int hourlyNet(Contract contract, int grossHourly) => contract == Contract.praca
+      ? (monthlyNet(contract, grossHourly * fullTimeHours) / fullTimeHours).round()
+      : monthlyNet(contract, grossHourly);
+
+  /// Brutto za godzinę, które da podane netto za godzinę (najmniejsze takie brutto).
+  static int hourlyGross(Contract contract, int netHourly) {
+    if (netHourly <= 0) return 0;
+    if (contract == Contract.student) return netHourly;
+    var low = netHourly;
+    var high = netHourly * 3;
+    while (low < high) {
+      final mid = (low + high) ~/ 2;
+      if (hourlyNet(contract, mid) < netHourly) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+    return low;
+  }
+}
+
+/// Notatka przy kliencie albo pojeździe: treść, kto i kiedy napisał.
+class Note {
+  const Note({required this.id, required this.body, required this.createdAt, this.author, this.parentId});
+
+  final String id;
+  final String body;
+  final String? author;
+  final DateTime createdAt;
+
+  /// Pojazd albo klucz klienta, do którego należy notatka.
+  final String? parentId;
+
+  factory Note.fromJson(Map<String, dynamic> json) => Note(
+    id: json['id'] as String,
+    body: json['body'] as String? ?? '',
+    author: json['author_name'] as String?,
+    createdAt: _toDate(json['created_at']),
+    parentId: (json['vehicle_id'] ?? json['customer_key']) as String?,
+  );
+}
+
+/// Wizyta albo zamówienie klienta w historii.
+class CustomerEvent {
+  const CustomerEvent({required this.at, required this.kind, required this.status, required this.spentGrosze, this.partySize});
+
+  final DateTime at;
+
+  /// reservation, delivery albo pickup.
+  final String kind;
+  final String status;
+  final int? partySize;
+  final int spentGrosze;
+
+  factory CustomerEvent.fromJson(Map<String, dynamic> json) => CustomerEvent(
+    at: _toDate(json['at']),
+    kind: json['kind'] as String? ?? 'reservation',
+    status: json['status'] as String? ?? '',
+    partySize: json['party_size'] == null ? null : _toInt(json['party_size']),
+    spentGrosze: _toInt(json['spent_grosze']),
   );
 }
 
@@ -1998,6 +2115,7 @@ class MemberStats {
     this.planned = 0,
     this.rateGrosze,
     this.earningsGrosze,
+    this.contract = Contract.zlecenie,
   });
 
   final int seconds;
@@ -2014,9 +2132,10 @@ class MemberStats {
   /// Zaplanowane zmiany od dziś.
   final int planned;
 
-  /// Stawka za godzinę i zarobek w okresie (godziny × stawka). Null: bez stawki.
+  /// Stawka brutto za godzinę i zarobek brutto w okresie (godziny × stawka). Null: bez stawki.
   final int? rateGrosze;
   final int? earningsGrosze;
+  final Contract contract;
 
   int get averageOrder => ordersClosed == 0 ? 0 : (revenueGrosze / ordersClosed).round();
 
@@ -2037,6 +2156,7 @@ class MemberStats {
     planned: _toInt(json['planned']),
     rateGrosze: json['rate'] == null ? null : _toInt(json['rate']),
     earningsGrosze: json['earnings'] == null ? null : _toInt(json['earnings']),
+    contract: Contract.from(json['contract']),
   );
 }
 

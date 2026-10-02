@@ -477,9 +477,26 @@ final teamStatsProvider = FutureProvider.autoDispose.family<List<TeamStat>, Team
   (ref, q) => (ref..cacheFor()).watch(repositoryProvider).teamStats(q.restaurantId, q.month),
 );
 
-/// Stawki za godzinę według numeru pracownika.
-final staffRatesProvider = FutureProvider.autoDispose.family<Map<String, int>, String>(
+/// Stawki brutto za godzinę i rodzaje umów według numeru pracownika.
+final staffRatesProvider = FutureProvider.autoDispose.family<Map<String, StaffRate>, String>(
   (ref, id) => (ref..cacheFor()).watch(repositoryProvider).staffRates(id),
+);
+
+typedef CustomerQuery = ({String restaurantId, String key});
+
+/// Wizyty i zamówienia wybranego klienta.
+final customerHistoryProvider = FutureProvider.autoDispose.family<List<CustomerEvent>, CustomerQuery>(
+  (ref, q) => ref.watch(repositoryProvider).customerHistory(q.restaurantId, q.key),
+);
+
+/// Notatki o wybranym kliencie.
+final customerNotesProvider = FutureProvider.autoDispose.family<List<Note>, CustomerQuery>(
+  (ref, q) => ref.watch(repositoryProvider).customerNotes(q.restaurantId, q.key),
+);
+
+/// Notatki o pojazdach lokalu według pojazdu.
+final vehicleNotesProvider = FutureProvider.autoDispose.family<Map<String, List<Note>>, String>(
+  (ref, id) => (ref..cacheFor()).watch(repositoryProvider).vehicleNotes(id),
 );
 
 /// Ostatnio wybrana grupa zakładek w górnym pasku (Rezerwacje, Kuchnia...). Zostaje wybrana także na stronach
