@@ -59,6 +59,19 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     }
   }
 
+  /// Dzień historii w pigułce ze strzałkami; stuknięcie w datę wraca do dziś.
+  Widget _daySwitcher(DateTime today) => StepSwitcher(
+    label: '${Fmt.capitalize(Fmt.dayShort(_day))}${_day == today ? ' · dziś' : ''}',
+    labelWidth: 150,
+    previousTooltip: 'Poprzedni dzień',
+    nextTooltip: 'Następny dzień',
+    onPrevious: () => _shift(-1),
+    onNext: _day == today ? null : () => _shift(1),
+    resetTooltip: 'Wróć do dziś',
+    onReset: _day == today ? null : () => _shift(today.difference(_day).inDays),
+    extras: [(AppIcons.calendar, 'Wybierz dzień', _pickDay)],
+  );
+
   @override
   Widget build(BuildContext context) {
     final restaurant = ref.watch(currentRestaurantProvider);
@@ -93,38 +106,14 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
                   onChanged: (f) => setState(() => _filter = f),
                 ),
                 const Spacer(),
-                Text(
-                  '${Fmt.capitalize(Fmt.dayLong(_day))}${_day == today ? ' · dziś' : ''}',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(width: 12),
-                GlowButton(icon: AppIcons.caretLeft, tooltip: 'Poprzedni dzień', onPressed: () => _shift(-1)),
-                const SizedBox(width: 8),
-                GlowButton(
-                  icon: AppIcons.caretRight,
-                  tooltip: 'Następny dzień',
-                  onPressed: _day == today ? null : () => _shift(1),
-                ),
-                const SizedBox(width: 8),
-                GlowButton(icon: AppIcons.calendar, tooltip: 'Wybierz dzień', onPressed: _pickDay),
+                _daySwitcher(today),
               ],
             ),
           )
         else
         PageHeader(
           actions: [
-            // Dzień historii obok strzałek.
-            Text(
-              '${Fmt.capitalize(Fmt.dayLong(_day))}${_day == today ? ' · dziś' : ''}',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            GlowButton(icon: AppIcons.caretLeft, tooltip: 'Poprzedni dzień', onPressed: () => _shift(-1)),
-            GlowButton(
-              icon: AppIcons.caretRight,
-              tooltip: 'Następny dzień',
-              onPressed: _day == today ? null : () => _shift(1),
-            ),
-            GlowButton(icon: AppIcons.calendar, tooltip: 'Wybierz dzień', onPressed: _pickDay),
+            _daySwitcher(today),
           ],
           below: Align(
             alignment: Alignment.centerLeft,

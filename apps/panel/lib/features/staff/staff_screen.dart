@@ -146,30 +146,17 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                     const Spacer(),
                     if (tab == 0) const _ViewToggle(),
                     // Tydzień grafiku albo czasu pracy w jednym rzędzie z zakładkami.
-                    if (tab != 0) ...[
-                      Text(
-                        '${Fmt.dayShort(_week)} – ${Fmt.dayShort(weekEnd)}',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
+                    if (tab != 0)
+                      StepSwitcher(
+                        label: weekLabel(_week, weekEnd),
+                        labelWidth: 132,
+                        previousTooltip: 'Poprzedni tydzień',
+                        nextTooltip: 'Następny tydzień',
+                        onPrevious: () => setState(() => _week = DateTime(_week.year, _week.month, _week.day - 7)),
+                        onNext: () => setState(() => _week = DateTime(_week.year, _week.month, _week.day + 7)),
+                        resetTooltip: 'Wróć do tego tygodnia',
+                        onReset: isThisWeek ? null : () => setState(() => _week = _weekStart(DateTime.now())),
                       ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        tooltip: 'Poprzedni tydzień',
-                        icon: const Glyph(AppIcons.caretLeft, size: 18),
-                        onPressed: () => setState(() => _week = DateTime(_week.year, _week.month, _week.day - 7)),
-                      ),
-                      OutlinedButton(
-                        onPressed: isThisWeek ? null : () => setState(() => _week = _weekStart(DateTime.now())),
-                        style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
-                        child: const Text('Ten tydzień'),
-                      ),
-                      IconButton(
-                        tooltip: 'Następny tydzień',
-                        icon: const Glyph(AppIcons.caretRight, size: 18),
-                        onPressed: () => setState(() => _week = DateTime(_week.year, _week.month, _week.day + 7)),
-                      ),
-                    ],
                   ],
                 ),
           actions: [

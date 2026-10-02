@@ -161,7 +161,7 @@ class _RouteGuard extends ConsumerWidget {
           'Twoje stanowisko nie ma jeszcze żadnych uprawnień. Poproś kierownika o ich ustawienie '
           'w zakładce „Pracownicy” → „Stanowiska”.',
       actionLabel: 'Wyloguj się',
-      onAction: () => ref.read(repositoryProvider).signOut(),
+      onAction: () => signOutRestaurantAccount(context, ref),
     );
   }
 }
@@ -422,7 +422,7 @@ class _MemberMenu extends ConsumerWidget {
         _MemberAction.endShift => EndShiftDialog.open(context, person!),
         _MemberAction.signOut => ref.read(panelMemberProvider.notifier).signOut(),
         _MemberAction.startShift => ShiftScreen.open(context),
-        _MemberAction.accountSignOut => ref.read(repositoryProvider).signOut(),
+        _MemberAction.accountSignOut => signOutRestaurantAccount(context, ref),
       },
       itemBuilder: (context) => [
         PopupMenuItem(

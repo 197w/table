@@ -21,14 +21,20 @@ class RestaurantMenuScreen extends ConsumerStatefulWidget {
 class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
   final _keys = <String, GlobalKey>{};
 
+  @override
+  void initState() {
+    super.initState();
+    // Strona lokalu pod spodem trzyma stare dane. Menu pobiera je od nowa (np. nowe zdjęcia dań),
+    // a do czasu odpowiedzi widać poprzednie.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.invalidate(restaurantProvider(widget.restaurantId));
+    });
+  }
+
   void _jump(String sectionId) {
     final target = _keys[sectionId]?.currentContext;
     if (target == null) return;
-    Scrollable.ensureVisible(
-      target,
-      duration: const Duration(milliseconds: 300),
-      curve: AppMotion.easeOut,
-    );
+    Scrollable.ensureVisible(target, duration: const Duration(milliseconds: 300), curve: AppMotion.easeOut);
   }
 
   @override
@@ -38,12 +44,12 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
       appBar: AppBar(title: Text(async.value == null ? 'Menu' : 'Menu · ${async.value!.name}')),
       body: async.when(
         loading: () => const LoadingView(),
-        error: (e, _) => ErrorView(
-          error: e,
-          onRetry: () => ref.invalidate(restaurantProvider(widget.restaurantId)),
-        ),
+        error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(restaurantProvider(widget.restaurantId))),
         data: (r) {
-          final sections = [for (final s in r.menu) if (s.items.isNotEmpty) s];
+          final sections = [
+            for (final s in r.menu)
+              if (s.items.isNotEmpty) s,
+          ];
           if (sections.isEmpty) {
             return const MessageView(
               icon: AppIcons.bookOpen,
@@ -64,29 +70,30 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
                       for (final s in sections)
                         Padding(
                           padding: const EdgeInsets.only(right: 8),
-                          child: ActionChip(
-                            label: Text(s.name),
-                            onPressed: () => _jump(s.id),
-                          ),
+                          child: ActionChip(label: Text(s.name), onPressed: () => _jump(s.id)),
                         ),
                     ],
                   ),
                 ),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
-                  child: SafeArea(
-                    top: false,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (final s in sections)
-                          Padding(
-                            key: _keys.putIfAbsent(s.id, GlobalKey.new),
-                            padding: const EdgeInsets.only(bottom: 16),
-                            child: MenuSectionCard(section: s),
-                          ),
-                      ],
+                child: RefreshIndicator(
+                  onRefresh: () => ref.refresh(restaurantProvider(widget.restaurantId).future),
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+                    child: SafeArea(
+                      top: false,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (final s in sections)
+                            Padding(
+                              key: _keys.putIfAbsent(s.id, GlobalKey.new),
+                              padding: const EdgeInsets.only(bottom: 16),
+                              child: MenuSectionCard(section: s),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -122,10 +129,7 @@ class MenuSectionCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(child: Text(section.name, style: text.titleLarge)),
-                Text(
-                  _dishes(section.items.length),
-                  style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
-                ),
+                Text(_dishes(section.items.length), style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
               ],
             ),
             const SizedBox(height: 4),
@@ -188,10 +192,7 @@ class MenuItemTile extends StatelessWidget {
           if (!item.available)
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                'Chwilowo niedostępne',
-                style: text.bodyMedium?.copyWith(color: AppColors.error),
-              ),
+              child: Text('Chwilowo niedostępne', style: text.bodyMedium?.copyWith(color: AppColors.error)),
             ),
           if (item.description != null)
             Padding(
@@ -209,10 +210,7 @@ class MenuItemTile extends StatelessWidget {
                   for (final v in item.variants)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceRaised,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                      decoration: BoxDecoration(color: AppColors.surfaceRaised, borderRadius: BorderRadius.circular(8)),
                       child: Text(
                         '${v.name}  ${Fmt.price(v.priceGrosze)}',
                         style: text.bodyMedium?.copyWith(fontFeatures: _tabular),

@@ -9,7 +9,8 @@ import '../data/providers.dart';
 import 'app.dart';
 
 /// Automatyczne wylogowanie pracownika z panelu po [kIdleLogoutSeconds] sekundach bez ruchu myszy,
-/// kliknięcia, przewinięcia i klawisza. Kuchnia i Wydanie nie wylogowują: to ekrany, na które się patrzy.
+/// kliknięcia, przewinięcia i klawisza. Kuchnia i Wydanie nie wylogowują pracownika: to ekrany, na które się patrzy.
+/// Pełny dostęp właściciela (hasło konta restauracji) wylogowuje się wszędzie, także tam.
 /// Wylogowanie zamyka otwarte okna (np. rachunek), żeby następna osoba nie pracowała na cudzym koncie.
 class IdleLogout extends ConsumerStatefulWidget {
   const IdleLogout({
@@ -26,7 +27,7 @@ class IdleLogout extends ConsumerStatefulWidget {
   final List<GlobalKey<NavigatorState>> navigators;
   final Widget child;
 
-  /// Zakładki bez wylogowania.
+  /// Zakładki bez wylogowania pracownika.
   static const exempt = [PanelRoutes.kitchen, PanelRoutes.serving];
 
   @override
@@ -45,8 +46,9 @@ class _IdleLogoutState extends ConsumerState<IdleLogout> {
     ref.listenManual(panelMemberProvider, (previous, member) {
       if (member == null) {
         _stop();
-      } else if (previous == null) {
-        _idle = 0;
+      } else {
+        // Nowa osoba (albo właściciel) zaczyna liczenie od zera; zegar startuje, gdy jeszcze nie chodzi.
+        if (previous?.memberId != member.memberId) _idle = 0;
         _timer ??= Timer.periodic(const Duration(seconds: 1), (_) => _tick());
       }
     }, fireImmediately: true);
@@ -79,7 +81,8 @@ class _IdleLogoutState extends ConsumerState<IdleLogout> {
   void _tick() {
     if (!mounted) return;
     final path = widget.location();
-    if (IdleLogout.exempt.any(path.startsWith)) {
+    final owner = ref.read(panelMemberProvider)?.isAccount ?? false;
+    if (!owner && IdleLogout.exempt.any(path.startsWith)) {
       _touch();
       return;
     }
@@ -94,7 +97,9 @@ class _IdleLogoutState extends ConsumerState<IdleLogout> {
     }
     ref.read(panelMemberProvider.notifier).signOut();
     Toasts.instance.show(
-      'Panel wylogował pracownika po $kIdleLogoutSeconds sekundach bez ruchu. Zaloguj się kodem.',
+      owner
+          ? 'Panel zamknął pełny dostęp właściciela po $kIdleLogoutSeconds sekundach bez ruchu.'
+          : 'Panel wylogował pracownika po $kIdleLogoutSeconds sekundach bez ruchu. Zaloguj się kodem.',
       title: 'Wylogowano',
       icon: AppIcons.lock,
     );

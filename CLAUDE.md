@@ -135,6 +135,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Statystyki pracownika (szczegóły w Zespole) i zespołu liczone za miesiąc kalendarzowy od 1. do ostatniego dnia
   w strefie czasowej lokalu (`private.month_range`, `p_month`; zmiana przez północ dzieli się między miesiące),
   przełącznik `MonthSwitcher`; zarobek = godziny × obecna stawka, w zespole tylko z uprawnieniem `staff`.
+  Okresy przełącza jedna pigułka `StepSwitcher` („‹ 5–11 paź ›”, `weekLabel`; stuknięcie w napis wraca do bieżącego):
+  tydzień w Grafiku i Czasie pracy, miesiąc (`MonthSwitcher`), dzień w Historii zamówień (z kalendarzem w pigułce).
 - Godziny wybiera się kółkami jak w iOS (`showTimeWheel` w `table_core`, w panelu `pickTime`): zapętlone kółka,
   przeciąganie myszą, na telefonie od dołu. Zamknięcie lokalu, koniec zmiany i „do” w grafiku mogą być 24:00
   (`allowEndOfDay`, `TimeOfDay(hour: 24)`, w bazie `time '24:00'`, kolumny i sprawdzenia `closes > opens` to przyjmują).
@@ -182,7 +184,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `for_member`; `staff_scan` kończy wtedy zmianę).
   Po 30 sekundach bez ruchu myszy i klawiatury panel sam wylogowuje pracownika i zamyka otwarte okna
   (`IdleLogout` w `MaterialApp.builder`, `kIdleLogoutSeconds`; ostatnie 10 s odlicza górny pasek).
-  Kuchnia i Wydanie nie wylogowują. Klawisze tylko liczą ruch, handler zwraca false (nic nie połyka).
+  Kuchnia i Wydanie nie wylogowują pracownika; pełny dostęp właściciela (`ActingMember.account()`) wylogowuje się
+  wszędzie, także tam. Klawisze tylko liczą ruch, handler zwraca false (nic nie połyka).
+  Wylogowanie konta restauracji (menu pracownika, ekran bez uprawnień) wymaga hasła konta (`signOutRestaurantAccount`).
 - Uprawnienia (`StaffPermission`, grupy Sala, Zamówienia, Kuchnia, Zespół, Lokal, Wyniki): m.in. `orders_close`
   (zamykanie rachunków), `orders_cancel` (anulowanie pozycji z kuchni), `kitchen_settings`, `staff_logins`,
   `schedule`, `timesheet`, `positions`. Menu boczne pokazuje zakładki według uprawnień konta,
@@ -257,7 +261,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   pod kartą „Jeszcze na kuchni”. Zamówienia na wynos w przygotowaniu: „Spakowane” (`panel_takeaway_ready`),
   gdy kuchnia zrobi wszystko. Nowe gotowe danie dzwoni (wyciszenie `servingMutedProvider`).
 - Menu: zdjęcia dań (`menu_items.photo_url`, bucket `menu-photos`, panel zmniejsza zdjęcie do 1200 px JPG,
-  goście widzą je w aplikacji Table). Uprawnienia: `menu` (zakładka), `menu_edit` (dania, ceny, sekcje, zdjęcia),
+  goście widzą je w aplikacji Table: miniatura po prawej przy daniu, stuknięcie powiększa; menu gościa pobiera dane
+  od nowa przy otwarciu i przeciągnięciem w dół, bo strona lokalu pod spodem trzyma stare). Uprawnienia: `menu` (zakładka), `menu_edit` (dania, ceny, sekcje, zdjęcia),
   `menu_availability` („Skończyło się”). Warianty (np. rozmiary, każdy z ceną), płatne dodatki, stawka VAT i „dostępne teraz”. Przy wariantach
   `price_grosze` to najniższa cena wariantu. „od” przed ceną tylko, gdy warianty mają różne ceny (`priceVaries`
   w modelach gościa, pracownika i panelu); jeden wariant (np. Tonic 200 ml) pokazuje samą cenę. „Skończyło się” może ustawić też kelner i kuchnia (`panel_set_menu_item_available`).

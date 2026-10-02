@@ -661,6 +661,20 @@ class _RestaurantPasswordDialogState extends ConsumerState<RestaurantPasswordDia
 /// Logowanie w zakładce panelu, gdy nikt nie jest zalogowany. Logowanie jest jedno dla wszystkich
 /// zakładek. Wejść może tylko ktoś z uprawnieniem do zakładki. Właściciel może otworzyć panel
 /// hasłem konta restauracji (np. przy pierwszym uruchomieniu albo na innym komputerze).
+/// Wylogowanie konta restauracji z panelu: najpierw hasło konta, żeby pracownik nie wylogował lokalu przez pomyłkę.
+Future<void> signOutRestaurantAccount(BuildContext context, WidgetRef ref) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (_) => const RestaurantPasswordDialog(title: 'Wylogować konto restauracji?', action: 'Wyloguj'),
+  );
+  if (ok != true) return;
+  try {
+    await ref.read(repositoryProvider).signOut();
+  } catch (e) {
+    if (context.mounted) showError(context, e);
+  }
+}
+
 /// Każdy pracownik loguje się w dowolnej zakładce. Bez uprawnienia do niej panel od razu przenosi go
 /// do pierwszej jego zakładki (np. Rezerwacje), z uprawnieniem zostaje tutaj.
 class TabLoginGate extends ConsumerWidget {

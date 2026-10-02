@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart';
+import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
@@ -1094,7 +1095,124 @@ Future<TimeOfDay?> pickTime(
   );
 }
 
-/// Wybór miesiąca: strzałki i nazwa, np. „Październik 2026”. Dalej niż bieżący miesiąc się nie da.
+/// Przełącznik okresu w jednej pigułce: strzałka, napis i strzałka, np. „‹ 5–11 paź ›”.
+/// Stuknięcie w napis wraca do bieżącego okresu ([onReset], null gdy już jest bieżący).
+class StepSwitcher extends StatelessWidget {
+  const StepSwitcher({
+    super.key,
+    required this.label,
+    required this.onPrevious,
+    required this.onNext,
+    required this.previousTooltip,
+    required this.nextTooltip,
+    this.onReset,
+    this.resetTooltip,
+    this.labelWidth,
+    this.extras = const [],
+  });
+
+  final String label;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+  final String previousTooltip;
+  final String nextTooltip;
+  final VoidCallback? onReset;
+  final String? resetTooltip;
+
+  /// Stała szerokość napisu, żeby strzałki nie skakały przy zmianie okresu.
+  final double? labelWidth;
+
+  /// Dodatkowe przyciski w tej samej pigułce za kreską, np. kalendarz: ikona, podpowiedź, akcja.
+  final List<(AppIconData, String, VoidCallback?)> extras;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    Widget caption = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: text.titleSmall?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+      ),
+    );
+    if (labelWidth != null) caption = SizedBox(width: labelWidth, child: caption);
+    if (onReset != null) {
+      caption = Tooltip(
+        message: resetTooltip ?? '',
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(onTap: onReset, child: caption),
+        ),
+      );
+    }
+    return Container(
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.ring),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _StepArrow(icon: AppIcons.caretLeft, tooltip: previousTooltip, onTap: onPrevious),
+          caption,
+          _StepArrow(icon: AppIcons.caretRight, tooltip: nextTooltip, onTap: onNext),
+          for (final (icon, tooltip, onTap) in extras) ...[
+            Container(width: 1, height: 20, margin: const EdgeInsets.symmetric(horizontal: 4), color: AppColors.ring),
+            _StepArrow(icon: icon, tooltip: tooltip, onTap: onTap),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _StepArrow extends StatelessWidget {
+  const _StepArrow({required this.icon, required this.tooltip, required this.onTap});
+
+  final AppIconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        type: MaterialType.transparency,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            width: 32,
+            height: 32,
+            child: Center(
+              child: Glyph(icon, size: 16, color: onTap == null ? AppColors.textDisabled : AppColors.text),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Tydzień jako „5–11 paź”, a przez przełom miesiąca „28 wrz – 4 paź”. Inny rok dostaje rok na końcu.
+String weekLabel(DateTime start, DateTime end) {
+  final month = DateFormat('MMM', 'pl_PL');
+  final year = end.year == DateTime.now().year ? '' : ' ${end.year}';
+  if (start.month == end.month && start.year == end.year) {
+    return '${start.day}–${end.day} ${month.format(end)}$year';
+  }
+  return '${start.day} ${month.format(start)} – ${end.day} ${month.format(end)}$year';
+}
+
+/// Wybór miesiąca w pigułce, np. „‹ Październik 2026 ›”. Dalej niż bieżący miesiąc się nie da.
 class MonthSwitcher extends StatelessWidget {
   const MonthSwitcher({super.key, required this.month, required this.onChanged});
 
@@ -1106,28 +1224,15 @@ class MonthSwitcher extends StatelessWidget {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final isCurrent = month.year == now.year && month.month == now.month;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        GlowButton(
-          icon: AppIcons.caretLeft,
-          tooltip: 'Poprzedni miesiąc',
-          onPressed: () => onChanged(DateTime(month.year, month.month - 1)),
-        ),
-        SizedBox(
-          width: 164,
-          child: Text(
-            Fmt.monthYear(month),
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-        ),
-        GlowButton(
-          icon: AppIcons.caretRight,
-          tooltip: 'Następny miesiąc',
-          onPressed: isCurrent ? null : () => onChanged(DateTime(month.year, month.month + 1)),
-        ),
-      ],
+    return StepSwitcher(
+      label: Fmt.monthYear(month),
+      labelWidth: 150,
+      previousTooltip: 'Poprzedni miesiąc',
+      nextTooltip: 'Następny miesiąc',
+      onPrevious: () => onChanged(DateTime(month.year, month.month - 1)),
+      onNext: isCurrent ? null : () => onChanged(DateTime(month.year, month.month + 1)),
+      resetTooltip: 'Wróć do bieżącego miesiąca',
+      onReset: isCurrent ? null : () => onChanged(DateTime(now.year, now.month)),
     );
   }
 }
