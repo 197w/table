@@ -142,7 +142,7 @@ class _RouteGuard extends ConsumerWidget {
       final tab = tabForRoute(location);
       if (tab == null) return child;
       if (ref.watch(panelMemberProvider) == null) {
-        return TabLoginGate(tab: tab, label: panelTabLabels[tab] ?? 'Zakładka');
+        return const TabLoginGate();
       }
       return child;
     }
@@ -565,7 +565,7 @@ class _RailButton extends StatelessWidget {
         selected: selected,
         size: 30,
         box: 46,
-        tooltipAbove: true,
+        tooltipRight: true,
         onTap: onTap,
       ),
     );
@@ -581,7 +581,7 @@ class _BareIcon extends StatefulWidget {
     this.selected = false,
     this.size = 24,
     this.box = 40,
-    this.tooltipAbove = false,
+    this.tooltipRight = false,
   });
 
   final AppIconData icon;
@@ -592,7 +592,8 @@ class _BareIcon extends StatefulWidget {
 
   /// Pole do kliknięcia wokół ikony.
   final double box;
-  final bool tooltipAbove;
+  /// Podpowiedź po prawej stronie ikony (boczny pasek), a nie pod nią.
+  final bool tooltipRight;
 
   @override
   State<_BareIcon> createState() => _BareIconState();
@@ -610,7 +611,7 @@ class _BareIconState extends State<_BareIcon> {
         : AppColors.textMuted;
     return Tooltip(
       message: widget.tooltip,
-      preferBelow: !widget.tooltipAbove,
+      positionDelegate: widget.tooltipRight ? tooltipOnRight : null,
       waitDuration: const Duration(milliseconds: 250),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,

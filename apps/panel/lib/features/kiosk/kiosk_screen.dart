@@ -7,6 +7,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:table_core/table_core.dart';
 
 import '../../app/app.dart';
+import '../../app/sections.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 
@@ -660,12 +661,10 @@ class _RestaurantPasswordDialogState extends ConsumerState<RestaurantPasswordDia
 /// Logowanie w zakładce panelu, gdy nikt nie jest zalogowany. Logowanie jest jedno dla wszystkich
 /// zakładek. Wejść może tylko ktoś z uprawnieniem do zakładki. Właściciel może otworzyć panel
 /// hasłem konta restauracji (np. przy pierwszym uruchomieniu albo na innym komputerze).
+/// Każdy pracownik loguje się w dowolnej zakładce. Bez uprawnienia do niej panel od razu przenosi go
+/// do pierwszej jego zakładki (np. Rezerwacje), z uprawnieniem zostaje tutaj.
 class TabLoginGate extends ConsumerWidget {
-  const TabLoginGate({super.key, required this.tab, required this.label});
-
-  /// Ścieżka zakładki, np. „/zamowienia”.
-  final String tab;
-  final String label;
+  const TabLoginGate({super.key});
 
   Future<void> _unlock(BuildContext context, WidgetRef ref) async {
     final ok = await showDialog<bool>(
@@ -702,11 +701,13 @@ class TabLoginGate extends ConsumerWidget {
                       )
                     : null,
                 onLogin: (member) {
-                  if (!canOpenRoute(tab, member.permissions)) {
+                  // Przeniesienie do dostępnej zakładki robi _RouteGuard w shell.dart.
+                  if (!allPanelTabs.any((t) => canOpenRoute(t.route, member.permissions))) {
                     showMessage(
                       context,
-                      '${member.name} nie ma uprawnienia do zakładki „$label”'
+                      '${member.name} nie ma uprawnień do żadnej zakładki'
                       '${member.position == null ? '' : ' (stanowisko „${member.position}”)'}.',
+                      tone: ToastTone.warning,
                     );
                     return;
                   }

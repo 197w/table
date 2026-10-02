@@ -1013,6 +1013,20 @@ class ReadOnlyBanner extends StatelessWidget {
   }
 }
 
+/// Podpowiedź po prawej stronie elementu, na wysokości jego środka (ikony w bocznym pasku).
+/// Gdy z prawej brakuje miejsca, staje po lewej.
+Offset tooltipOnRight(TooltipPositionContext c) {
+  const gap = 8.0;
+  const edge = 8.0;
+  var x = c.target.dx + c.targetSize.width / 2 + gap;
+  if (x + c.tooltipSize.width > c.overlaySize.width - edge) {
+    x = c.target.dx - c.targetSize.width / 2 - gap - c.tooltipSize.width;
+  }
+  final maxY = c.overlaySize.height - c.tooltipSize.height - edge;
+  final y = (c.target.dy - c.tooltipSize.height / 2).clamp(edge, maxY < edge ? edge : maxY);
+  return Offset(x, y);
+}
+
 /// Okno potwierdzenia. Zwraca true po wybraniu akcji.
 Future<bool> confirm(
   BuildContext context, {
