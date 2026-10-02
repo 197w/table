@@ -470,11 +470,16 @@ final customersProvider = FutureProvider.autoDispose.family<List<Customer>, Stri
   (ref, id) => (ref..cacheFor()).watch(repositoryProvider).customers(id),
 );
 
-typedef TeamStatsQuery = ({String restaurantId, int days});
+typedef TeamStatsQuery = ({String restaurantId, DateTime month});
 
-/// Statystyki zespołu w okresie.
+/// Statystyki zespołu za miesiąc (pierwszy dzień miesiąca).
 final teamStatsProvider = FutureProvider.autoDispose.family<List<TeamStat>, TeamStatsQuery>(
-  (ref, q) => (ref..cacheFor()).watch(repositoryProvider).teamStats(q.restaurantId, q.days),
+  (ref, q) => (ref..cacheFor()).watch(repositoryProvider).teamStats(q.restaurantId, q.month),
+);
+
+/// Stawki za godzinę według numeru pracownika.
+final staffRatesProvider = FutureProvider.autoDispose.family<Map<String, int>, String>(
+  (ref, id) => (ref..cacheFor()).watch(repositoryProvider).staffRates(id),
 );
 
 /// Ostatnio wybrana grupa zakładek w górnym pasku (Rezerwacje, Kuchnia...). Zostaje wybrana także na stronach
@@ -667,11 +672,12 @@ final plannedShiftsProvider = FutureProvider.autoDispose.family<List<PlannedShif
   );
 });
 
-typedef MemberStatsQuery = ({String memberId, int days});
+/// Statystyki pracownika za miesiąc (pierwszy dzień miesiąca).
+typedef MemberStatsQuery = ({String memberId, DateTime month});
 
 final memberStatsProvider = FutureProvider.autoDispose.family<MemberStats, MemberStatsQuery>((ref, q) {
   ref.cacheFor();
-  return ref.watch(repositoryProvider).memberStats(q.memberId, q.days);
+  return ref.watch(repositoryProvider).memberStats(q.memberId, q.month);
 });
 
 /// Pracownik zalogowany teraz w panelu (kodem albo kodem QR). Logowanie jest jedno dla wszystkich

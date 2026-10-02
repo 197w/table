@@ -13,8 +13,8 @@ String _two(int n) => n.toString().padLeft(2, '0');
 /// Godziny jako „37:45”.
 String _hours(int seconds) => '${seconds ~/ 3600}:${_two(seconds % 3600 ~/ 60)}';
 
-/// Statystyki zespołu (grupa Pracownicy): godziny, zmiany, rachunki, sprzedaż, pozycje i kursy na osobę
-/// z ostatnich 7, 30 albo 90 dni. Uprawnienie „Statystyki”.
+/// Statystyki zespołu (grupa Pracownicy): godziny, zmiany, rachunki, sprzedaż, pozycje, kursy i zarobek na osobę
+/// w miesiącu kalendarzowym. Uprawnienie „Statystyki”, zarobki tylko z uprawnieniem „Pracownicy”.
 class TeamStatsScreen extends ConsumerStatefulWidget {
   const TeamStatsScreen({super.key});
 
@@ -23,25 +23,23 @@ class TeamStatsScreen extends ConsumerStatefulWidget {
 }
 
 class _TeamStatsScreenState extends ConsumerState<TeamStatsScreen> {
-  var _days = 30;
+  /// Pierwszy dzień wybranego miesiąca.
+  DateTime _month = monthStart(DateTime.now());
 
   @override
   Widget build(BuildContext context) {
     final restaurant = ref.watch(currentRestaurantProvider);
     if (restaurant == null) return const LoadingView();
-    final query = (restaurantId: restaurant.id, days: _days);
+    final query = (restaurantId: restaurant.id, month: _month);
     final async = ref.watch(teamStatsProvider(query));
+    final canPay = ref.watch(memberPermissionsProvider).contains('staff');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
           actions: [
-            SegmentedTabs<int>(
-              options: const [(7, '7 dni'), (30, '30 dni'), (90, '90 dni')],
-              selected: _days,
-              onChanged: (d) => setState(() => _days = d),
-            ),
+            MonthSwitcher(month: _month, onChanged: (m) => setState(() => _month = m)),
           ],
         ),
         Expanded(
@@ -62,6 +60,8 @@ class _TeamStatsScreenState extends ConsumerState<TeamStatsScreen> {
               final revenue = people.fold(0, (sum, s) => sum + s.revenueGrosze);
               final closed = people.fold(0, (sum, s) => sum + s.ordersClosed);
               final deliveries = people.fold(0, (sum, s) => sum + s.deliveries);
+              final payroll = people.fold(0, (sum, s) => sum + (s.earningsGrosze ?? 0));
+              final pay = canPay && people.any((s) => s.rateGrosze != null);
               final best = people.fold(0, (m, s) => s.revenueGrosze > m ? s.revenueGrosze : m);
 
               return SingleChildScrollView(
@@ -97,6 +97,18 @@ class _TeamStatsScreenState extends ConsumerState<TeamStatsScreen> {
                             color: TileColors.violet,
                           ),
                         ),
+                        if (pay) ...[
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: StatTile(
+                              label: 'Wynagrodzenia',
+                              value: Fmt.price(payroll),
+                              hint: 'godziny × stawka',
+                              icon: AppIcons.creditCard,
+                              color: TileColors.violet,
+                            ),
+                          ),
+                        ],
                         const SizedBox(width: 14),
                         Expanded(
                           child: StatTile(
@@ -114,11 +126,11 @@ class _TeamStatsScreenState extends ConsumerState<TeamStatsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          const _HeaderRow(),
+                          _HeaderRow(pay: pay),
                           Divider(height: 1, color: AppColors.ring),
                           for (final (i, s) in people.indexed) ...[
                             if (i > 0) Divider(height: 1, color: AppColors.ring),
-                            _MemberRow(stat: s, best: best),
+                            _MemberRow(stat: s, best: best, pay: pay),
                           ],
                         ],
                       ),
@@ -137,7 +149,9 @@ class _TeamStatsScreenState extends ConsumerState<TeamStatsScreen> {
 const _column = 112.0;
 
 class _HeaderRow extends StatelessWidget {
-  const _HeaderRow();
+  const _HeaderRow({required this.pay});
+
+  final bool pay;
 
   @override
   Widget build(BuildContext context) {
@@ -153,6 +167,7 @@ class _HeaderRow extends StatelessWidget {
           cell('Rachunki'),
           cell('Pozycje'),
           cell('Kursy'),
+          if (pay) cell('Zarobek'),
           SizedBox(width: _column + 60, child: Text('Sprzedaż', textAlign: TextAlign.end, style: style)),
         ],
       ),
@@ -161,9 +176,10 @@ class _HeaderRow extends StatelessWidget {
 }
 
 class _MemberRow extends StatelessWidget {
-  const _MemberRow({required this.stat, required this.best});
+  const _MemberRow({required this.stat, required this.best, required this.pay});
 
   final TeamStat stat;
+  final bool pay;
 
   /// Najwyższa sprzedaż w zespole, do paska porównania.
   final int best;
@@ -198,6 +214,14 @@ class _MemberRow extends StatelessWidget {
           cell('${s.ordersClosed}', muted: s.ordersClosed == 0),
           cell('${s.items}', muted: s.items == 0),
           cell('${s.deliveries}', muted: s.deliveries == 0),
+          if (pay)
+            Tooltip(
+              message: s.rateGrosze == null ? 'Bez stawki' : 'Stawka ${Fmt.price(s.rateGrosze!)}/h',
+              child: cell(
+                s.earningsGrosze == null ? '—' : Fmt.price(s.earningsGrosze!),
+                muted: s.earningsGrosze == null || s.earningsGrosze == 0,
+              ),
+            ),
           SizedBox(
             width: _column + 60,
             child: Column(

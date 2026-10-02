@@ -311,5 +311,6 @@ final codesProvider = FutureProvider.autoDispose<Map<String, String>>((ref) {
 
 final shiftsProvider = FutureProvider.autoDispose<List<Shift>>((ref) {
   if (ref.watch(sessionProvider) == null) return Future.value(const []);
-  return ref.watch(staffRepositoryProvider).shifts();
+  // Ten miesiąc i trzy poprzednie, do „Moich godzin” liczonych od 1. do ostatniego dnia miesiąca.
+  return ref.watch(staffRepositoryProvider).shifts(days: 125);
 });

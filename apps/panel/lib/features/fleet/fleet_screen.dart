@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
@@ -173,6 +174,17 @@ class _VehicleCard extends StatelessWidget {
                       ),
                     ],
                   ),
+                  if (v.vin != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'VIN ${v.vin}',
+                      style: text.bodySmall?.copyWith(
+                        color: AppColors.textMuted,
+                        letterSpacing: 0.5,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ],
                   if (v.note != null) ...[
                     const SizedBox(height: 8),
                     Text(v.note!, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
@@ -202,6 +214,7 @@ class _VehicleDialogState extends ConsumerState<_VehicleDialog> {
   late VehicleKind _kind = widget.vehicle?.kind ?? VehicleKind.car;
   late final _name = TextEditingController(text: widget.vehicle?.name ?? '');
   late final _plate = TextEditingController(text: widget.vehicle?.plate ?? '');
+  late final _vin = TextEditingController(text: widget.vehicle?.vin ?? '');
   late final _note = TextEditingController(text: widget.vehicle?.note ?? '');
   late String? _memberId = widget.vehicle?.memberId;
   late bool _active = widget.vehicle?.active ?? true;
@@ -211,6 +224,7 @@ class _VehicleDialogState extends ConsumerState<_VehicleDialog> {
   void dispose() {
     _name.dispose();
     _plate.dispose();
+    _vin.dispose();
     _note.dispose();
     super.dispose();
   }
@@ -218,6 +232,11 @@ class _VehicleDialogState extends ConsumerState<_VehicleDialog> {
   Future<void> _save() async {
     if (_name.text.trim().isEmpty) {
       showMessage(context, 'Wpisz nazwę pojazdu, na przykład „Fiat Panda”.', tone: ToastTone.warning);
+      return;
+    }
+    final vin = _vin.text.toUpperCase().replaceAll(RegExp(r'[\s-]'), '');
+    if (_kind != VehicleKind.bike && vin.isNotEmpty && !RegExp(r'^[A-HJ-NPR-Z0-9]{17}$').hasMatch(vin)) {
+      showMessage(context, 'VIN ma 17 znaków: litery i cyfry, bez I, O i Q.', tone: ToastTone.warning);
       return;
     }
     setState(() => _busy = true);
@@ -228,6 +247,7 @@ class _VehicleDialogState extends ConsumerState<_VehicleDialog> {
         kind: _kind,
         name: _name.text.trim(),
         plate: _kind == VehicleKind.bike || _plate.text.trim().isEmpty ? null : _plate.text.trim(),
+        vin: _kind == VehicleKind.bike || vin.isEmpty ? null : vin,
         memberId: _memberId,
         note: _note.text.trim().isEmpty ? null : _note.text.trim(),
         active: _active,
@@ -298,6 +318,15 @@ class _VehicleDialogState extends ConsumerState<_VehicleDialog> {
                 maxLength: 15,
                 textCapitalization: TextCapitalization.characters,
                 decoration: const InputDecoration(labelText: 'Rejestracja', hintText: 'BI 12345', counterText: ''),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _vin,
+                maxLength: 17,
+                textCapitalization: TextCapitalization.characters,
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]'))],
+                style: const TextStyle(letterSpacing: 1, fontFeatures: [FontFeature.tabularFigures()]),
+                decoration: const InputDecoration(labelText: 'VIN', hintText: '17 znaków, z dowodu rejestracyjnego'),
               ),
             ],
             const SizedBox(height: 14),

@@ -405,7 +405,7 @@ class _ShiftDialogState extends ConsumerState<_ShiftDialog> {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () async {
-                      final t = await pickTime(context, initial: _end ?? _start, minuteStep: 5);
+                      final t = await pickTime(context, initial: _end ?? _start, minuteStep: 5, allowEndOfDay: true, title: 'Koniec zmiany');
                       if (t != null) setState(() => _end = t);
                     },
                     child: Text(

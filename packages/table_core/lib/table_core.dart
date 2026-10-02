@@ -9,6 +9,7 @@ export 'src/formatters.dart';
 export 'src/theme.dart';
 export 'src/theme_fade.dart';
 export 'src/theme_setting.dart';
+export 'src/time_wheel.dart';
 export 'src/toasts.dart';
 export 'src/units.dart';
 export 'src/widgets.dart';

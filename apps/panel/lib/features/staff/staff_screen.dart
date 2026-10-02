@@ -655,11 +655,6 @@ class _AddTile extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text('Dodaj pracownika', style: text.titleSmall),
-              const SizedBox(height: 2),
-              Text(
-                'Dostanie czterocyfrowy kod',
-                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-              ),
             ],
           ),
         ),
@@ -843,7 +838,8 @@ class _MemberDetailsDialog extends ConsumerStatefulWidget {
 }
 
 class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
-  int _days = 30;
+  /// Miesiąc statystyk (pierwszy dzień), od 1. do ostatniego dnia.
+  DateTime _month = monthStart(DateTime.now());
 
   Future<void> _edit(StaffMember member) async {
     final result = await showDialog<String>(
@@ -877,7 +873,7 @@ class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
     final positions = ref.watch(positionsProvider(widget.restaurantId)).value ?? const <StaffPosition>[];
     final position = positions.where((p) => p.id == member.positionId).firstOrNull;
     final statsAsync = canStats
-        ? ref.watch(memberStatsProvider((memberId: member.id, days: _days)))
+        ? ref.watch(memberStatsProvider((memberId: member.id, month: _month)))
         : const AsyncValue<MemberStats>.loading();
     final stats = statsAsync.value;
     final color = staffColors[member.color % staffColors.length];
@@ -987,11 +983,7 @@ class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
               Row(
                 children: [
                   Expanded(child: Text('Statystyki', style: text.titleLarge)),
-                  SegmentedTabs<int>(
-                    options: const [(7, '7 dni'), (30, '30 dni'), (90, '90 dni')],
-                    selected: _days,
-                    onChanged: (d) => setState(() => _days = d),
-                  ),
+                  MonthSwitcher(month: _month, onChanged: (m) => setState(() => _month = m)),
                 ],
               ),
               const SizedBox(height: 14),
@@ -1005,9 +997,16 @@ class _MemberDetailsDialogState extends ConsumerState<_MemberDetailsDialog> {
                     const gap = 12.0;
                     final width = (box.maxWidth - gap * 2) / 3;
                     final tiles = [
-                      ('Czas pracy', '${hoursText(Duration(seconds: stats.seconds))} h', '${stats.shifts} zmian'),
-                      ('W tym tygodniu', '${hoursText(Duration(seconds: stats.weekSeconds))} h',
-                          stats.openSince == null ? 'teraz poza pracą' : 'w pracy od ${_hm(stats.openSince!)}'),
+                      ('Czas pracy', '${hoursText(Duration(seconds: stats.seconds))} h',
+                          '${stats.shifts} zmian${stats.openSince == null ? '' : ' · w pracy od ${_hm(stats.openSince!)}'}'),
+                      // Zarobek w miesiącu: przepracowane godziny × stawka.
+                      (
+                        'Zarobek',
+                        stats.earningsGrosze == null ? '—' : Fmt.price(stats.earningsGrosze!),
+                        stats.rateGrosze == null
+                            ? 'ustaw stawkę w „Edytuj”'
+                            : '${hoursText(Duration(seconds: stats.seconds))} h × ${Fmt.price(stats.rateGrosze!)}/h',
+                      ),
                       ('Sprzedaż', Fmt.price(stats.revenueGrosze), '${stats.ordersClosed} zamkniętych rachunków'),
                       ('Średni rachunek', stats.ordersClosed == 0 ? '—' : Fmt.price(stats.averageOrder), 'na zamknięty rachunek'),
                       ('Otwarte stoliki', '${stats.ordersOpened}', 'rachunki otwarte przez pracownika'),
@@ -1477,7 +1476,12 @@ class _HoursDialogState extends ConsumerState<_HoursDialog> {
   }
 
   Future<void> _pick(bool start) async {
-    final picked = await pickTime(context, initial: start ? _starts : _ends);
+    final picked = await pickTime(
+      context,
+      initial: start ? _starts : _ends,
+      allowEndOfDay: !start,
+      title: start ? 'Od' : 'Do',
+    );
     if (picked != null) setState(() => start ? _starts = picked : _ends = picked);
   }
 
@@ -1698,13 +1702,39 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
   late String? _positionId = widget.member?.positionId;
   late int _color = widget.member?.color ?? 0;
   late bool _active = widget.member?.active ?? true;
+  final _rate = TextEditingController();
+
+  /// Stawka z bazy, żeby nie zapisywać jej bez zmiany. Null: jeszcze się wczytuje albo jej nie ma.
+  int? _savedRate;
+  bool _rateLoaded = false;
   bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final id = widget.member?.id;
+    if (id == null) {
+      _rateLoaded = true;
+      return;
+    }
+    ref.read(staffRatesProvider(widget.restaurantId).future).then((rates) {
+      if (!mounted) return;
+      setState(() {
+        _savedRate = rates[id];
+        _rateLoaded = true;
+        if (_savedRate != null) _rate.text = groszeToText(_savedRate!);
+      });
+    }).catchError((_) {
+      if (mounted) setState(() => _rateLoaded = true);
+    });
+  }
 
   @override
   void dispose() {
     _firstName.dispose();
     _lastName.dispose();
     _phone.dispose();
+    _rate.dispose();
     super.dispose();
   }
 
@@ -1721,6 +1751,8 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
       problem = 'Wpisz numer telefonu, co najmniej 9 cyfr.';
     } else if (position == null) {
       problem = 'Wybierz stanowisko.';
+    } else if (_rate.text.trim().isNotEmpty && (parseGrosze(_rate.text) == null || parseGrosze(_rate.text)! > 100000)) {
+      problem = 'Wpisz stawkę za godzinę, na przykład 30 albo 32,50.';
     } else {
       problem = null;
     }
@@ -1741,6 +1773,13 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
         color: _color,
         active: _active,
       );
+      final rate = _rate.text.trim().isEmpty ? null : parseGrosze(_rate.text);
+      if (_rateLoaded && rate != _savedRate) {
+        await ref.read(repositoryProvider).setStaffRate(id, rate);
+        ref.invalidate(staffRatesProvider(widget.restaurantId));
+        ref.invalidate(memberStatsProvider);
+        ref.invalidate(teamStatsProvider);
+      }
       if (mounted) Navigator.pop(context, id);
     } catch (e) {
       if (mounted) showError(context, e);
@@ -1842,6 +1881,19 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
                   ),
               ],
               onChanged: (v) => setState(() => _positionId = v),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _rate,
+              enabled: _rateLoaded,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+              style: const TextStyle(fontFeatures: _tabular),
+              decoration: const InputDecoration(
+                labelText: 'Stawka za godzinę',
+                hintText: 'Na przykład 30',
+                suffixText: 'zł/h',
+              ),
             ),
             const SizedBox(height: 16),
             Text('Kolor w grafiku', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),

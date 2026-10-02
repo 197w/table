@@ -1559,6 +1559,7 @@ class Vehicle {
     required this.name,
     required this.active,
     this.plate,
+    this.vin,
     this.memberId,
     this.note,
   });
@@ -1570,6 +1571,9 @@ class Vehicle {
   /// Numer rejestracyjny, np. „BI 12345”. Rower nie ma.
   final String? plate;
 
+  /// Numer VIN: 17 znaków, litery i cyfry bez I, O, Q.
+  final String? vin;
+
   /// Dostawca, który jeździ tym pojazdem.
   final String? memberId;
   final String? note;
@@ -1580,6 +1584,7 @@ class Vehicle {
     kind: VehicleKind.from(json['kind']),
     name: json['name'] as String? ?? '',
     plate: json['plate'] as String?,
+    vin: json['vin'] as String?,
     memberId: json['member_id'] as String?,
     note: json['note'] as String?,
     active: json['active'] != false,
@@ -1658,12 +1663,18 @@ class TeamStat {
     required this.items,
     required this.deliveries,
     this.position,
+    this.rateGrosze,
+    this.earningsGrosze,
   });
 
   final String memberId;
   final String name;
   final String? position;
   final bool active;
+
+  /// Stawka i zarobek w miesiącu. Null bez stawki albo bez uprawnienia „Pracownicy”.
+  final int? rateGrosze;
+  final int? earningsGrosze;
   final int seconds;
   final int shifts;
   final int ordersOpened;
@@ -1686,6 +1697,8 @@ class TeamStat {
     revenueGrosze: _toInt(json['revenue']),
     items: _toInt(json['items']),
     deliveries: _toInt(json['deliveries']),
+    rateGrosze: json['rate'] == null ? null : _toInt(json['rate']),
+    earningsGrosze: json['earnings'] == null ? null : _toInt(json['earnings']),
   );
 }
 
@@ -1983,6 +1996,8 @@ class MemberStats {
     this.items = 0,
     this.topItems = const [],
     this.planned = 0,
+    this.rateGrosze,
+    this.earningsGrosze,
   });
 
   final int seconds;
@@ -1998,6 +2013,10 @@ class MemberStats {
 
   /// Zaplanowane zmiany od dziś.
   final int planned;
+
+  /// Stawka za godzinę i zarobek w okresie (godziny × stawka). Null: bez stawki.
+  final int? rateGrosze;
+  final int? earningsGrosze;
 
   int get averageOrder => ordersClosed == 0 ? 0 : (revenueGrosze / ordersClosed).round();
 
@@ -2016,6 +2035,8 @@ class MemberStats {
         (t['name'] as String, _toInt(t['quantity'])),
     ],
     planned: _toInt(json['planned']),
+    rateGrosze: json['rate'] == null ? null : _toInt(json['rate']),
+    earningsGrosze: json['earnings'] == null ? null : _toInt(json['earnings']),
   );
 }
 
@@ -2231,6 +2252,16 @@ const inventoryPeriods = [
 String inventoryPeriodLabel(String period) =>
     inventoryPeriods.firstWhere((p) => p.$1 == period, orElse: () => inventoryPeriods[1]).$2;
 
+/// Ten sam dzień miesiąc później, a gdy go nie ma, ostatni dzień następnego miesiąca
+/// (31 stycznia → 28 lutego, 31 marca → 30 kwietnia).
+DateTime _addMonth(DateTime d) {
+  final lastDay = DateTime(d.year, d.month + 2, 0).day;
+  return DateTime(d.year, d.month + 1, d.day > lastDay ? lastDay : d.day);
+}
+
+/// Pierwszy dzień miesiąca daty [d].
+DateTime monthStart(DateTime d) => DateTime(d.year, d.month);
+
 /// Liczba po polsku, bez zbędnych zer: 0,7; 2,45; 12.
 String inventoryNumber(double value) {
   final fixed = value.toStringAsFixed(3).replaceFirst(RegExp(r'\.?0+$'), '');
@@ -2250,7 +2281,7 @@ DateTime? nextInventoryDay(String period, DateTime? last) {
   return switch (period) {
     'day' => DateTime(last.year, last.month, last.day + 1),
     'two_weeks' => DateTime(last.year, last.month, last.day + 14),
-    'month' => DateTime(last.year, last.month + 1, last.day),
+    'month' => _addMonth(last),
     _ => DateTime(last.year, last.month, last.day + 7),
   };
 }

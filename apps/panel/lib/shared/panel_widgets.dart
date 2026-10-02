@@ -1050,139 +1050,58 @@ String groszeToText(int grosze) {
   return gr == 0 ? '$zl' : '$zl,${gr.toString().padLeft(2, '0')}';
 }
 
-/// Wybór godziny: dwie wąskie kolumny, godziny i minuty. Zwraca null po anulowaniu.
+/// Wybór godziny kółkami jak w iOS (`showTimeWheel`). [allowEndOfDay] pozwala wybrać 24:00,
+/// np. zamknięcie o północy albo koniec zmiany. Zwraca null po anulowaniu.
 Future<TimeOfDay?> pickTime(
   BuildContext context, {
   required TimeOfDay initial,
   int minuteStep = 15,
+  bool allowEndOfDay = false,
+  String? title,
 }) {
-  return showDialog<TimeOfDay>(
-    context: context,
-    builder: (_) => _TimeDialog(initial: initial, minuteStep: minuteStep),
+  return showTimeWheel(
+    context,
+    initial: initial,
+    minuteStep: minuteStep,
+    allowEndOfDay: allowEndOfDay,
+    title: title,
   );
 }
 
-class _TimeDialog extends StatefulWidget {
-  const _TimeDialog({required this.initial, required this.minuteStep});
+/// Wybór miesiąca: strzałki i nazwa, np. „Październik 2026”. Dalej niż bieżący miesiąc się nie da.
+class MonthSwitcher extends StatelessWidget {
+  const MonthSwitcher({super.key, required this.month, required this.onChanged});
 
-  final TimeOfDay initial;
-  final int minuteStep;
-
-  @override
-  State<_TimeDialog> createState() => _TimeDialogState();
-}
-
-class _TimeDialogState extends State<_TimeDialog> {
-  static const _itemHeight = 34.0;
-
-  late int _hour = widget.initial.hour;
-  late int _minute = widget.initial.minute;
-  late final List<int> _minutes = <int>{
-    for (var m = 0; m < 60; m += widget.minuteStep) m,
-    widget.initial.minute,
-  }.toList()..sort();
-
-  // Wybrana wartość od razu w środku listy.
-  late final _hours = ScrollController(initialScrollOffset: math.max(0, (_hour - 2) * _itemHeight));
-  late final _mins = ScrollController(
-    initialScrollOffset: math.max(0, (_minutes.indexOf(_minute) - 2) * _itemHeight),
-  );
-
-  @override
-  void dispose() {
-    _hours.dispose();
-    _mins.dispose();
-    super.dispose();
-  }
-
-  String _two(int v) => v.toString().padLeft(2, '0');
-
-  Widget _column(ScrollController controller, List<int> values, int selected, ValueChanged<int> onTap) {
-    final text = Theme.of(context).textTheme;
-    return SizedBox(
-      width: 64,
-      height: _itemHeight * 5,
-      child: ListView.builder(
-        controller: controller,
-        itemExtent: _itemHeight,
-        itemCount: values.length,
-        itemBuilder: (context, i) {
-          final v = values[i];
-          final isSelected = v == selected;
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Material(
-              color: isSelected ? AppColors.accentFill : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () => onTap(v),
-                child: Center(
-                  child: Text(
-                    _two(v),
-                    style: text.bodyLarge?.copyWith(
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                      color: isSelected ? AppColors.onAccent : AppColors.text,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
+  /// Pierwszy dzień wybranego miesiąca.
+  final DateTime month;
+  final ValueChanged<DateTime> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    return Dialog(
-      child: SizedBox(
-        width: 216,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '${_two(_hour)}:${_two(_minute)}',
-                style: text.headlineMedium?.copyWith(
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _column(_hours, [for (var h = 0; h < 24; h++) h], _hour, (v) => setState(() => _hour = v)),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    child: Text(':', style: text.titleMedium?.copyWith(color: AppColors.textMuted)),
-                  ),
-                  _column(_mins, _minutes, _minute, (v) => setState(() => _minute = v)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
-                    child: const Text('Anuluj'),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, TimeOfDay(hour: _hour, minute: _minute)),
-                    child: const Text('OK'),
-                  ),
-                ],
-              ),
-            ],
+    final now = DateTime.now();
+    final isCurrent = month.year == now.year && month.month == now.month;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GlowButton(
+          icon: AppIcons.caretLeft,
+          tooltip: 'Poprzedni miesiąc',
+          onPressed: () => onChanged(DateTime(month.year, month.month - 1)),
+        ),
+        SizedBox(
+          width: 164,
+          child: Text(
+            Fmt.monthYear(month),
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleSmall,
           ),
         ),
-      ),
+        GlowButton(
+          icon: AppIcons.caretRight,
+          tooltip: 'Następny miesiąc',
+          onPressed: isCurrent ? null : () => onChanged(DateTime(month.year, month.month + 1)),
+        ),
+      ],
     );
   }
 }

@@ -509,7 +509,12 @@ class _HoursFormState extends ConsumerState<_HoursForm> {
 
   Future<void> _pick(int day, bool opens) async {
     final d = _days[day];
-    final picked = await pickTime(context, initial: opens ? d.opens : d.closes);
+    final picked = await pickTime(
+      context,
+      initial: opens ? d.opens : d.closes,
+      allowEndOfDay: !opens,
+      title: opens ? 'Otwarcie' : 'Zamknięcie',
+    );
     if (picked == null) return;
     setState(() => opens ? d.opens = picked : d.closes = picked);
   }
@@ -871,7 +876,7 @@ class _ExceptionDialogState extends State<_ExceptionDialog> {
                   _TimeButton(
                     value: _format(_closes),
                     onTap: () async {
-                      final t = await pickTime(context, initial: _closes);
+                      final t = await pickTime(context, initial: _closes, allowEndOfDay: true, title: 'Zamknięcie');
                       if (t != null) setState(() => _closes = t);
                     },
                   ),

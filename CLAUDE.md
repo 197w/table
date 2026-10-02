@@ -9,7 +9,7 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   iOS `pl.table.tableStaff`). Logowanie numerem telefonu (SMS), skan wspólnego kodu QR z panelu
   zaczyna zmianę i loguje w panelu. Dolne menu: Zamówienia, Dostawy, Zeskanuj, Grafik, Ustawienia. Grafik to lista dni z okresu lokalu
   (tydzień, 2 tygodnie albo miesiąc, `restaurants.schedule_period`, ustawia „Ustawienia lokalu”) ze zgłaszaniem godzin
-  na cały okres naraz i „Moje godziny” na dole. Kelner nabija zamówienia (stoliki, menu, wysyłka na kuchnię, wydanie,
+  na cały okres naraz i „Moje godziny” na dole (miesiąc kalendarzowy ze strzałkami, do 3 miesięcy wstecz). Kelner nabija zamówienia (stoliki, menu, wysyłka na kuchnię, wydanie,
   zamknięcie rachunku; niewysłaną pozycję usuwa się przesunięciem w lewo, minus tylko zmniejsza ilość), mój grafik
   (zgłaszanie godzin), mój kod do panelu. Każda aktualizacja na S23 i iPhone'a, tak jak aplikacja dla gości.
 - `packages/table_core`: wspólny motyw, czcionka Geist, ikony Phosphor, formatery, widżety i konfiguracja.
@@ -76,7 +76,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0045, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0046, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -119,7 +119,16 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Ustawienia lokalu: rezerwacje w aplikacji (co ile minut, największa grupa), grafik pracowników, okres inwentaryzacji,
   dostawa i odbiór. Dane lokalu: logo, dane, poziom cen, dane właściciela, godziny, dni wyjątkowe.
 - Flota (`/flota`, uprawnienie `fleet`, 0045): `vehicles` (auto, skuter, rower, inny; nazwa, rejestracja unikalna
-  w lokalu, dostawca, uwagi, w użyciu), `panel_save_vehicle`, `panel_delete_vehicle`.
+  w lokalu, VIN 17 znaków bez I/O/Q unikalny w lokalu (0046), dostawca, uwagi, w użyciu), `panel_save_vehicle`,
+  `panel_delete_vehicle`.
+- Stawki i zarobki (0046): stawka za godzinę w oknie pracownika („Stawka za godzinę”, zł/h), tabela `staff_rates`
+  (czyta tylko uprawnienie `staff`, bo `staff_members` widzą wszyscy pracownicy), zapis `panel_set_staff_rate`.
+  Statystyki pracownika (szczegóły w Zespole) i zespołu liczone za miesiąc kalendarzowy od 1. do ostatniego dnia
+  w strefie czasowej lokalu (`private.month_range`, `p_month`; zmiana przez północ dzieli się między miesiące),
+  przełącznik `MonthSwitcher`; zarobek = godziny × obecna stawka, w zespole tylko z uprawnieniem `staff`.
+- Godziny wybiera się kółkami jak w iOS (`showTimeWheel` w `table_core`, w panelu `pickTime`): zapętlone kółka,
+  przeciąganie myszą, na telefonie od dołu. Zamknięcie lokalu, koniec zmiany i „do” w grafiku mogą być 24:00
+  (`allowEndOfDay`, `TimeOfDay(hour: 24)`, w bazie `time '24:00'`, kolumny i sprawdzenia `closes > opens` to przyjmują).
 - Klienci (`/klienci`, uprawnienie `customers`, 0045): `panel_customers` łączy rezerwacje (bez blokad) i dostarczone
   zamówienia na wynos po koncie w aplikacji, telefonie (ostatnie 9 cyfr) albo imieniu: wizyty, nieobecności,
   zamówienia, wydatki, ostatnia wizyta, najbliższa rezerwacja. Statystyki zespołu (`/zespol`, uprawnienie `stats`):

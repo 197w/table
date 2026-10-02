@@ -702,12 +702,14 @@ class PanelRepository {
     required VehicleKind kind,
     required String name,
     String? plate,
+    String? vin,
     String? memberId,
     String? note,
     bool active = true,
   }) {
     return _guard(
       () => _db.rpc<String>('panel_save_vehicle', params: {
+        'p_vin': vin,
         'p_restaurant_id': restaurantId,
         'p_id': id,
         'p_kind': kind.db,
@@ -732,12 +734,12 @@ class PanelRepository {
     });
   }
 
-  /// Statystyki zespołu z ostatnich [days] dni.
-  Future<List<TeamStat>> teamStats(String restaurantId, int days) {
+  /// Statystyki zespołu za miesiąc kalendarzowy [month].
+  Future<List<TeamStat>> teamStats(String restaurantId, DateTime month) {
     return _guard(() async {
       final rows = await _db.rpc<List<dynamic>>(
         'panel_team_stats',
-        params: {'p_restaurant_id': restaurantId, 'p_days': days},
+        params: {'p_restaurant_id': restaurantId, 'p_month': _isoDay(monthStart(month))},
       );
       return [for (final r in rows) TeamStat.fromJson(r as Map<String, dynamic>)];
     });
@@ -1078,11 +1080,12 @@ class PanelRepository {
     );
   }
 
-  Future<MemberStats> memberStats(String memberId, int days) {
+  /// Statystyki pracownika za miesiąc kalendarzowy [month] (od 1. do ostatniego dnia, czas lokalu).
+  Future<MemberStats> memberStats(String memberId, DateTime month) {
     return _guard(() async {
       final json = await _db.rpc<Map<String, dynamic>>(
         'panel_member_stats',
-        params: {'p_member_id': memberId, 'p_days': days},
+        params: {'p_member_id': memberId, 'p_month': _isoDay(monthStart(month))},
       );
       return MemberStats.fromJson(json);
     });
@@ -1440,6 +1443,21 @@ class PanelRepository {
       final created = await _db.from('staff_members').insert(row).select('id').single();
       return created['id'] as String;
     });
+  }
+
+  /// Stawki za godzinę według numeru pracownika (tylko z uprawnieniem „Pracownicy”).
+  Future<Map<String, int>> staffRates(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db.from('staff_rates').select('member_id, hourly_rate_grosze').eq('restaurant_id', restaurantId);
+      return {for (final r in rows) r['member_id'] as String: (r['hourly_rate_grosze'] as num).toInt()};
+    });
+  }
+
+  /// Stawka za godzinę w groszach. Null usuwa stawkę.
+  Future<void> setStaffRate(String memberId, int? grosze) {
+    return _guard(
+      () => _db.rpc<void>('panel_set_staff_rate', params: {'p_member_id': memberId, 'p_rate_grosze': grosze}),
+    );
   }
 
   Future<void> deleteStaffMember(String id) {

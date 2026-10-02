@@ -404,13 +404,12 @@ class _PeriodSheetState extends ConsumerState<_PeriodSheet> {
   static String _fmt(TimeOfDay t) => '${_two(t.hour)}:${_two(t.minute)}';
 
   Future<void> _pick(DateTime day, bool start) async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: start ? _starts[day]! : _ends[day]!,
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-        child: child!,
-      ),
+    final picked = await showTimeWheel(
+      context,
+      initial: start ? _starts[day]! : _ends[day]!,
+      minuteStep: 15,
+      allowEndOfDay: !start,
+      title: start ? 'Od' : 'Do',
     );
     if (picked == null) return;
     setState(() {
@@ -548,31 +547,66 @@ class _PeriodSheetState extends ConsumerState<_PeriodSheet> {
   }
 }
 
-/// Moje przepracowane zmiany z ostatniego miesiąca, dzień po dniu, z sumą.
-class HoursHistory extends StatelessWidget {
+/// Moje przepracowane zmiany w miesiącu kalendarzowym (od 1. do ostatniego dnia), dzień po dniu, z sumą.
+/// Strzałki przełączają miesiące, najdalej trzy wstecz.
+class HoursHistory extends StatefulWidget {
   const HoursHistory({super.key, required this.shifts});
 
   final List<Shift> shifts;
 
   @override
+  State<HoursHistory> createState() => _HoursHistoryState();
+}
+
+class _HoursHistoryState extends State<HoursHistory> {
+  /// Ile miesięcy wstecz od bieżącego (0: ten miesiąc).
+  int _back = 0;
+
+  @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final now = DateTime.now();
+    final month = DateTime(now.year, now.month - _back);
+    final next = DateTime(month.year, month.month + 1);
+    final shifts = [
+      for (final s in widget.shifts)
+        if (!s.startedAt.toLocal().isBefore(month) && s.startedAt.toLocal().isBefore(next)) s,
+    ];
     final total = shifts.fold(Duration.zero, (sum, s) => sum + s.duration);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Text('Moje godziny', style: text.titleMedium),
+        const SizedBox(height: 4),
         Row(
           children: [
-            Expanded(child: Text('Moje godziny', style: text.titleMedium)),
+            IconButton(
+              tooltip: 'Poprzedni miesiąc',
+              onPressed: _back < 3 ? () => setState(() => _back++) : null,
+              icon: const Glyph(AppIcons.caretLeft, size: 18),
+            ),
+            Expanded(
+              child: Text(
+                '${_months[month.month - 1]} ${month.year}',
+                textAlign: TextAlign.center,
+                style: text.titleSmall,
+              ),
+            ),
+            IconButton(
+              tooltip: 'Następny miesiąc',
+              onPressed: _back > 0 ? () => setState(() => _back--) : null,
+              icon: const Glyph(AppIcons.caretRight, size: 18),
+            ),
+            const SizedBox(width: 8),
             Text(
-              '31 dni: ${_hoursText(total)} h',
-              style: text.titleSmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+              '${_hoursText(total)} h',
+              style: text.titleSmall?.copyWith(fontFeatures: _tabular),
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         if (shifts.isEmpty)
-          Text('Tu pojawią się Twoje zmiany.', style: text.bodyMedium?.copyWith(color: AppColors.textMuted))
+          Text('Brak zmian w tym miesiącu.', style: text.bodyMedium?.copyWith(color: AppColors.textMuted))
         else
           for (final s in shifts)
             Container(
@@ -720,13 +754,12 @@ class _HoursSheetState extends ConsumerState<HoursSheet> {
   }
 
   Future<void> _pick(bool start) async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: start ? _starts : _ends,
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-        child: child!,
-      ),
+    final picked = await showTimeWheel(
+      context,
+      initial: start ? _starts : _ends,
+      minuteStep: 15,
+      allowEndOfDay: !start,
+      title: start ? 'Od' : 'Do',
     );
     if (picked != null) setState(() => start ? _starts = picked : _ends = picked);
   }
