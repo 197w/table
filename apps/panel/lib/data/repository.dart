@@ -682,6 +682,67 @@ class PanelRepository {
     });
   }
 
+  /// Pojazdy floty lokalu, najpierw aktywne.
+  Future<List<Vehicle>> vehicles(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db
+          .from('vehicles')
+          .select()
+          .eq('restaurant_id', restaurantId)
+          .order('active', ascending: false)
+          .order('created_at');
+      return rows.map(Vehicle.fromJson).toList();
+    });
+  }
+
+  /// Dodaje pojazd ([id] null) albo zmienia istniejący.
+  Future<void> saveVehicle({
+    required String restaurantId,
+    String? id,
+    required VehicleKind kind,
+    required String name,
+    String? plate,
+    String? memberId,
+    String? note,
+    bool active = true,
+  }) {
+    return _guard(
+      () => _db.rpc<String>('panel_save_vehicle', params: {
+        'p_restaurant_id': restaurantId,
+        'p_id': id,
+        'p_kind': kind.db,
+        'p_name': name,
+        'p_plate': plate,
+        'p_member_id': memberId,
+        'p_note': note,
+        'p_active': active,
+      }),
+    );
+  }
+
+  Future<void> deleteVehicle(String id) {
+    return _guard(() => _db.rpc<void>('panel_delete_vehicle', params: {'p_id': id}));
+  }
+
+  /// Baza klientów: goście z rezerwacji i zamówień na wynos, ostatnio widziani pierwsi.
+  Future<List<Customer>> customers(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>('panel_customers', params: {'p_restaurant_id': restaurantId});
+      return [for (final r in rows) Customer.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
+  /// Statystyki zespołu z ostatnich [days] dni.
+  Future<List<TeamStat>> teamStats(String restaurantId, int days) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>(
+        'panel_team_stats',
+        params: {'p_restaurant_id': restaurantId, 'p_days': days},
+      );
+      return [for (final r in rows) TeamStat.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
   /// Ekran „Wydanie”: pozycje z otwartych rachunków, które są na kuchni albo już gotowe.
   Future<List<ServingTicket>> servingTickets(String restaurantId) {
     return _guard(() async {

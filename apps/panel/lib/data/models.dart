@@ -1027,6 +1027,7 @@ enum StaffPermission {
   ordersClose('orders_close', 'Zamykanie rachunków', 'Przyjmowanie płatności i zamykanie rachunku', 'Zamówienia'),
   ordersCancel('orders_cancel', 'Anulowanie pozycji', 'Anulowanie pozycji, które są już na kuchni', 'Zamówienia'),
   deliveries('deliveries', 'Dostawy (kurier)', 'Kursy w aplikacji Table for employees, kolejka dostawców', 'Zamówienia'),
+  fleet('fleet', 'Flota', 'Pojazdy dostawców: dodawanie, zmiana i przypisanie', 'Zamówienia'),
   kitchen('kitchen', 'Kuchnia', 'Ekran zamówień na kuchni', 'Kuchnia'),
   kitchenSettings('kitchen_settings', 'Ustawienia kuchni', 'Progi czasu i pozycje ukryte na kuchni', 'Kuchnia'),
   serving('serving', 'Wydanie', 'Ekran dań gotowych z kuchni do zaniesienia gościom', 'Kuchnia'),
@@ -1041,6 +1042,7 @@ enum StaffPermission {
   menuAvailability('menu_availability', 'Dostępność dań', 'Oznaczanie „Skończyło się” i „Znowu dostępne”', 'Lokal'),
   inventoryEdit('inventory_edit', 'Edytowanie składników', 'Dodawanie, zmiana i usuwanie składników', 'Inwentaryzacja'),
   inventoryCount('inventory_count', 'Wpisywanie ilości składników', 'Spis ilości składników w inwentaryzacji', 'Inwentaryzacja'),
+  customers('customers', 'Baza klientów', 'Goście lokalu: wizyty, wydatki, nieobecności', 'Wyniki'),
   reviews('reviews', 'Opinie', 'Odpowiadanie na opinie', 'Wyniki'),
   stats('stats', 'Statystyki', 'Sprzedaż, rezerwacje i historia zamówień', 'Wyniki');
 
@@ -1533,6 +1535,158 @@ class KitchenTicket {
       ..sort((a, b) => a.sentAt.compareTo(b.sentAt));
     return tickets;
   }
+}
+
+/// Rodzaj pojazdu we flocie.
+enum VehicleKind {
+  car('car', 'Samochód'),
+  scooter('scooter', 'Skuter'),
+  bike('bike', 'Rower'),
+  other('other', 'Inny');
+
+  const VehicleKind(this.db, this.label);
+  final String db;
+  final String label;
+
+  static VehicleKind from(Object? value) => values.firstWhere((k) => k.db == value, orElse: () => VehicleKind.other);
+}
+
+/// Pojazd dostawcy we flocie lokalu.
+class Vehicle {
+  const Vehicle({
+    required this.id,
+    required this.kind,
+    required this.name,
+    required this.active,
+    this.plate,
+    this.memberId,
+    this.note,
+  });
+
+  final String id;
+  final VehicleKind kind;
+  final String name;
+
+  /// Numer rejestracyjny, np. „BI 12345”. Rower nie ma.
+  final String? plate;
+
+  /// Dostawca, który jeździ tym pojazdem.
+  final String? memberId;
+  final String? note;
+  final bool active;
+
+  factory Vehicle.fromJson(Map<String, dynamic> json) => Vehicle(
+    id: json['id'] as String,
+    kind: VehicleKind.from(json['kind']),
+    name: json['name'] as String? ?? '',
+    plate: json['plate'] as String?,
+    memberId: json['member_id'] as String?,
+    note: json['note'] as String?,
+    active: json['active'] != false,
+  );
+}
+
+/// Gość lokalu w bazie klientów: z rezerwacji i zamówień na wynos.
+class Customer {
+  const Customer({
+    required this.key,
+    required this.name,
+    required this.fromApp,
+    required this.visits,
+    required this.reservations,
+    required this.noShows,
+    required this.cancelled,
+    required this.orders,
+    required this.spentGrosze,
+    this.phone,
+    this.firstSeen,
+    this.lastVisit,
+    this.nextReservation,
+  });
+
+  final String key;
+  final String name;
+  final String? phone;
+
+  /// Gość ma konto w aplikacji Table.
+  final bool fromApp;
+
+  /// Rezerwacje, na które przyszedł (przy stoliku albo zakończone).
+  final int visits;
+  final int reservations;
+  final int noShows;
+  final int cancelled;
+
+  /// Dostarczone i odebrane zamówienia na wynos.
+  final int orders;
+  final int spentGrosze;
+  final DateTime? firstSeen;
+  final DateTime? lastVisit;
+  final DateTime? nextReservation;
+
+  /// Wrócił co najmniej drugi raz.
+  bool get returning => visits + orders >= 2;
+
+  factory Customer.fromJson(Map<String, dynamic> json) => Customer(
+    key: json['key'] as String,
+    name: json['name'] as String? ?? 'Gość',
+    phone: json['phone'] as String?,
+    fromApp: json['from_app'] == true,
+    visits: _toInt(json['visits']),
+    reservations: _toInt(json['reservations']),
+    noShows: _toInt(json['no_shows']),
+    cancelled: _toInt(json['cancelled']),
+    orders: _toInt(json['orders']),
+    spentGrosze: _toInt(json['spent_grosze']),
+    firstSeen: _toDateOrNull(json['first_seen']),
+    lastVisit: _toDateOrNull(json['last_visit']),
+    nextReservation: _toDateOrNull(json['next_reservation']),
+  );
+}
+
+/// Statystyki jednej osoby z zespołu w wybranym okresie.
+class TeamStat {
+  const TeamStat({
+    required this.memberId,
+    required this.name,
+    required this.active,
+    required this.seconds,
+    required this.shifts,
+    required this.ordersOpened,
+    required this.ordersClosed,
+    required this.revenueGrosze,
+    required this.items,
+    required this.deliveries,
+    this.position,
+  });
+
+  final String memberId;
+  final String name;
+  final String? position;
+  final bool active;
+  final int seconds;
+  final int shifts;
+  final int ordersOpened;
+  final int ordersClosed;
+  final int revenueGrosze;
+  final int items;
+  final int deliveries;
+
+  bool get hasActivity => seconds > 0 || ordersOpened > 0 || ordersClosed > 0 || items > 0 || deliveries > 0;
+
+  factory TeamStat.fromJson(Map<String, dynamic> json) => TeamStat(
+    memberId: json['member_id'] as String,
+    name: json['name'] as String? ?? '',
+    position: json['position_name'] as String?,
+    active: json['active'] != false,
+    seconds: _toInt(json['seconds']),
+    shifts: _toInt(json['shifts']),
+    ordersOpened: _toInt(json['orders_opened']),
+    ordersClosed: _toInt(json['orders_closed']),
+    revenueGrosze: _toInt(json['revenue']),
+    items: _toInt(json['items']),
+    deliveries: _toInt(json['deliveries']),
+  );
 }
 
 /// Dane właściciela lokalu. Widać je tylko w panelu, u kierownika i właściciela.

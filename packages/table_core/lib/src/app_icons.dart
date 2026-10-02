@@ -72,12 +72,14 @@ class Glyph extends StatelessWidget {
 /// Nowa ikona: `npx better-icons get ph:<nazwa> > assets/icons/<nazwa>.svg`,
 /// `npx better-icons get ph:<nazwa>-duotone > assets/icons/duotone/<nazwa>.svg` i wpis poniżej.
 abstract final class AppIcons {
+  static const addressBook = AppIconData('assets/icons/address-book.svg');
   static const alarm = AppIconData('assets/icons/alarm.svg');
   static const armchair = AppIconData('assets/icons/armchair.svg');
   static const arrowLeft = AppIconData('assets/icons/arrow-left.svg');
   static const arrowUpRight = AppIconData('assets/icons/arrow-up-right.svg');
   static const arrowsClockwise = AppIconData('assets/icons/arrows-clockwise.svg');
   static const bell = AppIconData('assets/icons/bell.svg');
+  static const bicycle = AppIconData('assets/icons/bicycle.svg');
   static const bellSlash = AppIconData('assets/icons/bell-slash.svg');
   static const bookOpen = AppIconData('assets/icons/book-open-text.svg');
   static const bowlFood = AppIconData('assets/icons/bowl-food.svg');
@@ -90,11 +92,13 @@ abstract final class AppIcons {
   static const calendarDotsFill = AppIconData('assets/icons/calendar-dots-fill.svg');
   static const calendarPlus = AppIconData('assets/icons/calendar-plus.svg');
   static const calendarX = AppIconData('assets/icons/calendar-x.svg');
+  static const car = AppIconData('assets/icons/car-profile.svg');
   static const caretDown = AppIconData('assets/icons/caret-down.svg');
   static const caretLeft = AppIconData('assets/icons/caret-left.svg');
   static const caretUp = AppIconData('assets/icons/caret-up.svg');
   static const caretRight = AppIconData('assets/icons/caret-right.svg');
   static const chartBar = AppIconData('assets/icons/chart-bar.svg');
+  static const chartBarHorizontal = AppIconData('assets/icons/chart-bar-horizontal.svg');
   static const chartLineUp = AppIconData('assets/icons/chart-line-up.svg');
   static const chatCircle = AppIconData('assets/icons/chat-circle-text.svg');
   static const chatText = AppIconData('assets/icons/chat-text.svg');
@@ -170,9 +174,11 @@ abstract final class AppIcons {
   static const undo = AppIconData('assets/icons/arrow-counter-clockwise.svg');
   static const userCheck = AppIconData('assets/icons/user-check.svg');
   static const userGear = AppIconData('assets/icons/user-gear.svg');
+  static const userList = AppIconData('assets/icons/user-list.svg');
   static const userMinus = AppIconData('assets/icons/user-minus.svg');
   static const users = AppIconData('assets/icons/users.svg');
   static const usersThree = AppIconData('assets/icons/users-three.svg');
+  static const van = AppIconData('assets/icons/van.svg');
   static const warning = AppIconData('assets/icons/warning-circle.svg');
   static const wifiOff = AppIconData('assets/icons/wifi-slash.svg');
   static const wrench = AppIconData('assets/icons/wrench.svg');

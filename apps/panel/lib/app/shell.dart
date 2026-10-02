@@ -7,13 +7,20 @@ import '../data/models.dart';
 import '../data/providers.dart';
 import '../features/kiosk/kiosk_screen.dart';
 import '../features/onboarding/create_restaurant_screen.dart';
-import 'app.dart';
-import 'reservation_alerts.dart';
 import '../shared/panel_widgets.dart';
+import 'app.dart';
 import 'panel_theme.dart';
+import 'reservation_alerts.dart';
+import 'sections.dart';
 import 'updater.dart';
 
-/// Układ panelu: boczne menu z wyborem lokalu i treść sekcji.
+const _tabular = [FontFeature.tabularFigures()];
+
+String _two(int n) => n.toString().padLeft(2, '0');
+String _hm(DateTime t) => '${_two(t.toLocal().hour)}:${_two(t.toLocal().minute)}';
+
+/// Układ panelu: górny pasek (lokal, grupy zakładek, motyw i pracownik), wąski pasek boczny z zakładkami
+/// wybranej grupy i zakładkami lokalu na dole, a obok treść zakładki.
 class PanelShell extends ConsumerWidget {
   const PanelShell({super.key, required this.location, required this.child});
 
@@ -42,33 +49,72 @@ class PanelShell extends ConsumerWidget {
       });
     }
 
-    // Ekran kuchni na cały ekran: bez bocznego menu, same bileciki.
+    // Ekran kuchni na cały ekran: bez pasków, same bileciki.
     if (ref.watch(kitchenFullscreenProvider) && location.startsWith(PanelRoutes.kitchen)) {
       return Scaffold(body: _RouteGuard(location: location, child: child));
     }
 
+    // Grupy według uprawnień zalogowanego pracownika (bez niego: konta panelu).
+    final permissions = current == null
+        ? const <String>{}
+        : ref.watch(effectivePermissionsProvider(current.id)) ?? const <String>{};
+    bool allowed(String route) => canOpenRoute(route, permissions);
+    final sections = [
+      for (final s in PanelSection.values)
+        if (s.tabs.any((t) => allowed(t.route))) s,
+    ];
+    final here = PanelSection.forRoute(location);
+    final remembered = PanelSection.byName(ref.watch(panelSectionProvider));
+    final section = here ?? (sections.contains(remembered) ? remembered : sections.firstOrNull);
+    if (here != null && here != remembered) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => ref.read(panelSectionProvider.notifier).set(here.name));
+    }
+
     return Scaffold(
-      body: Row(
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Menu rzuca cień na treść, żeby warstwy były od siebie odsunięte.
-          DecoratedBox(
-            decoration: BoxDecoration(boxShadow: PanelDepth.sidebarEdge),
-            child: _Sidebar(location: location),
+          _TopBar(
+            sections: sections,
+            section: section,
+            onSection: (s) {
+              ref.read(panelSectionProvider.notifier).set(s.name);
+              final first = s.tabs.where((t) => allowed(t.route)).firstOrNull;
+              if (first != null && !location.startsWith(first.route)) context.go(first.route);
+            },
           ),
           Expanded(
-            child: ColoredBox(
-              color: PanelDepth.content,
-              child: restaurants.when(
-                loading: () => const LoadingView(),
-                error: (e, _) => ErrorView(
-                  error: e,
-                  onRetry: () => ref.invalidate(restaurantsProvider),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _Rail(
+                  location: location,
+                  tabs: [
+                    for (final t in section?.tabs ?? const <PanelTab>[])
+                      if (allowed(t.route)) t,
+                  ],
+                  placeTabs: [
+                    for (final t in placeTabs)
+                      if (allowed(t.route)) t,
+                  ],
                 ),
-                // Nowe konto restauracji zaczyna od utworzenia lokalu.
-                data: (list) => list.isEmpty
-                    ? const CreateRestaurantScreen()
-                    : _RouteGuard(location: location, child: child),
-              ),
+                Expanded(
+                  child: ColoredBox(
+                    color: PanelDepth.content,
+                    child: restaurants.when(
+                      loading: () => const LoadingView(),
+                      error: (e, _) => ErrorView(
+                        error: e,
+                        onRetry: () => ref.invalidate(restaurantsProvider),
+                      ),
+                      // Nowe konto restauracji zaczyna od utworzenia lokalu.
+                      data: (list) => list.isEmpty
+                          ? const CreateRestaurantScreen()
+                          : _RouteGuard(location: location, child: child),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -95,27 +141,16 @@ class _RouteGuard extends ConsumerWidget {
       // Jedno logowanie pracownika na cały panel. Bez niego każda zakładka pokazuje logowanie.
       final tab = tabForRoute(location);
       if (tab == null) return child;
-      final member = ref.watch(panelMemberProvider);
-      if (member == null) return TabLoginGate(tab: tab, label: panelTabLabels[tab] ?? 'Zakładka');
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TabSessionBar(member: member),
-          Expanded(child: child),
-        ],
-      );
+      if (ref.watch(panelMemberProvider) == null) {
+        return TabLoginGate(tab: tab, label: panelTabLabels[tab] ?? 'Zakładka');
+      }
+      return child;
     }
 
-    String? first;
-    for (final (_, items) in _groups) {
-      for (final item in items) {
-        if (first == null && canOpenRoute(item.route, permissions)) first = item.route;
-      }
-    }
+    final first = allPanelTabs.where((t) => canOpenRoute(t.route, permissions)).firstOrNull?.route;
     if (first != null) {
-      final target = first;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) context.go(target);
+        if (context.mounted) context.go(first);
       });
       return const LoadingView();
     }
@@ -131,469 +166,189 @@ class _RouteGuard extends ConsumerWidget {
   }
 }
 
-class _NavItem {
-  const _NavItem(this.route, this.label, this.icon);
-  final String route;
-  final String label;
-  final AppIconData icon;
-}
+// ---------------------------------------------------------------
+// Górny pasek
+// ---------------------------------------------------------------
 
-/// Sekcje panelu pogrupowane według tego, kto i kiedy z nich korzysta.
-const _groups = <(String, List<_NavItem>)>[
-  ('Sala', [
-    _NavItem(PanelRoutes.reservations, 'Rezerwacje', AppIcons.calendarDots),
-    _NavItem(PanelRoutes.orders, 'Zamówienia', AppIcons.receipt),
-    _NavItem(PanelRoutes.deliveries, 'Dostawy', AppIcons.moped),
-    _NavItem(PanelRoutes.kitchen, 'Kuchnia', AppIcons.chefHat),
-    _NavItem(PanelRoutes.serving, 'Wydanie', AppIcons.callBell),
-    _NavItem(PanelRoutes.floor, 'Edycja sali', AppIcons.blueprint),
-  ]),
-  ('Zespół', [
-    _NavItem(PanelRoutes.staff, 'Pracownicy', AppIcons.usersThree),
-  ]),
-  ('Lokal', [
-    _NavItem(PanelRoutes.profile, 'Dane lokalu', AppIcons.storefront),
-    _NavItem(PanelRoutes.menu, 'Menu', AppIcons.bookOpen),
-    _NavItem(PanelRoutes.inventory, 'Inwentaryzacja', AppIcons.package),
-  ]),
-  ('Wyniki', [
-    _NavItem(PanelRoutes.reviews, 'Opinie', AppIcons.chatCircle),
-    _NavItem(PanelRoutes.stats, 'Statystyki', AppIcons.chartLineUp),
-  ]),
-];
+/// Górny pasek: lokal po lewej, grupy zakładek, nazwa Table na środku, a po prawej nowa wersja,
+/// odliczanie do wylogowania, motyw i zalogowany pracownik.
+class _TopBar extends ConsumerWidget {
+  const _TopBar({required this.sections, required this.section, required this.onSection});
 
-class _Sidebar extends ConsumerWidget {
-  const _Sidebar({required this.location});
-
-  final String location;
-
-  /// Szerokość paska: zwiniętego i rozwiniętego.
-  static const _narrow = 76.0;
-  static const _wide = 256.0;
-  static const _pad = 14.0;
+  final List<PanelSection> sections;
+  final PanelSection? section;
+  final ValueChanged<PanelSection> onSection;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
     final current = ref.watch(currentRestaurantProvider);
-    final list = ref.watch(restaurantsProvider).value ?? const [];
-    final collapsed = ref.watch(sidebarCollapsedProvider);
-
-    // Jedna wartość prowadzi całą zmianę: 1 to menu rozwinięte, 0 zwinięte.
-    // Wysokości są stałe w obu stanach, więc ikony nie ruszają się w pionie.
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(end: collapsed ? 0 : 1),
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-      builder: (context, t, _) {
-        final width = _narrow + (_wide - _narrow) * t;
-        final inner = width - _pad * 2;
-        return RepaintBoundary(
-          child: Container(
-            width: width,
-            decoration: BoxDecoration(
-              color: PanelDepth.sidebar,
-              border: PanelDepth.sidebarBorder,
-            ),
-            // Obrys po prawej (ciemny motyw) zajmuje piksel: odejmujemy go od odstępu,
-            // żeby w zwiniętym pasku ikony miały pełne 48 px i nic nie wystawało.
-            padding: EdgeInsets.fromLTRB(
-              _pad,
-              20,
-              _pad - (PanelDepth.sidebarBorder?.dimensions.horizontal ?? 0),
-              14,
-            ),
-            child: _content(
-              context,
-              ref,
-              inner: inner,
-              fade: t,
-              current: current,
-              list: list,
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _content(
-    BuildContext context,
-    WidgetRef ref, {
-    required double inner,
-    required double fade,
-    required PanelRestaurant? current,
-    required List<PanelRestaurant> list,
-  }) {
-    final text = Theme.of(context).textTheme;
+    final list = ref.watch(restaurantsProvider).value ?? const <PanelRestaurant>[];
     final theme = ref.watch(themeSettingProvider);
-    final email = ref.watch(repositoryProvider).email;
-    // Zakładki według uprawnień zalogowanego pracownika (bez niego: konta panelu).
-    final permissions = current == null
-        ? const <String>{}
-        : ref.watch(effectivePermissionsProvider(current.id)) ?? const <String>{};
-    bool allowed(String route) => canOpenRoute(route, permissions);
+    final release = ref.watch(availableUpdateProvider);
+    // Ostatnie 10 sekund przed automatycznym wylogowaniem.
+    final idle = ref.watch(idleSecondsProvider.select((s) => s >= kIdleLogoutSeconds - 10 ? s : 0));
 
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: inner,
-          height: 40,
-          child: _IconRow(
-            icon: AppIcons.menu,
-            label: fade < 0.5 ? 'Rozwiń menu' : 'Zwiń menu',
-            width: inner,
-            fade: fade,
-            muted: true,
-            onTap: () => ref.read(sidebarCollapsedProvider.notifier).toggle(),
-          ),
-        ),
-        const SizedBox(height: 10),
-        if (current != null)
-          _RestaurantSwitcher(
-            current: current,
-            restaurants: list,
-            width: inner,
-            fade: fade,
-          ),
-        const SizedBox(height: 10),
-        Expanded(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              for (final (title, items) in _groups)
-                if (items.any((i) => allowed(i.route))) ...[
-                // Nagłówek grupy trzyma stałą wysokość: napis gaśnie,
-                // a na jego miejscu zostaje kreska.
-                SizedBox(
-                  width: inner,
-                  height: 30,
-                  child: Stack(
-                    alignment: Alignment.centerLeft,
-                    children: [
-                      Opacity(
-                        opacity: 1 - fade,
-                        child: Divider(height: 1, color: AppColors.ring),
-                      ),
-                      Opacity(
-                        opacity: labelFade(fade),
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 10, top: 6),
-                          child: Text(
-                            title.toUpperCase(),
-                            maxLines: 1,
-                            overflow: TextOverflow.clip,
-                            softWrap: false,
-                            style: text.labelSmall?.copyWith(
-                              color: AppColors.textDisabled,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+    return Container(
+      height: 60,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: PanelDepth.sidebar,
+        border: Border(bottom: BorderSide(color: AppColors.ring)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, box) => Stack(
+          alignment: Alignment.center,
+          children: [
+            // Nazwa Table na środku paska, gdy jest na nią miejsce.
+            if (box.maxWidth >= 1280)
+              Text(
+                'Table',
+                style: text.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.2,
+                  color: AppColors.textDisabled,
                 ),
-                for (final item in items)
-                  if (allowed(item.route))
-                  _IconRow(
-                    icon: item.icon,
-                    label: item.label,
-                    width: inner,
-                    fade: fade,
-                    selected: location.startsWith(item.route),
-                    onTap: () => context.go(item.route),
-                  ),
-              ],
-            ],
-          ),
-        ),
-        SizedBox(width: inner, child: Divider(color: AppColors.ring)),
-        const SizedBox(height: 6),
-        // Nowa wersja znaleziona w trakcie pracy: instaluje się dopiero po kliknięciu,
-        // żeby nie przerwać obsługi w środku serwisu.
-        if (ref.watch(availableUpdateProvider) case final release?)
-          _IconRow(
-            icon: AppIcons.arrowsClockwise,
-            label: 'Nowa wersja ${release.version}',
-            width: inner,
-            fade: fade,
-            selected: true,
-            onTap: () => showDialog<void>(
-              context: context,
-              barrierDismissible: false,
-              builder: (_) => _UpdateDialog(release: release),
-            ),
-          ),
-        // Motyw i wylogowanie to takie same wiersze jak sekcje,
-        // więc dół menu ma tę samą wysokość w obu stanach.
-        _IconRow(
-          icon: theme.icon,
-          label: 'Motyw: ${theme.label}',
-          width: inner,
-          fade: fade,
-          muted: true,
-          onTap: () {
-            final values = AppThemeSetting.values;
-            ThemeFade.run(
-              context,
-              () => ref
-                  .read(themeSettingProvider.notifier)
-                  .set(values[(theme.index + 1) % values.length]),
-            );
-          },
-        ),
-        // Pracownicy wchodzą na zmianę kodem QR albo czterocyfrowym kodem. Kończą ją na pasku nad zakładką.
-        if (current != null)
-          _IconRow(
-            icon: AppIcons.signIn,
-            label: 'Wejdź na zmianę',
-            width: inner,
-            fade: fade,
-            muted: true,
-            onTap: () => ShiftScreen.open(context),
-          ),
-        _IconRow(
-          icon: AppIcons.signOut,
-          label: 'Wyloguj się',
-          width: inner,
-          fade: fade,
-          muted: true,
-          onTap: () => ref.read(repositoryProvider).signOut(),
-        ),
-        SizedBox(
-          width: inner,
-          height: 26,
-          child: Opacity(
-            opacity: labelFade(fade),
-            child: Padding(
-              padding: const EdgeInsets.only(left: 10),
-              child: Text(
-                [
-                  ?email,
-                  if (ref.watch(panelVersionProvider).value case final v?) 'wersja $v',
-                ].join(' · '),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                softWrap: false,
-                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
               ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Szerokość treści w zwiniętym pasku: 76 minus odstępy po bokach.
-const kRailInner = 48.0;
-
-/// Widoczność podpisów: gasną w pierwszej części ruchu, więc znikają,
-/// zanim zwężający się pasek zacznie je ucinać.
-double labelFade(double fade) => ((fade - 0.45) / 0.55).clamp(0.0, 1.0);
-
-/// Szerokość kwadratu z ikoną przy danym stanie menu (1 rozwinięte, 0 zwinięte).
-/// Obie krańcowe wartości są stałe, więc ikona jedzie w jedną stronę i nie wraca.
-double railSlot(double fade) => kRailInner + (40 - kRailInner) * fade;
-
-/// Wiersz menu: ikona w kwadracie, który przy zwijaniu przesuwa się na środek
-/// paska, i podpis, który gaśnie. Wysokość jest stała, więc nic nie skacze.
-class _IconRow extends StatelessWidget {
-  const _IconRow({
-    required this.icon,
-    required this.label,
-    required this.width,
-    required this.fade,
-    required this.onTap,
-    this.selected = false,
-    this.muted = false,
-  });
-
-  final AppIconData icon;
-  final String label;
-  final double width;
-
-  /// 1 to menu rozwinięte, 0 zwinięte.
-  final double fade;
-  final bool selected;
-  final bool muted;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    // Kwadrat z ikoną wędruje między dwiema stałymi szerokościami.
-    // Liczenie go od bieżącej szerokości paska dawało wychylenie i powrót,
-    // bo obie wartości zmieniały się naraz.
-    final slot = railSlot(fade);
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
-      child: Tooltip(
-        message: fade < 0.5 ? label : '',
-        child: PanelPress(
-          child: Material(
-            color: selected ? AppColors.surface : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-            elevation: selected ? 6 : 0,
-            shadowColor: AppColors.palette.brightness == Brightness.dark
-                ? Colors.black
-                : const Color(0x330C2A22),
-            child: InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(10),
-              hoverColor: AppColors.ring,
-              splashColor: Colors.transparent,
-              highlightColor: Colors.transparent,
-              child: SizedBox(
-                width: width,
-                height: 40,
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: slot,
-                      child: Center(
-                        // Wybrana zakładka ma ikonę z wypełnieniem (duotone), pozostałe sam kontur.
-                        child: Glyph(
-                          selected ? icon.duotone : icon,
-                          size: 19,
-                          color: selected
-                              ? AppColors.accent
-                              : (muted ? AppColors.textDisabled : AppColors.textMuted),
-                        ),
-                      ),
+            Row(
+              children: [
+                if (current != null) _RestaurantSwitcher(current: current, restaurants: list),
+                if (sections.isNotEmpty && section != null) ...[
+                  const SizedBox(width: 12),
+                  // Ta sama wysokość co lokal obok.
+                  SizedBox(
+                    height: 42,
+                    child: IconTabs<PanelSection>(
+                      options: [for (final s in sections) (s, s.icon, s.label)],
+                      selected: section!,
+                      onChanged: onSection,
                     ),
-                    if (fade > 0)
-                      Expanded(
-                        child: Opacity(
-                          opacity: labelFade(fade),
-                          child: Text(
-                            label,
-                            maxLines: 1,
-                            overflow: TextOverflow.clip,
-                            softWrap: false,
-                            style: text.labelLarge?.copyWith(
-                              color: selected
-                                  ? AppColors.text
-                                  : (muted ? AppColors.textMuted : AppColors.textMuted),
-                              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
+                  ),
+                ],
+                const Spacer(),
+                // Nowa wersja znaleziona w trakcie pracy: instaluje się dopiero po kliknięciu,
+                // żeby nie przerwać obsługi w środku serwisu.
+                if (release != null) ...[
+                  TextButton.icon(
+                    onPressed: () => showDialog<void>(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (_) => _UpdateDialog(release: release),
+                    ),
+                    icon: const Glyph(AppIcons.arrowsClockwise, size: 16),
+                    label: Text('Nowa wersja ${release.version}'),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                if (idle > 0) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'Wylogowanie za ${kIdleLogoutSeconds - idle} s',
+                      style: text.labelMedium?.copyWith(color: AppColors.warning, fontFeatures: _tabular),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Tooltip(
+                  message: 'Motyw: ${theme.label}',
+                  child: PanelPress(
+                    child: IconButton(
+                      onPressed: () {
+                        final values = AppThemeSetting.values;
+                        ThemeFade.run(
+                          context,
+                          () => ref.read(themeSettingProvider.notifier).set(values[(theme.index + 1) % values.length]),
+                        );
+                      },
+                      icon: Glyph(theme.icon, size: 20, color: AppColors.textMuted),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 6),
+                if (current != null) _MemberMenu(restaurant: current),
+              ],
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 }
 
+/// Lokal w lewym rogu: logo, nazwa i kropka połączenia na żywo. Strzałka i lista tylko wtedy,
+/// gdy konto ma kilka lokali.
 class _RestaurantSwitcher extends ConsumerWidget {
-  const _RestaurantSwitcher({
-    required this.current,
-    required this.restaurants,
-    required this.width,
-    required this.fade,
-  });
+  const _RestaurantSwitcher({required this.current, required this.restaurants});
 
   final PanelRestaurant current;
   final List<PanelRestaurant> restaurants;
-
-  /// Szerokość pudełka w trakcie zwijania.
-  final double width;
-
-  /// 1 to menu rozwinięte, 0 zwinięte.
-  final double fade;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final text = Theme.of(context).textTheme;
     final canSwitch = restaurants.length > 1;
+    final live = current.isPro ? ref.watch(reservationsLiveProvider(current.id).select((s) => s.status)) : null;
+    final dot = switch (live) {
+      LiveStatus.live => const Color(0xFF2FB673),
+      LiveStatus.connecting => const Color(0xFFD99A15),
+      LiveStatus.offline => AppColors.error,
+      null => null,
+    };
 
-    // Stałe krańce, żeby logo nie wychylało się w bok w trakcie animacji.
-    final slot = kRailInner + (44 - kRailInner) * fade;
-    final body = Tooltip(
-      message: fade < 0.5 ? '${current.name} · ${current.city}' : '',
-      child: Container(
-        width: width,
-        height: 56,
-        decoration: BoxDecoration(
-          color: AppColors.surface.withValues(alpha: 0.4 + 0.6 * fade),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.ring.withValues(alpha: fade)),
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: slot,
-              child: Center(
-                child: ImageOutline(
-                  radius: 9,
-                  child: RestaurantLogo(
-                    name: current.name,
-                    logoUrl: current.logoUrl,
-                    size: 40,
-                    radius: 9,
-                  ),
-                ),
+    final body = Container(
+      height: 42,
+      constraints: const BoxConstraints(maxWidth: 260),
+      padding: const EdgeInsets.fromLTRB(6, 0, 12, 0),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.ring),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ImageOutline(
+            radius: 7,
+            child: RestaurantLogo(name: current.name, logoUrl: current.logoUrl, size: 30, radius: 7),
+          ),
+          const SizedBox(width: 10),
+          if (dot != null) ...[
+            Tooltip(
+              message: live == LiveStatus.live ? 'Na żywo' : 'Łączenie z lokalem…',
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
               ),
             ),
-            if (fade > 0)
-              Expanded(
-                child: Opacity(
-                  opacity: labelFade(fade),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        current.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        softWrap: false,
-                        style: text.labelLarge,
-                      ),
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              current.city,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              softWrap: false,
-                              style: text.bodySmall?.copyWith(
-                                color: AppColors.textMuted,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          _PlanBadge(isPro: current.isPro),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            if (fade > 0)
-              Opacity(
-                opacity: canSwitch ? labelFade(fade) : 0,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Glyph(AppIcons.caretDown, size: 16, color: AppColors.textMuted),
-                ),
-              ),
+            const SizedBox(width: 8),
           ],
-        ),
+          Flexible(
+            child: Text(
+              current.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: text.labelLarge,
+            ),
+          ),
+          const SizedBox(width: 8),
+          _PlanBadge(isPro: current.isPro),
+          if (canSwitch) ...[
+            const SizedBox(width: 6),
+            Glyph(AppIcons.caretDown, size: 14, color: AppColors.textMuted),
+          ],
+        ],
       ),
     );
 
-    if (!canSwitch) return body;
+    if (!canSwitch) {
+      return Tooltip(message: '${current.name} · ${current.city}', child: body);
+    }
 
     return PopupMenuButton<String>(
       tooltip: 'Zmień lokal',
@@ -603,19 +358,16 @@ class _RestaurantSwitcher extends ConsumerWidget {
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: AppColors.ring),
       ),
-      onSelected: (id) =>
-          ref.read(selectedRestaurantIdProvider.notifier).select(id),
+      onSelected: (id) => ref.read(selectedRestaurantIdProvider.notifier).select(id),
       itemBuilder: (context) => [
         for (final r in restaurants)
           PopupMenuItem(
             value: r.id,
             child: SizedBox(
-              width: 200,
+              width: 220,
               child: Row(
                 children: [
-                  Expanded(
-                    child: Text(r.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  ),
+                  Expanded(child: Text(r.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
                   const SizedBox(width: 8),
                   if (r.id == current.id)
                     Glyph(AppIcons.check, size: 16, color: AppColors.accent)
@@ -627,6 +379,227 @@ class _RestaurantSwitcher extends ConsumerWidget {
           ),
       ],
       child: body,
+    );
+  }
+}
+
+enum _MemberAction { endShift, signOut, startShift, accountSignOut }
+
+/// Zalogowany pracownik w prawym rogu: kółko z inicjałami. Po kliknięciu jego kod, „Zakończ zmianę”
+/// i „Wyloguj”, a niżej „Wejdź na zmianę” i konto restauracji.
+class _MemberMenu extends ConsumerWidget {
+  const _MemberMenu({required this.restaurant});
+
+  final PanelRestaurant restaurant;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final member = ref.watch(panelMemberProvider);
+    final person = member != null && !member.isAccount ? member : null;
+    final code = person == null ? null : ref.watch(staffCodesProvider(restaurant.id)).value?[person.memberId];
+    final email = ref.watch(repositoryProvider).email;
+    final version = ref.watch(panelVersionProvider).value;
+    final since = person?.shiftStartedAt;
+    final initials = person == null
+        ? ''
+        : person.name.split(' ').where((p) => p.isNotEmpty).take(2).map((p) => p[0].toUpperCase()).join();
+
+    PopupMenuItem<_MemberAction> action(_MemberAction value, AppIconData icon, String label, {bool muted = false}) =>
+        PopupMenuItem(
+          value: value,
+          height: 44,
+          child: Row(
+            children: [
+              Glyph(icon, size: 18, color: muted ? AppColors.textMuted : AppColors.text),
+              const SizedBox(width: 12),
+              Text(label, style: text.labelLarge?.copyWith(color: muted ? AppColors.textMuted : AppColors.text)),
+            ],
+          ),
+        );
+
+    return PopupMenuButton<_MemberAction>(
+      tooltip: member?.name ?? 'Nikt nie jest zalogowany',
+      position: PopupMenuPosition.under,
+      offset: const Offset(0, 8),
+      color: AppColors.surface,
+      constraints: const BoxConstraints(minWidth: 280, maxWidth: 320),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: AppColors.ring),
+      ),
+      onSelected: (value) => switch (value) {
+        _MemberAction.endShift => EndShiftDialog.open(context, person!),
+        _MemberAction.signOut => ref.read(panelMemberProvider.notifier).signOut(),
+        _MemberAction.startShift => ShiftScreen.open(context),
+        _MemberAction.accountSignOut => ref.read(repositoryProvider).signOut(),
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          enabled: false,
+          height: 0,
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+          child: member == null
+              ? Text('Nikt nie jest zalogowany', style: text.labelLarge?.copyWith(color: AppColors.textMuted))
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(member.name, style: text.titleSmall?.copyWith(color: AppColors.text)),
+                    const SizedBox(height: 2),
+                    Text(
+                      [
+                        ?member.position,
+                        if (since != null) 'na zmianie od ${_hm(since)}',
+                      ].join(' · '),
+                      style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                    ),
+                    if (code != null) ...[
+                      const SizedBox(height: 12),
+                      Text('Kod pracownika', style: text.labelSmall?.copyWith(color: AppColors.textMuted)),
+                      const SizedBox(height: 2),
+                      Text(
+                        code,
+                        style: text.headlineSmall?.copyWith(
+                          color: AppColors.text,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 6,
+                          fontFeatures: _tabular,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+        ),
+        const PopupMenuDivider(),
+        if (person != null && since != null) action(_MemberAction.endShift, AppIcons.doorOpen, 'Zakończ zmianę'),
+        if (member != null) action(_MemberAction.signOut, AppIcons.signOut, 'Wyloguj (${member.name.split(' ').first})'),
+        action(_MemberAction.startShift, AppIcons.signIn, 'Wejdź na zmianę'),
+        const PopupMenuDivider(),
+        PopupMenuItem(
+          enabled: false,
+          height: 0,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Text(
+            [?email, if (version != null) 'wersja $version'].join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+          ),
+        ),
+        action(_MemberAction.accountSignOut, AppIcons.lock, 'Wyloguj konto restauracji', muted: true),
+      ],
+      child: Container(
+        width: 38,
+        height: 38,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: member == null ? AppColors.surface : AppColors.accentTint,
+          shape: BoxShape.circle,
+          border: Border.all(color: member == null ? AppColors.ring : AppColors.accent.withValues(alpha: 0.5)),
+        ),
+        child: member == null
+            ? Glyph(AppIcons.users, size: 18, color: AppColors.textMuted)
+            : member.isAccount
+            ? Glyph(AppIcons.lock, size: 16, color: AppColors.accent)
+            : Text(initials, style: text.labelLarge?.copyWith(color: AppColors.accent, fontWeight: FontWeight.w600)),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------
+// Boczny pasek
+// ---------------------------------------------------------------
+
+/// Wąski pasek boczny: zakładki wybranej grupy u góry, zakładki lokalu na dole. Same ikony, nazwy w podpowiedziach.
+class _Rail extends StatelessWidget {
+  const _Rail({required this.location, required this.tabs, required this.placeTabs});
+
+  final String location;
+  final List<PanelTab> tabs;
+  final List<PanelTab> placeTabs;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget button(PanelTab t) => _RailButton(
+      tab: t,
+      selected: location.startsWith(t.route),
+      onTap: () => context.go(t.route),
+    );
+    return Container(
+      width: 68,
+      decoration: BoxDecoration(
+        color: PanelDepth.sidebar,
+        border: Border(right: BorderSide(color: AppColors.ring)),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Column(
+        children: [
+          // Zakładki grupy pojawiają się płynnie przy zmianie grupy.
+          AnimatedSwitcher(
+            duration: PanelMotion.tab,
+            transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
+            child: Column(
+              key: ValueKey(tabs.map((t) => t.route).join()),
+              children: [for (final t in tabs) button(t)],
+            ),
+          ),
+          const Spacer(),
+          if (placeTabs.isNotEmpty) ...[
+            SizedBox(width: 36, child: Divider(height: 17, color: AppColors.ring)),
+            for (final t in placeTabs) button(t),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _RailButton extends StatelessWidget {
+  const _RailButton({required this.tab, required this.selected, required this.onTap});
+
+  final PanelTab tab;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Tooltip(
+        message: tab.label,
+        preferBelow: false,
+        waitDuration: const Duration(milliseconds: 250),
+        child: PanelPress(
+          child: Material(
+            color: selected ? AppColors.surface : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(12),
+              hoverColor: AppColors.ring,
+              splashColor: Colors.transparent,
+              highlightColor: Colors.transparent,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 46,
+                height: 46,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: selected ? AppColors.ringStrong : Colors.transparent),
+                ),
+                // Wybrana zakładka ma ikonę z wypełnieniem (duotone) w kolorze akcentu.
+                child: Glyph(
+                  selected ? tab.icon.duotone : tab.icon,
+                  size: 21,
+                  color: selected ? AppColors.accent : AppColors.textMuted,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

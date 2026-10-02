@@ -87,40 +87,6 @@ final selectedRestaurantIdProvider =
       SelectedRestaurantNotifier.new,
     );
 
-/// Zwinięte menu boczne: zostają same ikony. Wybór pamiętamy na komputerze.
-class SidebarCollapsedNotifier extends Notifier<bool> {
-  static const _key = 'panel_menu_zwiniete';
-
-  @override
-  bool build() {
-    _load();
-    return false;
-  }
-
-  Future<void> _load() async {
-    try {
-      final saved = await SharedPreferencesAsync().getBool(_key);
-      if (saved != null) state = saved;
-    } catch (_) {
-      // Bez zapisu menu zaczyna rozwinięte.
-    }
-  }
-
-  Future<void> toggle() async {
-    state = !state;
-    try {
-      await SharedPreferencesAsync().setBool(_key, state);
-    } catch (_) {
-      // Wybór działa do zamknięcia panelu.
-    }
-  }
-}
-
-final sidebarCollapsedProvider =
-    NotifierProvider<SidebarCollapsedNotifier, bool>(
-      SidebarCollapsedNotifier.new,
-    );
-
 /// Wybrany lokal. Bez zapamiętanego wyboru pierwszy z listy.
 final currentRestaurantProvider = Provider<PanelRestaurant?>((ref) {
   final list = ref.watch(restaurantsProvider).value ?? const [];
@@ -493,6 +459,36 @@ final kitchenTicketsProvider = FutureProvider.autoDispose.family<List<KitchenTic
     return ref.watch(repositoryProvider).kitchenTickets(id);
   },
 );
+
+/// Pojazdy floty lokalu.
+final vehiclesProvider = FutureProvider.autoDispose.family<List<Vehicle>, String>(
+  (ref, id) => (ref..cacheFor()).watch(repositoryProvider).vehicles(id),
+);
+
+/// Baza klientów lokalu.
+final customersProvider = FutureProvider.autoDispose.family<List<Customer>, String>(
+  (ref, id) => (ref..cacheFor()).watch(repositoryProvider).customers(id),
+);
+
+typedef TeamStatsQuery = ({String restaurantId, int days});
+
+/// Statystyki zespołu w okresie.
+final teamStatsProvider = FutureProvider.autoDispose.family<List<TeamStat>, TeamStatsQuery>(
+  (ref, q) => (ref..cacheFor()).watch(repositoryProvider).teamStats(q.restaurantId, q.days),
+);
+
+/// Ostatnio wybrana grupa zakładek w górnym pasku (Rezerwacje, Kuchnia...). Zostaje wybrana także na stronach
+/// spoza grup (Ustawienia lokalu, Dane lokalu, Edycja sali).
+class PanelSectionNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void set(String section) {
+    if (state != section) state = section;
+  }
+}
+
+final panelSectionProvider = NotifierProvider<PanelSectionNotifier, String?>(PanelSectionNotifier.new);
 
 /// Dane właściciela w „Dane lokalu”.
 final ownerDetailsProvider = FutureProvider.autoDispose.family<OwnerDetails, String>(

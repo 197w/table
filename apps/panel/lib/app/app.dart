@@ -7,7 +7,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:table_core/table_core.dart';
 
 import '../features/auth/login_screen.dart';
+import '../features/customers/customers_screen.dart';
 import '../features/deliveries/deliveries_screen.dart';
+import '../features/fleet/fleet_screen.dart';
 import '../features/floor/floor_screen.dart';
 import '../features/inventory/inventory_screen.dart';
 import '../features/kitchen/kitchen_screen.dart';
@@ -18,6 +20,7 @@ import '../features/reservations/reservations_screen.dart';
 import '../features/reviews/reviews_screen.dart';
 import '../features/serving/serving_screen.dart';
 import '../features/staff/staff_screen.dart';
+import '../features/staff/team_stats_screen.dart';
 import '../features/stats/stats_screen.dart';
 import 'idle_logout.dart';
 import '../shared/panel_widgets.dart';
@@ -163,9 +166,13 @@ GoRouter _buildRouter(
             ),
           ),
           _page(PanelRoutes.deliveries, const DeliveriesScreen()),
+          _page(PanelRoutes.fleet, const FleetScreen()),
           _page(PanelRoutes.kitchen, const KitchenScreen()),
           _page(PanelRoutes.serving, const ServingScreen()),
           _page(PanelRoutes.staff, const StaffScreen()),
+          _page(PanelRoutes.teamStats, const TeamStatsScreen()),
+          _page(PanelRoutes.customers, const CustomersScreen()),
+          _page(PanelRoutes.settings, const SettingsScreen()),
           _page(PanelRoutes.menu, const MenuScreen()),
           _page(PanelRoutes.inventory, const InventoryScreen()),
           _page(PanelRoutes.profile, const ProfileScreen()),
@@ -201,9 +208,13 @@ abstract final class PanelRoutes {
   static const floor = '/sala';
   static const orders = '/zamowienia';
   static const deliveries = '/dostawy';
+  static const fleet = '/flota';
   static const kitchen = '/kuchnia';
   static const serving = '/wydanie';
   static const staff = '/pracownicy';
+  static const teamStats = '/zespol';
+  static const customers = '/klienci';
+  static const settings = '/ustawienia';
   static const menu = '/menu';
   static const inventory = '/inwentaryzacja';
   static const profile = '/lokal';
@@ -216,11 +227,15 @@ const _routePermissions = {
   PanelRoutes.reservations: {'reservations'},
   PanelRoutes.orders: {'orders'},
   PanelRoutes.deliveries: {'orders'},
+  PanelRoutes.fleet: {'fleet'},
   PanelRoutes.kitchen: {'kitchen'},
   PanelRoutes.serving: {'serving'},
   PanelRoutes.floor: {'floor_edit'},
   // W Pracownikach każda część ma własne uprawnienie: zespół, loginy, grafik, czas pracy, stanowiska.
   PanelRoutes.staff: {'staff', 'staff_logins', 'schedule', 'timesheet', 'positions'},
+  PanelRoutes.teamStats: {'stats'},
+  PanelRoutes.customers: {'customers'},
+  PanelRoutes.settings: {'profile'},
   PanelRoutes.profile: {'profile'},
   PanelRoutes.menu: {'menu'},
   PanelRoutes.inventory: {'inventory_edit', 'inventory_count'},
@@ -233,10 +248,14 @@ const panelTabLabels = {
   PanelRoutes.reservations: 'Rezerwacje',
   PanelRoutes.orders: 'Zamówienia',
   PanelRoutes.deliveries: 'Dostawy',
+  PanelRoutes.fleet: 'Flota',
   PanelRoutes.kitchen: 'Kuchnia',
   PanelRoutes.serving: 'Wydanie',
   PanelRoutes.floor: 'Edycja sali',
   PanelRoutes.staff: 'Pracownicy',
+  PanelRoutes.teamStats: 'Statystyki zespołu',
+  PanelRoutes.customers: 'Klienci',
+  PanelRoutes.settings: 'Ustawienia lokalu',
   PanelRoutes.profile: 'Dane lokalu',
   PanelRoutes.menu: 'Menu',
   PanelRoutes.inventory: 'Inwentaryzacja',

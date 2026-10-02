@@ -8,7 +8,7 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
 - `apps/staff`: Table for employees, aplikacja dla pracowników lokalu na telefony (Android `pl.table.table_staff`,
   iOS `pl.table.tableStaff`). Logowanie numerem telefonu (SMS), skan wspólnego kodu QR z panelu
   zaczyna zmianę i loguje w panelu. Dolne menu: Zamówienia, Dostawy, Zeskanuj, Grafik, Ustawienia. Grafik to lista dni z okresu lokalu
-  (tydzień, 2 tygodnie albo miesiąc, `restaurants.schedule_period`, ustawia „Dane lokalu”) ze zgłaszaniem godzin
+  (tydzień, 2 tygodnie albo miesiąc, `restaurants.schedule_period`, ustawia „Ustawienia lokalu”) ze zgłaszaniem godzin
   na cały okres naraz i „Moje godziny” na dole. Kelner nabija zamówienia (stoliki, menu, wysyłka na kuchnię, wydanie,
   zamknięcie rachunku; niewysłaną pozycję usuwa się przesunięciem w lewo, minus tylko zmniejsza ilość), mój grafik
   (zgłaszanie godzin), mój kod do panelu. Każda aktualizacja na S23 i iPhone'a, tak jak aplikacja dla gości.
@@ -76,7 +76,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0044, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0045, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -98,14 +98,32 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `scan_screen.dart`, `schedule_screen.dart`, `settings_screen.dart`, `shell.dart`, `waiter_screens.dart`,
   `deliveries_data.dart`, `deliveries_screen.dart`
   (mobile_scanner). Podpis iOS: `DEVELOPMENT_TEAM` w `ios/Flutter/*.xcconfig`, nie w pbxproj.
-- `apps/panel/lib`: `app` (router, boczne menu, motyw na komputer), `data` (modele, `PanelRepository`, providery),
-  `features` (auth, onboarding, kiosk, reservations, orders, deliveries, kitchen, serving, floor, menu, inventory, profile,
-  reviews, staff, stats),
+- `apps/panel/lib`: `app` (router, `shell.dart` z górnym i bocznym paskiem, `sections.dart` z grupami zakładek,
+  motyw na komputer), `data` (modele, `PanelRepository`, providery), `features` (auth, onboarding, kiosk,
+  reservations, orders, deliveries, fleet, kitchen, serving, floor, menu, inventory, profile (też „Ustawienia lokalu”),
+  customers, reviews, staff (też statystyki zespołu), stats),
   `shared/panel_widgets.dart`.
 
 ## Panel restauracji
 
 - Logowanie e-mailem i hasłem. Obowiązkowe 2FA dodajemy przed wydaniem.
+- Układ jak w UniFi (`shell.dart`, `sections.dart`, 0.11.0). Górny pasek: lokal po lewej (logo, kropka połączenia
+  na żywo, plan; strzałka i lista tylko przy kilku lokalach konta), grupy zakładek (`PanelSection`, `IconTabs`):
+  Rezerwacje (Rezerwacje, Zamówienia, Wydanie), Kuchnia (Kuchnia, Menu, Inwentaryzacja), Dostawy (Dostawy, Flota),
+  Pracownicy (Pracownicy, Statystyki zespołu `/zespol`), Baza klientów (Klienci `/klienci`, Statystyki, Opinie);
+  „Table” na środku; po prawej nowa wersja, odliczanie do wylogowania, motyw i kółko pracownika (inicjały; menu:
+  kod pracownika, „Zakończ zmianę”, „Wyloguj”, „Wejdź na zmianę”, e-mail i wersja, wylogowanie konta restauracji).
+  Wąski pasek boczny: zakładki wybranej grupy (same ikony, nazwy w podpowiedziach), na dole Ustawienia lokalu
+  (`/ustawienia`), Dane lokalu i Edycja sali. Grupa i zakładki według uprawnień zalogowanego pracownika;
+  ostatnia grupa zostaje wybrana na stronach lokalu (`panelSectionProvider`). Bez hamburgera i bez paska nad zakładką.
+- Ustawienia lokalu: rezerwacje w aplikacji (co ile minut, największa grupa), grafik pracowników, okres inwentaryzacji,
+  dostawa i odbiór. Dane lokalu: logo, dane, poziom cen, dane właściciela, godziny, dni wyjątkowe.
+- Flota (`/flota`, uprawnienie `fleet`, 0045): `vehicles` (auto, skuter, rower, inny; nazwa, rejestracja unikalna
+  w lokalu, dostawca, uwagi, w użyciu), `panel_save_vehicle`, `panel_delete_vehicle`.
+- Klienci (`/klienci`, uprawnienie `customers`, 0045): `panel_customers` łączy rezerwacje (bez blokad) i dostarczone
+  zamówienia na wynos po koncie w aplikacji, telefonie (ostatnie 9 cyfr) albo imieniu: wizyty, nieobecności,
+  zamówienia, wydatki, ostatnia wizyta, najbliższa rezerwacja. Statystyki zespołu (`/zespol`, uprawnienie `stats`):
+  `panel_team_stats` (godziny, zmiany, rachunki, pozycje, kursy, sprzedaż na osobę, 7/30/90 dni).
 - Zakładki nie mają tytułów ani opisów (`PageHeader`: tylko akcje i rząd zakładek); nazwę widać w menu bocznym.
   Przejście między zakładkami menu (`_tabPage` w `app.dart`) i zakładkami w ekranie (`TabContent`) ma ten sam ruch:
   wygaszenie i wjazd o kilka pikseli z dołu (`PanelMotion`, 220 ms). W Rezerwacjach wybór dnia, „Gość z ulicy”
@@ -132,14 +150,14 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Logowanie pracownika w panelu jest jedno dla wszystkich zakładek (`panelMemberProvider`): kod QR z aplikacji
   Table for employees (`staff_scan`) albo czterocyfrowy kod na klawiaturze (`panel_member_login`). Bez zalogowanego
   pracownika każda zakładka pokazuje logowanie (`TabLoginGate`); wejść może tylko osoba z uprawnieniem do zakładki.
-  Menu boczne pokazuje zakładki zalogowanego pracownika. Pasek nad zakładką (`TabSessionBar`): „Wyloguj”
+  Pasek boczny pokazuje zakładki zalogowanego pracownika, a menu pod jego kółkiem w górnym pasku „Wyloguj”
   i „Zakończ zmianę”. Właściciel otwiera panel hasłem konta restauracji (`ActingMember.account()`).
-  „Wejdź na zmianę” (menu boczne, `ShiftScreen`) zaczyna zmianę i loguje pracownika. „Zakończ zmianę” jest tylko
-  na pasku nad zakładką (`EndShiftDialog`): pracownik potwierdza swoim kodem (`panel_member_end_shift` z `p_member_id`,
+  „Wejdź na zmianę” (menu boczne, `ShiftScreen`) zaczyna zmianę i loguje pracownika. „Zakończ zmianę” jest w menu
+  pracownika w górnym pasku (`EndShiftDialog`): pracownik potwierdza swoim kodem (`panel_member_end_shift` z `p_member_id`,
   kod innej osoby nie działa) albo kodem QR, który może zeskanować tylko on (`panel_login_tokens.purpose = 'end_shift'`,
   `for_member`; `staff_scan` kończy wtedy zmianę).
   Po 30 sekundach bez ruchu myszy i klawiatury panel sam wylogowuje pracownika i zamyka otwarte okna
-  (`IdleLogout` w `MaterialApp.builder`, `kIdleLogoutSeconds`; ostatnie 10 s odlicza pasek nad zakładką).
+  (`IdleLogout` w `MaterialApp.builder`, `kIdleLogoutSeconds`; ostatnie 10 s odlicza górny pasek).
   Kuchnia i Wydanie nie wylogowują. Klawisze tylko liczą ruch, handler zwraca false (nic nie połyka).
 - Uprawnienia (`StaffPermission`, grupy Sala, Zamówienia, Kuchnia, Zespół, Lokal, Wyniki): m.in. `orders_close`
   (zamykanie rachunków), `orders_cancel` (anulowanie pozycji z kuchni), `kitchen_settings`, `staff_logins`,
@@ -153,7 +171,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   zmienionymi godzinami), odrzuca albo sam wpisuje godziny (`panel_decide_hours`, `panel_add_hours`,
   `panel_delete_hours`) albo daje wolne (`panel_set_day_off`, stan `off` bez godzin, niebieski, ikona słońca).
   Po decyzji pracownik nie może zmienić tego dnia. Okres, na który pracownicy zgłaszają
-  godziny, ustawia lokal w „Dane lokalu” → „Grafik pracowników” (`schedule_period`: week, two_weeks, month;
+  godziny, ustawia lokal w „Ustawienia lokalu” → „Grafik pracowników” (`schedule_period`: week, two_weeks, month;
   pary tygodni liczone od poniedziałku 5.01.2026, `staff_my_jobs` zwraca okres). Czas pracy: „Pracownicy” → „Czas pracy”.
 - Statystyki mają zakładki: Sprzedaż (`panel_sales_stats`), Rezerwacje i goście, Historia zamówień.
 - Role w `restaurant_staff`: owner, manager, staff. Kierownik i właściciel zmieniają salę, menu, dane lokalu
@@ -186,7 +204,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   w panelu ani w aplikacji Table, `purchase_gift_card` zwraca błąd, dane kart i stare płatności kartą zostają w bazie
   (historia zamówień i sprzedaż je pokazują). Historia zamkniętych rachunków: zakładka „Historia zamówień”.
   Paragon fiskalny jeszcze na kasie, integrację z drukarką fiskalną robimy później.
-- Dostawy i odbiór osobisty (0039, 0040, tylko Pro): lokal włącza je w „Dane lokalu” → „Dostawa i odbiór”
+- Dostawy i odbiór osobisty (0039, 0040, tylko Pro): lokal włącza je w „Ustawienia lokalu” → „Dostawa i odbiór”
   (`delivery_enabled`, `pickup_enabled`, `takeaway_cash` = gotówka, opłata, minimalne zamówienie, obszar). Gość zamawia
   w aplikacji Table (przycisk „Zamów” w lokalu, koszyk, `guest_place_order`; ceny liczy baza z menu), płaci kartą online
   albo gotówką. Operatora płatności jeszcze nie ma: `private.app_settings.payments_mode = 'test'`, karta opłaca się
@@ -222,8 +240,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   w historii zostają). Spis (`inventory_counts`, jeden otwarty na lokal, `inventory_count_lines` z ilością w opakowaniach
   oraz jednostką i pojemnością z chwili spisu): `panel_inventory_start`, `panel_inventory_set` (każda ilość zapisuje się
   od razu), `panel_inventory_finish`, `panel_inventory_discard`, lista `panel_inventory_counts`. Okres
-  `restaurants.inventory_period` (day, week, two_weeks, month; `panel_set_inventory_period`), następna inwentaryzacja
-  liczona od ostatniej zakończonej. Uprawnienia: `inventory_edit` („Edytowanie składników”: składniki i okres)
+  `restaurants.inventory_period` (day, week, two_weeks, month; `panel_set_inventory_period`), ustawia się w „Ustawienia lokalu”,
+  następna inwentaryzacja liczona od ostatniej zakończonej. Uprawnienia: `inventory_edit` („Edytowanie składników”: składniki i okres)
   i `inventory_count` („Wpisywanie ilości składników”), grupa „Inwentaryzacja”.
 - Receptury (0037): w oknie dania w Menu sekcja „Składniki” (tylko w panelu): składnik z inwentaryzacji, ilość na
   porcję i jednostka (ml/l, g/kg, szt; `private.inventory_factor`), „Nowy składnik” dodaje go do Inwentaryzacji

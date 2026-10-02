@@ -84,15 +84,6 @@ class ProfileScreen extends ConsumerWidget {
                           profile: profile,
                           editable: restaurant.canManage,
                         ),
-                        const SizedBox(height: 20),
-                        _SchedulePeriodCard(profile: profile, editable: restaurant.canManage),
-                        const SizedBox(height: 20),
-                        _DeliveryCard(
-                          key: ValueKey('dostawa-${profile.id}'),
-                          profile: profile,
-                          editable: restaurant.canManage,
-                          pro: restaurant.isPro,
-                        ),
                       ],
                     ),
                   ),
@@ -102,6 +93,205 @@ class ProfileScreen extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// „Ustawienia lokalu”: jak lokal działa w Table. Rezerwacje w aplikacji, grafik pracowników,
+/// okres inwentaryzacji oraz dostawa i odbiór. Dane lokalu (adres, godziny, logo) są w „Dane lokalu”.
+class SettingsScreen extends ConsumerWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final restaurant = ref.watch(currentRestaurantProvider);
+    if (restaurant == null) return const LoadingView();
+    final async = ref.watch(profileProvider(restaurant.id));
+    final canInventory = ref.watch(memberPermissionsProvider).contains('inventory_edit');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const PageHeader(),
+        if (!restaurant.canManage)
+          const ReadOnlyBanner(message: 'Ustawienia lokalu zmienia kierownik albo właściciel.'),
+        Expanded(
+          child: async.when(
+            loading: () => const LoadingView(),
+            error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(profileProvider(restaurant.id))),
+            data: (profile) => SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _ReservationSettingsCard(
+                          key: ValueKey('rezerwacje-${profile.id}'),
+                          profile: profile,
+                          editable: restaurant.canManage,
+                        ),
+                        const SizedBox(height: 20),
+                        _SchedulePeriodCard(profile: profile, editable: restaurant.canManage),
+                        const SizedBox(height: 20),
+                        _InventoryPeriodCard(profile: profile, editable: canInventory),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: _DeliveryCard(
+                      key: ValueKey('dostawa-${profile.id}'),
+                      profile: profile,
+                      editable: restaurant.canManage,
+                      pro: restaurant.isPro,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Rezerwacje w aplikacji Table: co ile minut goście wybierają godzinę i największa grupa w jednej rezerwacji.
+class _ReservationSettingsCard extends ConsumerStatefulWidget {
+  const _ReservationSettingsCard({super.key, required this.profile, required this.editable});
+
+  final RestaurantProfile profile;
+  final bool editable;
+
+  @override
+  ConsumerState<_ReservationSettingsCard> createState() => _ReservationSettingsCardState();
+}
+
+class _ReservationSettingsCardState extends ConsumerState<_ReservationSettingsCard> {
+  late int _interval = widget.profile.slotIntervalMin;
+  late int _maxParty = widget.profile.maxPartySize;
+  bool _busy = false;
+
+  Future<void> _save() async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(repositoryProvider).updateProfile(widget.profile.id, {
+        'slot_interval_min': _interval,
+        'max_party_size': _maxParty,
+      });
+      ref.invalidate(profileProvider(widget.profile.id));
+      if (mounted) showMessage(context, 'Ustawienia rezerwacji zapisane.', tone: ToastTone.success);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final enabled = widget.editable && !_busy;
+    return PanelCard(
+      title: 'Rezerwacje w aplikacji',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text('Co ile minut goście wybierają godzinę', style: text.bodyMedium)),
+              IgnorePointer(
+                ignoring: !enabled,
+                child: SegmentedTabs<int>(
+                  options: const [(15, '15 min'), (30, '30 min')],
+                  selected: _interval,
+                  onChanged: (v) => setState(() => _interval = v),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: Text('Największa grupa w jednej rezerwacji', style: text.bodyMedium)),
+              IconButton(
+                tooltip: 'Mniej osób',
+                icon: const Glyph(AppIcons.minus, size: 16),
+                onPressed: enabled && _maxParty > 1 ? () => setState(() => _maxParty--) : null,
+              ),
+              SizedBox(
+                width: 64,
+                child: Text(
+                  Fmt.people(_maxParty),
+                  textAlign: TextAlign.center,
+                  style: text.labelLarge?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Więcej osób',
+                icon: const Glyph(AppIcons.plus, size: 16),
+                onPressed: enabled && _maxParty < 30 ? () => setState(() => _maxParty++) : null,
+              ),
+            ],
+          ),
+          if (widget.editable) ...[
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(onPressed: _busy ? null : _save, child: const Text('Zapisz')),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Co ile lokal robi inwentaryzację. Zmiana z uprawnieniem „Edytowanie składników”.
+class _InventoryPeriodCard extends ConsumerStatefulWidget {
+  const _InventoryPeriodCard({required this.profile, required this.editable});
+
+  final RestaurantProfile profile;
+  final bool editable;
+
+  @override
+  ConsumerState<_InventoryPeriodCard> createState() => _InventoryPeriodCardState();
+}
+
+class _InventoryPeriodCardState extends ConsumerState<_InventoryPeriodCard> {
+  bool _busy = false;
+
+  Future<void> _set(String period) async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(repositoryProvider).setInventoryPeriod(widget.profile.id, period);
+      ref.invalidate(profileProvider(widget.profile.id));
+      if (mounted) showMessage(context, 'Inwentaryzacja: ${inventoryPeriodLabel(period).toLowerCase()}.');
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PanelCard(
+      title: 'Inwentaryzacja',
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: IgnorePointer(
+          ignoring: !widget.editable || _busy,
+          child: SegmentedTabs<String>(
+            options: inventoryPeriods,
+            selected: widget.profile.inventoryPeriod,
+            onChanged: _set,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -125,8 +315,6 @@ class _DetailsFormState extends ConsumerState<_DetailsForm> {
   late final _city = TextEditingController(text: widget.profile.city);
   late final _phone = TextEditingController(text: widget.profile.phone);
   late String _cuisine = widget.profile.cuisine;
-  late int _interval = widget.profile.slotIntervalMin;
-  late int _maxParty = widget.profile.maxPartySize;
   bool _busy = false;
 
   @override
@@ -156,8 +344,6 @@ class _DetailsFormState extends ConsumerState<_DetailsForm> {
         'city': _city.text.trim(),
         'phone': _phone.text.replaceAll(' ', ''),
         'cuisine': _cuisine,
-        'slot_interval_min': _interval,
-        'max_party_size': _maxParty,
       });
       ref
         ..invalidate(profileProvider(widget.profile.id))
@@ -249,69 +435,7 @@ class _DetailsFormState extends ConsumerState<_DetailsForm> {
               ),
             ],
           ),
-          const SizedBox(height: 6),
           const SizedBox(height: 18),
-          Text('Rezerwacje w aplikacji', style: text.titleSmall),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Co ile minut goście mogą wybrać godzinę przyjścia',
-                  style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
-                ),
-              ),
-              IgnorePointer(
-                ignoring: !enabled,
-                child: SegmentedTabs<int>(
-                  options: const [(15, '15 min'), (30, '30 min')],
-                  selected: _interval,
-                  onChanged: (v) => setState(() => _interval = v),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Największa grupa w jednej rezerwacji',
-                      style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
-                    ),
-                    Text(
-                      'Większe grupy goście umówią telefonicznie. Obsługa w panelu może dodać do 30 osób.',
-                      style: text.bodySmall?.copyWith(color: AppColors.textDisabled),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: 'Mniej osób',
-                icon: const Glyph(AppIcons.minus, size: 16),
-                onPressed: enabled && _maxParty > 1 ? () => setState(() => _maxParty--) : null,
-              ),
-              SizedBox(
-                width: 64,
-                child: Text(
-                  Fmt.people(_maxParty),
-                  textAlign: TextAlign.center,
-                  style: text.labelLarge?.copyWith(
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: 'Więcej osób',
-                icon: const Glyph(AppIcons.plus, size: 16),
-                onPressed: enabled && _maxParty < 30 ? () => setState(() => _maxParty++) : null,
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
           Row(
             children: [
               Text(

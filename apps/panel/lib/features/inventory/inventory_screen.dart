@@ -114,11 +114,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       ..invalidate(inventoryStockProvider(restaurantId));
   }
 
-  Future<void> _setPeriod(String restaurantId, String period) => _run(() async {
-    await ref.read(repositoryProvider).setInventoryPeriod(restaurantId, period);
-    ref.invalidate(profileProvider(restaurantId));
-  }, 'Inwentaryzacja: ${inventoryPeriodLabel(period).toLowerCase()}.');
-
   @override
   Widget build(BuildContext context) {
     final restaurant = ref.watch(currentRestaurantProvider);
@@ -162,14 +157,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               ),
               const Spacer(),
               // Przypomnienie, gdy minął okres od ostatniej inwentaryzacji.
-              if (open == null && due) ...[
-                const PanelPill('Czas na inwentaryzację', dotColor: Color(0xFFE0A21B)),
-                const SizedBox(width: 12),
-              ],
-              _PeriodPicker(
-                period: period,
-                onChanged: canEdit && !_busy ? (p) => _setPeriod(rid, p) : null,
-              ),
+              if (open == null && due) const PanelPill('Czas na inwentaryzację', dotColor: Color(0xFFE0A21B)),
             ],
           ),
           actions: [
@@ -256,52 +244,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// „Co tydzień” z listą okresów. Bez uprawnienia tylko napis.
-class _PeriodPicker extends StatelessWidget {
-  const _PeriodPicker({required this.period, required this.onChanged});
-
-  final String period;
-  final ValueChanged<String>? onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final pill = Container(
-      height: 38,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceRaised,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Glyph(AppIcons.calendarDots, size: 16, color: AppColors.textMuted),
-          const SizedBox(width: 8),
-          Text('Inwentaryzacja: ', style: text.labelLarge?.copyWith(color: AppColors.textMuted)),
-          Text(inventoryPeriodLabel(period).toLowerCase(), style: text.labelLarge),
-          if (onChanged != null) ...[
-            const SizedBox(width: 6),
-            Glyph(AppIcons.caretDown, size: 14, color: AppColors.textMuted),
-          ],
-        ],
-      ),
-    );
-    if (onChanged == null) return pill;
-    return PopupMenuButton<String>(
-      tooltip: 'Co ile robicie inwentaryzację',
-      onSelected: (p) {
-        if (p != period) onChanged!(p);
-      },
-      itemBuilder: (_) => [
-        for (final (value, label) in inventoryPeriods)
-          CheckedPopupMenuItem(value: value, checked: value == period, child: Text(label)),
-      ],
-      child: pill,
     );
   }
 }
