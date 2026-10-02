@@ -88,6 +88,17 @@ void main() {
     });
     expect(item.fromPrice, 2500);
     expect(item.hasOptions, isTrue);
+    expect(item.priceVaries, isTrue);
+  });
+
+  test('jeden wariant albo te same ceny: bez „od”', () {
+    MenuItem item(List<Map<String, Object>> variants) => MenuItem.fromJson({
+      'id': 'm1', 'section_id': 's1', 'name': 'Tonic', 'price_grosze': 1500, 'allergens': <String>[],
+      'position': 0, 'variants': variants, 'vat_rate': 23, 'available': true,
+    });
+    expect(item([{'name': '200 ml', 'price_grosze': 1500}]).priceVaries, isFalse);
+    expect(item([{'name': 'A', 'price_grosze': 1500}, {'name': 'B', 'price_grosze': 1500}]).priceVaries, isFalse);
+    expect(item(const []).priceVaries, isFalse);
   });
 
   test('numery stolików rosną jak liczby', () {

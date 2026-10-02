@@ -720,6 +720,9 @@ class MenuItem {
   /// Pozycja wymaga wyboru przed nabiciem na rachunek.
   bool get hasOptions => variants.isNotEmpty || addons.isNotEmpty;
 
+  /// Warianty mają różne ceny, więc cena zaczyna się „od”. Jeden wariant (np. Tonic 200 ml) ma jedną cenę.
+  bool get priceVaries => variants.map((v) => v.priceGrosze).toSet().length > 1;
+
   /// Najniższa cena, od której zaczyna się pozycja.
   int get fromPrice => variants.isEmpty
       ? priceGrosze

@@ -45,4 +45,13 @@ void main() {
     expect(order.payment, PaymentChoice.card);
     expect(order.restaurantAddress, 'Rynek 1, Białystok');
   });
+
+  test('cena „od” tylko przy różnych cenach wariantów', () {
+    MenuItem item(List<Map<String, Object>> variants) => MenuItem.fromJson({
+      'id': 'm1', 'name': 'Tonic', 'price_grosze': 1500, 'position': 0, 'variants': variants,
+    });
+    expect(item([{'name': '200 ml', 'price_grosze': 1500}]).priceVaries, isFalse);
+    expect(item([{'name': 'Mała', 'price_grosze': 2500}, {'name': 'Duża', 'price_grosze': 3900}]).priceVaries, isTrue);
+    expect(item(const []).priceVaries, isFalse);
+  });
 }

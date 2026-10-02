@@ -807,9 +807,9 @@ class _ItemTile extends StatelessWidget {
                           child: Text(
                             off
                                 ? 'Niedostępne'
-                                : item.variants.isEmpty
-                                ? Fmt.price(item.priceGrosze)
-                                : 'od ${Fmt.price(item.fromPrice)}',
+                                : item.priceVaries
+                                ? 'od ${Fmt.price(item.fromPrice)}'
+                                : Fmt.price(item.fromPrice),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: text.bodyMedium?.copyWith(

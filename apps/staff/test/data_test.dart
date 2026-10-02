@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:table_staff/data.dart';
+import 'package:table_staff/orders_data.dart';
 import 'package:table_staff/schedule_screen.dart';
 
 void main() {
@@ -98,5 +99,16 @@ void main() {
     // Pary tygodni są wspólne dla całego lokalu: liczone od poniedziałku 5 stycznia 2026.
     final from = periodFor('two_weeks', 0).from;
     expect(DateTime.utc(from.year, from.month, from.day).difference(DateTime.utc(2026, 1, 5)).inDays % 14, 0);
+  });
+
+  test('menu kelnera: „od” tylko przy różnych cenach wariantów', () {
+    WMenuItem item(List<Map<String, Object>> variants) =>
+        WMenuItem.fromJson({'id': 'm1', 'name': 'Tonic', 'price_grosze': 1500, 'variants': variants});
+    final tonic = item([{'name': '200 ml', 'price_grosze': 1500}]);
+    expect(tonic.priceVaries, isFalse);
+    expect(tonic.fromPrice, 1500);
+    final pizza = item([{'name': 'Duża', 'price_grosze': 3900}, {'name': 'Mała', 'price_grosze': 2500}]);
+    expect(pizza.priceVaries, isTrue);
+    expect(pizza.fromPrice, 2500);
   });
 }

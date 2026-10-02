@@ -595,7 +595,7 @@ class _CloseSheetState extends State<_CloseSheet> {
 // ---------------------------------------------------------------
 
 /// Menu lokalu: stuknięcie dodaje danie do rachunku stolika. Ekran zostaje otwarty,
-/// więc można nabić kilka dań po kolei.
+/// więc można nabić kilka dań po kolei. „Przejdź dalej” na dole wraca do rachunku stolika.
 class MenuPickerScreen extends ConsumerStatefulWidget {
   const MenuPickerScreen({super.key, required this.job, required this.table});
 
@@ -613,6 +613,14 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
 
   /// Kolejne dodania idą do bazy po kolei, żeby pierwsze otworzyło rachunek tylko raz.
   Future<void> _queue = Future.value();
+  bool _leaving = false;
+
+  /// Do szczegółów rachunku, gdy wszystkie stuknięte dania są już zapisane.
+  Future<void> _next() async {
+    setState(() => _leaving = true);
+    await _queue;
+    if (mounted) Navigator.pop(context);
+  }
 
   Future<void> _add(WMenuItem item) async {
     if (!item.available) {
@@ -764,9 +772,9 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
                                       Text(
                                         !item.available
                                             ? 'Niedostępne'
-                                            : item.variants.isEmpty
-                                            ? Fmt.price(item.priceGrosze)
-                                            : 'od ${Fmt.price(item.variants.map((v) => v.priceGrosze).reduce((a, b) => a < b ? a : b))}',
+                                            : item.priceVaries
+                                            ? 'od ${Fmt.price(item.fromPrice)}'
+                                            : Fmt.price(item.fromPrice),
                                         style: text.bodyMedium?.copyWith(
                                           color: item.available ? AppColors.textMuted : AppColors.error,
                                           fontFeatures: _tabular,
@@ -792,6 +800,23 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
             ],
           );
         },
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: FilledButton(
+            onPressed: _leaving ? null : _next,
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text('Przejdź dalej'),
+                SizedBox(width: 8),
+                Glyph(AppIcons.caretRight, size: 18),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

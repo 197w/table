@@ -262,8 +262,7 @@ class _RatingCard extends StatelessWidget {
             _Bar(label: 'Atmosfera', value: rating.ambience),
             const SizedBox(height: 8),
             Text(
-              'Na podstawie: ${Fmt.reviews(rating.verified)} zweryfikowanych'
-              '${rating.unverified > 0 ? '. Niezweryfikowane: ${rating.unverified}, nie liczą się do rankingu.' : '.'}',
+              'Niezweryfikowane opinie nie liczą się do opinii.',
               style: text.bodySmall?.copyWith(color: AppColors.textMuted),
             ),
           ],

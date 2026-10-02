@@ -62,7 +62,7 @@ class OrderMenuScreen extends ConsumerWidget {
           }
           final sections = [for (final s in r.menu) if (s.items.isNotEmpty) s];
           return ListView(
-            padding: EdgeInsets.fromLTRB(16, 4, 16, count > 0 ? 110 : 32),
+            padding: EdgeInsets.fromLTRB(16, 4, 16, (count > 0 ? 110 : 32) + MediaQuery.paddingOf(context).bottom),
             children: [
               _OrderInfo(restaurant: r),
               const SizedBox(height: 12),
@@ -213,9 +213,9 @@ class _DishRow extends StatelessWidget {
                   Text(
                     !item.available
                         ? 'Chwilowo niedostępne'
-                        : item.variants.isEmpty
-                        ? Fmt.price(item.priceGrosze)
-                        : 'od ${Fmt.price(item.priceGrosze)}',
+                        : item.priceVaries
+                        ? 'od ${Fmt.price(item.priceGrosze)}'
+                        : Fmt.price(item.priceGrosze),
                     style: text.titleSmall?.copyWith(
                       color: item.available ? AppColors.accent : AppColors.error,
                       fontFeatures: _tabular,
@@ -501,7 +501,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           final belowMin = kind == OrderKind.delivery && subtotal < r.deliveryMinGrosze;
 
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+            padding: EdgeInsets.fromLTRB(16, 4, 16, 32 + MediaQuery.paddingOf(context).bottom),
             children: [
               Text(r.name, style: text.titleLarge),
               const SizedBox(height: 12),
@@ -860,7 +860,7 @@ class OrderDetailScreen extends ConsumerWidget {
           return RefreshIndicator(
             onRefresh: () async => ref.invalidate(guestOrderProvider(orderId)),
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 32 + MediaQuery.paddingOf(context).bottom),
               children: [
                 Text(o.restaurantName, style: text.titleLarge),
                 Text(

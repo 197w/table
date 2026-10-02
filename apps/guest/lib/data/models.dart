@@ -169,6 +169,9 @@ class MenuItem {
   /// Lokal oznaczył danie jako chwilowo niedostępne.
   final bool available;
 
+  /// Warianty mają różne ceny, więc cena zaczyna się „od”. Jeden wariant (np. Tonic 200 ml) ma jedną cenę.
+  bool get priceVaries => variants.map((v) => v.priceGrosze).toSet().length > 1;
+
   /// Zdjęcie dania dodane w panelu restauracji.
   final String? photoUrl;
 

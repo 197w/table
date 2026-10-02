@@ -77,24 +77,41 @@ class _StaffShellState extends ConsumerState<StaffShell> {
           const SettingsScreen(),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: _go,
-        destinations: [
-          // Wybrana zakładka ma ikonę z wypełnieniem (duotone).
-          for (final (icon, label) in const [
-            (AppIcons.receipt, 'Zamówienia'),
-            (AppIcons.moped, 'Dostawy'),
-            (AppIcons.qrCode, 'Zeskanuj'),
-            (AppIcons.calendarDots, 'Grafik'),
-            (AppIcons.gear, 'Ustawienia'),
-          ])
-            NavigationDestination(
-              icon: Glyph(icon, size: 22),
-              selectedIcon: Glyph(icon.duotone, size: 22),
-              label: label,
+      // Napisy w jednej linii: mniejsze i bez powiększania czcionki z ustawień telefonu.
+      bottomNavigationBar: MediaQuery.withClampedTextScaling(
+        maxScaleFactor: 1,
+        child: NavigationBarTheme(
+          data: NavigationBarTheme.of(context).copyWith(
+            labelTextStyle: WidgetStateProperty.resolveWith(
+              (states) => TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.1,
+                color: states.contains(WidgetState.selected) ? AppColors.text : AppColors.textMuted,
+              ),
             ),
-        ],
+          ),
+          child: NavigationBar(
+            selectedIndex: _tab,
+            onDestinationSelected: _go,
+            destinations: [
+              // Wybrana zakładka ma ikonę z wypełnieniem (duotone).
+              for (final (icon, label) in const [
+                (AppIcons.receipt, 'Zamówienia'),
+                (AppIcons.moped, 'Dostawy'),
+                (AppIcons.qrCode, 'Zeskanuj'),
+                (AppIcons.calendarDots, 'Grafik'),
+                (AppIcons.gear, 'Ustawienia'),
+              ])
+                NavigationDestination(
+                  icon: Glyph(icon, size: 22),
+                  selectedIcon: Glyph(icon.duotone, size: 22),
+                  label: label,
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

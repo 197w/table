@@ -62,6 +62,12 @@ class WMenuItem {
 
   bool get hasOptions => variants.isNotEmpty || addons.isNotEmpty;
 
+  /// Najniższa cena: przy wariantach najtańszy z nich.
+  int get fromPrice => variants.isEmpty ? priceGrosze : variants.map((v) => v.priceGrosze).reduce((a, b) => a < b ? a : b);
+
+  /// Warianty mają różne ceny, więc cena zaczyna się „od”. Jeden wariant (np. Tonic 200 ml) ma jedną cenę.
+  bool get priceVaries => variants.map((v) => v.priceGrosze).toSet().length > 1;
+
   factory WMenuItem.fromJson(Map<String, dynamic> j) => WMenuItem(
     id: j['id'] as String,
     name: j['name'] as String,

@@ -496,7 +496,7 @@ class _ItemRow extends ConsumerWidget {
           ),
           const SizedBox(width: 16),
           Text(
-            item.variants.isEmpty ? Fmt.price(item.priceGrosze) : 'od ${Fmt.price(item.fromPrice)}',
+            item.priceVaries ? 'od ${Fmt.price(item.fromPrice)}' : Fmt.price(item.fromPrice),
             style: text.titleSmall?.copyWith(
               fontWeight: FontWeight.w600,
               fontFeatures: const [FontFeature.tabularFigures()],

@@ -176,7 +176,7 @@ class MenuItemTile extends StatelessWidget {
               ),
               const SizedBox(width: 16),
               Text(
-                item.variants.isEmpty ? Fmt.price(item.priceGrosze) : 'od ${Fmt.price(item.priceGrosze)}',
+                item.priceVaries ? 'od ${Fmt.price(item.priceGrosze)}' : Fmt.price(item.priceGrosze),
                 style: text.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: item.available ? AppColors.accent : AppColors.textMuted,

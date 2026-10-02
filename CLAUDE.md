@@ -9,8 +9,10 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   iOS `pl.table.tableStaff`). Logowanie numerem telefonu (SMS), skan wspólnego kodu QR z panelu
   zaczyna zmianę i loguje w panelu. Dolne menu: Zamówienia, Dostawy, Zeskanuj, Grafik, Ustawienia. Grafik to lista dni z okresu lokalu
   (tydzień, 2 tygodnie albo miesiąc, `restaurants.schedule_period`, ustawia „Ustawienia lokalu”) ze zgłaszaniem godzin
-  na cały okres naraz i „Moje godziny” na dole (miesiąc kalendarzowy ze strzałkami, do 3 miesięcy wstecz). Kelner nabija zamówienia (stoliki, menu, wysyłka na kuchnię, wydanie,
-  zamknięcie rachunku; niewysłaną pozycję usuwa się przesunięciem w lewo, minus tylko zmniejsza ilość), mój grafik
+  na cały okres naraz i „Moje godziny” na dole (miesiąc kalendarzowy ze strzałkami, do 3 miesięcy wstecz).
+  Napisy dolnego menu: 11 px, bez powiększania czcionki z ustawień telefonu (S23 ma 1,15), żeby się nie zawijały. Kelner nabija zamówienia (stoliki, menu, wysyłka na kuchnię, wydanie,
+  zamknięcie rachunku; niewysłaną pozycję usuwa się przesunięciem w lewo, minus tylko zmniejsza ilość; w wyborze dań
+  „Przejdź dalej” na dole wraca do rachunku stolika), mój grafik
   (zgłaszanie godzin), mój kod do panelu. Każda aktualizacja na S23 i iPhone'a, tak jak aplikacja dla gości.
 - `packages/table_core`: wspólny motyw, czcionka Geist, ikony Phosphor, formatery, widżety i konfiguracja.
 - `packages/table_car`: wtyczka Flutter tylko dla Table for employees: kurs dostawcy w Android Auto (Kotlin, Car App
@@ -257,7 +259,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Menu: zdjęcia dań (`menu_items.photo_url`, bucket `menu-photos`, panel zmniejsza zdjęcie do 1200 px JPG,
   goście widzą je w aplikacji Table). Uprawnienia: `menu` (zakładka), `menu_edit` (dania, ceny, sekcje, zdjęcia),
   `menu_availability` („Skończyło się”). Warianty (np. rozmiary, każdy z ceną), płatne dodatki, stawka VAT i „dostępne teraz”. Przy wariantach
-  `price_grosze` to najniższa cena wariantu. „Skończyło się” może ustawić też kelner i kuchnia (`panel_set_menu_item_available`).
+  `price_grosze` to najniższa cena wariantu. „od” przed ceną tylko, gdy warianty mają różne ceny (`priceVaries`
+  w modelach gościa, pracownika i panelu); jeden wariant (np. Tonic 200 ml) pokazuje samą cenę. „Skończyło się” może ustawić też kelner i kuchnia (`panel_set_menu_item_available`).
 - Inwentaryzacja (`/inwentaryzacja`, `features/inventory`): zakładki Spis, Składniki, Historia (`IconTabs`).
   Składniki (`inventory_items`: nazwa, jednostka ml/l/g/kg/szt, pojemność opakowania; usunięcie ustawia `deleted_at`,
   w historii zostają). Spis (`inventory_counts`, jeden otwarty na lokal, `inventory_count_lines` z ilością w opakowaniach
