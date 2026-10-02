@@ -187,10 +187,14 @@ class StationLogin extends ConsumerStatefulWidget {
     this.qrSize = 280,
     this.autofocus = false,
     this.endShiftOf,
+    this.qrFooter,
     required this.onLogin,
   });
 
   final String restaurantId;
+
+  /// Coś pod kodem QR, np. „Właściciel: otwórz hasłem konta”.
+  final Widget? qrFooter;
   final double qrSize;
   final bool autofocus;
 
@@ -425,6 +429,7 @@ class _StationLoginState extends ConsumerState<StationLogin> {
           'Nowy kod za $left s',
           style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
         ),
+        if (widget.qrFooter case final footer?) ...[const SizedBox(height: 14), footer],
       ],
     );
 
@@ -456,11 +461,6 @@ class _StationLoginState extends ConsumerState<StationLogin> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text('Kod pracownika', style: text.titleLarge),
-              const SizedBox(height: 6),
-              Text(
-                'Wpisz swój czterocyfrowy kod. Znajdziesz go w aplikacji Table for employees.',
-                style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
-              ),
               const SizedBox(height: 18),
               Row(
                 children: [
@@ -681,39 +681,11 @@ class TabLoginGate extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final text = Theme.of(context).textTheme;
     final restaurant = ref.watch(currentRestaurantProvider);
     if (restaurant == null) return const LoadingView();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(32, 28, 32, 0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Zaloguj się kodem albo kodem QR, żeby otworzyć „$label”. Zostaniesz zalogowany we wszystkich '
-                      'zakładkach, do których masz uprawnienia. Panel wyloguje Cię sam po 30 sekundach bez ruchu.',
-                      style: text.bodyLarge?.copyWith(color: AppColors.textMuted),
-                    ),
-                  ],
-                ),
-              ),
-              if (restaurant.canManage)
-                TextButton.icon(
-                  onPressed: () => _unlock(context, ref),
-                  style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
-                  icon: const Glyph(AppIcons.lock, size: 16),
-                  label: const Text('Właściciel: otwórz hasłem konta'),
-                ),
-            ],
-          ),
-        ),
         Expanded(
           child: Center(
             child: SingleChildScrollView(
@@ -721,6 +693,14 @@ class TabLoginGate extends ConsumerWidget {
               child: StationLogin(
                 restaurantId: restaurant.id,
                 autofocus: true,
+                qrFooter: restaurant.canManage
+                    ? TextButton.icon(
+                        onPressed: () => _unlock(context, ref),
+                        style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+                        icon: const Glyph(AppIcons.lock, size: 16),
+                        label: const Text('Właściciel: otwórz hasłem konta'),
+                      )
+                    : null,
                 onLogin: (member) {
                   if (!canOpenRoute(tab, member.permissions)) {
                     showMessage(

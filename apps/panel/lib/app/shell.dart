@@ -214,16 +214,9 @@ class _TopBar extends ConsumerWidget {
               children: [
                 if (current != null) _RestaurantSwitcher(current: current, restaurants: list),
                 if (sections.isNotEmpty && section != null) ...[
-                  const SizedBox(width: 12),
-                  // Ta sama wysokość co lokal obok.
-                  SizedBox(
-                    height: 42,
-                    child: IconTabs<PanelSection>(
-                      options: [for (final s in sections) (s, s.icon, s.label)],
-                      selected: section!,
-                      onChanged: onSection,
-                    ),
-                  ),
+                  const SizedBox(width: 16),
+                  for (final s in sections)
+                    _SectionTab(section: s, selected: s == section, onTap: () => onSection(s)),
                 ],
                 const Spacer(),
                 // Nowa wersja znaleziona w trakcie pracy: instaluje się dopiero po kliknięciu,
@@ -254,22 +247,19 @@ class _TopBar extends ConsumerWidget {
                   ),
                   const SizedBox(width: 8),
                 ],
-                Tooltip(
-                  message: 'Motyw: ${theme.label}',
-                  child: PanelPress(
-                    child: IconButton(
-                      onPressed: () {
-                        final values = AppThemeSetting.values;
-                        ThemeFade.run(
-                          context,
-                          () => ref.read(themeSettingProvider.notifier).set(values[(theme.index + 1) % values.length]),
-                        );
-                      },
-                      icon: Glyph(theme.icon, size: 20, color: AppColors.textMuted),
-                    ),
-                  ),
+                _BareIcon(
+                  icon: theme.icon,
+                  tooltip: 'Motyw: ${theme.label}',
+                  size: 26,
+                  onTap: () {
+                    final values = AppThemeSetting.values;
+                    ThemeFade.run(
+                      context,
+                      () => ref.read(themeSettingProvider.notifier).set(values[(theme.index + 1) % values.length]),
+                    );
+                  },
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 10),
                 if (current != null) _MemberMenu(restaurant: current),
               ],
             ),
@@ -493,9 +483,8 @@ class _MemberMenu extends ConsumerWidget {
         height: 38,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: member == null ? AppColors.surface : AppColors.accentTint,
+          color: member == null ? AppColors.surfaceRaised : AppColors.accentTint,
           shape: BoxShape.circle,
-          border: Border.all(color: member == null ? AppColors.ring : AppColors.accent.withValues(alpha: 0.5)),
         ),
         child: member == null
             ? Glyph(AppIcons.users, size: 18, color: AppColors.textMuted)
@@ -539,6 +528,10 @@ class _Rail extends StatelessWidget {
           AnimatedSwitcher(
             duration: PanelMotion.tab,
             transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
+            layoutBuilder: (current, previous) => Stack(
+              alignment: Alignment.topCenter,
+              children: [...previous, ?current],
+            ),
             child: Column(
               key: ValueKey(tabs.map((t) => t.route).join()),
               children: [for (final t in tabs) button(t)],
@@ -566,34 +559,80 @@ class _RailButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Tooltip(
-        message: tab.label,
-        preferBelow: false,
-        waitDuration: const Duration(milliseconds: 250),
-        child: PanelPress(
-          child: Material(
-            color: selected ? AppColors.surface : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            child: InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(12),
-              hoverColor: AppColors.ring,
-              splashColor: Colors.transparent,
-              highlightColor: Colors.transparent,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                width: 46,
-                height: 46,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: selected ? AppColors.ringStrong : Colors.transparent),
-                ),
-                // Wybrana zakładka ma ikonę z wypełnieniem (duotone) w kolorze akcentu.
-                child: Glyph(
-                  selected ? tab.icon.duotone : tab.icon,
-                  size: 21,
-                  color: selected ? AppColors.accent : AppColors.textMuted,
+      child: _BareIcon(
+        icon: tab.icon,
+        tooltip: tab.label,
+        selected: selected,
+        size: 30,
+        box: 46,
+        tooltipAbove: true,
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+/// Sama ikona bez tła i ramki. Wybrana ma wypełnienie (duotone) w kolorze akcentu, najechana myszą jaśnieje.
+class _BareIcon extends StatefulWidget {
+  const _BareIcon({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.selected = false,
+    this.size = 24,
+    this.box = 40,
+    this.tooltipAbove = false,
+  });
+
+  final AppIconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool selected;
+  final double size;
+
+  /// Pole do kliknięcia wokół ikony.
+  final double box;
+  final bool tooltipAbove;
+
+  @override
+  State<_BareIcon> createState() => _BareIconState();
+}
+
+class _BareIconState extends State<_BareIcon> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = widget.selected
+        ? AppColors.accent
+        : _hovered
+        ? AppColors.text
+        : AppColors.textMuted;
+    return Tooltip(
+      message: widget.tooltip,
+      preferBelow: !widget.tooltipAbove,
+      waitDuration: const Duration(milliseconds: 250),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: PanelPress(
+            scale: 0.9,
+            child: SizedBox(
+              width: widget.box,
+              height: widget.box,
+              child: Center(
+                child: TweenAnimationBuilder<Color?>(
+                  tween: ColorTween(end: color),
+                  duration: const Duration(milliseconds: 180),
+                  builder: (context, c, _) => Glyph(
+                    widget.selected ? widget.icon.duotone : widget.icon,
+                    size: widget.size,
+                    color: c,
+                  ),
                 ),
               ),
             ),
@@ -601,6 +640,87 @@ class _RailButton extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Grupa w górnym pasku: sama ikona, a wybrana w kolorze akcentu i z nazwą, która wysuwa się obok.
+class _SectionTab extends StatefulWidget {
+  const _SectionTab({required this.section, required this.selected, required this.onTap});
+
+  final PanelSection section;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  State<_SectionTab> createState() => _SectionTabState();
+}
+
+class _SectionTabState extends State<_SectionTab> {
+  bool _hovered = false;
+
+  static const _duration = Duration(milliseconds: 300);
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final selected = widget.selected;
+    final color = selected
+        ? AppColors.accent
+        : _hovered
+        ? AppColors.text
+        : AppColors.textMuted;
+    final tab = MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: PanelPress(
+          scale: 0.92,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TweenAnimationBuilder<Color?>(
+                  tween: ColorTween(end: color),
+                  duration: const Duration(milliseconds: 180),
+                  builder: (context, c, _) => Glyph(
+                    selected ? widget.section.icon.duotone : widget.section.icon,
+                    size: 26,
+                    color: c,
+                  ),
+                ),
+                // Nazwa wybranej grupy wysuwa się zza ikony.
+                ClipRect(
+                  child: AnimatedAlign(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: selected ? 1 : 0,
+                    duration: _duration,
+                    curve: AppMotion.easeOut,
+                    child: AnimatedOpacity(
+                      opacity: selected ? 1 : 0,
+                      duration: selected ? _duration : const Duration(milliseconds: 120),
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Text(
+                          widget.section.label,
+                          maxLines: 1,
+                          softWrap: false,
+                          style: text.labelLarge?.copyWith(color: AppColors.accent, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    return selected ? tab : Tooltip(message: widget.section.label, child: tab);
   }
 }
 

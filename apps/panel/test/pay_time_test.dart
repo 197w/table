@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 import 'package:table_panel/data/models.dart';
+import 'package:table_panel/features/fleet/fleet_screen.dart';
 
 void main() {
   test('inwentaryzacja co miesiąc: koniec miesiąca nie przeskakuje do następnego', () {
@@ -10,6 +11,16 @@ void main() {
     expect(nextInventoryDay('month', DateTime(2026, 3, 31)), DateTime(2026, 4, 30));
     expect(nextInventoryDay('month', DateTime(2026, 12, 15)), DateTime(2027, 1, 15));
     expect(monthStart(DateTime(2026, 10, 2, 13)), DateTime(2026, 10));
+  });
+
+  test('rejestracja i VIN wielkimi literami, jak przy Caps Locku', () {
+    final f = UpperCaseFormatter();
+    final out = f.formatEditUpdate(
+      TextEditingValue.empty,
+      const TextEditingValue(text: 'bi 12abc', selection: TextSelection.collapsed(offset: 8)),
+    );
+    expect(out.text, 'BI 12ABC');
+    expect(out.selection.baseOffset, 8);
   });
 
   test('statystyki pracownika: stawka i zarobek za miesiąc', () {

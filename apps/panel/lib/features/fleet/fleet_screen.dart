@@ -7,6 +7,13 @@ import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
 
+/// Wpisywane litery od razu zamieniają się na wielkie (rejestracja, VIN), jak przy włączonym Caps Locku.
+class UpperCaseFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) =>
+      newValue.copyWith(text: newValue.text.toUpperCase());
+}
+
 AppIconData vehicleIcon(VehicleKind kind) => switch (kind) {
   VehicleKind.car => AppIcons.car,
   VehicleKind.scooter => AppIcons.moped,
@@ -317,6 +324,7 @@ class _VehicleDialogState extends ConsumerState<_VehicleDialog> {
                 controller: _plate,
                 maxLength: 15,
                 textCapitalization: TextCapitalization.characters,
+                inputFormatters: [UpperCaseFormatter()],
                 decoration: const InputDecoration(labelText: 'Rejestracja', hintText: 'BI 12345', counterText: ''),
               ),
               const SizedBox(height: 14),
@@ -324,7 +332,7 @@ class _VehicleDialogState extends ConsumerState<_VehicleDialog> {
                 controller: _vin,
                 maxLength: 17,
                 textCapitalization: TextCapitalization.characters,
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]'))],
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')), UpperCaseFormatter()],
                 style: const TextStyle(letterSpacing: 1, fontFeatures: [FontFeature.tabularFigures()]),
                 decoration: const InputDecoration(labelText: 'VIN', hintText: '17 znaków, z dowodu rejestracyjnego'),
               ),

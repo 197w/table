@@ -108,12 +108,12 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 
 - Logowanie e-mailem i hasłem. Obowiązkowe 2FA dodajemy przed wydaniem.
 - Układ jak w UniFi (`shell.dart`, `sections.dart`, 0.11.0). Górny pasek: lokal po lewej (logo, kropka połączenia
-  na żywo, plan; strzałka i lista tylko przy kilku lokalach konta), grupy zakładek (`PanelSection`, `IconTabs`):
+  na żywo, plan; strzałka i lista tylko przy kilku lokalach konta), grupy zakładek (`PanelSection`, `_SectionTab`: same ikony bez ramek, wybrana w kolorze akcentu z nazwą):
   Rezerwacje (Rezerwacje, Zamówienia, Wydanie), Kuchnia (Kuchnia, Menu, Inwentaryzacja), Dostawy (Dostawy, Flota),
   Pracownicy (Pracownicy, Statystyki zespołu `/zespol`), Baza klientów (Klienci `/klienci`, Statystyki, Opinie);
   „Table” na środku; po prawej nowa wersja, odliczanie do wylogowania, motyw i kółko pracownika (inicjały; menu:
   kod pracownika, „Zakończ zmianę”, „Wyloguj”, „Wejdź na zmianę”, e-mail i wersja, wylogowanie konta restauracji).
-  Wąski pasek boczny: zakładki wybranej grupy (same ikony, nazwy w podpowiedziach), na dole Ustawienia lokalu
+  Wąski pasek boczny: zakładki wybranej grupy (same ikony bez ramek, 30 px, nazwy w podpowiedziach), na dole Ustawienia lokalu
   (`/ustawienia`), Dane lokalu i Edycja sali. Grupa i zakładki według uprawnień zalogowanego pracownika;
   ostatnia grupa zostaje wybrana na stronach lokalu (`panelSectionProvider`). Bez hamburgera i bez paska nad zakładką.
 - Ustawienia lokalu: rezerwacje w aplikacji (co ile minut, największa grupa), grafik pracowników, okres inwentaryzacji,
@@ -158,7 +158,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   i w `StaffPermission`. „ALL” ma Wiktor Godlewski (REVE); nadaje je tylko osoba z uprawnieniem `positions`.
 - Logowanie pracownika w panelu jest jedno dla wszystkich zakładek (`panelMemberProvider`): kod QR z aplikacji
   Table for employees (`staff_scan`) albo czterocyfrowy kod na klawiaturze (`panel_member_login`). Bez zalogowanego
-  pracownika każda zakładka pokazuje logowanie (`TabLoginGate`); wejść może tylko osoba z uprawnieniem do zakładki.
+  pracownika każda zakładka pokazuje logowanie (`TabLoginGate`, bez opisu; „Właściciel: otwórz hasłem konta” pod kodem QR); wejść może tylko osoba z uprawnieniem do zakładki.
   Pasek boczny pokazuje zakładki zalogowanego pracownika, a menu pod jego kółkiem w górnym pasku „Wyloguj”
   i „Zakończ zmianę”. Właściciel otwiera panel hasłem konta restauracji (`ActingMember.account()`).
   „Wejdź na zmianę” (menu boczne, `ShiftScreen`) zaczyna zmianę i loguje pracownika. „Zakończ zmianę” jest w menu
