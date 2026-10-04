@@ -200,8 +200,8 @@ class _TopBar extends ConsumerWidget {
         builder: (context, box) => Stack(
           alignment: Alignment.center,
           children: [
-            // Nazwa Table na środku paska, gdy jest na nią miejsce.
-            if (box.maxWidth >= 1280)
+            // Nazwa Table na środku paska, gdy jest na nią miejsce (sześć grup zakładek kończy się ok. 650 px).
+            if (box.maxWidth >= 1400)
               Text(
                 'Table',
                 style: text.titleLarge?.copyWith(
