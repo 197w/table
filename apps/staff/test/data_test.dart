@@ -111,4 +111,11 @@ void main() {
     expect(pizza.priceVaries, isTrue);
     expect(pizza.fromPrice, 2500);
   });
+
+  test('rachunek kelnera: rabat od części i równy podział', () {
+    final due = WDue.fromJson({'total': 11000, 'discount': 1100, 'due': 9900, 'discount_percent': 10});
+    expect(due.forPart(4200), (420, 3780));
+    expect(splitEqually(6120, 2), [3060, 3060]);
+    expect(const WPart(WPayment.cash, 3060, tip: 100).toJson(), {'method': 'cash', 'amount': 3060, 'tip': 100});
+  });
 }

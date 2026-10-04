@@ -645,6 +645,16 @@ final couriersProvider = FutureProvider.autoDispose.family<List<Courier>, String
   },
 );
 
+/// Kwota do zapłaty za rachunek z rabatem z kodu rezerwacji.
+final orderDueProvider = FutureProvider.autoDispose.family<OrderDue, String>(
+  (ref, orderId) => ref.watch(repositoryProvider).orderDue(orderId),
+);
+
+/// Kody rabatowe lokalu (Management).
+final discountCodesProvider = FutureProvider.autoDispose.family<List<DiscountCode>, String>(
+  (ref, restaurantId) => ref.watch(repositoryProvider).discountCodes(restaurantId),
+);
+
 /// Podsumowanie dnia w Management. Odświeża się razem z zamówieniami.
 final daySummaryProvider = FutureProvider.autoDispose.family<DaySummary, DayQuery>((ref, q) {
   ref.watch(ordersLiveProvider(q.restaurantId).select((s) => s.version));

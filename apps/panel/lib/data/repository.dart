@@ -1238,7 +1238,8 @@ class PanelRepository {
           .from('orders')
           .select(
             'id, table_id, reservation_id, note, status, opened_at, closed_at, '
-            'payment_method, gift_card_grosze, kind, number, order_items(*)',
+            'payment_method, gift_card_grosze, kind, number, discount_grosze, discount_label, tip_grosze, '
+            'order_items(*), order_payments(method, amount_grosze, tip_grosze)',
           )
           .eq('restaurant_id', restaurantId)
           .inFilter('status', ['paid', 'cancelled'])
@@ -1338,6 +1339,85 @@ class PanelRepository {
         },
       ),
     );
+  }
+
+  /// Suma, rabat z kodu rezerwacji i kwota do zapłaty przed zamknięciem.
+  Future<OrderDue> orderDue(String orderId) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>('panel_order_due', params: {'p_order_id': orderId});
+      return OrderDue.fromJson(json);
+    });
+  }
+
+  /// Zamknięcie całego rachunku: jedna albo kilka płatności (np. równy podział), z napiwkami.
+  Future<void> settleOrder(String orderId, List<PaymentPart> payments, {String? memberId}) {
+    return _guard(
+      () => _db.rpc<Map<String, dynamic>>('panel_settle_order', params: {
+        'p_order_id': orderId,
+        'p_payments': [for (final p in payments) p.toJson()],
+        'p_member_id': memberId,
+      }),
+    );
+  }
+
+  /// Gość płaci za wybrane pozycje (id pozycji → ilość); reszta zostaje na stoliku.
+  Future<void> payItems(String orderId, Map<String, int> items, List<PaymentPart> payments, {String? memberId}) {
+    return _guard(
+      () => _db.rpc<Map<String, dynamic>>('panel_pay_items', params: {
+        'p_order_id': orderId,
+        'p_items': [
+          for (final e in items.entries)
+            if (e.value > 0) {'id': e.key, 'quantity': e.value},
+        ],
+        'p_payments': [for (final p in payments) p.toJson()],
+        'p_member_id': memberId,
+      }),
+    );
+  }
+
+  Future<List<DiscountCode>> discountCodes(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db
+          .from('discount_codes')
+          .select()
+          .eq('restaurant_id', restaurantId)
+          .order('created_at', ascending: false);
+      return rows.map(DiscountCode.fromJson).toList();
+    });
+  }
+
+  Future<void> saveDiscountCode(
+    String restaurantId, {
+    String? id,
+    required String code,
+    required bool percent,
+    required int value,
+    DateTime? validFrom,
+    DateTime? validUntil,
+    int? maxUses,
+    bool active = true,
+    String? note,
+    String? memberId,
+  }) {
+    return _guard(
+      () => _db.rpc<String>('panel_save_discount_code', params: {
+        'p_restaurant_id': restaurantId,
+        'p_id': id,
+        'p_code': code,
+        'p_kind': percent ? 'percent' : 'amount',
+        'p_value': value,
+        'p_valid_from': validFrom == null ? null : _dateOnly(validFrom),
+        'p_valid_until': validUntil == null ? null : _dateOnly(validUntil),
+        'p_max_uses': maxUses,
+        'p_active': active,
+        'p_note': note,
+        'p_member_id': memberId,
+      }),
+    );
+  }
+
+  Future<void> deleteDiscountCode(String id) {
+    return _guard(() => _db.rpc<void>('panel_delete_discount_code', params: {'p_id': id}));
   }
 
   Future<void> cancelOrder(String orderId) {

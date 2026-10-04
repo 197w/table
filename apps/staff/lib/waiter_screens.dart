@@ -251,19 +251,16 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
   }
 
   Future<void> _close(WOrder order) async {
-    final method = await showModalBottomSheet<WPayment>(
+    // Arkusz sam zamyka rachunek: całość, równo na osoby albo za wybrane pozycje.
+    final closed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (context) => _CloseSheet(total: order.total),
+      builder: (context) => _SettleSheet(restaurantId: _rid, orderId: order.id, memberId: widget.job.memberId),
     );
-    if (method == null) return;
-    await _run(
-      () => ref.read(waiterRepositoryProvider).close(order.id, method, widget.job.memberId),
-      'Rachunek zamknięty: ${Fmt.price(order.total)}, ${method.label.toLowerCase()}.',
-    );
-    if (mounted) Navigator.pop(context);
+    ref.invalidate(openOrdersProvider(_rid));
+    if (closed == true && mounted) Navigator.pop(context);
   }
 
   @override
@@ -500,91 +497,344 @@ class _RemoveBackground extends StatelessWidget {
   }
 }
 
-/// Zamknięcie rachunku: forma płatności, a przy gotówce wyliczenie reszty.
-class _CloseSheet extends StatefulWidget {
-  const _CloseSheet({required this.total});
+enum _SettleMode {
+  whole('Całość'),
+  equal('Równo'),
+  items('Pozycje');
 
-  final int total;
-
-  @override
-  State<_CloseSheet> createState() => _CloseSheetState();
+  const _SettleMode(this.label);
+  final String label;
 }
 
-class _CloseSheetState extends State<_CloseSheet> {
-  WPayment? _method;
+/// Zamknięcie rachunku: rabat z kodu rezerwacji, napiwek i płatność całości, równy podział na osoby
+/// albo płatność za wybrane pozycje (reszta zostaje na stoliku). Zwraca true, gdy rachunek jest zamknięty.
+class _SettleSheet extends ConsumerStatefulWidget {
+  const _SettleSheet({required this.restaurantId, required this.orderId, required this.memberId});
+
+  final String restaurantId;
+  final String orderId;
+  final String memberId;
+
+  @override
+  ConsumerState<_SettleSheet> createState() => _SettleSheetState();
+}
+
+class _SettleSheetState extends ConsumerState<_SettleSheet> {
+  var _mode = _SettleMode.whole;
+  var _method = WPayment.cash;
+  final _tip = TextEditingController();
   final _received = TextEditingController();
+  int _people = 2;
+  final _personMethods = <int, WPayment>{};
+  final _personTips = <int, TextEditingController>{};
+  final _picked = <String, int>{};
+  bool _busy = false;
 
   @override
   void dispose() {
+    _tip.dispose();
     _received.dispose();
+    for (final c in _personTips.values) {
+      c.dispose();
+    }
     super.dispose();
   }
+
+  static int _money(TextEditingController c) {
+    final v = double.tryParse(c.text.trim().replaceAll(',', '.'));
+    return v == null || v < 0 ? 0 : (v * 100).round();
+  }
+
+  static String _text(int grosze) {
+    final zl = grosze ~/ 100;
+    final gr = grosze % 100;
+    return gr == 0 ? '$zl' : '$zl,${gr.toString().padLeft(2, '0')}';
+  }
+
+  TextEditingController _personTip(int i) => _personTips.putIfAbsent(i, TextEditingController.new);
+
+  int _partTotal(WOrder order) => [
+    for (final l in order.lines)
+      if (l.status != LineStatus.cancelled) (_picked[l.id] ?? 0) * l.unitPriceGrosze,
+  ].fold(0, (a, b) => a + b);
+
+  Future<void> _run(Future<void> Function() action, {required bool closes, required String message}) async {
+    setState(() => _busy = true);
+    try {
+      await action();
+      ref
+        ..invalidate(openOrdersProvider(widget.restaurantId))
+        ..invalidate(orderDueProvider(widget.orderId));
+      if (!mounted) return;
+      HapticFeedback.mediumImpact();
+      showMessage(context, message, tone: ToastTone.success);
+      if (closes) {
+        Navigator.pop(context, true);
+      } else {
+        setState(() {
+          _picked.clear();
+          _tip.clear();
+        });
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _pay(WOrder order, WDue due) {
+    final repo = ref.read(waiterRepositoryProvider);
+    switch (_mode) {
+      case _SettleMode.whole:
+        final tip = _money(_tip);
+        _run(
+          () => repo.settle(widget.orderId, [WPart(_method, due.due, tip: tip)], widget.memberId),
+          closes: true,
+          message: 'Rachunek zamknięty: ${Fmt.price(due.due)}, ${_method.label.toLowerCase()}'
+              '${tip > 0 ? ', napiwek ${Fmt.price(tip)}' : ''}.',
+        );
+      case _SettleMode.equal:
+        final parts = splitEqually(due.due, _people);
+        _run(
+          () => repo.settle(
+            widget.orderId,
+            [
+              for (final (i, amount) in parts.indexed)
+                WPart(_personMethods[i] ?? WPayment.cash, amount, tip: _money(_personTip(i))),
+            ],
+            widget.memberId,
+          ),
+          closes: true,
+          message: 'Rachunek zamknięty: ${Fmt.price(due.due)} na $_people osoby.',
+        );
+      case _SettleMode.items:
+        final part = _partTotal(order);
+        final (_, partDue) = due.forPart(part);
+        final all = order.lines.where((l) => l.status != LineStatus.cancelled).every((l) => (_picked[l.id] ?? 0) == l.quantity);
+        _run(
+          () => repo.payItems(
+            widget.orderId,
+            Map.of(_picked),
+            [WPart(_method, all ? due.due : partDue, tip: _money(_tip))],
+            widget.memberId,
+          ),
+          closes: all,
+          message: all ? 'Rachunek zamknięty: ${Fmt.price(due.due)}.' : 'Opłacono część: ${Fmt.price(partDue)}.',
+        );
+    }
+  }
+
+  Widget _methods(WPayment value, ValueChanged<WPayment> onChanged) => Row(
+    children: [
+      for (final m in WPayment.values) ...[
+        if (m != WPayment.values.first) const SizedBox(width: 8),
+        Expanded(
+          child: ChoiceChip(
+            label: SizedBox(width: double.infinity, child: Text(m.label, textAlign: TextAlign.center)),
+            selected: value == m,
+            onSelected: (_) => onChanged(m),
+          ),
+        ),
+      ],
+    ],
+  );
+
+  Widget _tipRow(int base) => Row(
+    children: [
+      Expanded(
+        child: TextField(
+          controller: _tip,
+          onChanged: (_) => setState(() {}),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+          decoration: const InputDecoration(labelText: 'Napiwek', suffixText: 'zł', isDense: true),
+        ),
+      ),
+      for (final pct in const [5, 10, 15]) ...[
+        const SizedBox(width: 6),
+        OutlinedButton(
+          onPressed: base <= 0 ? null : () => setState(() => _tip.text = _text((base * pct / 100).round())),
+          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 10)),
+          child: Text('$pct%'),
+        ),
+      ],
+    ],
+  );
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final digits = _received.text.replaceAll(',', '.');
-    final received = double.tryParse(digits);
-    final change = received == null ? null : (received * 100).round() - widget.total;
+    WOrder? order;
+    for (final o in ref.watch(openOrdersProvider(widget.restaurantId)).value ?? const <WOrder>[]) {
+      if (o.id == widget.orderId) order = o;
+    }
+    final due = ref.watch(orderDueProvider(widget.orderId)).value;
+    if (order == null) {
+      return const SizedBox(height: 200, child: LoadingView());
+    }
+    final active = [for (final l in order.lines) if (l.status != LineStatus.cancelled) l];
+    final part = _partTotal(order);
+    final (partDiscount, partDue) = due?.forPart(part) ?? (0, part);
+    final payDue = _mode == _SettleMode.items ? partDue : (due?.due ?? order.total);
+    final tip = _money(_tip);
+    final received = _money(_received);
+    final change = _received.text.trim().isEmpty ? null : received - payDue - tip;
+
+    Widget money(String label, int value, {TextStyle? style, Color? color}) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: (style ?? text.bodyMedium)?.copyWith(color: color))),
+          Text(Fmt.price(value), style: (style ?? text.bodyMedium)?.copyWith(color: color, fontFeatures: _tabular)),
+        ],
+      ),
+    );
+
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + _bottomInset(context)),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Text('Do zapłaty', style: text.titleMedium),
-              const Spacer(),
-              Text(Fmt.price(widget.total), style: text.headlineSmall?.copyWith(fontFeatures: _tabular)),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                for (final m in _SettleMode.values) ...[
+                  if (m != _SettleMode.values.first) const SizedBox(width: 8),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: SizedBox(width: double.infinity, child: Text(m.label, textAlign: TextAlign.center)),
+                      selected: _mode == m,
+                      onSelected: (_) => setState(() => _mode = m),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 14),
+            if (_mode == _SettleMode.items)
+              for (final l in active)
+                Row(
+                  children: [
+                    Expanded(child: Text([l.name, ?l.details].join(' · '), style: text.bodyMedium)),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      onPressed: (_picked[l.id] ?? 0) == 0 ? null : () => setState(() => _picked[l.id] = _picked[l.id]! - 1),
+                      icon: const Glyph(AppIcons.minus, size: 18),
+                    ),
+                    SizedBox(
+                      width: 44,
+                      child: Text(
+                        '${_picked[l.id] ?? 0}/${l.quantity}',
+                        textAlign: TextAlign.center,
+                        style: text.titleSmall?.copyWith(
+                          fontFeatures: _tabular,
+                          color: (_picked[l.id] ?? 0) > 0 ? AppColors.accent : AppColors.textMuted,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      onPressed: (_picked[l.id] ?? 0) >= l.quantity
+                          ? null
+                          : () => setState(() => _picked[l.id] = (_picked[l.id] ?? 0) + 1),
+                      icon: const Glyph(AppIcons.plus, size: 18),
+                    ),
+                  ],
+                ),
+            if (_mode == _SettleMode.items) const SizedBox(height: 8),
+            money('Suma', order.total, color: AppColors.textMuted),
+            if (due != null && due.discount > 0) money('Rabat ${due.label ?? ''}', -due.discount, color: AppColors.accent),
+            money('Do zapłaty', due?.due ?? order.total, style: text.titleLarge),
+            if (_mode == _SettleMode.items) ...[
+              const SizedBox(height: 6),
+              money('Wybrane pozycje', part),
+              if (partDiscount > 0) money('Rabat', -partDiscount, color: AppColors.accent),
+              money('Płaci teraz', partDue, style: text.titleMedium),
             ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              for (final m in WPayment.values) ...[
-                if (m != WPayment.values.first) const SizedBox(width: 8),
-                Expanded(
-                  child: ChoiceChip(
-                    label: SizedBox(width: double.infinity, child: Text(m.label, textAlign: TextAlign.center)),
-                    selected: _method == m,
-                    onSelected: (_) => setState(() => _method = m),
+            const SizedBox(height: 16),
+            if (_mode == _SettleMode.equal) ...[
+              Row(
+                children: [
+                  Text('Osób', style: text.titleSmall),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: _people <= 2 ? null : () => setState(() => _people--),
+                    icon: const Glyph(AppIcons.minus, size: 18),
+                  ),
+                  SizedBox(
+                    width: 36,
+                    child: Text('$_people', textAlign: TextAlign.center, style: text.titleMedium?.copyWith(fontFeatures: _tabular)),
+                  ),
+                  IconButton(
+                    onPressed: _people >= 20 ? null : () => setState(() => _people++),
+                    icon: const Glyph(AppIcons.plus, size: 18),
+                  ),
+                ],
+              ),
+              for (final (i, amount) in splitEqually(due?.due ?? order.total, _people).indexed)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Osoba ${i + 1}\n${Fmt.price(amount)}',
+                          style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
+                        ),
+                      ),
+                      DropdownButton<WPayment>(
+                        value: _personMethods[i] ?? WPayment.cash,
+                        underline: const SizedBox.shrink(),
+                        items: [for (final m in WPayment.values) DropdownMenuItem(value: m, child: Text(m.label))],
+                        onChanged: (m) => setState(() => _personMethods[i] = m!),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 92,
+                        child: TextField(
+                          controller: _personTip(i),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+                          decoration: const InputDecoration(labelText: 'Napiwek', isDense: true),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+            ] else ...[
+              _methods(_method, (m) => setState(() => _method = m)),
+              const SizedBox(height: 12),
+              _tipRow(payDue),
+              if (_method == WPayment.cash) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _received,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+                  decoration: const InputDecoration(labelText: 'Otrzymano', suffixText: 'zł'),
+                  onChanged: (_) => setState(() {}),
+                ),
+                if (change != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    change >= 0 ? 'Reszta ${Fmt.price(change)}' : 'Brakuje ${Fmt.price(-change)}',
+                    style: text.titleMedium?.copyWith(
+                      color: change >= 0 ? AppColors.accent : AppColors.error,
+                      fontFeatures: _tabular,
+                    ),
+                  ),
+                ],
               ],
             ],
-          ),
-          if (_method == WPayment.cash) ...[
-            const SizedBox(height: 14),
-            TextField(
-              controller: _received,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
-              decoration: const InputDecoration(labelText: 'Otrzymano', suffixText: 'zł'),
-              onChanged: (_) => setState(() {}),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: _busy || due == null || (_mode == _SettleMode.items && part == 0) ? null : () => _pay(order!, due),
+              child: Text(_mode == _SettleMode.items ? 'Zapłać za wybrane' : 'Zamknij rachunek'),
             ),
-            if (change != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                change >= 0 ? 'Reszta ${Fmt.price(change)}' : 'Brakuje ${Fmt.price(-change)}',
-                style: text.titleMedium?.copyWith(
-                  color: change >= 0 ? AppColors.accent : AppColors.error,
-                  fontFeatures: _tabular,
-                ),
-              ),
-            ],
           ],
-          const SizedBox(height: 12),
-          Text(
-            'Kartę podarunkową przyjmiesz w panelu. Paragon wydrukuj na kasie.',
-            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: _method == null ? null : () => Navigator.pop(context, _method),
-            child: const Text('Zamknij rachunek'),
-          ),
-        ],
+        ),
       ),
     );
   }

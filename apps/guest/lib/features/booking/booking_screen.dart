@@ -27,8 +27,14 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
   Occasion? _occasion;
   final _message = TextEditingController();
   final _diet = TextEditingController();
+  final _code = TextEditingController();
   bool _dietConsent = false;
   bool _busy = false;
+
+  /// Sprawdzony kod rabatowy; null, gdy go nie ma albo nie działa.
+  GuestDiscount? _discount;
+  String? _codeError;
+  bool _checking = false;
 
   static DateTime _today() {
     final now = DateTime.now();
@@ -39,7 +45,31 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
   void dispose() {
     _message.dispose();
     _diet.dispose();
+    _code.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkCode() async {
+    final code = _code.text.trim();
+    if (code.isEmpty) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _checking = true;
+      _codeError = null;
+    });
+    try {
+      final discount = await ref.read(repositoryProvider).checkDiscount(widget.restaurantId, code, startsAt: _slot ?? _date);
+      if (mounted) setState(() => _discount = discount);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _discount = null;
+          _codeError = errorText(e);
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
   }
 
   SlotQuery get _query =>
@@ -79,6 +109,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
             message: _message.text,
             diet: _diet.text,
             dietConsent: _dietConsent,
+            discountCode: _code.text,
           );
       ref.invalidate(myReservationsProvider);
       if (!mounted) return;
@@ -342,6 +373,61 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                       ),
                     ),
                   ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: const EdgeInsets.symmetric(horizontal: 4),
+                initiallyExpanded: _code.text.isNotEmpty,
+                title: Text(_discount == null ? 'Kod rabatowy' : 'Kod rabatowy: ${_discount!.code}'),
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _code,
+                          maxLength: 20,
+                          textCapitalization: TextCapitalization.characters,
+                          onChanged: (_) => setState(() {
+                            _discount = null;
+                            _codeError = null;
+                          }),
+                          onSubmitted: (_) => _checkCode(),
+                          decoration: InputDecoration(
+                            hintText: 'Na przykład JESIEN10',
+                            counterText: '',
+                            errorText: _codeError,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: OutlinedButton(
+                          onPressed: _checking || _code.text.trim().isEmpty ? null : _checkCode,
+                          child: const Text('Sprawdź'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_discount != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 4),
+                      child: Row(
+                        children: [
+                          Glyph(AppIcons.check, size: 16, color: AppColors.accent),
+                          const SizedBox(width: 6),
+                          Text(_discount!.label, style: text.bodyMedium?.copyWith(color: AppColors.accent)),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 8),
                 ],
               ),
             ),

@@ -212,8 +212,9 @@ class _Summary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final paid = orders.where((o) => o.isPaid).toList();
-    final revenue = paid.fold<int>(0, (s, o) => s + o.totalGrosze);
+    final revenue = paid.fold<int>(0, (s, o) => s + o.totalGrosze - o.discountGrosze);
     final gift = paid.fold<int>(0, (s, o) => s + (o.giftCardGrosze ?? 0));
+    final tips = paid.fold<int>(0, (s, o) => s + o.tipGrosze);
     final cancelled = orders.where((o) => o.isCancelled).length;
 
     return Row(
@@ -224,7 +225,10 @@ class _Summary extends StatelessWidget {
             value: Fmt.price(revenue),
             icon: AppIcons.receipt,
             color: TileColors.green,
-            hint: gift > 0 ? 'w tym ${Fmt.price(gift)} z kart podarunkowych' : null,
+            hint: [
+              if (tips > 0) 'napiwki ${Fmt.price(tips)}',
+              if (gift > 0) 'karty podarunkowe ${Fmt.price(gift)}',
+            ].join(' · '),
           ),
         ),
         const SizedBox(width: 12),
@@ -261,6 +265,7 @@ class _Summary extends StatelessWidget {
 
 String _paymentLabel(PanelOrder o) {
   if (o.isCancelled) return 'Anulowany';
+  if (o.payments.length > 1) return 'Podzielony (${o.payments.length})';
   final gift = o.giftCardGrosze;
   final method = o.paymentMethod;
   if (gift != null && method != PaymentMethod.giftCard) {
@@ -482,15 +487,27 @@ class _OrderDetail extends StatelessWidget {
                       ),
                     ],
                   ),
+                if (order.discountGrosze > 0) ...[
+                  const SizedBox(height: 6),
+                  _PayRow(label: 'Rabat ${order.discountLabel ?? ''}', amount: -order.discountGrosze),
+                ],
                 if (order.isPaid) ...[
                   const SizedBox(height: 10),
-                  if (gift != null)
-                    _PayRow(label: 'Karta podarunkowa', amount: gift),
-                  if (order.paymentMethod != null && order.paymentMethod != PaymentMethod.giftCard)
-                    _PayRow(
-                      label: order.paymentMethod!.label,
-                      amount: order.totalGrosze - (gift ?? 0),
-                    ),
+                  if (order.payments.isNotEmpty)
+                    for (final p in order.payments)
+                      _PayRow(
+                        label: p.tipGrosze > 0 ? '${p.method.label} · napiwek ${Fmt.price(p.tipGrosze)}' : p.method.label,
+                        amount: p.amountGrosze,
+                      )
+                  else ...[
+                    if (gift != null)
+                      _PayRow(label: 'Karta podarunkowa', amount: gift),
+                    if (order.paymentMethod != null && order.paymentMethod != PaymentMethod.giftCard)
+                      _PayRow(
+                        label: order.paymentMethod!.label,
+                        amount: order.totalGrosze - (gift ?? 0),
+                      ),
+                  ],
                 ],
               ],
             ),

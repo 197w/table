@@ -222,6 +222,7 @@ class Repository {
     String? message,
     String? diet,
     bool dietConsent = false,
+    String? discountCode,
   }) {
     return _guard(() async {
       final id = await _db.rpc<String>(
@@ -234,9 +235,25 @@ class Repository {
           'p_message': message,
           'p_diet': diet,
           'p_diet_consent': dietConsent,
+          'p_discount_code': (discountCode == null || discountCode.trim().isEmpty) ? null : discountCode.trim(),
         },
       );
       return id;
+    });
+  }
+
+  /// Sprawdza kod rabatowy lokalu na dzień wizyty. Błąd, gdy kod nie działa.
+  Future<GuestDiscount> checkDiscount(String restaurantId, String code, {DateTime? startsAt}) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>(
+        'guest_check_discount',
+        params: {
+          'p_restaurant_id': restaurantId,
+          'p_code': code.trim(),
+          'p_starts_at': startsAt?.toUtc().toIso8601String(),
+        },
+      );
+      return GuestDiscount.fromJson(json);
     });
   }
 

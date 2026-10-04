@@ -54,4 +54,9 @@ void main() {
     expect(item([{'name': 'Mała', 'price_grosze': 2500}, {'name': 'Duża', 'price_grosze': 3900}]).priceVaries, isTrue);
     expect(item(const []).priceVaries, isFalse);
   });
+
+  test('kod rabatowy przy rezerwacji', () {
+    expect(GuestDiscount.fromJson({'code': 'REVE10', 'kind': 'percent', 'value': 10}).label, '−10% od rachunku');
+    expect(GuestDiscount.fromJson({'code': 'ZIMA', 'kind': 'amount', 'value': 2050}).label, '−20,50 zł od rachunku');
+  });
 }

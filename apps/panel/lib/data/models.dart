@@ -1157,6 +1157,113 @@ enum OrderItemStatus {
       values.firstWhere((s) => s.db == value, orElse: () => fresh);
 }
 
+/// Jedna płatność rachunku: forma, kwota (bez napiwku) i napiwek.
+class PaymentPart {
+  const PaymentPart(this.method, this.amountGrosze, {this.tipGrosze = 0});
+
+  final PaymentMethod method;
+  final int amountGrosze;
+  final int tipGrosze;
+
+  Map<String, dynamic> toJson() => {'method': method.db, 'amount': amountGrosze, 'tip': tipGrosze};
+
+  factory PaymentPart.fromJson(Map<String, dynamic> json) => PaymentPart(
+    PaymentMethod.fromDb(json['method']) ?? PaymentMethod.other,
+    _toInt(json['amount_grosze']),
+    tipGrosze: _toInt(json['tip_grosze']),
+  );
+}
+
+/// Ile do zapłaty za rachunek: suma, rabat z kodu rezerwacji i kwota po rabacie.
+class OrderDue {
+  const OrderDue({required this.totalGrosze, required this.discountGrosze, required this.dueGrosze, this.label, this.percent});
+
+  final int totalGrosze;
+  final int discountGrosze;
+  final int dueGrosze;
+  final String? label;
+
+  /// Rabat procentowy liczy się też od części rachunku. Null: brak albo rabat kwotowy.
+  final int? percent;
+
+  /// Rabat i kwota do zapłaty za część rachunku o wartości [part].
+  (int discount, int due) forPart(int part) {
+    final p = percent;
+    final discount = p == null ? 0 : (part * p / 100).round().clamp(0, part);
+    return (discount, part - discount);
+  }
+
+  factory OrderDue.fromJson(Map<String, dynamic> json) => OrderDue(
+    totalGrosze: _toInt(json['total']),
+    discountGrosze: _toInt(json['discount']),
+    dueGrosze: _toInt(json['due']),
+    label: json['discount_label'] as String?,
+    percent: json['discount_percent'] == null ? null : _toInt(json['discount_percent']),
+  );
+}
+
+/// Podział kwoty na [people] równych części; grosze reszty dostają pierwsze osoby.
+List<int> splitEqually(int amount, int people) {
+  final n = people < 1 ? 1 : people;
+  final base = amount ~/ n;
+  final rest = amount % n;
+  return [for (var i = 0; i < n; i++) base + (i < rest ? 1 : 0)];
+}
+
+/// Kod rabatowy lokalu, wpisywany przez gościa przy rezerwacji w aplikacji Table.
+class DiscountCode {
+  const DiscountCode({
+    required this.id,
+    required this.code,
+    required this.percent,
+    required this.value,
+    required this.active,
+    required this.uses,
+    this.validFrom,
+    this.validUntil,
+    this.maxUses,
+    this.note,
+    this.createdBy,
+  });
+
+  final String id;
+  final String code;
+
+  /// Rabat procentowy (value = procent). False: kwotowy (value w groszach).
+  final bool percent;
+  final int value;
+  final bool active;
+  final int uses;
+  final DateTime? validFrom;
+  final DateTime? validUntil;
+  final int? maxUses;
+  final String? note;
+  final String? createdBy;
+
+  /// Rabat do pokazania, np. „−10%” albo „−20,00 zł”.
+  String get valueText => percent ? '−$value%' : '−${(value / 100).toStringAsFixed(2).replaceAll('.', ',')} zł';
+
+  /// Kod przestał działać: wyłączony, po terminie albo wykorzystany.
+  bool get expired =>
+      !active ||
+      (validUntil != null && validUntil!.isBefore(DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day))) ||
+      (maxUses != null && uses >= maxUses!);
+
+  factory DiscountCode.fromJson(Map<String, dynamic> json) => DiscountCode(
+    id: json['id'] as String,
+    code: json['code'] as String,
+    percent: json['kind'] == 'percent',
+    value: _toInt(json['value']),
+    active: json['active'] != false,
+    uses: _toInt(json['uses']),
+    validFrom: json['valid_from'] == null ? null : DateTime.parse(json['valid_from'] as String),
+    validUntil: json['valid_until'] == null ? null : DateTime.parse(json['valid_until'] as String),
+    maxUses: json['max_uses'] == null ? null : _toInt(json['max_uses']),
+    note: json['note'] as String?,
+    createdBy: json['created_by_name'] as String?,
+  );
+}
+
 enum PaymentMethod {
   cash('cash', 'Gotówka'),
   card('card', 'Karta'),
@@ -1270,9 +1377,21 @@ class PanelOrder {
     this.giftCardGrosze,
     this.kind = OrderKind.dineIn,
     this.number,
+    this.discountGrosze = 0,
+    this.discountLabel,
+    this.tipGrosze = 0,
+    this.payments = const [],
   });
 
   final String id;
+
+  /// Rabat z kodu rezerwacji, np. „REVE10 (−10%)”, i napiwki ze wszystkich płatności.
+  final int discountGrosze;
+  final String? discountLabel;
+  final int tipGrosze;
+
+  /// Płatności zamkniętego rachunku (kilka przy podziale). Starsze rachunki: puste, jest [paymentMethod].
+  final List<PaymentPart> payments;
 
   /// Na sali, dostawa albo odbiór osobisty.
   final OrderKind kind;
@@ -1341,6 +1460,13 @@ class PanelOrder {
       giftCardGrosze: json['gift_card_grosze'] == null ? null : _toInt(json['gift_card_grosze']),
       kind: OrderKind.from(json['kind']),
       number: json['number'] == null ? null : _toInt(json['number']),
+      discountGrosze: _toInt(json['discount_grosze']),
+      discountLabel: json['discount_label'] as String?,
+      tipGrosze: _toInt(json['tip_grosze']),
+      payments: [
+        for (final p in (json['order_payments'] as List? ?? const []))
+          PaymentPart.fromJson(p as Map<String, dynamic>),
+      ],
     );
   }
 
@@ -2669,8 +2795,20 @@ class DaySummary {
     required this.pettyOutGrosze,
     required this.pettyInGrosze,
     required this.petty,
+    this.tipsGrosze = 0,
+    this.tipsCashGrosze = 0,
+    this.tipsCardGrosze = 0,
+    this.discountsGrosze = 0,
     this.report,
   });
+
+  /// Napiwki ze wszystkich płatności, w tym gotówką i kartą (karta przechodzi przez terminal).
+  final int tipsGrosze;
+  final int tipsCashGrosze;
+  final int tipsCardGrosze;
+
+  /// Rabaty z kodów rezerwacji odjęte od rachunków.
+  final int discountsGrosze;
 
   final int revenueGrosze;
   final int orders;
@@ -2690,8 +2828,11 @@ class DaySummary {
   final List<PettyEntry> petty;
   final DayReport? report;
 
-  /// Gotówka, która powinna być w kasie: sprzedaż gotówką, minus wydatki z petty, plus wpłaty.
-  int get expectedCashGrosze => cashGrosze - pettyOutGrosze + pettyInGrosze;
+  /// Gotówka, która powinna być w kasie: sprzedaż i napiwki gotówką, minus wydatki z petty, plus wpłaty.
+  int get expectedCashGrosze => cashGrosze + tipsCashGrosze - pettyOutGrosze + pettyInGrosze;
+
+  /// Kwota z terminali: płatności kartą z napiwkami.
+  int get expectedCardGrosze => cardGrosze + tipsCardGrosze;
 
   factory DaySummary.fromJson(Map<String, dynamic> json) => DaySummary(
     revenueGrosze: _toInt(json['revenue']),
@@ -2705,6 +2846,10 @@ class DaySummary {
     cancelled: _toInt(json['cancelled']),
     pettyOutGrosze: _toInt(json['petty_out']),
     pettyInGrosze: _toInt(json['petty_in']),
+    tipsGrosze: _toInt(json['tips']),
+    tipsCashGrosze: _toInt(json['tips_cash']),
+    tipsCardGrosze: _toInt(json['tips_card']),
+    discountsGrosze: _toInt(json['discounts']),
     petty: [for (final e in (json['petty'] as List? ?? const [])) PettyEntry.fromJson(e as Map<String, dynamic>)],
     report: json['report'] == null ? null : DayReport.fromJson(json['report'] as Map<String, dynamic>),
   );

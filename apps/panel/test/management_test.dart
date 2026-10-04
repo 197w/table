@@ -79,4 +79,34 @@ void main() {
     expect(s.report!.cashCountedGrosze, s.expectedCashGrosze);
     expect(DaySummary.fromJson({'petty': []}).report, isNull);
   });
+
+  test('rachunek: rabat od części, równy podział i płatności', () {
+    final due = OrderDue.fromJson({'total': 11000, 'discount': 1100, 'due': 9900, 'discount_label': 'REVE10 (−10%)', 'discount_percent': 10});
+    expect(due.forPart(4200), (420, 3780));
+    final amount = OrderDue.fromJson({'total': 11000, 'discount': 2000, 'due': 9000, 'discount_label': 'X (−20,00 zł)'});
+    expect(amount.forPart(4200), (0, 4200));
+    expect(splitEqually(9901, 3), [3301, 3300, 3300]);
+    expect(splitEqually(100, 1), [100]);
+    expect(const PaymentPart(PaymentMethod.card, 3780, tipGrosze: 500).toJson(), {'method': 'card', 'amount': 3780, 'tip': 500});
+    final order = PanelOrder.fromJson({
+      'id': 'o1', 'opened_at': '2026-10-04T10:00:00Z', 'status': 'paid', 'discount_grosze': 680,
+      'discount_label': 'REVE10 (−10%)', 'tip_grosze': 200,
+      'order_payments': [
+        {'method': 'cash', 'amount_grosze': 3060, 'tip_grosze': 0},
+        {'method': 'card', 'amount_grosze': 3060, 'tip_grosze': 200},
+      ],
+    });
+    expect(order.payments.length, 2);
+    expect(order.payments.last.method, PaymentMethod.card);
+    expect(order.tipGrosze, 200);
+  });
+
+  test('kod rabatowy: wartość i wygaśnięcie', () {
+    final c = DiscountCode.fromJson({'id': 'd1', 'code': 'REVE10', 'kind': 'percent', 'value': 10, 'active': true, 'uses': 2, 'max_uses': 2});
+    expect(c.valueText, '−10%');
+    expect(c.expired, isTrue);
+    final a = DiscountCode.fromJson({'id': 'd2', 'code': 'ZIMA', 'kind': 'amount', 'value': 2000, 'active': true, 'uses': 0, 'valid_until': '2099-01-01'});
+    expect(a.valueText, '−20,00 zł');
+    expect(a.expired, isFalse);
+  });
 }

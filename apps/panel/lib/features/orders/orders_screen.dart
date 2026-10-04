@@ -8,6 +8,7 @@ import 'package:table_core/table_core.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
+import 'settle_dialog.dart';
 import '../floor/floor_canvas.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
@@ -131,24 +132,14 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   }
 
   Future<void> _close(String restaurantId, DiningTable table, PanelOrder order) async {
-    final method = await showDialog<PaymentMethod>(
+    // Okno samo zamyka rachunek (całość, równo albo po pozycjach) i pokazuje potwierdzenie.
+    final closed = await showDialog<bool>(
       context: context,
-      builder: (_) => _CloseOrderDialog(table: table, order: order),
+      builder: (_) => SettleDialog(restaurantId: restaurantId, orderId: order.id, title: 'Rachunek · stolik ${table.label}'),
     );
-    if (method == null || !mounted) return;
-    var ok = false;
-    await _enqueue(restaurantId, () async {
-      await ref.read(repositoryProvider).closeOrder(
-        order.id,
-        method,
-        memberId: ref.read(panelMemberProvider)?.dbMemberId,
-      );
-      ok = true;
-    });
-    if (!ok || !mounted) return;
+    if (closed != true || !mounted) return;
     // Zamknięty rachunek kończy też wizytę z rezerwacji, więc plan sali musi się odświeżyć.
     ref.invalidate(reservationsProvider((restaurantId: restaurantId, day: dateOnly(DateTime.now()))));
-    showMessage(context, 'Rachunek zamknięty: ${Fmt.price(order.totalGrosze)}, ${method.label.toLowerCase()}.');
   }
 
   /// Kelner zaniósł wszystko, co kuchnia zbiła.
@@ -1475,177 +1466,6 @@ class _NoteDialogState extends State<_NoteDialog> {
 // ---------------------------------------------------------------
 // Zamknięcie rachunku i przeniesienie
 // ---------------------------------------------------------------
-
-/// Zamknięcie rachunku: forma płatności, a przy gotówce wyliczenie reszty. Zwraca formę płatności.
-class _CloseOrderDialog extends StatefulWidget {
-  const _CloseOrderDialog({required this.table, required this.order});
-
-  final DiningTable table;
-  final PanelOrder order;
-
-  @override
-  State<_CloseOrderDialog> createState() => _CloseOrderDialogState();
-}
-
-class _CloseOrderDialogState extends State<_CloseOrderDialog> {
-  PaymentMethod? _method;
-  final _received = TextEditingController();
-
-  @override
-  void dispose() {
-    _received.dispose();
-    super.dispose();
-  }
-
-  /// VAT zawarty w kwocie brutto przy danej stawce.
-  static int _vatOf(int gross, int rate) => (gross * rate / (100 + rate)).round();
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final order = widget.order;
-    final total = order.totalGrosze;
-    final cash = _method == PaymentMethod.cash;
-    final received = parseGrosze(_received.text);
-    final change = received == null ? null : received - total;
-    final vat = order.byVat.entries.toList()..sort((a, b) => b.key.compareTo(a.key));
-    final result = _method;
-
-    return AlertDialog(
-      title: Text('Rachunek · stolik ${widget.table.label}'),
-      content: SizedBox(
-        width: 480,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (final i in order.active)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: 34,
-                        child: Text(
-                          '${i.quantity}×',
-                          style: text.bodyMedium?.copyWith(
-                            color: AppColors.textMuted,
-                            fontFeatures: _tabular,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          [i.name, ?i.details].join(' · '),
-                          style: text.bodyMedium,
-                        ),
-                      ),
-                      Text(
-                        Fmt.price(i.totalGrosze),
-                        style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: 8),
-              Divider(height: 1, color: AppColors.ring),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Text('Do zapłaty', style: text.titleMedium),
-                  const Spacer(),
-                  Text(Fmt.price(total), style: text.headlineSmall?.copyWith(fontFeatures: _tabular)),
-                ],
-              ),
-              for (final e in vat)
-                Row(
-                  children: [
-                    Text(
-                      'w tym VAT ${e.key}%',
-                      style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-                    ),
-                    const Spacer(),
-                    Text(
-                      Fmt.price(_vatOf(e.value, e.key)),
-                      style: text.bodySmall?.copyWith(
-                        color: AppColors.textMuted,
-                        fontFeatures: _tabular,
-                      ),
-                    ),
-                  ],
-                ),
-              const SizedBox(height: 18),
-              Text('Forma płatności', style: text.titleSmall),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  // Karta podarunkowa została tylko w historii starych rachunków.
-                  for (final m in PaymentMethod.values.where((m) => m != PaymentMethod.giftCard))
-                    _OptionButton(
-                      label: m.label,
-                      price: switch (m) {
-                        PaymentMethod.cash => 'wydaj resztę',
-                        PaymentMethod.card => 'terminal',
-                        PaymentMethod.giftCard || PaymentMethod.other => 'np. przelew',
-                      },
-                      selected: _method == m,
-                      onTap: () => setState(() => _method = m),
-                    ),
-                ],
-              ),
-              if (cash) ...[
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    SizedBox(
-                      width: 160,
-                      child: TextField(
-                        controller: _received,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
-                        decoration: const InputDecoration(labelText: 'Otrzymano', suffixText: 'zł'),
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    if (change != null)
-                      Text(
-                        change >= 0 ? 'Reszta ${Fmt.price(change)}' : 'Brakuje ${Fmt.price(-change)}',
-                        style: text.titleMedium?.copyWith(
-                          color: change >= 0 ? AppColors.accent : AppColors.error,
-                          fontFeatures: _tabular,
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-              const SizedBox(height: 16),
-              Text(
-                'Paragon fiskalny wydrukuj na kasie. Połączenie z drukarką fiskalną dodamy w kolejnej wersji.',
-                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
-          child: const Text('Wróć'),
-        ),
-        FilledButton(
-          onPressed: result == null ? null : () => Navigator.pop(context, result),
-          child: const Text('Zamknij rachunek'),
-        ),
-      ],
-    );
-  }
-}
 
 class _MoveDialog extends StatelessWidget {
   const _MoveDialog({required this.from, required this.tables});

@@ -171,6 +171,53 @@ enum WPayment {
   final String label;
 }
 
+/// Jedna płatność rachunku: forma, kwota bez napiwku i napiwek.
+class WPart {
+  const WPart(this.method, this.amount, {this.tip = 0});
+
+  final WPayment method;
+  final int amount;
+  final int tip;
+
+  Map<String, dynamic> toJson() => {'method': method.db, 'amount': amount, 'tip': tip};
+}
+
+/// Ile do zapłaty: suma, rabat z kodu rezerwacji i kwota po rabacie.
+class WDue {
+  const WDue({required this.total, required this.discount, required this.due, this.label, this.percent});
+
+  final int total;
+  final int discount;
+  final int due;
+  final String? label;
+
+  /// Rabat procentowy liczy się też od części rachunku. Null: brak albo kwotowy.
+  final int? percent;
+
+  /// Rabat i kwota do zapłaty za część rachunku o wartości [part].
+  (int discount, int due) forPart(int part) {
+    final p = percent;
+    final discount = p == null ? 0 : (part * p / 100).round().clamp(0, part);
+    return (discount, part - discount);
+  }
+
+  factory WDue.fromJson(Map<String, dynamic> j) => WDue(
+    total: _toInt(j['total']),
+    discount: _toInt(j['discount']),
+    due: _toInt(j['due']),
+    label: j['discount_label'] as String?,
+    percent: j['discount_percent'] == null ? null : _toInt(j['discount_percent']),
+  );
+}
+
+/// Podział kwoty na [people] równych części; grosze reszty dostają pierwsze osoby.
+List<int> splitEqually(int amount, int people) {
+  final n = people < 1 ? 1 : people;
+  final base = amount ~/ n;
+  final rest = amount % n;
+  return [for (var i = 0; i < n; i++) base + (i < rest ? 1 : 0)];
+}
+
 /// Zamówienia z telefonu kelnera. Te same funkcje bazy co w panelu: cenę liczy baza z menu,
 /// a pracownik musi mieć trwającą zmianę.
 class WaiterRepository {
@@ -280,6 +327,33 @@ class WaiterRepository {
     }),
   );
 
+  Future<WDue> due(String orderId) => _guard(() async {
+    final json = await _db.rpc<Map<String, dynamic>>('panel_order_due', params: {'p_order_id': orderId});
+    return WDue.fromJson(json);
+  });
+
+  /// Zamknięcie całego rachunku: jedna albo kilka płatności (np. równy podział), z napiwkami.
+  Future<void> settle(String orderId, List<WPart> payments, String memberId) => _guard(
+    () => _db.rpc<Map<String, dynamic>>('panel_settle_order', params: {
+      'p_order_id': orderId,
+      'p_payments': [for (final p in payments) p.toJson()],
+      'p_member_id': memberId,
+    }),
+  );
+
+  /// Gość płaci za wybrane pozycje (id → ilość); reszta zostaje na stoliku.
+  Future<void> payItems(String orderId, Map<String, int> items, List<WPart> payments, String memberId) => _guard(
+    () => _db.rpc<Map<String, dynamic>>('panel_pay_items', params: {
+      'p_order_id': orderId,
+      'p_items': [
+        for (final e in items.entries)
+          if (e.value > 0) {'id': e.key, 'quantity': e.value},
+      ],
+      'p_payments': [for (final p in payments) p.toJson()],
+      'p_member_id': memberId,
+    }),
+  );
+
   Future<T> _guard<T>(Future<T> Function() action) async {
     try {
       return await action();
@@ -319,6 +393,11 @@ final tablesProvider = FutureProvider.autoDispose.family<List<WTable>, String>(
 
 final menuProvider = FutureProvider.autoDispose.family<List<WMenuSection>, String>(
   (ref, id) => ref.watch(waiterRepositoryProvider).menu(id),
+);
+
+/// Kwota do zapłaty za rachunek z rabatem z kodu rezerwacji.
+final orderDueProvider = FutureProvider.autoDispose.family<WDue, String>(
+  (ref, orderId) => ref.watch(waiterRepositoryProvider).due(orderId),
 );
 
 final openOrdersProvider = FutureProvider.autoDispose.family<List<WOrder>, String>((ref, id) {

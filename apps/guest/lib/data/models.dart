@@ -440,6 +440,31 @@ enum ReservationStatus {
   };
 }
 
+/// Kod rabatowy lokalu sprawdzony przed rezerwacją: rabat odejmie się od rachunku stolika.
+class GuestDiscount {
+  const GuestDiscount({required this.code, required this.percent, required this.value});
+
+  final String code;
+  final bool percent;
+
+  /// Procent albo kwota w groszach.
+  final int value;
+
+  /// Na przykład „−10% od rachunku” albo „−20 zł od rachunku”.
+  String get label {
+    final zl = value ~/ 100;
+    final gr = value % 100;
+    final amount = gr == 0 ? '$zl zł' : '$zl,${gr.toString().padLeft(2, '0')} zł';
+    return '${percent ? '−$value%' : '−$amount'} od rachunku';
+  }
+
+  factory GuestDiscount.fromJson(Map<String, dynamic> json) => GuestDiscount(
+    code: json['code'] as String,
+    percent: json['kind'] == 'percent',
+    value: _toInt(json['value']),
+  );
+}
+
 class Reservation {
   const Reservation({
     required this.id,

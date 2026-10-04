@@ -78,7 +78,11 @@ class _DaySummaryScreenState extends ConsumerState<DaySummaryScreen> {
                         child: StatTile(
                           label: 'Obrót',
                           value: Fmt.price(s.revenueGrosze),
-                          hint: '${s.orders} rachunków${s.takeaway > 0 ? ' · ${s.takeaway} na wynos' : ''}',
+                          hint: [
+                            '${s.orders} rachunków',
+                            if (s.takeaway > 0) '${s.takeaway} na wynos',
+                            if (s.discountsGrosze > 0) 'rabaty ${Fmt.price(s.discountsGrosze)}',
+                          ].join(' · '),
                           icon: AppIcons.receipt,
                           color: TileColors.green,
                         ),
@@ -88,6 +92,7 @@ class _DaySummaryScreenState extends ConsumerState<DaySummaryScreen> {
                         child: StatTile(
                           label: 'Gotówka',
                           value: Fmt.price(s.cashGrosze),
+                          hint: s.tipsCashGrosze > 0 ? '+ napiwki ${Fmt.price(s.tipsCashGrosze)}' : null,
                           icon: AppIcons.money,
                           color: TileColors.amber,
                         ),
@@ -97,6 +102,7 @@ class _DaySummaryScreenState extends ConsumerState<DaySummaryScreen> {
                         child: StatTile(
                           label: 'Karta (terminal)',
                           value: Fmt.price(s.cardGrosze),
+                          hint: s.tipsCardGrosze > 0 ? '+ napiwki ${Fmt.price(s.tipsCardGrosze)}' : null,
                           icon: AppIcons.creditCard,
                           color: TileColors.blue,
                         ),
@@ -344,7 +350,7 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
                 ],
               ),
             ),
-          _Check(label: 'Karty w panelu', expected: s.cardGrosze, actual: _terminalsSum),
+          _Check(label: 'Karty w panelu', expected: s.expectedCardGrosze, actual: _terminalsSum),
           const SizedBox(height: 20),
           Text('Gotówka w kasie', style: text.titleSmall),
           const SizedBox(height: 8),
@@ -360,6 +366,7 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
           const SizedBox(height: 4),
           Text(
             'Sprzedaż gotówką ${Fmt.price(s.cashGrosze)}'
+            '${s.tipsCashGrosze > 0 ? ' + napiwki ${Fmt.price(s.tipsCashGrosze)}' : ''}'
             '${s.pettyOutGrosze > 0 ? ' − wydatki ${Fmt.price(s.pettyOutGrosze)}' : ''}'
             '${s.pettyInGrosze > 0 ? ' + wpłaty ${Fmt.price(s.pettyInGrosze)}' : ''}',
             style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
