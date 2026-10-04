@@ -13,6 +13,8 @@ import '../features/fleet/fleet_screen.dart';
 import '../features/floor/floor_screen.dart';
 import '../features/inventory/inventory_screen.dart';
 import '../features/kitchen/kitchen_screen.dart';
+import '../features/management/day_screen.dart';
+import '../features/management/hours_screen.dart';
 import '../features/menu/menu_screen.dart';
 import '../features/orders/order_history_screen.dart';
 import '../features/orders/orders_screen.dart';
@@ -180,6 +182,8 @@ GoRouter _buildRouter(
           _page(PanelRoutes.profile, const ProfileScreen()),
           _page(PanelRoutes.reviews, const ReviewsScreen()),
           _page(PanelRoutes.stats, const StatsScreen()),
+          _page(PanelRoutes.daySummary, const DaySummaryScreen()),
+          _page(PanelRoutes.hours, const HoursScreen()),
         ],
       ),
     ],
@@ -223,6 +227,8 @@ abstract final class PanelRoutes {
   static const profile = '/lokal';
   static const reviews = '/opinie';
   static const stats = '/statystyki';
+  static const daySummary = '/podsumowanie';
+  static const hours = '/godziny';
 }
 
 /// Uprawnienia, z których wystarczy jedno, żeby otworzyć zakładkę.
@@ -235,8 +241,8 @@ const _routePermissions = {
   PanelRoutes.kitchen: {'kitchen'},
   PanelRoutes.serving: {'serving'},
   PanelRoutes.floor: {'floor_edit'},
-  // W Pracownikach każda część ma własne uprawnienie: zespół, loginy, grafik, czas pracy, stanowiska.
-  PanelRoutes.staff: {'staff', 'staff_logins', 'schedule', 'timesheet', 'positions'},
+  // W Pracownikach każda część ma własne uprawnienie: zespół, loginy, grafik, stanowiska.
+  PanelRoutes.staff: {'staff', 'staff_logins', 'schedule', 'positions'},
   PanelRoutes.teamStats: {'stats'},
   PanelRoutes.customers: {'customers'},
   PanelRoutes.settings: {'profile'},
@@ -245,6 +251,8 @@ const _routePermissions = {
   PanelRoutes.inventory: {'inventory_edit', 'inventory_count'},
   PanelRoutes.reviews: {'reviews'},
   PanelRoutes.stats: {'stats'},
+  PanelRoutes.daySummary: {'day_close'},
+  PanelRoutes.hours: {'timesheet'},
 };
 
 /// Nazwy zakładek, np. w logowaniu do zakładki.
@@ -266,6 +274,8 @@ const panelTabLabels = {
   PanelRoutes.inventory: 'Inwentaryzacja',
   PanelRoutes.reviews: 'Opinie',
   PanelRoutes.stats: 'Statystyki',
+  PanelRoutes.daySummary: 'Podsumowanie dnia',
+  PanelRoutes.hours: 'Godziny pracy',
 };
 
 /// Zakładka (jej ścieżka) dla adresu. Null: adres poza zakładkami.

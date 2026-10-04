@@ -1048,15 +1048,80 @@ class PanelRepository {
   }
 
   /// Ilość składnika w opakowaniach. Null czyści wpis.
-  Future<void> setInventoryQuantity(String countId, String itemId, double? quantity, {String? memberId}) {
+  /// Ilość w spisie: pełne opakowania i reszta w gramach, mililitrach albo sztukach. Oba null: niepoliczone.
+  Future<void> setInventoryQuantity(
+    String countId,
+    String itemId,
+    double? packages, {
+    double? loose,
+    String? memberId,
+  }) {
     return _guard(
       () => _db.rpc<void>('panel_inventory_set', params: {
         'p_count_id': countId,
         'p_item_id': itemId,
-        'p_quantity': quantity,
+        'p_quantity': packages,
+        'p_member_id': memberId,
+        'p_loose': loose,
+      }),
+    );
+  }
+
+  /// Dzień lokalu: sprzedaż według płatności, petty cash i raporty z końca dnia.
+  Future<DaySummary> daySummary(String restaurantId, DateTime day) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>(
+        'panel_day_summary',
+        params: {'p_restaurant_id': restaurantId, 'p_day': _dateOnly(day)},
+      );
+      return DaySummary.fromJson(json);
+    });
+  }
+
+  Future<void> saveDayReport(
+    String restaurantId,
+    DateTime day, {
+    int? fiscalGrosze,
+    List<TerminalReport> terminals = const [],
+    int? cashCountedGrosze,
+    String? note,
+    String? memberId,
+  }) {
+    return _guard(
+      () => _db.rpc<void>('panel_save_day_report', params: {
+        'p_restaurant_id': restaurantId,
+        'p_day': _dateOnly(day),
+        'p_fiscal': fiscalGrosze,
+        'p_terminals': [for (final t in terminals) t.toJson()],
+        'p_cash_counted': cashCountedGrosze,
+        'p_note': note,
         'p_member_id': memberId,
       }),
     );
+  }
+
+  Future<void> addPetty(
+    String restaurantId,
+    DateTime day, {
+    required bool out,
+    required String description,
+    required int amountGrosze,
+    String? memberId,
+  }) {
+    return _guard(
+      () => _db.rpc<String>('panel_add_petty', params: {
+        'p_restaurant_id': restaurantId,
+        'p_day': _dateOnly(day),
+        'p_kind': out ? 'out' : 'in',
+        'p_description': description,
+        'p_amount': amountGrosze,
+        'p_member_id': memberId,
+      }),
+    );
+  }
+
+  Future<void> deletePetty(String id) {
+    return _guard(() => _db.rpc<void>('panel_delete_petty', params: {'p_id': id}));
   }
 
   Future<void> finishInventory(String countId, {String? memberId}) {
@@ -1121,11 +1186,13 @@ class PanelRepository {
     return _guard(() => _db.rpc<void>('staff_end_shift', params: {'p_member_id': memberId}));
   }
 
+  /// Dopisanie albo poprawa zmiany co do minuty. Poprawka zapamiętuje pierwotne godziny i kto poprawił.
   Future<void> saveShift({
     String? id,
     required String memberId,
     required DateTime startedAt,
     DateTime? endedAt,
+    String? editorId,
   }) {
     return _guard(
       () => _db.rpc<void>(
@@ -1135,6 +1202,7 @@ class PanelRepository {
           'p_member_id': memberId,
           'p_started_at': startedAt.toUtc().toIso8601String(),
           'p_ended_at': endedAt?.toUtc().toIso8601String(),
+          'p_editor_id': editorId,
         },
       ),
     );
@@ -1715,3 +1783,7 @@ class PanelRepository {
 /// Dzień jako „RRRR-MM-DD” dla kolumn typu date.
 String _isoDay(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+/// Data bez godziny w formacie bazy, np. „2026-10-04”.
+String _dateOnly(DateTime day) =>
+    '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';

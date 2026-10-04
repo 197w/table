@@ -645,6 +645,12 @@ final couriersProvider = FutureProvider.autoDispose.family<List<Courier>, String
   },
 );
 
+/// Podsumowanie dnia w Management. Odświeża się razem z zamówieniami.
+final daySummaryProvider = FutureProvider.autoDispose.family<DaySummary, DayQuery>((ref, q) {
+  ref.watch(ordersLiveProvider(q.restaurantId).select((s) => s.version));
+  return ref.watch(repositoryProvider).daySummary(q.restaurantId, q.day);
+});
+
 final orderHistoryProvider = FutureProvider.autoDispose.family<List<PanelOrder>, DayQuery>(
   (ref, q) {
     ref.cacheFor();

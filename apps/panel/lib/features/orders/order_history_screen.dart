@@ -23,7 +23,8 @@ enum _Filter {
   };
 }
 
-/// Historia zamówień: zamknięte rachunki z wybranego dnia, z podsumowaniem obrotu.
+/// Historia zamówień: zamknięte rachunki z wybranego dnia. Podsumowanie obrotu widzi tylko osoba
+/// z uprawnieniem „Przychody” (kierownik, właściciel); kelner widzi same rachunki.
 class OrderHistoryScreen extends ConsumerStatefulWidget {
   const OrderHistoryScreen({super.key, this.embedded = false});
 
@@ -86,6 +87,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
       );
     }
     final today = dateOnly(DateTime.now());
+    final canRevenue = ref.watch(memberPermissionsProvider).contains('revenue');
     final query = (restaurantId: restaurant.id, day: _day);
     final async = ref.watch(orderHistoryProvider(query));
     final tables = ref.watch(tablesProvider(restaurant.id)).value ?? const <DiningTable>[];
@@ -143,8 +145,10 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _Summary(orders: orders),
-                    const SizedBox(height: 16),
+                    if (canRevenue) ...[
+                      _Summary(orders: orders),
+                      const SizedBox(height: 16),
+                    ],
                     Expanded(
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,

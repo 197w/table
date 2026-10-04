@@ -21,8 +21,6 @@ enum PanelSection {
   ]),
   kitchen('Kuchnia', AppIcons.chefHat, [
     PanelTab(PanelRoutes.kitchen, 'Kuchnia', AppIcons.chefHat),
-    PanelTab(PanelRoutes.menu, 'Menu', AppIcons.bookOpen),
-    PanelTab(PanelRoutes.inventory, 'Inwentaryzacja', AppIcons.package),
   ]),
   deliveries('Dostawy', AppIcons.moped, [
     PanelTab(PanelRoutes.deliveries, 'Dostawy', AppIcons.moped),
@@ -34,8 +32,15 @@ enum PanelSection {
   ]),
   customers('Baza klientów', AppIcons.addressBook, [
     PanelTab(PanelRoutes.customers, 'Klienci', AppIcons.userList),
-    PanelTab(PanelRoutes.stats, 'Statystyki', AppIcons.chartPie),
     PanelTab(PanelRoutes.reviews, 'Opinie', AppIcons.chatCircle),
+  ]),
+  // Prowadzenie lokalu: koniec dnia, godziny pracowników, menu, inwentaryzacja i wyniki.
+  management('Management', AppIcons.briefcase, [
+    PanelTab(PanelRoutes.daySummary, 'Podsumowanie dnia', AppIcons.cashRegister),
+    PanelTab(PanelRoutes.hours, 'Godziny pracy', AppIcons.clockUser),
+    PanelTab(PanelRoutes.menu, 'Menu', AppIcons.bookOpen),
+    PanelTab(PanelRoutes.inventory, 'Inwentaryzacja', AppIcons.package),
+    PanelTab(PanelRoutes.stats, 'Statystyki', AppIcons.chartPie),
   ]);
 
   const PanelSection(this.label, this.icon, this.tabs);

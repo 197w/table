@@ -1047,7 +1047,11 @@ enum StaffPermission {
   inventoryCount('inventory_count', 'Wpisywanie ilości składników', 'Spis ilości składników w inwentaryzacji', 'Inwentaryzacja'),
   customers('customers', 'Baza klientów', 'Goście lokalu: wizyty, wydatki, nieobecności', 'Wyniki'),
   reviews('reviews', 'Opinie', 'Odpowiadanie na opinie', 'Wyniki'),
-  stats('stats', 'Statystyki', 'Sprzedaż, rezerwacje i historia zamówień', 'Wyniki');
+  stats('stats', 'Statystyki', 'Sprzedaż, rezerwacje i historia zamówień', 'Wyniki'),
+  revenue('revenue', 'Przychody', 'Obrót i średni rachunek w historii zamówień', 'Management'),
+  dayClose('day_close', 'Podsumowanie dnia', 'Raporty z kasy i terminali, petty cash', 'Management'),
+  discounts('discounts', 'Kody rabatowe', 'Tworzenie i wyłączanie kodów rabatowych', 'Management'),
+  export('export', 'Eksport', 'Pliki dla księgowej: sprzedaż, VAT i czas pracy', 'Management');
 
   const StaffPermission(this.key, this.label, this.description, this.group);
 
@@ -2171,6 +2175,9 @@ class StaffShift {
     required this.startedAt,
     this.endedAt,
     this.source = 'scan',
+    this.originalStartedAt,
+    this.originalEndedAt,
+    this.editedAt,
   });
 
   final String id;
@@ -2181,9 +2188,23 @@ class StaffShift {
   /// scan: kod QR, panel: wpisana ręcznie przez kierownika.
   final String source;
 
+  /// Godziny przed pierwszą poprawką w panelu. Null: zmiany nikt nie poprawiał.
+  final DateTime? originalStartedAt;
+  final DateTime? originalEndedAt;
+  final DateTime? editedAt;
+
   bool get isOpen => endedAt == null;
 
+  bool get isEdited => editedAt != null && originalStartedAt != null;
+
   Duration get duration => (endedAt ?? DateTime.now()).difference(startedAt);
+
+  /// Czas zmiany przed poprawką. Null: nie było poprawki albo zmiana wtedy jeszcze trwała.
+  Duration? get originalDuration =>
+      isEdited && originalEndedAt != null ? originalEndedAt!.difference(originalStartedAt!) : null;
+
+  /// O ile poprawka wydłużyła (plus) albo skróciła (minus) zmianę.
+  Duration? get editDifference => originalDuration == null || endedAt == null ? null : duration - originalDuration!;
 
   factory StaffShift.fromJson(Map<String, dynamic> json) => StaffShift(
     id: json['id'] as String,
@@ -2191,6 +2212,9 @@ class StaffShift {
     startedAt: _toDate(json['started_at']),
     endedAt: _toDateOrNull(json['ended_at']),
     source: json['source'] as String? ?? 'scan',
+    originalStartedAt: _toDateOrNull(json['original_started_at']),
+    originalEndedAt: _toDateOrNull(json['original_ended_at']),
+    editedAt: _toDateOrNull(json['edited_at']),
   );
 }
 
@@ -2320,6 +2344,9 @@ enum InventoryUnit {
     InventoryUnit.kg => InventoryUnit.g,
     _ => this,
   };
+
+  /// Ile mniejszych jednostek w jednej: 1000 dla l i kg, 1 dla pozostałych.
+  double get portionFactor => this == InventoryUnit.l || this == InventoryUnit.kg ? 1000 : 1;
 }
 
 /// Składnik w recepturze dania: ile zużywa jedna porcja, w jednostce [unit].
@@ -2391,6 +2418,20 @@ String inventoryNumber(double value) {
   return (fixed == '-0' ? '0' : fixed).replaceAll('.', ',');
 }
 
+/// Jak [inventoryNumber], z odstępami co trzy cyfry, np. „52 500”.
+String inventoryGrouped(double value) {
+  final text = inventoryNumber(value);
+  final negative = text.startsWith('-');
+  final parts = (negative ? text.substring(1) : text).split(',');
+  final digits = parts.first;
+  final grouped = StringBuffer();
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) grouped.write('\u00a0');
+    grouped.write(digits[i]);
+  }
+  return '${negative ? '-' : ''}$grouped${parts.length > 1 ? ',${parts[1]}' : ''}';
+}
+
 /// Liczba wpisana z przecinkiem albo kropką. Null: to nie jest liczba.
 double? parseInventoryNumber(String text) {
   final clean = text.replaceAll(RegExp(r'\s'), '').replaceAll(',', '.');
@@ -2447,6 +2488,8 @@ class InventoryLine {
     required this.unit,
     required this.capacity,
     required this.quantity,
+    this.packages,
+    this.loose,
     this.countedBy,
     this.used,
     this.expected,
@@ -2457,8 +2500,16 @@ class InventoryLine {
   final InventoryUnit unit;
   final double capacity;
 
-  /// Liczba opakowań.
+  /// Liczba opakowań razem z resztą (np. 1,05 przy 1 opakowaniu 50 kg i 2500 g).
   final double quantity;
+
+  /// Wpisane osobno: pełne opakowania i reszta w mniejszej jednostce ([InventoryUnit.portion]).
+  /// Starsze spisy mają tylko [quantity].
+  final double? packages;
+  final double? loose;
+
+  /// Razem w mniejszej jednostce, np. „52 500 g”.
+  String get portionTotalText => '${inventoryGrouped(quantity * capacity * unit.portionFactor)} ${unit.portion.label}';
   final String? countedBy;
 
   /// Zużycie ze sprzedaży od poprzedniej inwentaryzacji, w jednostce pozycji. Null: nie było poprzedniej.
@@ -2481,6 +2532,8 @@ class InventoryLine {
     unit: InventoryUnit.fromKey(json['unit']),
     capacity: _toDouble(json['capacity']) ?? 0,
     quantity: _toDouble(json['quantity']) ?? 0,
+    packages: _toDouble(json['packages']),
+    loose: _toDouble(json['loose']),
     countedBy: json['counted_by'] as String?,
     used: _toDouble(json['used']),
     expected: _toDouble(json['expected']),
@@ -2523,5 +2576,136 @@ class InventoryCount {
     lines: [
       for (final l in json['lines'] as List? ?? const []) InventoryLine.fromJson(l as Map<String, dynamic>),
     ],
+  );
+}
+
+/// Wpis w petty cash: wydatek z kasy (np. cytryny) albo wpłata do kasy (np. drobne).
+class PettyEntry {
+  const PettyEntry({
+    required this.id,
+    required this.out,
+    required this.description,
+    required this.amountGrosze,
+    required this.createdAt,
+    this.author,
+  });
+
+  final String id;
+
+  /// Wydatek (pieniądze wyszły z kasy). False: wpłata do kasy.
+  final bool out;
+  final String description;
+  final int amountGrosze;
+  final DateTime createdAt;
+  final String? author;
+
+  factory PettyEntry.fromJson(Map<String, dynamic> json) => PettyEntry(
+    id: json['id'] as String,
+    out: json['kind'] != 'in',
+    description: json['description'] as String? ?? '',
+    amountGrosze: _toInt(json['amount_grosze']),
+    createdAt: _toDate(json['created_at']),
+    author: json['author_name'] as String?,
+  );
+}
+
+/// Raport z terminala płatniczego na koniec dnia.
+class TerminalReport {
+  const TerminalReport(this.name, this.grosze);
+
+  final String name;
+  final int grosze;
+
+  Map<String, dynamic> toJson() => {'name': name, 'grosze': grosze};
+
+  static List<TerminalReport> listFrom(Object? value) => [
+    for (final t in (value as List? ?? const []).cast<Map<String, dynamic>>())
+      TerminalReport(t['name'] as String? ?? 'Terminal', _toInt(t['grosze'])),
+  ];
+}
+
+/// Raporty wpisane na koniec dnia: kasa fiskalna, terminale, policzona gotówka i notatka.
+class DayReport {
+  const DayReport({
+    this.fiscalGrosze,
+    this.terminals = const [],
+    this.cashCountedGrosze,
+    this.note,
+    this.updatedAt,
+    this.updatedBy,
+  });
+
+  final int? fiscalGrosze;
+  final List<TerminalReport> terminals;
+  final int? cashCountedGrosze;
+  final String? note;
+  final DateTime? updatedAt;
+  final String? updatedBy;
+
+  int get terminalsGrosze => terminals.fold(0, (s, t) => s + t.grosze);
+
+  factory DayReport.fromJson(Map<String, dynamic> json) => DayReport(
+    fiscalGrosze: json['fiscal_grosze'] == null ? null : _toInt(json['fiscal_grosze']),
+    terminals: TerminalReport.listFrom(json['terminals']),
+    cashCountedGrosze: json['cash_counted_grosze'] == null ? null : _toInt(json['cash_counted_grosze']),
+    note: json['note'] as String?,
+    updatedAt: _toDateOrNull(json['updated_at']),
+    updatedBy: json['updated_by_name'] as String?,
+  );
+}
+
+/// Dzień lokalu: sprzedaż według płatności, petty cash i raporty z końca dnia.
+class DaySummary {
+  const DaySummary({
+    required this.revenueGrosze,
+    required this.orders,
+    required this.dineIn,
+    required this.takeaway,
+    required this.cashGrosze,
+    required this.cardGrosze,
+    required this.cardOnlineGrosze,
+    required this.otherGrosze,
+    required this.cancelled,
+    required this.pettyOutGrosze,
+    required this.pettyInGrosze,
+    required this.petty,
+    this.report,
+  });
+
+  final int revenueGrosze;
+  final int orders;
+  final int dineIn;
+  final int takeaway;
+  final int cashGrosze;
+
+  /// Karta na terminalu w lokalu.
+  final int cardGrosze;
+
+  /// Karta online w aplikacji Table (zamówienia na wynos), poza terminalami.
+  final int cardOnlineGrosze;
+  final int otherGrosze;
+  final int cancelled;
+  final int pettyOutGrosze;
+  final int pettyInGrosze;
+  final List<PettyEntry> petty;
+  final DayReport? report;
+
+  /// Gotówka, która powinna być w kasie: sprzedaż gotówką, minus wydatki z petty, plus wpłaty.
+  int get expectedCashGrosze => cashGrosze - pettyOutGrosze + pettyInGrosze;
+
+  factory DaySummary.fromJson(Map<String, dynamic> json) => DaySummary(
+    revenueGrosze: _toInt(json['revenue']),
+    orders: _toInt(json['orders']),
+    dineIn: _toInt(json['dine_in']),
+    takeaway: _toInt(json['takeaway']),
+    cashGrosze: _toInt(json['cash']),
+    cardGrosze: _toInt(json['card']),
+    cardOnlineGrosze: _toInt(json['card_online']),
+    otherGrosze: _toInt(json['other']),
+    cancelled: _toInt(json['cancelled']),
+    pettyOutGrosze: _toInt(json['petty_out']),
+    pettyInGrosze: _toInt(json['petty_in']),
+    petty: [for (final e in (json['petty'] as List? ?? const [])) PettyEntry.fromJson(e as Map<String, dynamic>)],
+    report: json['report'] == null ? null : DayReport.fromJson(json['report'] as Map<String, dynamic>),
   );
 }

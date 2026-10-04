@@ -10,7 +10,13 @@ void main() {
       expect(tabForRoute(tab.route), tab.route, reason: 'ścieżka ${tab.route} nie może zaczynać innej');
     }
     expect(PanelSection.forRoute(PanelRoutes.orders), PanelSection.reservations);
-    expect(PanelSection.forRoute(PanelRoutes.inventory), PanelSection.kitchen);
+    expect(PanelSection.forRoute(PanelRoutes.inventory), PanelSection.management);
+    expect(PanelSection.forRoute(PanelRoutes.menu), PanelSection.management);
+    expect(PanelSection.forRoute(PanelRoutes.stats), PanelSection.management);
+    expect(PanelSection.forRoute(PanelRoutes.daySummary), PanelSection.management);
+    expect(PanelSection.forRoute(PanelRoutes.hours), PanelSection.management);
+    expect(canOpenRoute(PanelRoutes.hours, {'timesheet'}), isTrue);
+    expect(canOpenRoute(PanelRoutes.daySummary, {'orders'}), isFalse);
     expect(PanelSection.forRoute(PanelRoutes.fleet), PanelSection.deliveries);
     expect(PanelSection.forRoute(PanelRoutes.teamStats), PanelSection.staff);
     expect(PanelSection.forRoute(PanelRoutes.reviews), PanelSection.customers);

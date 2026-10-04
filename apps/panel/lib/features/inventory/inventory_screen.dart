@@ -15,6 +15,9 @@ String _hm(DateTime t) => '${_two(t.toLocal().hour)}:${_two(t.toLocal().minute)}
 /// Kolumny tabel: składnik, opakowanie, ilość, razem, poprzednio / akcje.
 const _flex = [5, 2, 3, 2, 2];
 
+/// Kolumny spisu: składnik, opakowanie, pełne opakowania, reszta, razem, poprzednio.
+const _countFlex = [5, 2, 3, 3, 2, 2];
+
 /// Inwentaryzacja: zakładki Spis (trwająca inwentaryzacja), Składniki (lista ze stanem z ostatniego spisu)
 /// i Historia. Uprawnienia: `inventory_edit` (składniki i okres) i `inventory_count` (wpisywanie ilości).
 class InventoryScreen extends ConsumerStatefulWidget {
@@ -206,12 +209,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     items: items,
                     previous: last,
                     canCount: canCount,
-                    onSave: (item, quantity) async {
+                    onSave: (item, packages, loose) async {
                       try {
                         await ref.read(repositoryProvider).setInventoryQuantity(
                           open.id,
                           item.id,
-                          quantity,
+                          packages,
+                          loose: loose,
                           memberId: _memberId,
                         );
                         ref.invalidate(inventoryCountsProvider(rid));
@@ -296,9 +300,10 @@ class _NoCount extends StatelessWidget {
 
 /// Wiersz nagłówka tabeli.
 class _HeaderRow extends StatelessWidget {
-  const _HeaderRow({required this.labels, this.trailing = 0});
+  const _HeaderRow({required this.labels, this.trailing = 0, this.flex = _flex});
 
   final List<(String, TextAlign)> labels;
+  final List<int> flex;
 
   /// Miejsce na przyciski na końcu wiersza.
   final double trailing;
@@ -312,7 +317,7 @@ class _HeaderRow extends StatelessWidget {
         children: [
           for (var i = 0; i < labels.length; i++)
             Expanded(
-              flex: _flex[i],
+              flex: flex[i],
               child: Text(labels[i].$1, textAlign: labels[i].$2, style: style),
             ),
           if (trailing > 0) SizedBox(width: trailing),
@@ -336,7 +341,7 @@ class _CountSheet extends StatelessWidget {
   final List<InventoryItem> items;
   final InventoryCount? previous;
   final bool canCount;
-  final Future<bool> Function(InventoryItem item, double? quantity) onSave;
+  final Future<bool> Function(InventoryItem item, double? packages, double? loose) onSave;
 
   @override
   Widget build(BuildContext context) {
@@ -375,8 +380,9 @@ class _CountSheet extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             canCount
-                ? 'Wpisz liczbę opakowań, także częściową (np. 2,5). Enter przechodzi do następnego składnika. '
-                      'Puste pole: składnik nie jest jeszcze policzony.'
+                ? 'Wpisz pełne opakowania, a obok resztę w gramach, mililitrach albo sztukach '
+                      '(np. mąka 50 kg: 1 op. i 2500 g = 52 500 g). Enter przechodzi dalej. '
+                      'Puste pola: składnik nie jest jeszcze policzony.'
                 : 'Ilości wpisuje osoba z uprawnieniem „Wpisywanie ilości składników”.',
             style: text.bodySmall?.copyWith(color: AppColors.textMuted),
           ),
@@ -388,10 +394,12 @@ class _CountSheet extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const _HeaderRow(
+                  flex: _countFlex,
                   labels: [
                     ('Składnik', TextAlign.left),
                     ('Opakowanie', TextAlign.left),
-                    ('Ilość opakowań', TextAlign.left),
+                    ('Opakowania', TextAlign.left),
+                    ('Reszta', TextAlign.left),
                     ('Razem', TextAlign.right),
                     ('Poprzednio', TextAlign.right),
                   ],
@@ -404,7 +412,7 @@ class _CountSheet extends StatelessWidget {
                     line: count.line(item.id),
                     previous: previous?.line(item.id),
                     enabled: canCount,
-                    onSave: (q) => onSave(item, q),
+                    onSave: (packages, loose) => onSave(item, packages, loose),
                   ),
                 ],
               ],
@@ -430,40 +438,63 @@ class _CountRow extends StatelessWidget {
   final InventoryLine? line;
   final InventoryLine? previous;
   final bool enabled;
-  final Future<bool> Function(double? quantity) onSave;
+
+  /// Zapis pełnych opakowań i reszty (w gramach, mililitrach albo sztukach). Oba null: niepoliczone.
+  final Future<bool> Function(double? packages, double? loose) onSave;
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final muted = text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular);
+    final l = line;
+    // Starsze spisy mają tylko liczbę opakowań (także ułamkową).
+    final packages = l == null ? null : (l.packages ?? (l.loose == null ? l.quantity : null));
+    final loose = l?.loose;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       child: Row(
         children: [
           Expanded(
-            flex: _flex[0],
+            flex: _countFlex[0],
             child: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.titleSmall),
           ),
-          Expanded(flex: _flex[1], child: Text(item.package, style: muted)),
+          Expanded(flex: _countFlex[1], child: Text(item.package, style: muted)),
           Expanded(
-            flex: _flex[2],
+            flex: _countFlex[2],
             child: Align(
               alignment: Alignment.centerLeft,
-              child: _QuantityField(initial: line?.quantity, enabled: enabled, onSave: onSave),
+              child: _QuantityField(
+                initial: packages,
+                enabled: enabled,
+                suffix: 'op.',
+                onSave: (v) => onSave(v, loose),
+              ),
             ),
           ),
           Expanded(
-            flex: _flex[3],
+            flex: _countFlex[3],
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _QuantityField(
+                initial: loose,
+                enabled: enabled,
+                suffix: item.unit.portion.label,
+                onSave: (v) => onSave(packages, v),
+              ),
+            ),
+          ),
+          Expanded(
+            flex: _countFlex[4],
             child: Text(
-              line == null ? '—' : line!.totalText,
+              l == null ? '—' : l.portionTotalText,
               textAlign: TextAlign.right,
               style: text.titleSmall?.copyWith(fontFeatures: _tabular),
             ),
           ),
           Expanded(
-            flex: _flex[4],
+            flex: _countFlex[5],
             child: Text(
-              previous == null ? '—' : '${inventoryNumber(previous!.quantity)} op.',
+              previous == null ? '—' : previous!.portionTotalText,
               textAlign: TextAlign.right,
               style: muted,
             ),
@@ -476,10 +507,11 @@ class _CountRow extends StatelessWidget {
 
 /// Pole ilości. Zapisuje po Enterze albo po przejściu do innego pola.
 class _QuantityField extends StatefulWidget {
-  const _QuantityField({required this.initial, required this.enabled, required this.onSave});
+  const _QuantityField({required this.initial, required this.enabled, required this.onSave, this.suffix = 'op.'});
 
   final double? initial;
   final bool enabled;
+  final String suffix;
   final Future<bool> Function(double? quantity) onSave;
 
   @override
@@ -568,7 +600,7 @@ class _QuantityFieldState extends State<_QuantityField> {
           isDense: true,
           hintText: '—',
           errorText: _invalid ? 'Wpisz liczbę' : null,
-          suffixText: 'op.',
+          suffixText: widget.suffix,
           prefixIcon: SizedBox(
             width: 32,
             child: Center(

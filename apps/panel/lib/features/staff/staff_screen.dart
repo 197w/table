@@ -102,12 +102,11 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     final canStaff = permissions.contains('staff');
     final canLogins = permissions.contains('staff_logins');
     final canPlan = permissions.contains('schedule');
-    final canTimesheet = permissions.contains('timesheet');
     final canPositions = permissions.contains('positions');
+    // Czas pracy jest w Management → „Godziny pracy”.
     final tabs = [
       if (canStaff || canLogins) (0, AppIcons.users, 'Zespół'),
       if (canPlan) (1, AppIcons.calendarDots, 'Grafik'),
-      if (canTimesheet) (2, AppIcons.timer, 'Czas pracy'),
     ];
     if (tabs.isEmpty) {
       return const MessageView(
@@ -145,7 +144,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                       ),
                     const Spacer(),
                     if (tab == 0) const _ViewToggle(),
-                    // Tydzień grafiku albo czasu pracy w jednym rzędzie z zakładkami.
+                    // Tydzień grafiku w jednym rzędzie z zakładkami.
                     if (tab != 0)
                       StepSwitcher(
                         label: weekLabel(_week, weekEnd),
@@ -211,15 +210,6 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                       ),
                     )
                   : null;
-
-              if (tab == 2) {
-                return Timesheet(
-                  restaurantId: restaurant.id,
-                  week: _week,
-                  members: all,
-                  canEdit: canTimesheet,
-                );
-              }
 
               if (tab == 0) {
                 return _TeamGrid(
