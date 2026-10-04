@@ -746,6 +746,7 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
             if (_mode == _SettleMode.items) const SizedBox(height: 8),
             money('Suma', order.total, color: AppColors.textMuted),
             if (due != null && due.discount > 0) money('Rabat ${due.label ?? ''}', -due.discount, color: AppColors.accent),
+            if (due != null && due.deposit > 0) money('Zadatek z rezerwacji', -due.deposit, color: AppColors.accent),
             money('Do zapłaty', due?.due ?? order.total, style: text.titleLarge),
             if (_mode == _SettleMode.items) ...[
               const SizedBox(height: 6),

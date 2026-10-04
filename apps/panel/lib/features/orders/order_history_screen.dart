@@ -491,6 +491,8 @@ class _OrderDetail extends StatelessWidget {
                   const SizedBox(height: 6),
                   _PayRow(label: 'Rabat ${order.discountLabel ?? ''}', amount: -order.discountGrosze),
                 ],
+                if (order.depositGrosze > 0)
+                  _PayRow(label: 'Zadatek z rezerwacji (karta online)', amount: order.depositGrosze),
                 if (order.isPaid) ...[
                   const SizedBox(height: 10),
                   if (order.payments.isNotEmpty)

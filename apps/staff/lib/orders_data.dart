@@ -184,10 +184,13 @@ class WPart {
 
 /// Ile do zapłaty: suma, rabat z kodu rezerwacji i kwota po rabacie.
 class WDue {
-  const WDue({required this.total, required this.discount, required this.due, this.label, this.percent});
+  const WDue({required this.total, required this.discount, required this.due, this.deposit = 0, this.label, this.percent});
 
   final int total;
   final int discount;
+
+  /// Zadatek z rezerwacji odjęty od rachunku (przy zamknięciu całości).
+  final int deposit;
   final int due;
   final String? label;
 
@@ -204,6 +207,7 @@ class WDue {
   factory WDue.fromJson(Map<String, dynamic> j) => WDue(
     total: _toInt(j['total']),
     discount: _toInt(j['discount']),
+    deposit: _toInt(j['deposit']),
     due: _toInt(j['due']),
     label: j['discount_label'] as String?,
     percent: j['discount_percent'] == null ? null : _toInt(j['discount_percent']),

@@ -302,6 +302,7 @@ class PanelRepository {
           .from('restaurants')
           .select(
             'id, name, cuisine, description, address, city, phone, slot_interval_min, max_party_size, price_level, logo_url, '
+            'deposit_min_party, deposit_per_person_grosze, '
             'schedule_period, inventory_period, delivery_enabled, pickup_enabled, takeaway_cash, '
             'delivery_fee_grosze, delivery_min_grosze, delivery_area, opening_hours(weekday, opens, closes)',
           )
@@ -1238,7 +1239,7 @@ class PanelRepository {
           .from('orders')
           .select(
             'id, table_id, reservation_id, note, status, opened_at, closed_at, '
-            'payment_method, gift_card_grosze, kind, number, discount_grosze, discount_label, tip_grosze, '
+            'payment_method, gift_card_grosze, kind, number, discount_grosze, discount_label, deposit_grosze, tip_grosze, '
             'order_items(*), order_payments(method, amount_grosze, tip_grosze)',
           )
           .eq('restaurant_id', restaurantId)
@@ -1371,6 +1372,17 @@ class PanelRepository {
         ],
         'p_payments': [for (final p in payments) p.toJson()],
         'p_member_id': memberId,
+      }),
+    );
+  }
+
+  /// Zadatek przy rezerwacji w aplikacji: od ilu osób i ile za osobę. Null wyłącza.
+  Future<void> setDeposit(String restaurantId, {int? minParty, int? perPersonGrosze}) {
+    return _guard(
+      () => _db.rpc<void>('panel_set_deposit', params: {
+        'p_restaurant_id': restaurantId,
+        'p_min_party': minParty,
+        'p_per_person': perPersonGrosze,
       }),
     );
   }

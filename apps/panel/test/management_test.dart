@@ -109,4 +109,19 @@ void main() {
     expect(a.valueText, '−20,00 zł');
     expect(a.expired, isFalse);
   });
+
+  test('rezerwacja w panelu: kod i zadatek', () {
+    final r = PanelReservation.fromJson({
+      'id': 'r', 'starts_at': '2026-10-05T17:00:00Z', 'ends_at': '2026-10-05T19:00:00Z', 'party_size': 6,
+      'status': 'confirmed', 'source': 'app', 'guest_name': 'Ola', 'created_at': '2026-10-01T10:00:00Z',
+      'table_ids': [], 'table_labels': [], 'from_app': true, 'guest_visits': 0, 'guest_no_shows': 0,
+      'discount_code': 'ZIMA', 'discount_kind': 'amount', 'discount_value': 2000, 'deposit_grosze': 30000, 'deposit_status': 'paid',
+    });
+    expect(r.discountLabel, 'ZIMA −20,00 zł');
+    expect(r.depositLabel, 'opłacony');
+    final due = OrderDue.fromJson({'total': 25200, 'discount': 0, 'deposit': 20000, 'due': 5200});
+    expect(due.depositGrosze, 20000);
+    // Część rachunku nie odejmuje zadatku: rozlicza się on przy zamknięciu całości.
+    expect(due.forPart(4200), (0, 4200));
+  });
 }

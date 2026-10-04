@@ -9,6 +9,7 @@ import '../../app/app.dart';
 import '../../core/maps.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../booking/deposit_sheet.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -264,11 +265,33 @@ class _BodyState extends ConsumerState<_Body> {
                   const Divider(height: 1),
                   _InfoBlock(label: 'Alergie i dieta', value: d.diet!),
                 ],
+                if (d.discountLabel != null) ...[
+                  const Divider(height: 1),
+                  _InfoRow(icon: AppIcons.sealPercent, label: 'Kod rabatowy', value: d.discountLabel!),
+                ],
+                if (d.depositLabel != null) ...[
+                  const Divider(height: 1),
+                  _InfoRow(
+                    icon: AppIcons.creditCard,
+                    label: 'Zadatek ${Fmt.price(d.depositGrosze)}',
+                    value: d.depositLabel!,
+                  ),
+                ],
               ],
             ),
           ),
         ),
         const SizedBox(height: 20),
+        if (d.depositPending) ...[
+          FilledButton(
+            onPressed: () async {
+              final paid = await payDeposit(context, reservationId: d.id, amountGrosze: d.depositGrosze);
+              if (paid) ref.invalidate(reservationDetailProvider(d.id));
+            },
+            child: Text('Wpłać zadatek ${Fmt.price(d.depositGrosze)}'),
+          ),
+          const SizedBox(height: 10),
+        ],
         if (d.canReview) ...[
           FilledButton(
             onPressed: () => context.push(

@@ -112,7 +112,10 @@ class _DaySummaryScreenState extends ConsumerState<DaySummaryScreen> {
                         child: StatTile(
                           label: 'Karta online',
                           value: Fmt.price(s.cardOnlineGrosze),
-                          hint: s.otherGrosze > 0 ? 'inne: ${Fmt.price(s.otherGrosze)}' : 'zamówienia w aplikacji',
+                          hint: [
+                            if (s.depositsGrosze > 0) 'zadatki ${Fmt.price(s.depositsGrosze)}' else 'aplikacja Table',
+                            if (s.otherGrosze > 0) 'inne ${Fmt.price(s.otherGrosze)}',
+                          ].join(' · '),
                           icon: AppIcons.deviceMobile,
                           color: TileColors.violet,
                         ),

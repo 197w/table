@@ -134,6 +134,12 @@ class SettingsScreen extends ConsumerWidget {
                           editable: restaurant.canManage,
                         ),
                         const SizedBox(height: 20),
+                        _DepositCard(
+                          key: ValueKey('zadatek-${profile.id}'),
+                          profile: profile,
+                          editable: restaurant.canManage,
+                        ),
+                        const SizedBox(height: 20),
                         _SchedulePeriodCard(profile: profile, editable: restaurant.canManage),
                         const SizedBox(height: 20),
                         _InventoryPeriodCard(profile: profile, editable: canInventory),
@@ -237,6 +243,135 @@ class _ReservationSettingsCardState extends ConsumerState<_ReservationSettingsCa
               ),
             ],
           ),
+          if (widget.editable) ...[
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(onPressed: _busy ? null : _save, child: const Text('Zapisz')),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Zadatek przy rezerwacji w aplikacji: od ilu osób i ile za osobę. Gość płaci przy rezerwacji,
+/// zadatek odejmuje się od rachunku, odwołanie go zwraca, a nieobecność nie.
+class _DepositCard extends ConsumerStatefulWidget {
+  const _DepositCard({super.key, required this.profile, required this.editable});
+
+  final RestaurantProfile profile;
+  final bool editable;
+
+  @override
+  ConsumerState<_DepositCard> createState() => _DepositCardState();
+}
+
+class _DepositCardState extends ConsumerState<_DepositCard> {
+  late bool _on = widget.profile.depositMinParty != null;
+  late int _minParty = widget.profile.depositMinParty ?? 6;
+  late final _amount = TextEditingController(
+    text: widget.profile.depositPerPersonGrosze == null ? '50' : groszeToText(widget.profile.depositPerPersonGrosze!),
+  );
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final perPerson = parseGrosze(_amount.text);
+    if (_on && (perPerson == null || perPerson < 100)) {
+      showMessage(context, 'Wpisz kwotę za osobę, od 1 zł.', tone: ToastTone.warning);
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await ref.read(repositoryProvider).setDeposit(
+        widget.profile.id,
+        minParty: _on ? _minParty : null,
+        perPersonGrosze: _on ? perPerson : null,
+      );
+      ref.invalidate(profileProvider(widget.profile.id));
+      if (mounted) showMessage(context, _on ? 'Zadatek zapisany.' : 'Zadatek wyłączony.', tone: ToastTone.success);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final enabled = widget.editable && !_busy;
+    final perPerson = parseGrosze(_amount.text);
+    return PanelCard(
+      title: 'Zadatek przy rezerwacji',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text('Gość płaci zadatek w aplikacji Table', style: text.bodyMedium)),
+              Switch(value: _on, onChanged: enabled ? (v) => setState(() => _on = v) : null),
+            ],
+          ),
+          if (_on) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(child: Text('Od ilu osób', style: text.bodyMedium)),
+                IconButton(
+                  tooltip: 'Mniej osób',
+                  icon: const Glyph(AppIcons.minus, size: 16),
+                  onPressed: enabled && _minParty > 1 ? () => setState(() => _minParty--) : null,
+                ),
+                SizedBox(
+                  width: 64,
+                  child: Text(
+                    Fmt.people(_minParty),
+                    textAlign: TextAlign.center,
+                    style: text.labelLarge?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Więcej osób',
+                  icon: const Glyph(AppIcons.plus, size: 16),
+                  onPressed: enabled && _minParty < 30 ? () => setState(() => _minParty++) : null,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(child: Text('Kwota za osobę', style: text.bodyMedium)),
+                SizedBox(
+                  width: 140,
+                  child: TextField(
+                    controller: _amount,
+                    enabled: enabled,
+                    onChanged: (_) => setState(() {}),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+                    textAlign: TextAlign.right,
+                    decoration: const InputDecoration(suffixText: 'zł', isDense: true),
+                  ),
+                ),
+              ],
+            ),
+            if (perPerson != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Na przykład ${Fmt.people(_minParty)}: ${Fmt.price(perPerson * _minParty)}. '
+                'Odwołanie zwraca zadatek, nieobecność nie.',
+                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+              ),
+            ],
+          ],
           if (widget.editable) ...[
             const SizedBox(height: 16),
             Align(

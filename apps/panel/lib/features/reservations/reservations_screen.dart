@@ -790,6 +790,23 @@ class _ReservationRow extends StatelessWidget {
                           ),
                           const SizedBox(width: 8),
                         ],
+                        if (r.discountLabel != null) ...[
+                          Tooltip(
+                            message: 'Kod rabatowy ${r.discountLabel}',
+                            child: Tag('KOD', color: AppColors.accent),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        if (r.depositLabel != null) ...[
+                          Tooltip(
+                            message: 'Zadatek ${Fmt.price(r.depositGrosze)}, ${r.depositLabel}',
+                            child: Tag(
+                              'ZADATEK',
+                              color: r.depositStatus == 'paid' ? AppColors.accent : AppColors.warning,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                         Expanded(
                           child: Text(
                             [
@@ -1014,6 +1031,9 @@ class _ReservationDetailState extends ConsumerState<ReservationDetail> {
             value: '${Fmt.time(r.startsAt)}–${Fmt.time(r.endsAt)}',
           ),
           if (!r.isBlock) _InfoRow(label: 'Liczba osób', value: Fmt.people(r.partySize)),
+          if (r.discountLabel != null) _InfoRow(label: 'Kod rabatowy', value: r.discountLabel!),
+          if (r.depositLabel != null)
+            _InfoRow(label: 'Zadatek', value: '${Fmt.price(r.depositGrosze)} · ${r.depositLabel}'),
           _InfoRow(
             label: 'Stolik',
             value: r.tableLabels.isEmpty ? 'bez stolika' : r.tableLabels.join(' + '),

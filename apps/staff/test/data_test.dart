@@ -118,4 +118,10 @@ void main() {
     expect(splitEqually(6120, 2), [3060, 3060]);
     expect(const WPart(WPayment.cash, 3060, tip: 100).toJson(), {'method': 'cash', 'amount': 3060, 'tip': 100});
   });
+
+  test('zadatek z rezerwacji w kwocie do zapłaty', () {
+    final due = WDue.fromJson({'total': 25200, 'discount': 0, 'deposit': 20000, 'due': 5200});
+    expect(due.deposit, 20000);
+    expect(due.due, 5200);
+  });
 }

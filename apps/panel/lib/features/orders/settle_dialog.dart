@@ -314,6 +314,8 @@ class _SettleDialogState extends ConsumerState<SettleDialog> {
               money('Suma', order.totalGrosze, color: AppColors.textMuted),
               if (due != null && due.discountGrosze > 0)
                 money('Rabat ${due.label ?? ''}', -due.discountGrosze, color: AppColors.accent),
+              if (due != null && due.depositGrosze > 0)
+                money('Zadatek z rezerwacji', -due.depositGrosze, color: AppColors.accent),
               money('Do zapłaty', due?.dueGrosze ?? order.totalGrosze, style: text.titleLarge),
               for (final e in vat)
                 Row(

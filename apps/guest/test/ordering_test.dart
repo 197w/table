@@ -59,4 +59,22 @@ void main() {
     expect(GuestDiscount.fromJson({'code': 'REVE10', 'kind': 'percent', 'value': 10}).label, '−10% od rachunku');
     expect(GuestDiscount.fromJson({'code': 'ZIMA', 'kind': 'amount', 'value': 2050}).label, '−20,50 zł od rachunku');
   });
+
+  test('zadatek: od ilu osób i ile za osobę', () {
+    final r = RestaurantDetail.fromJson({
+      'id': 'r1', 'name': 'REVE', 'cuisine': 'polska', 'price_level': 2, 'address': 'Rynek 1', 'city': 'Białystok',
+      'phone': '600', 'plan': 'pro', 'max_party_size': 12, 'deposit_min_party': 4, 'deposit_per_person_grosze': 5000,
+    }, Rating.empty);
+    expect(r.depositFor(3), isNull);
+    expect(r.depositFor(4), 20000);
+    final d = ReservationDetail.fromJson({
+      'id': 'x', 'restaurant_id': 'r1', 'restaurant_name': 'REVE', 'address': 'Rynek 1', 'city': 'Białystok', 'phone': '600',
+      'lat': 53.1, 'lng': 23.1, 'party_size': 4, 'starts_at': DateTime.now().add(const Duration(days: 1)).toUtc().toIso8601String(),
+      'ends_at': DateTime.now().add(const Duration(days: 1, hours: 2)).toUtc().toIso8601String(), 'status': 'confirmed',
+      'reviewed': false, 'discount_code': 'REVE10', 'discount_kind': 'percent', 'discount_value': 10,
+      'deposit_grosze': 20000, 'deposit_status': 'pending',
+    });
+    expect(d.depositPending, isTrue);
+    expect(d.discountLabel, 'REVE10 · −10% od rachunku');
+  });
 }

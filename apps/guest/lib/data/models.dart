@@ -260,6 +260,8 @@ class RestaurantDetail {
     required this.isExample,
     this.logoUrl,
     this.maxPartySize = 12,
+    this.depositMinParty,
+    this.depositPerPersonGrosze,
     required this.hours,
     required this.menu,
     required this.rating,
@@ -302,6 +304,18 @@ class RestaurantDetail {
   final List<MenuSection> menu;
   final Rating rating;
 
+  /// Zadatek przy rezerwacji: od ilu osób i ile za osobę. Null: lokal nie bierze zadatku.
+  final int? depositMinParty;
+  final int? depositPerPersonGrosze;
+
+  /// Zadatek za rezerwację dla [party] osób. Null: bez zadatku.
+  int? depositFor(int party) {
+    final min = depositMinParty;
+    final per = depositPerPersonGrosze;
+    if (min == null || per == null || party < min) return null;
+    return per * party;
+  }
+
   factory RestaurantDetail.fromJson(Map<String, dynamic> json, Rating rating) {
     final hours =
         (json['opening_hours'] as List? ?? const [])
@@ -326,6 +340,8 @@ class RestaurantDetail {
       isExample: json['is_example'] == true,
       logoUrl: json['logo_url'] as String?,
       maxPartySize: _toInt(json['max_party_size']) == 0 ? 12 : _toInt(json['max_party_size']),
+      depositMinParty: json['deposit_min_party'] == null ? null : _toInt(json['deposit_min_party']),
+      depositPerPersonGrosze: json['deposit_per_person_grosze'] == null ? null : _toInt(json['deposit_per_person_grosze']),
       hours: hours,
       menu: menu,
       rating: rating,
@@ -591,7 +607,26 @@ class ReservationDetail {
     this.occasion,
     this.message,
     this.diet,
+    this.discountLabel,
+    this.depositGrosze = 0,
+    this.depositStatus = 'none',
   });
+
+  /// Kod rabatowy z rezerwacji, np. „REVE10 · −10% od rachunku”.
+  final String? discountLabel;
+
+  /// Zadatek: kwota i stan (none, pending, paid, refunded).
+  final int depositGrosze;
+  final String depositStatus;
+
+  bool get depositPending => depositStatus == 'pending' && isUpcoming;
+
+  String? get depositLabel => switch (depositStatus) {
+    'paid' => 'opłacony, odejmie się od rachunku',
+    'pending' => 'czeka na wpłatę',
+    'refunded' => 'zwrócony',
+    _ => null,
+  };
 
   final String id;
   final String restaurantId;
@@ -642,6 +677,11 @@ class ReservationDetail {
       message: json['message'] as String?,
       diet: json['diet'] as String?,
       reviewed: json['reviewed'] == true,
+      discountLabel: json['discount_code'] == null
+          ? null
+          : '${json['discount_code']} · ${GuestDiscount(code: json['discount_code'] as String, percent: json['discount_kind'] == 'percent', value: _toInt(json['discount_value'])).label}',
+      depositGrosze: _toInt(json['deposit_grosze']),
+      depositStatus: json['deposit_status'] as String? ?? 'none',
     );
   }
 }

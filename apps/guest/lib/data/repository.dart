@@ -138,6 +138,7 @@ class Repository {
             .from('restaurants')
             .select(
               'id, name, cuisine, price_level, description, address, city, phone, plan, is_example, logo_url, max_party_size, '
+              'deposit_min_party, deposit_per_person_grosze, '
               'delivery_enabled, pickup_enabled, takeaway_cash, delivery_fee_grosze, delivery_min_grosze, delivery_area, '
               'opening_hours(weekday, opens, closes), '
               'menu_sections(id, name, position, menu_items(id, name, description, price_grosze, allergens, position, variants, addons, available, photo_url))',
@@ -535,6 +536,11 @@ class Repository {
   }
 
   /// Tryb testowy płatności kartą: zamówienie jest opłacone bez pobierania pieniędzy.
+  /// Testowa płatność zadatku za rezerwację (bez operatora nic nie jest pobierane).
+  Future<void> payDepositTest(String reservationId) {
+    return _guard(() => _db.rpc<void>('guest_pay_deposit_test', params: {'p_reservation_id': reservationId}));
+  }
+
   Future<void> payOrderTest(String orderId) {
     return _guard(() => _db.rpc<void>('guest_pay_order_test', params: {'p_order_id': orderId}));
   }

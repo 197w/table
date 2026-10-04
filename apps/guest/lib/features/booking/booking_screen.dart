@@ -6,6 +6,7 @@ import 'package:table_core/table_core.dart';
 import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import 'deposit_sheet.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -97,9 +98,10 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
       return;
     }
 
+    final deposit = ref.read(restaurantProvider(widget.restaurantId)).value?.depositFor(_party);
     setState(() => _busy = true);
     try {
-      await ref
+      final id = await ref
           .read(repositoryProvider)
           .book(
             restaurantId: widget.restaurantId,
@@ -111,11 +113,22 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
             dietConsent: _dietConsent,
             discountCode: _code.text,
           );
+      // Lokal bierze zadatek: bez wpłaty rezerwacja się nie utrzymuje, więc anulowanie płatności ją odwołuje.
+      if (deposit != null && mounted) {
+        final paid = await payDeposit(context, reservationId: id, amountGrosze: deposit);
+        if (!paid) {
+          await ref.read(repositoryProvider).cancelReservation(id);
+          ref.invalidate(myReservationsProvider);
+          if (mounted) showMessage(context, 'Bez zadatku rezerwacja nie została zapisana.');
+          ref.invalidate(slotsProvider(_query));
+          return;
+        }
+      }
       ref.invalidate(myReservationsProvider);
       if (!mounted) return;
       showMessage(
         context,
-        'Zarezerwowano: ${Fmt.dateTime(slot)}, ${Fmt.people(_party)}.',
+        'Zarezerwowano: ${Fmt.dateTime(slot)}, ${Fmt.people(_party)}${deposit == null ? '' : ', zadatek ${Fmt.price(deposit)}'}.',
       );
       context.go(AppRoutes.reservations);
     } catch (e) {
@@ -258,6 +271,30 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
               ),
             ),
           ),
+          if (restaurant?.depositFor(_party) case final deposit?)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    Glyph(AppIcons.creditCard, size: 18, color: AppColors.accent),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Zadatek ${Fmt.price(deposit)} (${Fmt.price(restaurant!.depositPerPersonGrosze!)} za osobę). '
+                        'Odejmie się od rachunku, odwołanie go zwraca.',
+                        style: text.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           const SectionTitle('Godzina'),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -443,6 +480,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
           slot: _slot,
           party: _party,
           busy: _busy,
+          deposit: restaurant?.depositFor(_party),
           onBook: _book,
         ),
       ),
@@ -621,12 +659,16 @@ class _SummaryBar extends StatelessWidget {
     required this.party,
     required this.busy,
     required this.onBook,
+    this.deposit,
   });
 
   final DateTime? slot;
   final int party;
   final bool busy;
   final VoidCallback onBook;
+
+  /// Zadatek do wpłaty po rezerwacji. Null: bez zadatku.
+  final int? deposit;
 
   @override
   Widget build(BuildContext context) {
@@ -686,7 +728,7 @@ class _SummaryBar extends StatelessWidget {
                         color: AppColors.textMuted,
                       ),
                     )
-                  : const Text('Zarezerwuj stolik'),
+                  : Text(deposit == null ? 'Zarezerwuj stolik' : 'Zarezerwuj i wpłać ${Fmt.price(deposit!)}'),
             ),
           ],
         ),

@@ -155,6 +155,9 @@ class PanelReservation {
     required this.fromApp,
     required this.guestVisits,
     required this.guestNoShows,
+    this.discountLabel,
+    this.depositGrosze = 0,
+    this.depositStatus = 'none',
     this.occasion,
     this.message,
     this.diet,
@@ -187,6 +190,20 @@ class PanelReservation {
   final int guestVisits;
   final int guestNoShows;
 
+  /// Kod rabatowy wpisany przy rezerwacji w aplikacji, np. „REVE10 −10%”. Null: bez kodu.
+  final String? discountLabel;
+
+  /// Zadatek z aplikacji: kwota i stan (none, pending, paid, refunded).
+  final int depositGrosze;
+  final String depositStatus;
+
+  String? get depositLabel => switch (depositStatus) {
+    'paid' => 'opłacony',
+    'pending' => 'nieopłacony',
+    'refunded' => 'zwrócony',
+    _ => null,
+  };
+
   bool get isBlock => source == ReservationSource.block;
 
   factory PanelReservation.fromJson(Map<String, dynamic> json) {
@@ -210,6 +227,11 @@ class PanelReservation {
       fromApp: json['from_app'] == true,
       guestVisits: _toInt(json['guest_visits']),
       guestNoShows: _toInt(json['guest_no_shows']),
+      discountLabel: json['discount_code'] == null
+          ? null
+          : '${json['discount_code']} ${json['discount_kind'] == 'percent' ? '−${json['discount_value']}%' : '−${(_toInt(json['discount_value']) / 100).toStringAsFixed(2).replaceAll('.', ',')} zł'}',
+      depositGrosze: _toInt(json['deposit_grosze']),
+      depositStatus: json['deposit_status'] as String? ?? 'none',
     );
   }
 }
@@ -555,6 +577,8 @@ class RestaurantProfile {
     required this.phone,
     required this.slotIntervalMin,
     required this.maxPartySize,
+    this.depositMinParty,
+    this.depositPerPersonGrosze,
     required this.priceLevel,
     required this.hours,
     this.description,
@@ -586,6 +610,10 @@ class RestaurantProfile {
 
   /// Największa grupa, którą gość zarezerwuje w aplikacji.
   final int maxPartySize;
+
+  /// Zadatek przy rezerwacji w aplikacji: od ilu osób i ile za osobę. Null: bez zadatku.
+  final int? depositMinParty;
+  final int? depositPerPersonGrosze;
   final int priceLevel;
   final List<OpeningHours> hours;
 
@@ -605,6 +633,8 @@ class RestaurantProfile {
       phone: json['phone'] as String,
       slotIntervalMin: _toInt(json['slot_interval_min'], 15),
       maxPartySize: _toInt(json['max_party_size'], 12),
+      depositMinParty: json['deposit_min_party'] == null ? null : _toInt(json['deposit_min_party']),
+      depositPerPersonGrosze: json['deposit_per_person_grosze'] == null ? null : _toInt(json['deposit_per_person_grosze']),
       priceLevel: _toInt(json['price_level'], 2),
       hours: hours,
       logoUrl: json['logo_url'] as String?,
@@ -1176,10 +1206,20 @@ class PaymentPart {
 
 /// Ile do zapłaty za rachunek: suma, rabat z kodu rezerwacji i kwota po rabacie.
 class OrderDue {
-  const OrderDue({required this.totalGrosze, required this.discountGrosze, required this.dueGrosze, this.label, this.percent});
+  const OrderDue({
+    required this.totalGrosze,
+    required this.discountGrosze,
+    required this.dueGrosze,
+    this.depositGrosze = 0,
+    this.label,
+    this.percent,
+  });
 
   final int totalGrosze;
   final int discountGrosze;
+
+  /// Zadatek opłacony w aplikacji przy rezerwacji, odjęty od rachunku (tylko przy zamknięciu całości).
+  final int depositGrosze;
   final int dueGrosze;
   final String? label;
 
@@ -1196,6 +1236,7 @@ class OrderDue {
   factory OrderDue.fromJson(Map<String, dynamic> json) => OrderDue(
     totalGrosze: _toInt(json['total']),
     discountGrosze: _toInt(json['discount']),
+    depositGrosze: _toInt(json['deposit']),
     dueGrosze: _toInt(json['due']),
     label: json['discount_label'] as String?,
     percent: json['discount_percent'] == null ? null : _toInt(json['discount_percent']),
@@ -1379,9 +1420,13 @@ class PanelOrder {
     this.number,
     this.discountGrosze = 0,
     this.discountLabel,
+    this.depositGrosze = 0,
     this.tipGrosze = 0,
     this.payments = const [],
   });
+
+  /// Zadatek z rezerwacji odjęty od rachunku.
+  final int depositGrosze;
 
   final String id;
 
@@ -1462,6 +1507,7 @@ class PanelOrder {
       number: json['number'] == null ? null : _toInt(json['number']),
       discountGrosze: _toInt(json['discount_grosze']),
       discountLabel: json['discount_label'] as String?,
+      depositGrosze: _toInt(json['deposit_grosze']),
       tipGrosze: _toInt(json['tip_grosze']),
       payments: [
         for (final p in (json['order_payments'] as List? ?? const []))
@@ -2799,8 +2845,12 @@ class DaySummary {
     this.tipsCashGrosze = 0,
     this.tipsCardGrosze = 0,
     this.discountsGrosze = 0,
+    this.depositsGrosze = 0,
     this.report,
   });
+
+  /// Zadatki z rezerwacji odjęte od rachunków (w karcie online).
+  final int depositsGrosze;
 
   /// Napiwki ze wszystkich płatności, w tym gotówką i kartą (karta przechodzi przez terminal).
   final int tipsGrosze;
@@ -2850,6 +2900,7 @@ class DaySummary {
     tipsCashGrosze: _toInt(json['tips_cash']),
     tipsCardGrosze: _toInt(json['tips_card']),
     discountsGrosze: _toInt(json['discounts']),
+    depositsGrosze: _toInt(json['deposits']),
     petty: [for (final e in (json['petty'] as List? ?? const [])) PettyEntry.fromJson(e as Map<String, dynamic>)],
     report: json['report'] == null ? null : DayReport.fromJson(json['report'] as Map<String, dynamic>),
   );
