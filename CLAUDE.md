@@ -12,7 +12,7 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   na cały okres naraz i „Moje godziny” na dole (miesiąc kalendarzowy ze strzałkami, do 3 miesięcy wstecz).
   Napisy dolnego menu: 11 px, bez powiększania czcionki z ustawień telefonu (S23 ma 1,15), żeby się nie zawijały. Kelner nabija zamówienia (stoliki, menu, wysyłka na kuchnię, wydanie,
   zamknięcie rachunku; niewysłaną pozycję usuwa się przesunięciem w lewo, minus tylko zmniejsza ilość; w wyborze dań
-  „Przejdź dalej” na dole wraca do rachunku stolika), mój grafik
+  „Przejdź dalej” na dole wraca do rachunku stolika; zamknięcie z rabatem, zadatkiem, napiwkiem i podziałem), mój grafik
   (zgłaszanie godzin), mój kod do panelu. Każda aktualizacja na S23 i iPhone'a, tak jak aplikacja dla gości.
 - `packages/table_core`: wspólny motyw, czcionka Geist, ikony Phosphor, formatery, widżety i konfiguracja.
 - `packages/table_car`: wtyczka Flutter tylko dla Table for employees: kurs dostawcy w Android Auto (Kotlin, Car App
@@ -76,9 +76,11 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Flutter 3.47.4 / Dart 3.13, pub workspace. Importuj `package:material_ui/material_ui.dart`, nie `flutter/material`.
 - go_router 18, flutter_riverpod 3 (Notifier), supabase_flutter 2 (`publishableKey`), shared_preferences
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
-  Panel: window_manager (minimalny rozmiar okna 1100×720).
+  Panel: window_manager (minimalny rozmiar okna 1100×720), file_selector (logo, zdjęcia, zapis CSV).
+  Gość: flutter_map + latlong2 (mapa dostawcy, kafelki OpenStreetMap; przed wydaniem w sklepach przejść na płatnego dostawcę kafelków).
+  Pracownik: geolocator (pozycja dostawcy w drodze).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0047, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0053, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -111,15 +113,32 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Logowanie e-mailem i hasłem. Obowiązkowe 2FA dodajemy przed wydaniem.
 - Układ jak w UniFi (`shell.dart`, `sections.dart`, 0.11.0). Górny pasek: lokal po lewej (logo, kropka połączenia
   na żywo, plan; strzałka i lista tylko przy kilku lokalach konta), grupy zakładek (`PanelSection`, `_SectionTab`: same ikony bez ramek, wybrana w kolorze akcentu z nazwą):
-  Rezerwacje (Rezerwacje, Zamówienia, Historia zamówień `/historia`, Wydanie), Kuchnia (Kuchnia, Menu, Inwentaryzacja), Dostawy (Dostawy, Flota),
-  Pracownicy (Pracownicy, Statystyki zespołu `/zespol`), Baza klientów (Klienci `/klienci`, Statystyki, Opinie);
+  Rezerwacje (Rezerwacje, Zamówienia, Historia zamówień `/historia`, Wydanie), Kuchnia (Kuchnia), Dostawy (Dostawy, Flota),
+  Pracownicy (Pracownicy: Zespół i Grafik, Statystyki zespołu `/zespol`), Baza klientów (Klienci `/klienci`, Opinie),
+  Management (Podsumowanie dnia `/podsumowanie`, Godziny pracy `/godziny`, Menu, Inwentaryzacja, Statystyki,
+  Kody rabatowe `/rabaty`, Eksport `/eksport`);
   „Table” na środku; po prawej nowa wersja, odliczanie do wylogowania, motyw i kółko pracownika (inicjały; menu:
   kod pracownika, „Zakończ zmianę”, „Wyloguj”, „Wejdź na zmianę”, e-mail i wersja, wylogowanie konta restauracji).
   Wąski pasek boczny: zakładki wybranej grupy (same ikony bez ramek, 30 px, nazwy w podpowiedziach po prawej, `tooltipOnRight`), na dole Ustawienia lokalu
   (`/ustawienia`), Dane lokalu i Edycja sali. Grupa i zakładki według uprawnień zalogowanego pracownika;
   ostatnia grupa zostaje wybrana na stronach lokalu (`panelSectionProvider`). Bez hamburgera i bez paska nad zakładką.
-- Ustawienia lokalu: rezerwacje w aplikacji (co ile minut, największa grupa), grafik pracowników, okres inwentaryzacji,
-  dostawa i odbiór. Dane lokalu: logo, dane, poziom cen, dane właściciela, godziny, dni wyjątkowe.
+- Ustawienia lokalu: rezerwacje w aplikacji (co ile minut, największa grupa), zadatek przy rezerwacji, grafik pracowników,
+  okres inwentaryzacji, dostawa i odbiór.
+- Management (0048–0050): Podsumowanie dnia (`panel_day_summary`, uprawnienie `day_close`): sprzedaż według płatności
+  (gotówka, karta z terminala, karta online z aplikacji i zadatki, inne), napiwki, rabaty, raport dobowy z kasy fiskalnej,
+  terminale (kilka, nazwa i kwota), policzona gotówka i notatka (`day_reports`, `panel_save_day_report`), petty cash
+  (wydatki i wpłaty z kasy, `petty_cash`, `panel_add_petty`, `panel_delete_petty`); zgodność kwot zielona albo żółta różnica.
+  Godziny pracy (uprawnienie `timesheet`; wcześniej „Czas pracy” w Pracownikach): miesiąc z sumą godzin każdego pracownika
+  (rozwijane zmiany) albo tydzień dzień po dniu; poprawka zmiany co do minuty (`panel_save_shift` z `p_editor_id`)
+  zapamiętuje godziny sprzed niej (`staff_shifts.original_*`, `edited_at`), poprawione są żółte z różnicą („+0:15”).
+  Kody rabatowe (uprawnienie `discounts`, `discount_codes`): procent albo kwota, ważność od–do, limit użyć, włączanie;
+  gość wpisuje kod przy rezerwacji w aplikacji (`guest_check_discount`, `book_table(p_discount_code)`), rabat odejmuje się
+  od rachunku stolika (procent od każdej części, kwota raz; odwołanie rezerwacji oddaje użycie). Eksport (uprawnienie
+  `export`, `panel_export_month`): CSV dla Excela (średnik, przecinek, UTF-8 z BOM) za miesiąc: rachunki z VAT (rabat
+  rozłożony proporcjonalnie na stawki), zestawienie dzienne, czas pracy z wynagrodzeniem brutto i netto, petty cash
+  (`features/management/export_csv.dart`). Historia zamówień pokazuje obrót tylko z uprawnieniem `revenue`.
+  Nowe uprawnienia `revenue`, `day_close`, `discounts`, `export` dostały w 0048 stanowiska z `staff` albo `stats`.
+- Dane lokalu: logo, dane, poziom cen, dane właściciela, godziny, dni wyjątkowe.
 - Flota (`/flota`, uprawnienie `fleet`, 0045): `vehicles` (auto, skuter, rower, inny; nazwa, rejestracja unikalna
   w lokalu, VIN 17 znaków bez I/O/Q unikalny w lokalu (0046), dostawca, w użyciu), `panel_save_vehicle`,
   `panel_delete_vehicle`. Notatki o pojeździe (0047): `vehicle_notes` (autor z zalogowanego pracownika albo
@@ -201,7 +220,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Po decyzji pracownik nie może zmienić tego dnia. Okres, na który pracownicy zgłaszają
   godziny, ustawia lokal w „Ustawienia lokalu” → „Grafik pracowników” (`schedule_period`: week, two_weeks, month;
   pary tygodni liczone od poniedziałku 5.01.2026, `staff_my_jobs` zwraca okres). Czas pracy: „Pracownicy” → „Czas pracy”.
-- Statystyki (Baza klientów) mają zakładki: Sprzedaż (`panel_sales_stats`) i Rezerwacje i goście; okres 7/30/90 dni
+- Statystyki (Management) mają zakładki: Sprzedaż (`panel_sales_stats`) i Rezerwacje i goście; okres 7/30/90 dni
   w rzędzie zakładek. Historia zamówień jest osobną zakładką w grupie Rezerwacje.
 - Role w `restaurant_staff`: owner, manager, staff. Kierownik i właściciel zmieniają salę, menu, dane lokalu
   i odpowiadają na opinie. Obsługa prowadzi rezerwacje. Uprawnień pilnuje baza (RLS i funkcje `panel_*`).
@@ -212,6 +231,14 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `panel_set_owner_details` ma tylko rola serwisowa (0044). Nie ma ich w aplikacji Table ani w Table for employees. NIP z rejestracji lokalu
   trafia tutaj (`restaurants.nip` jest puste, bo kolumny `restaurants` są publiczne dla gości).
 - Limit osób w jednej rezerwacji z aplikacji ustawia lokal (`restaurants.max_party_size`, 1–30, domyślnie 12).
+- Zadatek (0051): lokal ustawia, od ilu osób i ile za osobę (`deposit_min_party`, `deposit_per_person_grosze`,
+  `panel_set_deposit`). Gość płaci zaraz po rezerwacji (`guest_pay_deposit_test`, tryb testowy); anulowanie płatności
+  odwołuje rezerwację. Zadatek odejmuje się od rachunku (`orders.deposit_grosze`), w podsumowaniu dnia jako karta online.
+  Odwołanie zwraca zadatek (`refunded`), nieobecność nie. Panel pokazuje KOD i ZADATEK przy rezerwacji.
+- Lista oczekujących (0052, `waitlist_entries`): gość zapisuje się, gdy nie ma wolnych godzin (przedział godzin,
+  notatka; najwyżej 3 miejsca naraz), w „Moje” widzi wpis i propozycję lokalu. Panel → Rezerwacje: przycisk z liczbą
+  oczekujących, okno z gośćmi, „Zaproponuj godzinę” (`panel_offer_waitlist`) i usuwanie; rezerwacja gościa w tym lokalu
+  tego dnia zamyka wpis (trigger).
 - Rezerwacje odświeżają się na żywo (Supabase Realtime na tabeli `reservations`).
   Nowa rezerwacja z aplikacji: dźwięk i powiadomienie Table z przyciskiem „Pokaż” (`ReservationAlerts`), systemowe
   powiadomienie Windows tylko, gdy okno panelu jest w tle.
@@ -229,7 +256,11 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (kuchnia zbiła, „do wydania”) → served (kelner zaniósł). Pozycje z `menu_items.show_in_kitchen = false`
   (np. napoje) po wysłaniu od razu są „do wydania”.
   Pozycję wysłaną na kuchnię anuluje tylko kierownik. Zamknięcie rachunku kończy rezerwację gości przy stoliku.
-  Zamknięcie rachunku (`panel_close_order`): gotówka, karta albo inne. Karty podarunkowe usunięte (0038): nie ma ich
+  Zamknięcie rachunku (0049, `SettleDialog` w panelu, `_SettleSheet` u kelnera): rabat z kodu rezerwacji, zadatek,
+  napiwek (kwota albo 5/10/15%), całość jedną formą, równy podział na osoby (każda z formą płatności i napiwkiem) albo
+  płatność za wybrane pozycje, które przechodzą na osobny opłacony rachunek „Część rachunku” (`panel_pay_items`);
+  `panel_settle_order` zapisuje płatności w `order_payments` (method, amount, tip), `panel_order_due` liczy kwotę do zapłaty.
+  Stare `panel_close_order` zostało dla starszych wersji: gotówka, karta albo inne. Karty podarunkowe usunięte (0038): nie ma ich
   w panelu ani w aplikacji Table, `purchase_gift_card` zwraca błąd, dane kart i stare płatności kartą zostają w bazie
   (historia zamówień i sprzedaż je pokazują). Historia zamkniętych rachunków: „Rezerwacje” → „Historia zamówień”.
   Paragon fiskalny jeszcze na kasie, integrację z drukarką fiskalną robimy później.
@@ -246,7 +277,10 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   zmianę albo najdawniej skończył kurs, dostaje pierwszy kurs (`private.dispatch_deliveries`, triggery na zamówieniach
   i zmianach; koniec zmiany oddaje nieodebrane kursy kolejce). W Table for employees zakładka „Dostawy”
   (`staff_deliveries`, `staff_delivery_pickup`, `staff_delivery_done`, `staff_delivery_handover`: oddanie kursu wybranej
-  osobie albo następnemu w kolejce, dopóki zamówienie jest w lokalu).
+  osobie albo następnemu w kolejce, dopóki zamówienie jest w lokalu). Dostawca na mapie (0053): gdy kurs jest w drodze,
+  Table for employees wysyła pozycję (`courier_location.dart`, co ~25 m, najwyżej co 15 s, w tle z powiadomieniem
+  „Kurs w drodze”, `staff_courier_position`), gość widzi mapę w szczegółach zamówienia (`courier_map.dart`,
+  `guest_courier_position` co 10 s); pozycja znika po zakończeniu kursu.
 - Ekran kuchni (`/kuchnia`, uprawnienie `kitchen`, np. Kucharz): bileciki z pozycjami wysłanymi na kuchnię,
   pogrupowane po rachunku i chwili wysłania, najstarsze pierwsze. Czas liczony od wysłania z sekundami;
   kolory po progach z `restaurants.kitchen_warn_minutes`/`kitchen_late_minutes` (domyślnie 4 i 6 min).
@@ -273,7 +307,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   od razu), `panel_inventory_finish`, `panel_inventory_discard`, lista `panel_inventory_counts`. Okres
   `restaurants.inventory_period` (day, week, two_weeks, month; `panel_set_inventory_period`), ustawia się w „Ustawienia lokalu”,
   następna inwentaryzacja liczona od ostatniej zakończonej. Uprawnienia: `inventory_edit` („Edytowanie składników”: składniki i okres)
-  i `inventory_count` („Wpisywanie ilości składników”), grupa „Inwentaryzacja”.
+  i `inventory_count` („Wpisywanie ilości składników”), grupa „Inwentaryzacja”. W spisie pełne opakowania i obok reszta
+  w g/ml/szt (`inventory_count_lines.packages`, `loose`; `quantity` = opakowania z resztą, 6 miejsc po przecinku),
+  „Razem” w mniejszej jednostce (np. mąka 50 kg: 1 op. + 2500 g = 52 500 g).
 - Receptury (0037): w oknie dania w Menu sekcja „Składniki” (tylko w panelu): składnik z inwentaryzacji, ilość na
   porcję i jednostka (ml/l, g/kg, szt; `private.inventory_factor`), „Nowy składnik” dodaje go do Inwentaryzacji
   (insert z `menu_edit` albo `inventory_edit`). Tabela `menu_item_ingredients` (RLS: tylko obsługa lokalu, goście jej
