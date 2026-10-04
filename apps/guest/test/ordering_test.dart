@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:table/data/models.dart';
 import 'package:table/data/providers.dart';
+import 'package:table/features/ordering/courier_map.dart';
 
 void main() {
   test('koszyk łączy to samo danie z tymi samymi opcjami', () {
@@ -88,5 +89,15 @@ void main() {
     expect(w.offered, isTrue);
     expect(w.offeredTime, '19:30');
     expect(w.from, '18:00');
+  });
+
+  test('pozycja dostawcy na mapie', () {
+    final p = CourierPosition.fromJson({
+      'lat': 53.13, 'lng': 23.16, 'updated_at': '2026-10-04T12:00:00Z', 'restaurant_lat': 53.1, 'restaurant_lng': 23.1,
+    })!;
+    expect(p.courier!.latitude, 53.13);
+    expect(p.restaurant!.longitude, 23.1);
+    expect(CourierPosition.fromJson({'restaurant_lat': 53.1, 'restaurant_lng': 23.1})!.courier, isNull);
+    expect(CourierPosition.fromJson(null), isNull);
   });
 }

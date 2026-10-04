@@ -21,6 +21,7 @@ dependencies:
   intl: any
   mobile_scanner: any
   url_launcher: any
+  geolocator: ^14.0.3
 
 dev_dependencies:
   flutter_test:

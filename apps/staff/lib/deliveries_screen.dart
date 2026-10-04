@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'data.dart';
 import 'deliveries_data.dart';
+import 'courier_location.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -57,8 +58,29 @@ class DeliveriesScreen extends ConsumerStatefulWidget {
 
 class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
   bool _busy = false;
+  bool _askedLocation = false;
 
   CourierKey get _key => (memberId: widget.job.memberId, restaurantId: widget.job.restaurantId);
+
+  @override
+  void initState() {
+    super.initState();
+    // Kurs w drodze: telefon wysyła pozycję, gość widzi ją na mapie. Po dostarczeniu wysyłanie się kończy.
+    ref.listenManual(deliveryBoardProvider(_key), (_, next) async {
+      final board = next.value;
+      if (board == null) return;
+      final onTheWay = [for (final c in board.courses) if (c.stage == CourseStage.onTheWay) c.id];
+      final ok = await ref.read(courierTrackerProvider).update(widget.job.memberId, onTheWay);
+      if (!ok && !_askedLocation && mounted) {
+        _askedLocation = true;
+        showMessage(
+          context,
+          'Włącz lokalizację dla Table for employees, żeby gość widział na mapie, gdzie jest zamówienie.',
+          tone: ToastTone.warning,
+        );
+      }
+    }, fireImmediately: true);
+  }
 
   Future<void> _run(Future<void> Function() action, [String? done]) async {
     if (_busy) return;

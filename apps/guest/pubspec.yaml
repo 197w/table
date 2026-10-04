@@ -24,6 +24,8 @@ dependencies:
   add_2_calendar: ^3.1.1
   package_info_plus: any
   qr_flutter: any
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
 
 dev_dependencies:
   flutter_test:

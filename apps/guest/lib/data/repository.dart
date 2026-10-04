@@ -569,6 +569,11 @@ class Repository {
     });
   }
 
+  /// Pozycja dostawcy i lokalu, gdy zamówienie jest w drodze. Null: nie w drodze.
+  Future<Map<String, dynamic>?> courierPosition(String orderId) {
+    return _guard(() => _db.rpc<Map<String, dynamic>?>('guest_courier_position', params: {'p_order_id': orderId}));
+  }
+
   /// Testowa płatność zadatku za rezerwację (bez operatora nic nie jest pobierane).
   Future<void> payDepositTest(String reservationId) {
     return _guard(() => _db.rpc<void>('guest_pay_deposit_test', params: {'p_reservation_id': reservationId}));
