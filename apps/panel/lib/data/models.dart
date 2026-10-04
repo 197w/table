@@ -2905,3 +2905,52 @@ class DaySummary {
     report: json['report'] == null ? null : DayReport.fromJson(json['report'] as Map<String, dynamic>),
   );
 }
+
+/// Gość na liście oczekujących: dzień, liczba osób, przedział godzin i propozycja lokalu.
+class WaitlistEntry {
+  const WaitlistEntry({
+    required this.id,
+    required this.partySize,
+    required this.from,
+    required this.to,
+    required this.offered,
+    required this.guestName,
+    required this.createdAt,
+    this.note,
+    this.offeredTime,
+    this.guestPhone,
+    this.guestVisits = 0,
+  });
+
+  final String id;
+  final int partySize;
+
+  /// Godziny jako „18:00”.
+  final String from;
+  final String to;
+  final String? note;
+
+  /// Lokal zaproponował już godzinę ([offeredTime]).
+  final bool offered;
+  final String? offeredTime;
+  final String guestName;
+  final String? guestPhone;
+  final int guestVisits;
+  final DateTime createdAt;
+
+  static String _hm(Object? v) => v == null ? '' : (v as String).substring(0, 5);
+
+  factory WaitlistEntry.fromJson(Map<String, dynamic> json) => WaitlistEntry(
+    id: json['id'] as String,
+    partySize: _toInt(json['party_size']),
+    from: _hm(json['time_from']),
+    to: _hm(json['time_to']),
+    note: json['note'] as String?,
+    offered: json['status'] == 'offered',
+    offeredTime: json['offered_time'] == null ? null : _hm(json['offered_time']),
+    guestName: json['guest_name'] as String? ?? 'Gość',
+    guestPhone: json['guest_phone'] as String?,
+    guestVisits: _toInt(json['guest_visits']),
+    createdAt: _toDate(json['created_at']),
+  );
+}

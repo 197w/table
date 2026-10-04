@@ -1376,6 +1376,32 @@ class PanelRepository {
     );
   }
 
+  /// Goście na liście oczekujących w danym dniu.
+  Future<List<WaitlistEntry>> waitlist(String restaurantId, DateTime day) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>(
+        'panel_waitlist',
+        params: {'p_restaurant_id': restaurantId, 'p_day': _dateOnly(day)},
+      );
+      return [for (final r in rows) WaitlistEntry.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
+  /// Propozycja godziny dla gościa z listy oczekujących (zobaczy ją w aplikacji).
+  Future<void> offerWaitlist(String id, int hour, int minute, {String? note}) {
+    return _guard(
+      () => _db.rpc<void>('panel_offer_waitlist', params: {
+        'p_id': id,
+        'p_time': '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}',
+        'p_note': note,
+      }),
+    );
+  }
+
+  Future<void> removeWaitlist(String id) {
+    return _guard(() => _db.rpc<void>('panel_remove_waitlist', params: {'p_id': id}));
+  }
+
   /// Zadatek przy rezerwacji w aplikacji: od ilu osób i ile za osobę. Null wyłącza.
   Future<void> setDeposit(String restaurantId, {int? minParty, int? perPersonGrosze}) {
     return _guard(

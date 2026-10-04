@@ -31,6 +31,7 @@ class ReservationsScreen extends ConsumerWidget {
     }
 
     final async = ref.watch(myReservationsProvider);
+    final waitlist = ref.watch(myWaitlistProvider).value ?? const <GuestWaitlist>[];
     final reviewed =
         ref.watch(myReviewedReservationsProvider).value ?? const <String>{};
 
@@ -51,7 +52,7 @@ class ReservationsScreen extends ConsumerWidget {
           onRetry: () => ref.invalidate(myReservationsProvider),
         ),
         data: (items) {
-          if (items.isEmpty) {
+          if (items.isEmpty && waitlist.isEmpty) {
             return MessageView(
               icon: AppIcons.calendarCheck,
               title: 'Nie masz jeszcze rezerwacji',
@@ -72,12 +73,17 @@ class ReservationsScreen extends ConsumerWidget {
             onRefresh: () async {
               ref
                 ..invalidate(myReviewedReservationsProvider)
+                ..invalidate(myWaitlistProvider)
                 ..invalidate(myReservationsProvider);
               await ref.read(myReservationsProvider.future);
             },
             child: ListView(
               padding: const EdgeInsets.only(bottom: 24),
               children: [
+                if (waitlist.isNotEmpty) ...[
+                  const SectionTitle('Lista oczekujących'),
+                  for (final w in waitlist) _WaitlistCard(entry: w),
+                ],
                 if (upcoming.isNotEmpty) ...[
                   const SectionTitle('Nadchodzące'),
                   for (final r in upcoming)
@@ -251,6 +257,81 @@ class _ReservationCard extends ConsumerWidget {
                 ],
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Miejsce na liście oczekujących: czekam albo lokal zaproponował godzinę (wtedy „Zarezerwuj”).
+class _WaitlistCard extends ConsumerWidget {
+  const _WaitlistCard({required this.entry});
+
+  final GuestWaitlist entry;
+
+  Future<void> _leave(BuildContext context, WidgetRef ref) async {
+    try {
+      await ref.read(repositoryProvider).leaveWaitlist(entry.id);
+      ref.invalidate(myWaitlistProvider);
+      if (context.mounted) showMessage(context, 'Wypisano z listy oczekujących.');
+    } catch (e) {
+      if (context.mounted) showError(context, e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final e = entry;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Glyph(e.offered ? AppIcons.checkCircle : AppIcons.hourglass, size: 20, color: e.offered ? AppColors.accent : AppColors.warning),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(e.restaurantName, style: text.titleMedium)),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${Fmt.capitalize(Fmt.dayLong(e.day))} · ${Fmt.people(e.partySize)} · ${e.from}–${e.to}',
+                style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                e.offered ? 'Zwolnił się stolik o ${e.offeredTime}. Zarezerwuj, zanim zajmie go ktoś inny.' : 'Czekasz na wolny stolik.',
+                style: text.bodyMedium?.copyWith(color: e.offered ? AppColors.accent : null),
+              ),
+              if (e.offeredNote != null)
+                Text('„${e.offeredNote}”', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  if (e.offered)
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => context.push(AppRoutes.booking(e.restaurantId)),
+                        child: const Text('Zarezerwuj'),
+                      ),
+                    ),
+                  if (e.offered) const SizedBox(width: 8),
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => _leave(context, ref),
+                      style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+                      child: const Text('Wypisz się'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),

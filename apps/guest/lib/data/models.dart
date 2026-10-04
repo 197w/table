@@ -456,6 +456,64 @@ enum ReservationStatus {
   };
 }
 
+/// Moje miejsce na liście oczekujących w lokalu. [offeredTime]: lokal zaproponował godzinę.
+class GuestWaitlist {
+  const GuestWaitlist({
+    required this.id,
+    required this.restaurantId,
+    required this.restaurantName,
+    required this.day,
+    required this.partySize,
+    required this.from,
+    required this.to,
+    this.offeredTime,
+    this.offeredNote,
+  });
+
+  final String id;
+  final String restaurantId;
+  final String restaurantName;
+  final DateTime day;
+  final int partySize;
+
+  /// Godziny jako „18:00”.
+  final String from;
+  final String to;
+  final String? offeredTime;
+  final String? offeredNote;
+
+  bool get offered => offeredTime != null;
+
+  static String _hm(Object? v) => v == null ? '' : (v as String).substring(0, 5);
+
+  factory GuestWaitlist.fromJson(Map<String, dynamic> json) => GuestWaitlist(
+    id: json['id'] as String,
+    restaurantId: json['restaurant_id'] as String,
+    restaurantName: json['restaurant_name'] as String? ?? 'Lokal',
+    day: DateTime.parse(json['day'] as String),
+    partySize: _toInt(json['party_size']),
+    from: _hm(json['time_from']),
+    to: _hm(json['time_to']),
+    offeredTime: json['status'] == 'offered' && json['offered_time'] != null ? _hm(json['offered_time']) : null,
+    offeredNote: json['offered_note'] as String?,
+  );
+}
+
+/// Godziny co pół godziny od [opens] do [closes] (np. „12:00”…„22:00”), do wyboru przedziału.
+List<String> halfHours(String opens, String closes) {
+  int minutes(String t) {
+    final p = t.split(':');
+    return int.parse(p[0]) * 60 + int.parse(p[1]);
+  }
+
+  final end = minutes(closes) == 0 ? 24 * 60 : minutes(closes);
+  final start = minutes(opens);
+  return [
+    for (var m = ((start + 29) ~/ 30) * 30; m <= end; m += 30)
+      '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}',
+  ];
+}
+
 /// Kod rabatowy lokalu sprawdzony przed rezerwacją: rabat odejmie się od rachunku stolika.
 class GuestDiscount {
   const GuestDiscount({required this.code, required this.percent, required this.value});

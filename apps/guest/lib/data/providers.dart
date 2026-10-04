@@ -206,6 +206,12 @@ final slotsProvider = FutureProvider.autoDispose
 // Konto gościa
 // ---------------------------------------------------------------
 
+/// Moje wpisy na listach oczekujących (czekam albo lokal zaproponował godzinę).
+final myWaitlistProvider = FutureProvider.autoDispose<List<GuestWaitlist>>((ref) {
+  if (ref.watch(userIdProvider) == null) return Future.value(const []);
+  return ref.watch(repositoryProvider).myWaitlist();
+});
+
 final myReservationsProvider = FutureProvider.autoDispose<List<Reservation>>((
   ref,
 ) {

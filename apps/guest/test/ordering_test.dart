@@ -77,4 +77,16 @@ void main() {
     expect(d.depositPending, isTrue);
     expect(d.discountLabel, 'REVE10 · −10% od rachunku');
   });
+
+  test('lista oczekujących: godziny co pół godziny i propozycja lokalu', () {
+    expect(halfHours('12:15', '14:00'), ['12:30', '13:00', '13:30', '14:00']);
+    expect(halfHours('22:00', '00:00'), ['22:00', '22:30', '23:00', '23:30', '24:00']);
+    final w = GuestWaitlist.fromJson({
+      'id': 'w', 'restaurant_id': 'r', 'restaurant_name': 'REVE', 'day': '2026-10-10', 'party_size': 4,
+      'time_from': '18:00:00', 'time_to': '21:00:00', 'status': 'offered', 'offered_time': '19:30:00',
+    });
+    expect(w.offered, isTrue);
+    expect(w.offeredTime, '19:30');
+    expect(w.from, '18:00');
+  });
 }

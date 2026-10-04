@@ -9,6 +9,7 @@ import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
+import 'waitlist_dialog.dart';
 import '../floor/floor_canvas.dart';
 import 'reservation_dialogs.dart';
 
@@ -279,6 +280,8 @@ class _ReservationsScreenState extends ConsumerState<ReservationsScreen> {
                                 onPressed: () => _pickDay(day),
                               ),
                             ),
+                            const SizedBox(width: 8),
+                            WaitlistButton(restaurantId: restaurant.id, day: day),
                             const SizedBox(width: 8),
                             PanelPress(
                               child: GlowButton(

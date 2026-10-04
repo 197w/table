@@ -86,6 +86,104 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     _slot = null;
   });
 
+  /// Lista oczekujących, gdy nie ma wolnego stolika: przedział godzin i notatka.
+  Future<void> _joinWaitlist(String opens, String closes) async {
+    final times = halfHours(opens, closes);
+    if (times.length < 2) return;
+    var from = times.first;
+    var to = times.last;
+    final note = TextEditingController();
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheet) {
+          final text = Theme.of(context).textTheme;
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              0,
+              20,
+              20 + MediaQuery.viewInsetsOf(context).bottom + MediaQuery.viewPaddingOf(context).bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Lista oczekujących', style: text.titleLarge),
+                const SizedBox(height: 4),
+                Text(
+                  '${Fmt.capitalize(Fmt.dayLong(_date))} · ${Fmt.people(_party)}',
+                  style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: from,
+                        decoration: const InputDecoration(labelText: 'Od'),
+                        items: [for (final t in times.take(times.length - 1)) DropdownMenuItem(value: t, child: Text(t))],
+                        onChanged: (v) => setSheet(() {
+                          from = v!;
+                          if (to.compareTo(from) <= 0) to = times[times.indexOf(from) + 1];
+                        }),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        key: ValueKey(from),
+                        initialValue: to,
+                        decoration: const InputDecoration(labelText: 'Do'),
+                        items: [
+                          for (final t in times.skip(times.indexOf(from) + 1)) DropdownMenuItem(value: t, child: Text(t)),
+                        ],
+                        onChanged: (v) => setSheet(() => to = v!),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: note,
+                  maxLength: 300,
+                  decoration: const InputDecoration(labelText: 'Notatka dla lokalu', hintText: 'Na przykład możemy przy barze'),
+                ),
+                const SizedBox(height: 8),
+                FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Zapisz się')),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    if (ok != true || !mounted) {
+      note.dispose();
+      return;
+    }
+    try {
+      await ref.read(repositoryProvider).joinWaitlist(
+        restaurantId: widget.restaurantId,
+        day: _date,
+        partySize: _party,
+        from: from,
+        to: to,
+        note: note.text,
+      );
+      ref.invalidate(myWaitlistProvider);
+      if (mounted) {
+        showMessage(context, 'Jesteś na liście oczekujących. Propozycję godziny zobaczysz w „Moje”.', tone: ToastTone.success);
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      note.dispose();
+    }
+  }
+
   Future<void> _book() async {
     final slot = _slot;
     if (slot == null) return;
@@ -308,9 +406,22 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                 style: TextStyle(color: AppColors.textMuted),
               ),
               data: (items) => items.isEmpty
-                  ? Text(
-                      'Brak wolnych stolików tego dnia dla takiej liczby osób. Wybierz inny dzień.',
-                      style: TextStyle(color: AppColors.textMuted),
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Brak wolnych stolików tego dnia dla takiej liczby osób.',
+                          style: TextStyle(color: AppColors.textMuted),
+                        ),
+                        if (hours != null) ...[
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: () => _joinWaitlist(hours.opens, hours.closes),
+                            icon: const Glyph(AppIcons.hourglass, size: 18),
+                            label: const Text('Zapisz się na listę oczekujących'),
+                          ),
+                        ],
+                      ],
                     )
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.start,

@@ -536,6 +536,39 @@ class Repository {
   }
 
   /// Tryb testowy płatności kartą: zamówienie jest opłacone bez pobierania pieniędzy.
+  /// Zapis na listę oczekujących: dzień, liczba osób i przedział godzin.
+  Future<void> joinWaitlist({
+    required String restaurantId,
+    required DateTime day,
+    required int partySize,
+    required String from,
+    required String to,
+    String? note,
+  }) {
+    final date = '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+    return _guard(
+      () => _db.rpc<String>('guest_join_waitlist', params: {
+        'p_restaurant_id': restaurantId,
+        'p_day': date,
+        'p_party_size': partySize,
+        'p_from': from == '24:00' ? '23:59' : from,
+        'p_to': to == '24:00' ? '23:59' : to,
+        'p_note': note,
+      }),
+    );
+  }
+
+  Future<void> leaveWaitlist(String id) {
+    return _guard(() => _db.rpc<void>('guest_leave_waitlist', params: {'p_id': id}));
+  }
+
+  Future<List<GuestWaitlist>> myWaitlist() {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>('guest_my_waitlist');
+      return [for (final r in rows) GuestWaitlist.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
   /// Testowa płatność zadatku za rezerwację (bez operatora nic nie jest pobierane).
   Future<void> payDepositTest(String reservationId) {
     return _guard(() => _db.rpc<void>('guest_pay_deposit_test', params: {'p_reservation_id': reservationId}));

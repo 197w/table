@@ -124,4 +124,14 @@ void main() {
     // Część rachunku nie odejmuje zadatku: rozlicza się on przy zamknięciu całości.
     expect(due.forPart(4200), (0, 4200));
   });
+
+  test('lista oczekujących w panelu', () {
+    final e = WaitlistEntry.fromJson({
+      'id': 'w', 'party_size': 4, 'time_from': '18:00:00', 'time_to': '21:00:00', 'note': 'okno', 'status': 'waiting',
+      'created_at': '2026-10-04T10:00:00Z', 'guest_name': 'Ola', 'guest_phone': '+48600100200', 'guest_visits': 2,
+    });
+    expect(e.from, '18:00');
+    expect(e.offered, isFalse);
+    expect(e.guestVisits, 2);
+  });
 }
