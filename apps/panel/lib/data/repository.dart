@@ -1375,6 +1375,16 @@ class PanelRepository {
     );
   }
 
+  /// Dane miesiąca dla księgowej: rachunki z VAT, czas pracy i petty cash.
+  Future<Map<String, dynamic>> exportMonth(String restaurantId, DateTime month) {
+    return _guard(
+      () => _db.rpc<Map<String, dynamic>>(
+        'panel_export_month',
+        params: {'p_restaurant_id': restaurantId, 'p_month': _dateOnly(DateTime(month.year, month.month))},
+      ),
+    );
+  }
+
   Future<List<DiscountCode>> discountCodes(String restaurantId) {
     return _guard(() async {
       final rows = await _db

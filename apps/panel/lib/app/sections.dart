@@ -42,6 +42,7 @@ enum PanelSection {
     PanelTab(PanelRoutes.inventory, 'Inwentaryzacja', AppIcons.package),
     PanelTab(PanelRoutes.stats, 'Statystyki', AppIcons.chartPie),
     PanelTab(PanelRoutes.discounts, 'Kody rabatowe', AppIcons.sealPercent),
+    PanelTab(PanelRoutes.export, 'Eksport', AppIcons.fileArrowDown),
   ]);
 
   const PanelSection(this.label, this.icon, this.tabs);

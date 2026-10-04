@@ -15,6 +15,7 @@ import '../features/inventory/inventory_screen.dart';
 import '../features/kitchen/kitchen_screen.dart';
 import '../features/management/day_screen.dart';
 import '../features/management/discounts_screen.dart';
+import '../features/management/export_screen.dart';
 import '../features/management/hours_screen.dart';
 import '../features/menu/menu_screen.dart';
 import '../features/orders/order_history_screen.dart';
@@ -186,6 +187,7 @@ GoRouter _buildRouter(
           _page(PanelRoutes.daySummary, const DaySummaryScreen()),
           _page(PanelRoutes.hours, const HoursScreen()),
           _page(PanelRoutes.discounts, const DiscountsScreen()),
+          _page(PanelRoutes.export, const ExportScreen()),
         ],
       ),
     ],
@@ -232,6 +234,7 @@ abstract final class PanelRoutes {
   static const daySummary = '/podsumowanie';
   static const hours = '/godziny';
   static const discounts = '/rabaty';
+  static const export = '/eksport';
 }
 
 /// Uprawnienia, z których wystarczy jedno, żeby otworzyć zakładkę.
@@ -257,6 +260,7 @@ const _routePermissions = {
   PanelRoutes.daySummary: {'day_close'},
   PanelRoutes.hours: {'timesheet'},
   PanelRoutes.discounts: {'discounts'},
+  PanelRoutes.export: {'export'},
 };
 
 /// Nazwy zakładek, np. w logowaniu do zakładki.
@@ -281,6 +285,7 @@ const panelTabLabels = {
   PanelRoutes.daySummary: 'Podsumowanie dnia',
   PanelRoutes.hours: 'Godziny pracy',
   PanelRoutes.discounts: 'Kody rabatowe',
+  PanelRoutes.export: 'Eksport',
 };
 
 /// Zakładka (jej ścieżka) dla adresu. Null: adres poza zakładkami.
