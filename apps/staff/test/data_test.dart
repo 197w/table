@@ -124,4 +124,22 @@ void main() {
     expect(due.deposit, 20000);
     expect(due.due, 5200);
   });
+
+  test('kod rabatowy przy rachunku i podpowiedzi kodów', () {
+    final due = WDue.fromJson({
+      'total': 4400,
+      'discount': 500,
+      'due': 3900,
+      'discount_label': 'TESTPIEC (−5,00 zł)',
+      'discount_code': 'TESTPIEC',
+      'reservation_code': null,
+    });
+    expect(due.code, 'TESTPIEC');
+    expect(due.reservationCode, isNull);
+    expect(due.forPart(2200), (0, 2200));
+    final hint = WDiscountHint.fromJson({'code': 'LATO10', 'kind': 'percent', 'value': 10, 'note': ' '});
+    expect(hint.valueText, '−10%');
+    expect(hint.note, isNull);
+    expect(WDiscountHint.fromJson({'code': 'PIEC', 'kind': 'amount', 'value': 500}).valueText, '−5,00 zł');
+  });
 }

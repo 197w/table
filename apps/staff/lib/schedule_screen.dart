@@ -68,6 +68,15 @@ class ScheduleScreen extends ConsumerStatefulWidget {
 class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   int _offset = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    // Okres grafiku (tydzień, 2 tygodnie, miesiąc) mógł się zmienić w panelu: pobieramy go od nowa.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.invalidate(jobsProvider);
+    });
+  }
+
   Future<void> _hours(List<Job> jobs, DateTime day, [PlannedShift? existing]) async {
     final saved = await showModalBottomSheet<bool>(
       context: context,
@@ -180,6 +189,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       appBar: AppBar(title: const Text('Grafik')),
       body: RefreshIndicator(
         onRefresh: () async => ref
+          ..invalidate(jobsProvider)
           ..invalidate(schedulePeriodProvider)
           ..invalidate(shiftsProvider),
         child: ListView(

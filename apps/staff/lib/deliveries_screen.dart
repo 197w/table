@@ -205,16 +205,20 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
                 if (board.courses.isEmpty)
                   _WaitingCard(board: board, memberId: widget.job.memberId)
                 else
-                  for (final course in board.courses) ...[
+                  // Dostawy połączone w jeden kurs są obok siebie i odbiera się je razem.
+                  for (final (course, mates) in groupCourses(board.courses)) ...[
                     _CourseCard(
                       course: course,
+                      mates: mates,
                       busy: _busy,
                       restaurantName: board.restaurantName,
                       onNavigate: () => _open(course.navigationUri, 'Nie udało się otworzyć nawigacji.'),
                       onCall: () => _open(course.phoneUri, 'Nie udało się zadzwonić. Numer: ${course.customerPhone}'),
                       onPickUp: () => _run(
                         () => ref.read(deliveriesRepositoryProvider).pickUp(course.id, widget.job.memberId),
-                        'Kurs #${course.number} w drodze. Szerokiej drogi!',
+                        mates.isEmpty
+                            ? 'Kurs #${course.number} w drodze. Szerokiej drogi!'
+                            : 'Kurs w drodze: ${[course, ...mates.where((m) => m.stage != CourseStage.onTheWay)].map((m) => '#${m.number}').join(', ')}. Szerokiej drogi!',
                       ),
                       onDelivered: () => _delivered(course),
                       onHandOver: course.canHandOver ? () => _handOver(course, board) : null,
@@ -333,6 +337,7 @@ class _PulseState extends State<_Pulse> with SingleTickerProviderStateMixin {
 class _CourseCard extends StatelessWidget {
   const _CourseCard({
     required this.course,
+    required this.mates,
     required this.busy,
     required this.restaurantName,
     required this.onNavigate,
@@ -343,6 +348,9 @@ class _CourseCard extends StatelessWidget {
   });
 
   final Course course;
+
+  /// Inne dostawy z tego samego kursu (połączone w panelu).
+  final List<Course> mates;
   final bool busy;
   final String restaurantName;
   final VoidCallback onNavigate;
@@ -380,6 +388,28 @@ class _CourseCard extends StatelessWidget {
                   ),
               ],
             ),
+            if (mates.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3B82F6).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Glyph(AppIcons.arrowsMerge, size: 18, color: Color(0xFF3B82F6)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Jeden kurs z ${mates.map((m) => '#${m.number}').join(', ')}',
+                        style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             Text(c.address, style: text.titleLarge),
             if (c.note != null) ...[
@@ -465,7 +495,11 @@ class _CourseCard extends StatelessWidget {
                 style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),
                 onPressed: busy ? null : onPickUp,
                 icon: const Glyph(AppIcons.shoppingBag, size: 20),
-                label: const Text('Odebrałem z lokalu'),
+                label: Text(
+                  mates.any((m) => m.stage != CourseStage.onTheWay)
+                      ? 'Odebrałem cały kurs (${1 + mates.where((m) => m.stage != CourseStage.onTheWay).length})'
+                      : 'Odebrałem z lokalu',
+                ),
               ),
             ],
             if (onHandOver != null) ...[

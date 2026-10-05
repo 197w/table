@@ -610,7 +610,8 @@ class PanelRepository {
           .select(
             'id, kind, number, fulfillment, opened_at, closed_at, customer_name, customer_phone, delivery_address, '
             'delivery_note, delivery_fee_grosze, payment_choice, payment_status, payment_test, promised_at, accepted_at, '
-            'picked_up_at, courier_member, reject_reason, courier:staff_members!orders_courier_member_fkey(name), order_items(*)',
+            'picked_up_at, courier_member, reject_reason, course_id, courier:staff_members!orders_courier_member_fkey(name), '
+            'order_items(*)',
           )
           .eq('restaurant_id', restaurantId)
           .neq('kind', 'dine_in')
@@ -656,12 +657,27 @@ class PanelRepository {
     () => _db.rpc<void>('panel_takeaway_assign', params: {'p_order_id': orderId, 'p_courier': courierId}),
   );
 
+  /// Łączy dostawy w jeden kurs jednego dostawcy. Bez [courierId]: dostawca, który ma już któreś z nich,
+  /// albo pierwszy wolny z kolejki.
+  Future<void> mergeCourse(List<String> orderIds, {String? courierId, String? memberId}) => _guard(
+    () => _db.rpc<dynamic>('panel_takeaway_merge', params: {
+      'p_order_ids': orderIds,
+      'p_courier': courierId,
+      'p_member_id': memberId,
+    }),
+  );
+
+  /// Wyjmuje dostawę z kursu; wraca do kolejki dostawców.
+  Future<void> splitCourse(String orderId, {String? memberId}) => _guard(
+    () => _db.rpc<void>('panel_takeaway_split', params: {'p_order_id': orderId, 'p_member_id': memberId}),
+  );
+
   /// Bileciki na ekran kuchni: pozycje wysłane w ostatnich godzinach z otwartych rachunków.
   Future<List<KitchenTicket>> kitchenTickets(String restaurantId) {
     return _guard(() async {
       final rows = await _db
           .from('order_items')
-          .select('*, menu_items(show_in_kitchen), member:staff_members(name), orders!inner(table_id, status, kind, number, opener:staff_members!opened_by_member(name))')
+          .select('*, menu_items(show_in_kitchen), member:staff_members(name), orders!inner(table_id, status, kind, number, delivery_address, customer_name, opener:staff_members!opened_by_member(name))')
           .eq('restaurant_id', restaurantId)
           .inFilter('status', ['sent', 'ready', 'cancelled'])
           .eq('orders.status', 'open')
@@ -906,14 +922,20 @@ class PanelRepository {
     });
   }
 
-  /// Grafik na żywo: odpowiedź pracownika z aplikacji od razu widać w panelu.
-  void Function() watchSchedule(String restaurantId, void Function() onChange) {
+  /// Zmiany w tabeli lokalu na żywo (grafik, zmiany pracowników): [onChange] przy każdej zmianie,
+  /// [onLive] z tym, czy kanał działa (false po zerwaniu połączenia).
+  void Function() watchTable(
+    String table,
+    String restaurantId, {
+    required void Function() onChange,
+    required void Function(bool live) onLive,
+  }) {
     final channel = _db
-        .channel('panel-grafik-$restaurantId-${_channelSeq++}')
+        .channel('panel-$table-$restaurantId-${_channelSeq++}')
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
-          table: 'staff_schedule',
+          table: table,
           filter: PostgresChangeFilter(
             type: PostgresChangeFilterType.eq,
             column: 'restaurant_id',
@@ -921,8 +943,8 @@ class PanelRepository {
           ),
           callback: (_) => onChange(),
         )
-        .subscribe();
-    return () => _db.removeChannel(channel);
+        .subscribe((status, _) => onLive(status == RealtimeSubscribeStatus.subscribed));
+    return () => unawaited(_db.removeChannel(channel));
   }
 
   /// Przełożony wpisuje godziny sam. Wpis jest od razu przyjęty.
@@ -959,6 +981,17 @@ class PanelRepository {
 
   Future<void> deleteHours(String id) {
     return _guard(() => _db.rpc<void>('panel_delete_hours', params: {'p_id': id}));
+  }
+
+  /// Zapis zmian z trybu edycji grafiku naraz (wszystkie albo żadna). Zwraca liczbę zapisanych zmian.
+  Future<int> saveSchedule(String restaurantId, List<ScheduleChange> changes) {
+    return _guard(() async {
+      final n = await _db.rpc<dynamic>('panel_save_schedule', params: {
+        'p_restaurant_id': restaurantId,
+        'p_changes': [for (final c in changes) c.toJson()],
+      });
+      return n is num ? n.toInt() : changes.length;
+    });
   }
 
   // ---------------------------------------------------------------
@@ -1213,24 +1246,6 @@ class PanelRepository {
     return _guard(() => _db.rpc<void>('panel_delete_shift', params: {'p_id': id}));
   }
 
-  /// Wywołuje [onChange] przy każdej zmianie czasu pracy w lokalu.
-  void Function() watchShifts(String restaurantId, void Function() onChange) {
-    final channel = _db
-        .channel('panel-zmiany-$restaurantId-${_channelSeq++}')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'staff_shifts',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'restaurant_id',
-            value: restaurantId,
-          ),
-          callback: (_) => onChange(),
-        )
-        .subscribe();
-    return () => unawaited(_db.removeChannel(channel));
-  }
 
   /// Zamknięte rachunki (opłacone i anulowane) z jednego dnia, najnowsze pierwsze.
   Future<List<PanelOrder>> orderHistory(String restaurantId, DateTime day) {
@@ -1347,6 +1362,29 @@ class PanelRepository {
     return _guard(() async {
       final json = await _db.rpc<Map<String, dynamic>>('panel_order_due', params: {'p_order_id': orderId});
       return OrderDue.fromJson(json);
+    });
+  }
+
+  /// Kod rabatowy przy rachunku; pusty usuwa wpisany. Zwraca kwotę do zapłaty po zmianie.
+  Future<OrderDue> setOrderDiscount(String orderId, String? code, {String? memberId}) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>('panel_order_set_discount', params: {
+        'p_order_id': orderId,
+        'p_code': code,
+        'p_member_id': memberId,
+      });
+      return OrderDue.fromJson(json);
+    });
+  }
+
+  /// Kody rabatowe lokalu działające dziś, pasujące do wpisanego tekstu (najwyżej 8).
+  Future<List<DiscountHint>> discountSuggestions(String restaurantId, String query) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>(
+        'panel_discount_suggestions',
+        params: {'p_restaurant_id': restaurantId, 'p_query': query},
+      );
+      return [for (final r in rows) DiscountHint.fromJson(r as Map<String, dynamic>)];
     });
   }
 

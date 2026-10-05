@@ -15,6 +15,18 @@ const _deliveryColor = Color(0xFF3B82F6);
 const _pickupColor = Color(0xFF8B5CF6);
 const _cashColor = Color(0xFFE08A1E);
 
+/// Kolory kursów: dostawy jednego kursu mają ten sam kolor znacznika.
+const _courseColors = [
+  Color(0xFF0EA5B7),
+  Color(0xFFD9467A),
+  Color(0xFF16A37F),
+  Color(0xFFB45309),
+  Color(0xFF8B5CF6),
+  Color(0xFF64748B),
+];
+
+Color _courseColor(String courseId) => _courseColors[courseId.codeUnits.fold(0, (a, c) => a + c) % _courseColors.length];
+
 /// Zamówienia gości z aplikacji Table: dostawa i odbiór osobisty. Nowe przyjmuje się z czasem przygotowania
 /// (pozycje idą na kuchnię), gotowe dostawy rozwożą dostawcy z kolejki w Table for employees,
 /// odbiór osobisty wydaje obsługa.
@@ -45,6 +57,29 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Połączenie dostawy z innymi w jeden kurs: wybór zamówień i dostawcy.
+  Future<void> _merge(String restaurantId, TakeawayOrder order, List<TakeawayOrder> active, List<Courier> couriers) async {
+    final candidates = [
+      for (final o in active)
+        if (o.id != order.id && o.canJoinCourse && (order.courseId == null || o.courseId != order.courseId)) o,
+    ];
+    final result = await showDialog<({List<String> ids, String? courierId})>(
+      context: context,
+      builder: (_) => _MergeDialog(order: order, candidates: candidates, mates: [
+        for (final o in active)
+          if (order.courseId != null && o.courseId == order.courseId && o.id != order.id) o,
+      ], couriers: couriers),
+    );
+    if (result == null || result.ids.isEmpty) return;
+    await _run(
+      restaurantId,
+      () => ref
+          .read(repositoryProvider)
+          .mergeCourse([order.id, ...result.ids], courierId: result.courierId, memberId: _memberId),
+      'Połączone w jeden kurs: ${result.ids.length + 1} dostawy.',
+    );
   }
 
   Future<void> _reject(String restaurantId, TakeawayOrder order) async {
@@ -152,6 +187,7 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
                       : 'Włącz dostawę albo odbiór osobisty w „Dane lokalu”, żeby goście mogli zamawiać w aplikacji.',
                 );
               }
+              final joinable = active.where((o) => o.canJoinCourse).length;
               Widget column(String title, Color color, List<TakeawayOrder> list) => Expanded(
                 child: _Column(
                   title: title,
@@ -162,7 +198,17 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
                       _OrderCard(
                         order: o,
                         couriers: couriers,
+                        mates: [
+                          for (final m in active)
+                            if (o.courseId != null && m.courseId == o.courseId && m.id != o.id) m,
+                        ],
                         busy: _busy || !canEdit,
+                        onMerge: o.canJoinCourse && joinable > 1 ? () => _merge(rid, o, active, couriers) : null,
+                        onSplit: () => _run(
+                          rid,
+                          () => ref.read(repositoryProvider).splitCourse(o.id, memberId: _memberId),
+                          '${o.label} wyjęte z kursu. Wraca do kolejki dostawców.',
+                        ),
                         onAccept: (minutes) => _run(
                           rid,
                           () => ref.read(repositoryProvider).acceptTakeaway(o.id, minutes, memberId: _memberId),
@@ -261,17 +307,25 @@ class _OrderCard extends StatefulWidget {
   const _OrderCard({
     required this.order,
     required this.couriers,
+    required this.mates,
     required this.busy,
     required this.onAccept,
     required this.onReject,
     required this.onReady,
     required this.onHanded,
     required this.onAssign,
+    required this.onMerge,
+    required this.onSplit,
   });
 
   final TakeawayOrder order;
   final List<Courier> couriers;
+
+  /// Inne dostawy z tego samego kursu.
+  final List<TakeawayOrder> mates;
   final bool busy;
+  final VoidCallback? onMerge;
+  final VoidCallback onSplit;
   final ValueChanged<int> onAccept;
   final VoidCallback onReject;
   final VoidCallback onReady;
@@ -340,9 +394,53 @@ class _OrderCardState extends State<_OrderCard> {
                 Text(Fmt.price(o.totalGrosze), style: text.titleMedium?.copyWith(fontFeatures: _tabular)),
               ],
             ),
+            if (o.courseId != null && widget.mates.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
+                decoration: BoxDecoration(
+                  color: _courseColor(o.courseId!).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _courseColor(o.courseId!).withValues(alpha: 0.5)),
+                ),
+                child: Row(
+                  children: [
+                    Glyph(AppIcons.arrowsMerge, size: 16, color: _courseColor(o.courseId!)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Jeden kurs z ${widget.mates.map((m) => '#${m.number}').join(', ')}',
+                        style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
+                      ),
+                    ),
+                    if (o.canJoinCourse)
+                      TextButton(
+                        onPressed: widget.busy ? null : widget.onSplit,
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.textMuted,
+                          minimumSize: const Size(0, 32),
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                        ),
+                        child: const Text('Wyjmij'),
+                      ),
+                  ],
+                ),
+              ),
+            ],
             if (delivery && o.stage != TakeawayStage.placed) ...[
               const SizedBox(height: 10),
               _CourierRow(order: o, couriers: widget.couriers, busy: widget.busy, onAssign: widget.onAssign),
+            ],
+            if (widget.onMerge != null) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: widget.busy ? null : widget.onMerge,
+                  icon: const Glyph(AppIcons.arrowsMerge, size: 16),
+                  label: Text(widget.mates.isEmpty ? 'Połącz z inną dostawą' : 'Dołącz dostawę do kursu'),
+                ),
+              ),
             ],
             const SizedBox(height: 12),
             ..._actions(context),
@@ -430,6 +528,114 @@ class _OrderCardState extends State<_OrderCard> {
       default:
         return const [];
     }
+  }
+}
+
+/// Wybór dostaw do jednego kursu i dostawcy. Zwraca wybrane zamówienia i dostawcę (null: bez zmiany).
+class _MergeDialog extends StatefulWidget {
+  const _MergeDialog({required this.order, required this.candidates, required this.mates, required this.couriers});
+
+  final TakeawayOrder order;
+  final List<TakeawayOrder> candidates;
+  final List<TakeawayOrder> mates;
+  final List<Courier> couriers;
+
+  @override
+  State<_MergeDialog> createState() => _MergeDialogState();
+}
+
+class _MergeDialogState extends State<_MergeDialog> {
+  final _picked = <String>{};
+  String? _courier;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final o = widget.order;
+    final current = o.courierName ?? widget.mates.map((m) => m.courierName).nonNulls.firstOrNull;
+    return AlertDialog(
+      title: Text('Jeden kurs z #${o.number}'),
+      content: SizedBox(
+        width: 520,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Dostawca zabierze wybrane zamówienia razem${widget.mates.isEmpty ? '' : ' z kursem ${[o, ...widget.mates].map((m) => '#${m.number}').join(', ')}'}. '
+              'Kurs odbiera się z lokalu naraz, a każdy adres oznacza się jako dostarczony osobno.',
+              style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 14),
+            if (widget.candidates.isEmpty)
+              Text('Nie ma innych dostaw w lokalu.', style: text.bodyMedium)
+            else
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 320),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final c in widget.candidates)
+                      CheckboxListTile(
+                        value: _picked.contains(c.id),
+                        onChanged: (v) => setState(() => v == true ? _picked.add(c.id) : _picked.remove(c.id)),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          '#${c.number} · ${c.address ?? c.customerName}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: text.titleSmall?.copyWith(fontFeatures: _tabular),
+                        ),
+                        subtitle: Text(
+                          [
+                            c.stage.label,
+                            if (c.promisedAt != null) 'na ${_hm(c.promisedAt!)}',
+                            c.courierName ?? 'bez dostawcy',
+                            if (c.courseId != null) 'w innym kursie',
+                          ].join(' · '),
+                          style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String?>(
+              initialValue: _courier,
+              decoration: const InputDecoration(labelText: 'Dostawca kursu'),
+              icon: const Glyph(AppIcons.caretDown, size: 16),
+              items: [
+                DropdownMenuItem(
+                  value: null,
+                  child: Text(current == null ? 'Pierwszy wolny z kolejki' : 'Bez zmiany ($current)'),
+                ),
+                for (final c in widget.couriers)
+                  DropdownMenuItem(value: c.memberId, child: Text('${c.name}${c.busy ? ' · w kursie' : ' · wolny'}')),
+              ],
+              onChanged: (v) => setState(() => _courier = v),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+          child: const Text('Anuluj'),
+        ),
+        FilledButton.icon(
+          onPressed: _picked.isEmpty
+              ? null
+              : () => Navigator.pop(context, (ids: [
+                  for (final c in widget.candidates)
+                    if (_picked.contains(c.id)) c.id,
+                ], courierId: _courier)),
+          icon: const Glyph(AppIcons.arrowsMerge, size: 16),
+          label: Text(_picked.isEmpty ? 'Połącz' : 'Połącz (${_picked.length + 1 + widget.mates.length})'),
+        ),
+      ],
+    );
   }
 }
 

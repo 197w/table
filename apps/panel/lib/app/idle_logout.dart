@@ -10,7 +10,7 @@ import 'app.dart';
 
 /// Automatyczne wylogowanie pracownika z panelu po [kIdleLogoutSeconds] sekundach bez ruchu myszy,
 /// kliknięcia, przewinięcia i klawisza. Kuchnia i Wydanie nie wylogowują pracownika: to ekrany, na które się patrzy.
-/// Pełny dostęp właściciela (hasło konta restauracji) wylogowuje się wszędzie, także tam.
+/// Pełny dostęp właściciela (hasło konta restauracji) nie wylogowuje się sam: trwa, dopóki właściciel się nie wyloguje.
 /// Wylogowanie zamyka otwarte okna (np. rachunek), żeby następna osoba nie pracowała na cudzym koncie.
 class IdleLogout extends ConsumerStatefulWidget {
   const IdleLogout({
@@ -44,7 +44,8 @@ class _IdleLogoutState extends ConsumerState<IdleLogout> {
     super.initState();
     HardwareKeyboard.instance.addHandler(_onKey);
     ref.listenManual(panelMemberProvider, (previous, member) {
-      if (member == null) {
+      // Właściciel z hasłem konta zostaje zalogowany, więc zegar nie liczy.
+      if (member == null || member.isAccount) {
         _stop();
       } else {
         // Nowa osoba (albo właściciel) zaczyna liczenie od zera; zegar startuje, gdy jeszcze nie chodzi.
@@ -80,9 +81,12 @@ class _IdleLogoutState extends ConsumerState<IdleLogout> {
 
   void _tick() {
     if (!mounted) return;
-    final path = widget.location();
-    final owner = ref.read(panelMemberProvider)?.isAccount ?? false;
-    if (!owner && IdleLogout.exempt.any(path.startsWith)) {
+    final member = ref.read(panelMemberProvider);
+    if (member == null || member.isAccount) {
+      _stop();
+      return;
+    }
+    if (IdleLogout.exempt.any(widget.location().startsWith)) {
       _touch();
       return;
     }
@@ -97,9 +101,7 @@ class _IdleLogoutState extends ConsumerState<IdleLogout> {
     }
     ref.read(panelMemberProvider.notifier).signOut();
     Toasts.instance.show(
-      owner
-          ? 'Panel zamknął pełny dostęp właściciela po $kIdleLogoutSeconds sekundach bez ruchu.'
-          : 'Panel wylogował pracownika po $kIdleLogoutSeconds sekundach bez ruchu. Zaloguj się kodem.',
+      'Panel wylogował pracownika po $kIdleLogoutSeconds sekundach bez ruchu. Zaloguj się kodem.',
       title: 'Wylogowano',
       icon: AppIcons.lock,
     );

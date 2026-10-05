@@ -45,8 +45,10 @@ class StaffScreen extends ConsumerStatefulWidget {
 }
 
 class _StaffScreenState extends ConsumerState<StaffScreen> {
-  DateTime _week = _weekStart(DateTime.now());
+  /// Okres grafiku względem bieżącego (tydzień, 2 tygodnie albo miesiąc, jak ustawił lokal).
+  int _offset = 0;
   bool _showInactive = false;
+  bool _saving = false;
   int _tab = 0;
 
   Future<void> _addMember(String restaurantId, {required bool withLogin}) async {
@@ -80,17 +82,65 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     );
   }
 
-  Future<void> _hours(String restaurantId, StaffMember member, DateTime day, PlannedShift? existing) {
-    return showDialog<void>(
+  /// Dzień pracownika w trybie edycji: decyzja trafia do niezapisanych zmian.
+  Future<void> _hours(
+    String restaurantId,
+    StaffMember member,
+    DateTime day,
+    PlannedShift? existing,
+    ScheduleChange? staged,
+  ) async {
+    final result = await showDialog<_HoursResult>(
       context: context,
       builder: (_) => _HoursDialog(
-        restaurantId: restaurantId,
         member: member,
         day: day,
         existing: existing,
-        week: _week,
+        shown: staged == null ? existing : staged.apply(existing),
+        staged: staged != null,
       ),
     );
+    if (result == null || !mounted) return;
+    final draft = ref.read(scheduleDraftProvider(restaurantId).notifier);
+    if (result.undo) {
+      draft.undo(scheduleKey(member.id, day));
+    } else if (result.change case final change?) {
+      draft.put(change);
+    }
+  }
+
+  Future<void> _cancelEdit(String restaurantId, ScheduleDraft draft) async {
+    if (draft.changes.isNotEmpty) {
+      final ok = await confirm(
+        context,
+        title: 'Odrzucić zmiany w grafiku?',
+        message: 'Niezapisane zmiany: ${draft.changes.length}. Pracownicy ich nie zobaczą.',
+        action: 'Odrzuć zmiany',
+        destructive: true,
+      );
+      if (!ok) return;
+    }
+    ref.read(scheduleDraftProvider(restaurantId).notifier).close();
+  }
+
+  Future<void> _saveSchedule(String restaurantId, ScheduleDraft draft) async {
+    setState(() => _saving = true);
+    try {
+      final n = await ref.read(repositoryProvider).saveSchedule(restaurantId, draft.changes.values.toList());
+      ref.read(scheduleDraftProvider(restaurantId).notifier).close();
+      ref.invalidate(scheduleRangeProvider);
+      if (mounted) {
+        showMessage(
+          context,
+          'Grafik zapisany (zmiany: $n). Pracownicy widzą go już w aplikacji Table for employees.',
+          tone: ToastTone.success,
+        );
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -118,9 +168,23 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     final tab = tabs.any((t) => t.$1 == _tab) ? _tab : tabs.first.$1;
 
     final staffAsync = ref.watch(staffProvider(restaurant.id));
-    final weekEnd = DateTime(_week.year, _week.month, _week.day + 6);
-    final isThisWeek = _week == _weekStart(DateTime.now());
     final thisWeek = _weekStart(DateTime.now());
+
+    // Grafik: okres z „Ustawień lokalu” i tryb edycji.
+    final periodKind = ref.watch(profileProvider(restaurant.id)).value?.schedulePeriod ?? 'week';
+    final period = schedulePeriod(periodKind, _offset);
+    final unit = switch (periodKind) {
+      'month' => 'miesiąc',
+      'two_weeks' => '2 tygodnie',
+      _ => 'tydzień',
+    };
+    final draft = ref.watch(scheduleDraftProvider(restaurant.id));
+    final me = ref.watch(panelMemberProvider)?.memberId;
+    if (draft.editing && draft.editor != me) {
+      // Zalogował się ktoś inny niż osoba, która edytowała: jej niezapisane zmiany znikają.
+      WidgetsBinding.instance.addPostFrameCallback((_) => ref.read(scheduleDraftProvider(restaurant.id).notifier).close());
+    }
+    final editing = canPlan && draft.editing && draft.editor == me;
     final shifts = ref.watch(
       shiftsProvider((
         restaurantId: restaurant.id,
@@ -144,17 +208,17 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                       ),
                     const Spacer(),
                     if (tab == 0) const _ViewToggle(),
-                    // Tydzień grafiku w jednym rzędzie z zakładkami.
+                    // Okres grafiku w jednym rzędzie z zakładkami.
                     if (tab != 0)
                       StepSwitcher(
-                        label: weekLabel(_week, weekEnd),
-                        labelWidth: 132,
-                        previousTooltip: 'Poprzedni tydzień',
-                        nextTooltip: 'Następny tydzień',
-                        onPrevious: () => setState(() => _week = DateTime(_week.year, _week.month, _week.day - 7)),
-                        onNext: () => setState(() => _week = DateTime(_week.year, _week.month, _week.day + 7)),
-                        resetTooltip: 'Wróć do tego tygodnia',
-                        onReset: isThisWeek ? null : () => setState(() => _week = _weekStart(DateTime.now())),
+                        label: periodKind == 'month' ? Fmt.monthYear(period.from) : weekLabel(period.from, period.to),
+                        labelWidth: periodKind == 'week' ? 132 : 170,
+                        previousTooltip: periodKind == 'month' ? 'Poprzedni miesiąc' : 'Poprzedni okres',
+                        nextTooltip: periodKind == 'month' ? 'Następny miesiąc' : 'Następny okres',
+                        onPrevious: () => setState(() => _offset--),
+                        onNext: () => setState(() => _offset++),
+                        resetTooltip: 'Wróć do bieżącego okresu',
+                        onReset: _offset == 0 ? null : () => setState(() => _offset = 0),
                       ),
                   ],
                 ),
@@ -174,6 +238,26 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                   onPressed: () => _addMember(restaurant.id, withLogin: canLogins),
                   icon: const Glyph(AppIcons.plus, size: 18),
                   label: const Text('Dodaj pracownika'),
+                ),
+            ],
+            // Grafik zmienia się w trybie edycji; pracownicy widzą zmiany dopiero po „Zapisz”.
+            if (tab == 1 && canPlan) ...[
+              if (editing) ...[
+                TextButton(
+                  onPressed: _saving ? null : () => _cancelEdit(restaurant.id, draft),
+                  style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+                  child: const Text('Anuluj'),
+                ),
+                FilledButton.icon(
+                  onPressed: _saving || draft.changes.isEmpty ? null : () => _saveSchedule(restaurant.id, draft),
+                  icon: const Glyph(AppIcons.check, size: 18),
+                  label: Text(draft.changes.isEmpty ? 'Zapisz' : 'Zapisz (${draft.changes.length})'),
+                ),
+              ] else
+                FilledButton.icon(
+                  onPressed: () => ref.read(scheduleDraftProvider(restaurant.id).notifier).start(me ?? ''),
+                  icon: const Glyph(AppIcons.pencil, size: 18),
+                  label: const Text('Edytuj'),
                 ),
             ],
           ],
@@ -224,46 +308,92 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                 );
               }
 
-              final query = (restaurantId: restaurant.id, weekStart: _week);
-              final planned = ref.watch(plannedShiftsProvider(query)).value ?? const <PlannedShift>[];
+              // Cały okres lokalu, tydzień pod tygodniem (miesiąc: od poniedziałku do niedzieli).
+              final weeks = periodWeeks(period);
+              final gridEnd = DateTime(weeks.last.year, weeks.last.month, weeks.last.day + 7);
+              final query = (restaurantId: restaurant.id, from: weeks.first, to: gridEnd);
+              final saved = ref.watch(scheduleRangeProvider(query)).value ?? const <PlannedShift>[];
               final positions = ref.watch(positionsProvider(restaurant.id)).value ?? const <StaffPosition>[];
-              final waiting = planned.where((p) => p.status == PlannedShiftStatus.pending).length;
+              // W trybie edycji grafik pokazuje dni po niezapisanych zmianach.
+              final changes = editing ? draft.changes : const <String, ScheduleChange>{};
+              final savedByKey = {for (final p in saved) scheduleKey(p.memberId, p.day): p};
+              final planned = [
+                for (final p in saved)
+                  if (!changes.containsKey(scheduleKey(p.memberId, p.day))) p,
+                for (final c in changes.values) ?c.apply(savedByKey[c.key]),
+              ];
+              bool inPeriod(DateTime d) => !d.isBefore(period.from) && !d.isAfter(period.to);
+              final waiting = planned.where((p) => p.status == PlannedShiftStatus.pending && inPeriod(p.day)).length;
+              final text = Theme.of(context).textTheme;
               return SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (waiting > 0)
+                    if (editing)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _Banner(
+                          icon: AppIcons.pencil,
+                          color: AppColors.accent,
+                          text: draft.changes.isEmpty
+                              ? 'Edycja grafiku. Kliknij dzień, żeby przyjąć, zmienić albo odrzucić zgłoszenie, wpisać godziny '
+                                  'albo dać wolne. Pracownicy zobaczą zmiany po „Zapisz”.'
+                              : 'Niezapisane zmiany: ${draft.changes.length} (zaznaczone kropką). '
+                                  'Pracownicy zobaczą je po „Zapisz”.',
+                        ),
+                      )
+                    else if (waiting > 0)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: _Banner(
                           icon: AppIcons.clock,
                           text: waiting == 1
-                              ? 'Jedno zgłoszenie czeka na decyzję. Kliknij pomarańczowy wpis, żeby je przyjąć, zmienić albo odrzucić.'
-                              : 'Zgłoszenia czekające na decyzję: $waiting. Kliknij pomarańczowe wpisy, żeby je przyjąć, zmienić albo odrzucić.',
+                              ? 'Jedno zgłoszenie czeka na decyzję.${canPlan ? ' Kliknij „Edytuj”, żeby je przyjąć, zmienić albo odrzucić.' : ''}'
+                              : 'Zgłoszenia czekające na decyzję: $waiting.${canPlan ? ' Kliknij „Edytuj”, żeby je przyjąć, zmienić albo odrzucić.' : ''}',
                         ),
                       ),
-                    Card(
-                      clipBehavior: Clip.antiAlias,
-                      child: _WeekGrid(
-                        week: _week,
-                        members: members,
-                        planned: planned,
-                        positionNames: {for (final p in positions) p.id: p.name},
-                        onOpenMember: canStaff ? (m) => _openMember(restaurant.id, m) : null,
-                        onHours: (m, day, existing) => _hours(restaurant.id, m, day, existing),
+                    for (final (i, week) in weeks.indexed) ...[
+                      if (weeks.length > 1)
+                        Padding(
+                          padding: EdgeInsets.only(top: i == 0 ? 0 : 20, bottom: 8, left: 4),
+                          child: Text(
+                            'Tydzień ${weekLabel(week, DateTime(week.year, week.month, week.day + 6))}',
+                            style: text.titleSmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                          ),
+                        ),
+                      Card(
+                        clipBehavior: Clip.antiAlias,
+                        child: _WeekGrid(
+                          week: week,
+                          members: members,
+                          planned: planned,
+                          inPeriod: inPeriod,
+                          changed: changes.keys.toSet(),
+                          positionNames: {for (final p in positions) p.id: p.name},
+                          onOpenMember: canStaff ? (m) => _openMember(restaurant.id, m) : null,
+                          onHours: editing
+                              ? (m, day, _) => _hours(
+                                  restaurant.id,
+                                  m,
+                                  day,
+                                  savedByKey[scheduleKey(m.id, day)],
+                                  changes[scheduleKey(m.id, day)],
+                                )
+                              : null,
+                        ),
                       ),
-                    ),
+                    ],
                     ?toggleInactive,
                     const SizedBox(height: 8),
                     const _Legend(),
                     const SizedBox(height: 8),
                     Text(
-                      'Pracownicy zgłaszają w aplikacji Table for employees, od której do której mogą pracować. '
-                      'Kliknij zgłoszenie, żeby je przyjąć (także ze zmienionymi godzinami) albo odrzucić. '
-                      'Po decyzji pracownik nie może już zmienić tego dnia. Kliknij pusty dzień, żeby wpisać godziny samemu '
-                      'albo dać wolne.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+                      'Pracownicy zgłaszają w aplikacji Table for employees, od której do której mogą pracować '
+                      '(okres grafiku: $unit, zmiana w „Ustawieniach lokalu”). Kliknij „Edytuj”, żeby przyjąć zgłoszenie '
+                      '(także ze zmienionymi godzinami), odrzucić je, wpisać godziny samemu albo dać wolne. '
+                      'Zmiany trafiają do pracowników dopiero po „Zapisz”. Po decyzji pracownik nie może już zmienić tego dnia.',
+                      style: text.bodySmall?.copyWith(color: AppColors.textMuted),
                     ),
                   ],
                 ),
@@ -278,23 +408,24 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
 }
 
 class _Banner extends StatelessWidget {
-  const _Banner({required this.icon, required this.text});
+  const _Banner({required this.icon, required this.text, this.color = _pending});
 
   final AppIconData icon;
   final String text;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: _pending.withValues(alpha: 0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _pending.withValues(alpha: 0.5)),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
       ),
       child: Row(
         children: [
-          Glyph(icon, size: 18, color: _pending),
+          Glyph(icon, size: 18, color: color),
           const SizedBox(width: 10),
           Expanded(child: Text(text, style: Theme.of(context).textTheme.bodyMedium)),
         ],
@@ -1155,6 +1286,8 @@ class _WeekGrid extends StatelessWidget {
     required this.week,
     required this.members,
     required this.planned,
+    required this.inPeriod,
+    required this.changed,
     required this.positionNames,
     required this.onOpenMember,
     required this.onHours,
@@ -1164,11 +1297,19 @@ class _WeekGrid extends StatelessWidget {
   final List<StaffMember> members;
   final List<PlannedShift> planned;
 
+  /// Dni spoza okresu (np. koniec poprzedniego miesiąca) są wyszarzone i nieklikalne.
+  final bool Function(DateTime day) inPeriod;
+
+  /// Dni z niezapisaną zmianą (klucze [scheduleKey]).
+  final Set<String> changed;
+
   /// Aktualne nazwy stanowisk po identyfikatorze. Po zmianie nazwy stanowiska
   /// lista pokazuje nową, a nie tę zapisaną przy pracowniku.
   final Map<String, String> positionNames;
   final ValueChanged<StaffMember>? onOpenMember;
-  final void Function(StaffMember member, DateTime day, PlannedShift? existing) onHours;
+
+  /// Kliknięcie dnia. Null poza trybem edycji: grafik tylko do odczytu.
+  final void Function(StaffMember member, DateTime day, PlannedShift? existing)? onHours;
 
   @override
   Widget build(BuildContext context) {
@@ -1185,6 +1326,9 @@ class _WeekGrid extends StatelessWidget {
             border: Border(left: BorderSide(color: AppColors.ring)),
             color: isToday ? AppColors.accentTint : null,
           ),
+          foregroundDecoration: inPeriod(days[i])
+              ? null
+              : BoxDecoration(color: AppColors.surface.withValues(alpha: 0.6)),
           child: Column(
             children: [
               Text(_weekdayShort[i], style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
@@ -1275,7 +1419,9 @@ class _WeekGrid extends StatelessWidget {
                       member: m,
                       entry: planned.where((p) => p.memberId == m.id && dateOnly(p.day) == day).firstOrNull,
                       isToday: day == today,
-                      onTap: (existing) => onHours(m, day, existing),
+                      outside: !inPeriod(day),
+                      changed: changed.contains(scheduleKey(m.id, day)),
+                      onTap: onHours == null || !inPeriod(day) ? null : (existing) => onHours!(m, day, existing),
                     ),
                   ),
               ],
@@ -1295,7 +1441,9 @@ class _WeekGrid extends StatelessWidget {
             for (final day in days)
               Expanded(
                 child: Text(
-                  '${planned.where((p) => dateOnly(p.day) == day && p.status == PlannedShiftStatus.accepted && members.any((m) => m.id == p.memberId)).length}',
+                  inPeriod(day)
+                      ? '${planned.where((p) => dateOnly(p.day) == day && p.status == PlannedShiftStatus.accepted && members.any((m) => m.id == p.memberId)).length}'
+                      : '',
                   textAlign: TextAlign.center,
                   style: text.titleSmall?.copyWith(fontFeatures: _tabular),
                 ),
@@ -1314,32 +1462,46 @@ class _DayCell extends StatelessWidget {
     required this.member,
     required this.entry,
     required this.isToday,
+    required this.outside,
+    required this.changed,
     required this.onTap,
   });
 
   final StaffMember member;
   final PlannedShift? entry;
   final bool isToday;
-  final ValueChanged<PlannedShift?> onTap;
+
+  /// Dzień spoza okresu grafiku.
+  final bool outside;
+
+  /// Dzień ma niezapisaną zmianę.
+  final bool changed;
+
+  /// Null: grafik tylko do odczytu (poza trybem edycji).
+  final ValueChanged<PlannedShift?>? onTap;
 
   @override
   Widget build(BuildContext context) {
     final color = staffColors[member.color % staffColors.length];
     final text = Theme.of(context).textTheme;
     final e = entry;
-    return Container(
+    final cell = Container(
       constraints: const BoxConstraints(minHeight: 64),
       decoration: BoxDecoration(
         border: Border(left: BorderSide(color: AppColors.ring)),
         color: isToday ? AppColors.accentTint.withValues(alpha: 0.18) : null,
       ),
       child: InkWell(
-        onTap: () => onTap(e),
+        onTap: onTap == null ? null : () => onTap!(e),
         hoverColor: AppColors.ring,
         child: Padding(
           padding: const EdgeInsets.all(6),
           child: e == null
-              ? Center(child: Glyph(AppIcons.plus, size: 14, color: AppColors.textDisabled))
+              ? Center(
+                  child: onTap == null
+                      ? const SizedBox.shrink()
+                      : Glyph(changed ? AppIcons.trash : AppIcons.plus, size: 14, color: AppColors.textDisabled),
+                )
               : Tooltip(
                   message: [
                     e.status.label,
@@ -1397,36 +1559,68 @@ class _DayCell extends StatelessWidget {
         ),
       ),
     );
+    if (outside) return Opacity(opacity: 0.35, child: cell);
+    if (!changed) return cell;
+    // Niezapisana zmiana: kropka w rogu dnia.
+    return Stack(
+      children: [
+        Positioned.fill(child: cell),
+        Positioned(
+          top: 5,
+          right: 5,
+          child: IgnorePointer(
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: AppColors.accent,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.surface, width: 1.5),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
+/// Wynik okna dnia: zmiana do zapisania albo cofnięcie niezapisanej zmiany.
+typedef _HoursResult = ({ScheduleChange? change, bool undo});
+
 /// Decyzja o zgłoszeniu pracownika (przyjmij, przyjmij ze zmienionymi godzinami, odrzuć, wolne)
-/// albo godziny wpisane przez przełożonego na pusty dzień, albo wolne.
-class _HoursDialog extends ConsumerStatefulWidget {
+/// albo godziny wpisane przez przełożonego na pusty dzień, albo wolne. Nic nie zapisuje: zmiana czeka
+/// w trybie edycji na „Zapisz”.
+class _HoursDialog extends StatefulWidget {
   const _HoursDialog({
-    required this.restaurantId,
     required this.member,
     required this.day,
     required this.existing,
-    required this.week,
+    required this.shown,
+    required this.staged,
   });
 
-  final String restaurantId;
   final StaffMember member;
   final DateTime day;
+
+  /// Wpis zapisany w bazie.
   final PlannedShift? existing;
-  final DateTime week;
+
+  /// Jak dzień wygląda teraz, z niezapisaną zmianą.
+  final PlannedShift? shown;
+
+  /// Dzień ma niezapisaną zmianę, którą można cofnąć.
+  final bool staged;
 
   @override
-  ConsumerState<_HoursDialog> createState() => _HoursDialogState();
+  State<_HoursDialog> createState() => _HoursDialogState();
 }
 
-class _HoursDialogState extends ConsumerState<_HoursDialog> {
+class _HoursDialogState extends State<_HoursDialog> {
   // Wolny dzień nie ma godzin: podpowiadamy zgłoszone przez pracownika albo 10–18.
-  late TimeOfDay _starts = _parse(_initial(widget.existing?.starts, widget.existing?.requestedStarts, '10:00'));
-  late TimeOfDay _ends = _parse(_initial(widget.existing?.ends, widget.existing?.requestedEnds, '18:00'));
-  late final _answer = TextEditingController(text: widget.existing?.answer ?? '');
-  bool _busy = false;
+  late TimeOfDay _starts = _parse(_initial(widget.shown?.starts, widget.existing?.requestedStarts, '10:00'));
+  late TimeOfDay _ends = _parse(_initial(widget.shown?.ends, widget.existing?.requestedEnds, '18:00'));
+  late final _answer = TextEditingController(text: widget.shown?.answer ?? '');
 
   static TimeOfDay _parse(String hm) {
     final p = hm.split(':');
@@ -1438,13 +1632,18 @@ class _HoursDialogState extends ConsumerState<_HoursDialog> {
   static String _initial(String? hours, String? requested, String fallback) =>
       (hours?.isNotEmpty ?? false) ? hours! : (requested ?? fallback);
 
-  void _dayOff() {
-    final first = widget.member.name.split(' ').first;
-    _run(
-      () => ref.read(repositoryProvider).setDayOff(memberId: widget.member.id, day: widget.day, answer: _answer.text),
-      '$first ma wolne ${Fmt.dayShort(widget.day)}. Zobaczy to w aplikacji.',
-    );
-  }
+  void _done(ScheduleAction action, {String? starts, String? ends}) => Navigator.pop<_HoursResult>(context, (
+    change: ScheduleChange(
+      action,
+      memberId: widget.member.id,
+      day: widget.day,
+      id: widget.existing?.id,
+      starts: starts,
+      ends: ends,
+      answer: _answer.text,
+    ),
+    undo: false,
+  ));
 
   bool get _validTimes => _ends.hour * 60 + _ends.minute > _starts.hour * 60 + _starts.minute;
 
@@ -1464,53 +1663,23 @@ class _HoursDialogState extends ConsumerState<_HoursDialog> {
     if (picked != null) setState(() => start ? _starts = picked : _ends = picked);
   }
 
-  Future<void> _run(Future<void> Function() action, String done) async {
-    setState(() => _busy = true);
-    try {
-      await action();
-      ref.invalidate(plannedShiftsProvider((restaurantId: widget.restaurantId, weekStart: widget.week)));
-      if (!mounted) return;
-      Navigator.pop(context);
-      showMessage(context, done);
-    } catch (e) {
-      if (mounted) showError(context, e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
   void _accept() {
     if (!_validTimes) {
       showMessage(context, 'Koniec musi być później niż początek.');
       return;
     }
-    final repo = ref.read(repositoryProvider);
-    final existing = widget.existing;
-    final first = widget.member.name.split(' ').first;
-    if (existing == null) {
-      _run(
-        () => repo.addHours(
-          memberId: widget.member.id,
-          day: widget.day,
-          starts: _fmt(_starts),
-          ends: _fmt(_ends),
-          answer: _answer.text,
-        ),
-        'Godziny dodane do grafiku. $first zobaczy je w aplikacji.',
-      );
-    } else {
-      _run(
-        () => repo.decideHours(existing.id, accept: true, starts: _fmt(_starts), ends: _fmt(_ends), answer: _answer.text),
-        'Przyjęto ${_fmt(_starts)}–${_fmt(_ends)}. $first zobaczy to w aplikacji.',
-      );
-    }
+    _done(
+      widget.existing == null ? ScheduleAction.add : ScheduleAction.accept,
+      starts: _fmt(_starts),
+      ends: _fmt(_ends),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final existing = widget.existing;
-    final repo = ref.read(repositoryProvider);
+    final shown = widget.shown;
     final changedHours = existing?.requestedStarts != null &&
         (existing!.requestedStarts != _fmt(_starts) || existing.requestedEnds != _fmt(_ends));
     Widget timeButton(TimeOfDay t, bool start) => OutlinedButton(
@@ -1532,39 +1701,44 @@ class _HoursDialogState extends ConsumerState<_HoursDialog> {
               style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
             ),
             const SizedBox(height: 12),
-            if (existing != null)
+            if (shown != null)
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: _statusColor(existing.status).withValues(alpha: 0.1),
+                  color: _statusColor(shown.status).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Glyph(_statusIcon(existing.status), size: 18, color: _statusColor(existing.status)),
+                    Glyph(_statusIcon(shown.status), size: 18, color: _statusColor(shown.status)),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            existing.requestedStarts == null
-                                ? (existing.off
+                            shown.requestedStarts == null
+                                ? (shown.off
                                       ? 'Wolne (dał przełożony)'
-                                      : '${existing.status.label}: ${existing.starts}–${existing.ends} (wpisane przez przełożonego)')
-                                : 'Pracownik zgłosił ${existing.requestedStarts}–${existing.requestedEnds}',
+                                      : '${shown.status.label}: ${shown.starts}–${shown.ends} (wpisane przez przełożonego)')
+                                : 'Pracownik zgłosił ${shown.requestedStarts}–${shown.requestedEnds}',
                             style: text.titleSmall?.copyWith(fontFeatures: _tabular),
                           ),
-                          if (existing.requestedStarts != null)
+                          if (shown.requestedStarts != null)
                             Text(
-                              existing.status == PlannedShiftStatus.accepted
-                                  ? 'Przyjęte: ${existing.starts}–${existing.ends}'
-                                  : existing.status.label,
+                              shown.status == PlannedShiftStatus.accepted
+                                  ? 'Przyjęte: ${shown.starts}–${shown.ends}'
+                                  : shown.status.label,
                               style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
                             ),
-                          if (existing.note != null)
-                            Text('„${existing.note}”', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+                          if (shown.note != null)
+                            Text('„${shown.note}”', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+                          if (widget.staged)
+                            Text(
+                              'Niezapisana zmiana. Pracownik zobaczy ją po „Zapisz”.',
+                              style: text.bodySmall?.copyWith(color: AppColors.accent),
+                            ),
                         ],
                       ),
                     ),
@@ -1573,14 +1747,16 @@ class _HoursDialogState extends ConsumerState<_HoursDialog> {
               )
             else
               Text(
-                'Pracownik nie zgłosił godzin na ten dzień. Możesz wpisać je sam (będą od razu przyjęte) albo dać wolne.',
+                widget.staged
+                    ? 'Wpis zostanie usunięty po „Zapisz”.'
+                    : 'Pracownik nie zgłosił godzin na ten dzień. Możesz wpisać je sam (będą przyjęte) albo dać wolne.',
                 style: text.bodySmall?.copyWith(color: AppColors.textMuted),
               ),
             const SizedBox(height: 16),
             Text(
               existing == null
                   ? 'Godziny'
-                  : existing.off
+                  : shown?.off ?? false
                   ? 'Godziny, jeśli jednak ma pracować'
                   : 'Godziny do przyjęcia (możesz je zmienić)',
               style: text.titleSmall,
@@ -1613,27 +1789,27 @@ class _HoursDialogState extends ConsumerState<_HoursDialog> {
         ),
       ),
       actions: [
-        if (existing != null) ...[
+        if (widget.staged)
           TextButton(
-            onPressed: _busy ? null : () => _run(() => repo.deleteHours(existing.id), 'Usunięto z grafiku.'),
+            onPressed: () => Navigator.pop<_HoursResult>(context, (change: null, undo: true)),
+            style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+            child: const Text('Cofnij zmianę'),
+          ),
+        if (existing != null && shown != null)
+          TextButton(
+            onPressed: () => _done(ScheduleAction.delete),
             style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
             child: const Text('Usuń'),
           ),
-          if (existing.status != PlannedShiftStatus.rejected && !existing.off)
-            TextButton(
-              onPressed: _busy
-                  ? null
-                  : () => _run(
-                      () => repo.decideHours(existing.id, accept: false, answer: _answer.text),
-                      'Godziny odrzucone.',
-                    ),
-              style: TextButton.styleFrom(foregroundColor: AppColors.error),
-              child: const Text('Odrzuć'),
-            ),
-        ],
-        if (existing == null || !existing.off)
+        if (existing != null && !existing.off && shown?.status != PlannedShiftStatus.rejected)
+          TextButton(
+            onPressed: () => _done(ScheduleAction.reject),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Odrzuć'),
+          ),
+        if (shown == null || !shown.off)
           TextButton.icon(
-            onPressed: _busy ? null : _dayOff,
+            onPressed: () => _done(ScheduleAction.off),
             style: TextButton.styleFrom(foregroundColor: _off),
             icon: const Glyph(AppIcons.sun, size: 16, color: _off),
             label: const Text('Wolne'),
@@ -1641,10 +1817,10 @@ class _HoursDialogState extends ConsumerState<_HoursDialog> {
         TextButton(
           onPressed: () => Navigator.pop(context),
           style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
-          child: const Text('Anuluj'),
+          child: const Text('Zamknij'),
         ),
         FilledButton(
-          onPressed: _busy ? null : _accept,
+          onPressed: _accept,
           child: Text(
             existing == null || existing.off
                 ? 'Dodaj godziny'

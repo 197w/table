@@ -184,10 +184,25 @@ class WPart {
 
 /// Ile do zapłaty: suma, rabat z kodu rezerwacji i kwota po rabacie.
 class WDue {
-  const WDue({required this.total, required this.discount, required this.due, this.deposit = 0, this.label, this.percent});
+  const WDue({
+    required this.total,
+    required this.discount,
+    required this.due,
+    this.deposit = 0,
+    this.label,
+    this.percent,
+    this.code,
+    this.reservationCode,
+  });
 
   final int total;
   final int discount;
+
+  /// Kod rabatowy wpisany przy rachunku (zastępuje kod z rezerwacji).
+  final String? code;
+
+  /// Kod z rezerwacji gościa.
+  final String? reservationCode;
 
   /// Zadatek z rezerwacji odjęty od rachunku (przy zamknięciu całości).
   final int deposit;
@@ -211,6 +226,27 @@ class WDue {
     due: _toInt(j['due']),
     label: j['discount_label'] as String?,
     percent: j['discount_percent'] == null ? null : _toInt(j['discount_percent']),
+    code: j['discount_code'] as String?,
+    reservationCode: j['reservation_code'] as String?,
+  );
+}
+
+/// Podpowiedź kodu rabatowego: kod lokalu działający dziś.
+class WDiscountHint {
+  const WDiscountHint({required this.code, required this.percent, required this.value, this.note});
+
+  final String code;
+  final bool percent;
+  final int value;
+  final String? note;
+
+  String get valueText => percent ? '−$value%' : '−${(value / 100).toStringAsFixed(2).replaceAll('.', ',')} zł';
+
+  factory WDiscountHint.fromJson(Map<String, dynamic> j) => WDiscountHint(
+    code: j['code'] as String,
+    percent: j['kind'] == 'percent',
+    value: _toInt(j['value']),
+    note: (j['note'] as String?)?.trim().isEmpty ?? true ? null : j['note'] as String,
   );
 }
 
@@ -334,6 +370,25 @@ class WaiterRepository {
   Future<WDue> due(String orderId) => _guard(() async {
     final json = await _db.rpc<Map<String, dynamic>>('panel_order_due', params: {'p_order_id': orderId});
     return WDue.fromJson(json);
+  });
+
+  /// Kod rabatowy przy rachunku; null usuwa wpisany.
+  Future<WDue> setDiscount(String orderId, String? code, String memberId) => _guard(() async {
+    final json = await _db.rpc<Map<String, dynamic>>('panel_order_set_discount', params: {
+      'p_order_id': orderId,
+      'p_code': code,
+      'p_member_id': memberId,
+    });
+    return WDue.fromJson(json);
+  });
+
+  /// Kody rabatowe lokalu działające dziś, pasujące do wpisanego tekstu.
+  Future<List<WDiscountHint>> discountHints(String restaurantId, String query) => _guard(() async {
+    final rows = await _db.rpc<List<dynamic>>(
+      'panel_discount_suggestions',
+      params: {'p_restaurant_id': restaurantId, 'p_query': query},
+    );
+    return [for (final r in rows) WDiscountHint.fromJson(r as Map<String, dynamic>)];
   });
 
   /// Zamknięcie całego rachunku: jedna albo kilka płatności (np. równy podział), z napiwkami.

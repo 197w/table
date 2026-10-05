@@ -80,7 +80,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość: flutter_map + latlong2 (mapa dostawcy, kafelki OpenStreetMap; przed wydaniem w sklepach przejść na płatnego dostawcę kafelków).
   Pracownik: geolocator (pozycja dostawcy w drodze).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0053, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0054, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -131,6 +131,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Godziny pracy (uprawnienie `timesheet`; wcześniej „Czas pracy” w Pracownikach): miesiąc z sumą godzin każdego pracownika
   (rozwijane zmiany) albo tydzień dzień po dniu; poprawka zmiany co do minuty (`panel_save_shift` z `p_editor_id`)
   zapamiętuje godziny sprzed niej (`staff_shifts.original_*`, `edited_at`), poprawione są żółte z różnicą („+0:15”).
+  Okno poprawki ma osobny dzień początku i końca (zmiana może trwać przez północ albo dłużej niż dobę; koniec innego
+  dnia na liście jako „18:09 (2.10)”). Zmiany i grafik odświeżają się na żywo (`TableLive`: kanał zakłada się od nowa
+  po zerwaniu połączenia, a dane i tak co minutę), czas trwającej zmiany rośnie co 30 s (`clockProvider`).
   Kody rabatowe (uprawnienie `discounts`, `discount_codes`): procent albo kwota, ważność od–do, limit użyć, włączanie;
   gość wpisuje kod przy rezerwacji w aplikacji (`guest_check_discount`, `book_table(p_discount_code)`), rabat odejmuje się
   od rachunku stolika (procent od każdej części, kwota raz; odwołanie rezerwacji oddaje użycie). Eksport (uprawnienie
@@ -203,8 +206,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `for_member`; `staff_scan` kończy wtedy zmianę).
   Po 30 sekundach bez ruchu myszy i klawiatury panel sam wylogowuje pracownika i zamyka otwarte okna
   (`IdleLogout` w `MaterialApp.builder`, `kIdleLogoutSeconds`; ostatnie 10 s odlicza górny pasek).
-  Kuchnia i Wydanie nie wylogowują pracownika; pełny dostęp właściciela (`ActingMember.account()`) wylogowuje się
-  wszędzie, także tam. Klawisze tylko liczą ruch, handler zwraca false (nic nie połyka).
+  Kuchnia i Wydanie nie wylogowują pracownika. Pełny dostęp właściciela (`ActingMember.account()`, hasło konta)
+  nie wylogowuje się sam: trwa do „Wyloguj” (tak chce użytkownik; bez odliczania w górnym pasku).
+  Klawisze tylko liczą ruch, handler zwraca false (nic nie połyka).
   Wylogowanie konta restauracji (menu pracownika, ekran bez uprawnień) wymaga hasła konta (`signOutRestaurantAccount`).
 - Uprawnienia (`StaffPermission`, grupy Sala, Zamówienia, Kuchnia, Zespół, Lokal, Wyniki): m.in. `orders_close`
   (zamykanie rachunków), `orders_cancel` (anulowanie pozycji z kuchni), `kitchen_settings`, `staff_logins`,
@@ -217,9 +221,14 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   pracować (`staff_submit_hours`, `staff_delete_hours`, `staff_my_schedule`), przełożony przyjmuje (także ze
   zmienionymi godzinami), odrzuca albo sam wpisuje godziny (`panel_decide_hours`, `panel_add_hours`,
   `panel_delete_hours`) albo daje wolne (`panel_set_day_off`, stan `off` bez godzin, niebieski, ikona słońca).
-  Po decyzji pracownik nie może zmienić tego dnia. Okres, na który pracownicy zgłaszają
+  Po decyzji pracownik nie może zmienić tego dnia. Grafik w panelu jest tylko do odczytu, dopóki ktoś nie kliknie
+  „Edytuj”: wtedy decyzje zbierają się jako niezapisane zmiany (`scheduleDraftProvider`, kropka w dniu, „Cofnij zmianę”)
+  i trafiają do bazy naraz po „Zapisz” (`panel_save_schedule`, 0054, wszystkie albo żadna); pracownicy widzą je dopiero
+  wtedy. Szkic przeżywa przejście do innej zakładki i automatyczne wylogowanie, znika, gdy zaloguje się ktoś inny.
+  Panel pokazuje cały okres lokalu (tydzień, 2 tygodnie albo cały miesiąc tydzień pod tygodniem, `schedulePeriod`,
+  `periodWeeks`), aplikacja Table for employees ten sam okres (okres pobiera od nowa przy otwarciu Grafiku). Okres, na który pracownicy zgłaszają
   godziny, ustawia lokal w „Ustawienia lokalu” → „Grafik pracowników” (`schedule_period`: week, two_weeks, month;
-  pary tygodni liczone od poniedziałku 5.01.2026, `staff_my_jobs` zwraca okres). Czas pracy: „Pracownicy” → „Czas pracy”.
+  pary tygodni liczone od poniedziałku 5.01.2026, `staff_my_jobs` zwraca okres). Czas pracy: Management → „Godziny pracy”.
 - Statystyki (Management) mają zakładki: Sprzedaż (`panel_sales_stats`) i Rezerwacje i goście; okres 7/30/90 dni
   w rzędzie zakładek. Historia zamówień jest osobną zakładką w grupie Rezerwacje.
 - Role w `restaurant_staff`: owner, manager, staff. Kierownik i właściciel zmieniają salę, menu, dane lokalu
@@ -256,7 +265,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (kuchnia zbiła, „do wydania”) → served (kelner zaniósł). Pozycje z `menu_items.show_in_kitchen = false`
   (np. napoje) po wysłaniu od razu są „do wydania”.
   Pozycję wysłaną na kuchnię anuluje tylko kierownik. Zamknięcie rachunku kończy rezerwację gości przy stoliku.
-  Zamknięcie rachunku (0049, `SettleDialog` w panelu, `_SettleSheet` u kelnera): rabat z kodu rezerwacji, zadatek,
+  Zamknięcie rachunku (0049, `SettleDialog` w panelu, `_SettleSheet` u kelnera): rabat z kodu rezerwacji albo kodu
+  wpisanego przy rachunku (0054, `panel_order_set_discount`, zastępuje kod z rezerwacji, użycie liczy się przy zamknięciu;
+  podpowiedzi kodów działających dziś: `panel_discount_suggestions`, `DiscountCodeField`, u kelnera `_DiscountSheet`), zadatek,
   napiwek (kwota albo 5/10/15%), całość jedną formą, równy podział na osoby (każda z formą płatności i napiwkiem) albo
   płatność za wybrane pozycje, które przechodzą na osobny opłacony rachunek „Część rachunku” (`panel_pay_items`);
   `panel_settle_order` zapisuje płatności w `order_payments` (method, amount, tip), `panel_order_due` liczy kwotę do zapłaty.
@@ -277,13 +288,18 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   zmianę albo najdawniej skończył kurs, dostaje pierwszy kurs (`private.dispatch_deliveries`, triggery na zamówieniach
   i zmianach; koniec zmiany oddaje nieodebrane kursy kolejce). W Table for employees zakładka „Dostawy”
   (`staff_deliveries`, `staff_delivery_pickup`, `staff_delivery_done`, `staff_delivery_handover`: oddanie kursu wybranej
-  osobie albo następnemu w kolejce, dopóki zamówienie jest w lokalu). Dostawca na mapie (0053): gdy kurs jest w drodze,
+  osobie albo następnemu w kolejce, dopóki zamówienie jest w lokalu). Łączenie dostaw (0054, `orders.course_id`):
+  w panelu „Połącz z inną dostawą” łączy przyjęte dostawy (jeszcze w lokalu) w jeden kurs jednego dostawcy
+  (`panel_takeaway_merge`, wybór dostawcy albo bez zmiany), „Wyjmij” oddaje dostawę kolejce (`panel_takeaway_split`);
+  kolejka, zmiana dostawcy, oddanie kursu i „Odebrałem” działają na cały kurs, „Dostarczone” na każdy adres osobno.
+  Dostawca na mapie (0053): gdy kurs jest w drodze,
   Table for employees wysyła pozycję (`courier_location.dart`, co ~25 m, najwyżej co 15 s, w tle z powiadomieniem
   „Kurs w drodze”, `staff_courier_position`), gość widzi mapę w szczegółach zamówienia (`courier_map.dart`,
   `guest_courier_position` co 10 s); pozycja znika po zakończeniu kursu.
 - Ekran kuchni (`/kuchnia`, uprawnienie `kitchen`, np. Kucharz): bileciki z pozycjami wysłanymi na kuchnię,
   pogrupowane po rachunku i chwili wysłania, najstarsze pierwsze. Czas liczony od wysłania z sekundami;
   kolory po progach z `restaurants.kitchen_warn_minutes`/`kitchen_late_minutes` (domyślnie 4 i 6 min).
+  Zamówienie na wynos ma na bilecie adres dostawy z imieniem gościa albo „Odbiór osobisty · imię”.
   Stuknięcie pozycji albo „Gotowe” wywołuje `panel_kitchen_set` (sent ↔ ready, `ready_at`); cofnięta pozycja
   ma `recalled_at` i jest niebieska. Anulowane pozycje widać na czerwono. Sterowanie klawiaturą
   (1–9, strzałki, Spacja, Enter, Backspace, F, M, Esc; strzałki przechodzą między bilecikami, Spacja zbija

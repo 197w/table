@@ -1213,10 +1213,18 @@ class OrderDue {
     this.depositGrosze = 0,
     this.label,
     this.percent,
+    this.code,
+    this.reservationCode,
   });
 
   final int totalGrosze;
   final int discountGrosze;
+
+  /// Kod rabatowy wpisany przy rachunku (zastępuje kod z rezerwacji). Null: brak.
+  final String? code;
+
+  /// Kod z rezerwacji gościa (wpisany w aplikacji Table).
+  final String? reservationCode;
 
   /// Zadatek opłacony w aplikacji przy rezerwacji, odjęty od rachunku (tylko przy zamknięciu całości).
   final int depositGrosze;
@@ -1240,6 +1248,31 @@ class OrderDue {
     dueGrosze: _toInt(json['due']),
     label: json['discount_label'] as String?,
     percent: json['discount_percent'] == null ? null : _toInt(json['discount_percent']),
+    code: json['discount_code'] as String?,
+    reservationCode: json['reservation_code'] as String?,
+  );
+}
+
+/// Podpowiedź przy wpisywaniu kodu rabatowego do rachunku: kod lokalu, który działa dziś.
+class DiscountHint {
+  const DiscountHint({required this.code, required this.percent, required this.value, this.note, this.usesLeft});
+
+  final String code;
+  final bool percent;
+  final int value;
+  final String? note;
+
+  /// Ile użyć zostało. Null: bez limitu.
+  final int? usesLeft;
+
+  String get valueText => percent ? '−$value%' : '−${(value / 100).toStringAsFixed(2).replaceAll('.', ',')} zł';
+
+  factory DiscountHint.fromJson(Map<String, dynamic> json) => DiscountHint(
+    code: json['code'] as String,
+    percent: json['kind'] == 'percent',
+    value: _toInt(json['value']),
+    note: (json['note'] as String?)?.ifEmpty,
+    usesLeft: json['uses_left'] == null ? null : _toInt(json['uses_left']),
   );
 }
 
@@ -1578,12 +1611,16 @@ class TakeawayOrder {
     this.courierId,
     this.courierName,
     this.rejectReason,
+    this.courseId,
   });
 
   final String id;
   final OrderKind kind;
   final int number;
   final TakeawayStage stage;
+
+  /// Kurs dostawcy: dostawy połączone w jeden kurs mają ten sam numer i jadą z jednym dostawcą.
+  final String? courseId;
   final DateTime openedAt;
   final String customerName;
   final String customerPhone;
@@ -1605,6 +1642,10 @@ class TakeawayOrder {
   final String? rejectReason;
 
   String get label => '${kind.label} #$number';
+
+  /// Dostawę można połączyć z inną albo wyjąć z kursu, dopóki jest w lokalu.
+  bool get canJoinCourse =>
+      kind == OrderKind.delivery && (stage == TakeawayStage.accepted || stage == TakeawayStage.ready);
 
   List<OrderItem> get active => items.where((i) => i.status != OrderItemStatus.cancelled).toList();
 
@@ -1634,6 +1675,7 @@ class TakeawayOrder {
     courierId: json['courier_member'] as String?,
     courierName: (json['courier'] as Map<String, dynamic>?)?['name'] as String?,
     rejectReason: json['reject_reason'] as String?,
+    courseId: json['course_id'] as String?,
   );
 }
 
@@ -1658,6 +1700,8 @@ class KitchenTicket {
     this.tableId,
     this.waiter,
     this.takeawayLabel,
+    this.address,
+    this.customer,
   });
 
   final String orderId;
@@ -1665,6 +1709,12 @@ class KitchenTicket {
 
   /// „Dostawa #12” albo „Na wynos #12” zamiast stolika.
   final String? takeawayLabel;
+
+  /// Adres dostawy (zamówienie z dostawą), żeby kuchnia wiedziała, dokąd jedzie paczka.
+  final String? address;
+
+  /// Imię gościa przy zamówieniu na wynos (dostawa i odbiór osobisty).
+  final String? customer;
   final DateTime sentAt;
   final List<OrderItem> items;
 
@@ -1695,6 +1745,14 @@ class KitchenTicket {
           takeawayLabel: switch (list.first['orders'] as Map<String, dynamic>?) {
             final o? when o['kind'] != null && o['kind'] != 'dine_in' =>
               '${OrderKind.from(o['kind']).label} #${o['number'] ?? '?'}',
+            _ => null,
+          },
+          address: switch (list.first['orders'] as Map<String, dynamic>?) {
+            final o? when o['kind'] == 'delivery' => (o['delivery_address'] as String?)?.ifEmpty,
+            _ => null,
+          },
+          customer: switch (list.first['orders'] as Map<String, dynamic>?) {
+            final o? when o['kind'] != null && o['kind'] != 'dine_in' => (o['customer_name'] as String?)?.ifEmpty,
             _ => null,
           },
           sentAt: _toDate(list.first['sent_at']),
@@ -2276,6 +2334,117 @@ class PlannedShift {
     note: json['note'] as String?,
     answer: json['answer'] as String?,
   );
+}
+
+/// Okres grafiku lokalu (`restaurants.schedule_period`: week, two_weeks, month) przesunięty o [offset] okresów
+/// od bieżącego. [to] to ostatni dzień okresu. Pary tygodni liczone od poniedziałku 5.01.2026, tak samo jak
+/// w aplikacji Table for employees, żeby panel i telefon pokazywały ten sam okres.
+({DateTime from, DateTime to}) schedulePeriod(String kind, int offset, [DateTime? now]) {
+  final n = now ?? DateTime.now();
+  final today = DateTime(n.year, n.month, n.day);
+  final monday = DateTime(today.year, today.month, today.day - (today.weekday - 1));
+  switch (kind) {
+    case 'month':
+      final from = DateTime(today.year, today.month + offset);
+      return (from: from, to: DateTime(from.year, from.month + 1, 0));
+    case 'two_weeks':
+      // Dni liczone w UTC, bo przejście na czas letni skraca lokalną różnicę o godzinę.
+      final days = DateTime.utc(monday.year, monday.month, monday.day).difference(DateTime.utc(2026, 1, 5)).inDays;
+      final index = (days / 14).floor() + offset;
+      final from = DateTime(2026, 1, 5 + index * 14);
+      return (from: from, to: DateTime(from.year, from.month, from.day + 13));
+    default:
+      final from = DateTime(monday.year, monday.month, monday.day + offset * 7);
+      return (from: from, to: DateTime(from.year, from.month, from.day + 6));
+  }
+}
+
+/// Poniedziałki tygodni, które obejmują okres (miesiąc zaczyna się i kończy w środku tygodnia).
+List<DateTime> periodWeeks(({DateTime from, DateTime to}) period) {
+  final first = DateTime(period.from.year, period.from.month, period.from.day - (period.from.weekday - 1));
+  return [
+    for (var w = first; !w.isAfter(period.to); w = DateTime(w.year, w.month, w.day + 7)) w,
+  ];
+}
+
+/// Co przełożony zmienia w grafiku w trybie edycji. Zmiany czekają na „Zapisz” (`panel_save_schedule`).
+enum ScheduleAction { accept, reject, add, off, delete }
+
+/// Klucz dnia pracownika w grafiku.
+String scheduleKey(String memberId, DateTime day) => '$memberId@${day.year}-${day.month}-${day.day}';
+
+/// Niezapisana zmiana jednego dnia pracownika.
+class ScheduleChange {
+  const ScheduleChange(
+    this.action, {
+    required this.memberId,
+    required this.day,
+    this.id,
+    this.starts,
+    this.ends,
+    this.answer,
+  });
+
+  final ScheduleAction action;
+  final String memberId;
+  final DateTime day;
+
+  /// Wpis w bazie, którego dotyczy zmiana (przyjęcie, odrzucenie, usunięcie).
+  final String? id;
+  final String? starts;
+  final String? ends;
+  final String? answer;
+
+  String get key => scheduleKey(memberId, day);
+
+  Map<String, dynamic> toJson() => {
+    'action': action.name,
+    'id': id,
+    'member_id': memberId,
+    'day': '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}',
+    'starts': starts,
+    'ends': ends,
+    'answer': answer?.trim().ifEmpty,
+  };
+
+  /// Jak dzień będzie wyglądał po zapisie (podgląd w grafiku). Null: dzień bez wpisu.
+  PlannedShift? apply(PlannedShift? entry) {
+    PlannedShift shift(PlannedShiftStatus status, {String starts = '', String ends = ''}) => PlannedShift(
+      id: entry?.id ?? '',
+      memberId: memberId,
+      day: day,
+      starts: starts,
+      ends: ends,
+      status: status,
+      requestedStarts: entry?.requestedStarts,
+      requestedEnds: entry?.requestedEnds,
+      note: entry?.note,
+      answer: answer?.trim().ifEmpty,
+    );
+    return switch (action) {
+      ScheduleAction.delete => null,
+      ScheduleAction.reject => shift(
+        PlannedShiftStatus.rejected,
+        starts: entry?.requestedStarts ?? entry?.starts ?? '',
+        ends: entry?.requestedEnds ?? entry?.ends ?? '',
+      ),
+      ScheduleAction.accept || ScheduleAction.add => shift(
+        PlannedShiftStatus.accepted,
+        starts: starts ?? entry?.starts ?? '',
+        ends: ends ?? entry?.ends ?? '',
+      ),
+      ScheduleAction.off => shift(PlannedShiftStatus.off),
+    };
+  }
+}
+
+/// Tryb edycji grafiku: kto edytuje (numer pracownika, '' dla konta restauracji) i niezapisane zmiany.
+class ScheduleDraft {
+  const ScheduleDraft({this.editing = false, this.editor, this.changes = const {}});
+
+  final bool editing;
+  final String? editor;
+  final Map<String, ScheduleChange> changes;
 }
 
 /// Wyniki pracownika z ostatnich dni: czas pracy i sprzedaż.

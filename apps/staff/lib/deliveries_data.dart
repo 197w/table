@@ -65,11 +65,15 @@ class Course {
     this.note,
     this.testPayment = false,
     this.promisedAt,
+    this.courseId,
   });
 
   final String id;
   final int number;
   final CourseStage stage;
+
+  /// Kilka dostaw połączonych w panelu w jeden kurs ma ten sam numer kursu.
+  final String? courseId;
   final String customerName;
   final String customerPhone;
   final String address;
@@ -110,6 +114,7 @@ class Course {
     testPayment: j['payment_test'] == true,
     totalGrosze: _toInt(j['total_grosze']),
     promisedAt: _date(j['promised_at']),
+    courseId: j['course_id'] as String?,
     items: [for (final i in j['items'] as List? ?? const []) CourseItem.fromJson(i as Map<String, dynamic>)],
   );
 }
@@ -266,3 +271,25 @@ final deliveryBoardProvider = FutureProvider.autoDispose.family<DeliveryBoard, C
   }
   return ref.watch(deliveriesRepositoryProvider).board(key.memberId);
 });
+
+/// Kursy po kolei, z dostawami jednego kursu obok siebie, i dla każdej inne dostawy z jej kursu.
+List<(Course, List<Course>)> groupCourses(List<Course> courses) {
+  final byCourse = <String, List<Course>>{};
+  for (final c in courses) {
+    if (c.courseId != null) byCourse.putIfAbsent(c.courseId!, () => []).add(c);
+  }
+  final seen = <String>{};
+  final ordered = <Course>[];
+  for (final c in courses) {
+    if (seen.contains(c.id)) continue;
+    final group = c.courseId == null ? [c] : byCourse[c.courseId]!;
+    for (final g in group) {
+      seen.add(g.id);
+      ordered.add(g);
+    }
+  }
+  return [
+    for (final c in ordered)
+      (c, [for (final m in c.courseId == null ? const <Course>[] : byCourse[c.courseId]!) if (m.id != c.id) m]),
+  ];
+}

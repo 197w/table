@@ -15,6 +15,19 @@ const editedColor = Color(0xFFE0A21B);
 String _two(int n) => n.toString().padLeft(2, '0');
 String _hm(DateTime t) => '${_two(t.toLocal().hour)}:${_two(t.toLocal().minute)}';
 
+/// Koniec zmiany: sama godzina, a gdy zmiana skończyła się innego dnia, także data („18:09 (2.10)”).
+String _endText(DateTime start, DateTime? end, {String open = 'trwa'}) {
+  if (end == null) return open;
+  final s = start.toLocal();
+  final e = end.toLocal();
+  final sameDay = s.year == e.year && s.month == e.month && s.day == e.day;
+  // Koniec o północy to 24:00 dnia początku, bez daty.
+  final midnight = e.hour == 0 && e.minute == 0 && DateTime(s.year, s.month, s.day + 1) == DateTime(e.year, e.month, e.day);
+  if (sameDay) return _hm(e);
+  if (midnight) return '24:00';
+  return '${_hm(e)} (${e.day}.${_two(e.month)})';
+}
+
 /// Czas trwania jako „7:45”.
 String hoursText(Duration d) {
   final minutes = d.inMinutes;
@@ -44,6 +57,7 @@ Future<void> _deleteShift(BuildContext context, WidgetRef ref, StaffShift shift,
   if (!ok) return;
   try {
     await ref.read(repositoryProvider).deleteShift(shift.id);
+    ref.invalidate(shiftsProvider);
   } catch (e) {
     if (context.mounted) showError(context, e);
   }
@@ -66,6 +80,7 @@ class WorkingNow extends ConsumerWidget {
     if (!ok) return;
     try {
       await ref.read(repositoryProvider).endShift(member.id);
+      ref.invalidate(shiftsProvider);
     } catch (e) {
       if (context.mounted) showError(context, e);
     }
@@ -74,6 +89,7 @@ class WorkingNow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final text = Theme.of(context).textTheme;
+    if (open.isNotEmpty) ref.watch(clockProvider);
     final byId = {for (final m in members) m.id: m};
     return PanelCard(
       title: open.isEmpty ? 'Nikt nie jest teraz w pracy' : 'Teraz w pracy',
@@ -136,6 +152,7 @@ class ShiftTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final text = Theme.of(context).textTheme;
     final s = shift;
+    if (s.isOpen) ref.watch(clockProvider);
     final name = members.where((m) => m.id == s.memberId).firstOrNull?.name ?? 'Były pracownik';
     final muted = text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular);
     final diff = s.editDifference;
@@ -155,7 +172,7 @@ class ShiftTile extends ConsumerWidget {
           SizedBox(
             width: 130,
             child: Text(
-              '${_hm(s.startedAt)} – ${s.endedAt == null ? 'trwa' : _hm(s.endedAt!)}',
+              '${_hm(s.startedAt)} – ${_endText(s.startedAt, s.endedAt)}',
               style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
             ),
           ),
@@ -166,8 +183,7 @@ class ShiftTile extends ConsumerWidget {
                     TextSpan(
                       children: [
                         TextSpan(
-                          text: 'było ${_hm(s.originalStartedAt!)} – '
-                              '${s.originalEndedAt == null ? 'trwa' : _hm(s.originalEndedAt!)}',
+                          text: 'było ${_hm(s.originalStartedAt!)} – ${_endText(s.originalStartedAt!, s.originalEndedAt)}',
                         ),
                         if (diff != null && diff != Duration.zero)
                           TextSpan(
@@ -228,6 +244,8 @@ class Timesheet extends ConsumerWidget {
       data: (all) {
         final shifts = all.where((s) => s.startedAt.isBefore(to) && !s.startedAt.isBefore(week) || s.isOpen).toList();
         final open = all.where((s) => s.isOpen).toList();
+        // Trwające zmiany: suma godzin rośnie co 30 s.
+        if (open.isNotEmpty) ref.watch(clockProvider);
 
         // Zmiany pracownika w danym dniu tygodnia (zmiana liczy się do dnia, w którym się zaczęła).
         List<StaffShift> dayShifts(String memberId, int day) {
@@ -386,6 +404,7 @@ class _MonthHoursState extends ConsumerState<MonthHours> {
       error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(shiftsProvider(query))),
       data: (all) {
         final open = all.where((s) => s.isOpen).toList();
+        if (open.isNotEmpty) ref.watch(clockProvider);
         final shifts = [for (final s in all) if (!s.startedAt.isBefore(from) && s.startedAt.isBefore(to)) s];
         Duration sum(Iterable<StaffShift> list) => list.fold(Duration.zero, (a, s) => a + s.duration);
         final rows = [
@@ -548,12 +567,56 @@ class _ShiftDialogState extends ConsumerState<ShiftDialog> {
   late String? _memberId = widget.shift?.memberId;
   late DateTime _day = dateOnly(widget.shift?.startedAt.toLocal() ?? DateTime.now());
   late TimeOfDay _start = TimeOfDay.fromDateTime(widget.shift?.startedAt.toLocal() ?? DateTime.now());
+
+  /// Dzień końca zmiany. Przy poprawce ten z bazy: zmiana może trwać przez północ, a nawet dłużej niż dobę,
+  /// więc koniec nie może brać dnia z początku zmiany.
+  late DateTime _endDay = _initialEndDay();
   late TimeOfDay? _end = widget.shift?.endedAt == null
       ? (widget.shift == null ? TimeOfDay.fromDateTime(DateTime.now()) : null)
-      : TimeOfDay.fromDateTime(widget.shift!.endedAt!.toLocal());
+      : _endTime(widget.shift!.endedAt!.toLocal());
   bool _busy = false;
 
   String _fmt(TimeOfDay t) => '${_two(t.hour)}:${_two(t.minute)}';
+
+  /// Koniec o północy pokazujemy jako 24:00 poprzedniego dnia.
+  bool _isMidnight(DateTime t) => t.hour == 0 && t.minute == 0;
+
+  DateTime _initialEndDay() {
+    final end = widget.shift?.endedAt?.toLocal();
+    if (end == null) return _day;
+    final day = dateOnly(end);
+    return _isMidnight(end) ? DateTime(day.year, day.month, day.day - 1) : day;
+  }
+
+  TimeOfDay _endTime(DateTime end) =>
+      _isMidnight(end) ? const TimeOfDay(hour: 24, minute: 0) : TimeOfDay.fromDateTime(end);
+
+  DateTime _at(DateTime day, TimeOfDay t) => DateTime(day.year, day.month, day.day, t.hour, t.minute);
+
+  /// Koniec zmiany z wybranego dnia i godziny. Gdy dzień końca to dzień początku, a godzina jest wcześniejsza,
+  /// zmiana trwała przez północ i kończy się następnego dnia.
+  DateTime? get _ended {
+    final end = _end;
+    if (end == null) return null;
+    final ended = _at(_endDay, end);
+    final started = _at(_day, _start);
+    if (_endDay == _day && !ended.isAfter(started)) return ended.add(const Duration(days: 1));
+    return ended;
+  }
+
+  /// Dzień, który pokazuje przycisk końca (po północy już następny).
+  DateTime get _endLabelDay {
+    final ended = _ended;
+    if (ended == null) return _endDay;
+    return _isMidnight(ended) ? DateTime(ended.year, ended.month, ended.day - 1) : dateOnly(ended);
+  }
+
+  Future<DateTime?> _pickDay(DateTime initial) => showDatePicker(
+    context: context,
+    initialDate: initial,
+    firstDate: DateTime.now().subtract(const Duration(days: 365)),
+    lastDate: DateTime.now(),
+  );
 
   Future<void> _save() async {
     final member = _memberId;
@@ -561,13 +624,11 @@ class _ShiftDialogState extends ConsumerState<ShiftDialog> {
       showMessage(context, 'Wybierz pracownika.');
       return;
     }
-    final started = DateTime(_day.year, _day.month, _day.day, _start.hour, _start.minute);
-    DateTime? ended;
-    final end = _end;
-    if (end != null) {
-      ended = DateTime(_day.year, _day.month, _day.day, end.hour, end.minute);
-      // Zmiana po północy kończy się następnego dnia.
-      if (!ended.isAfter(started)) ended = ended.add(const Duration(days: 1));
+    final started = _at(_day, _start);
+    final ended = _ended;
+    if (ended != null && !ended.isAfter(started)) {
+      showMessage(context, 'Koniec zmiany musi być po jej początku.');
+      return;
     }
     setState(() => _busy = true);
     try {
@@ -578,6 +639,7 @@ class _ShiftDialogState extends ConsumerState<ShiftDialog> {
         endedAt: ended,
         editorId: ref.read(panelMemberProvider)?.dbMemberId,
       );
+      ref.invalidate(shiftsProvider);
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) showError(context, e);
@@ -608,34 +670,62 @@ class _ShiftDialogState extends ConsumerState<ShiftDialog> {
               ],
               onChanged: s == null ? (v) => setState(() => _memberId = v) : null,
             ),
-            const SizedBox(height: 14),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: _day,
-                  firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                  lastDate: DateTime.now(),
-                );
-                if (picked != null) setState(() => _day = dateOnly(picked));
-              },
-              icon: const Glyph(AppIcons.calendar, size: 16),
-              label: Text(Fmt.capitalize(Fmt.dayLong(_day))),
-            ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
+            Text('Początek', style: text.labelLarge?.copyWith(color: AppColors.textMuted)),
+            const SizedBox(height: 6),
             Row(
               children: [
                 Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final picked = await _pickDay(_day);
+                      if (picked == null) return;
+                      // Dzień końca przesuwa się razem z początkiem, żeby długość zmiany została.
+                      final days = DateTime.utc(picked.year, picked.month, picked.day)
+                          .difference(DateTime.utc(_day.year, _day.month, _day.day))
+                          .inDays;
+                      setState(() {
+                        _day = dateOnly(picked);
+                        _endDay = DateTime(_endDay.year, _endDay.month, _endDay.day + days);
+                      });
+                    },
+                    icon: const Glyph(AppIcons.calendar, size: 16),
+                    label: Text(Fmt.capitalize(Fmt.dayShort(_day))),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 110,
                   child: OutlinedButton(
                     onPressed: () async {
                       final t = await pickTime(context, initial: _start, minuteStep: 1, title: 'Początek zmiany');
                       if (t != null) setState(() => _start = t);
                     },
-                    child: Text('Od ${_fmt(_start)}', style: const TextStyle(fontFeatures: _tabular)),
+                    child: Text(_fmt(_start), style: const TextStyle(fontFeatures: _tabular)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text('Koniec', style: text.labelLarge?.copyWith(color: AppColors.textMuted)),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _end == null
+                        ? null
+                        : () async {
+                            final picked = await _pickDay(_endLabelDay);
+                            if (picked != null) setState(() => _endDay = dateOnly(picked));
+                          },
+                    icon: const Glyph(AppIcons.calendar, size: 16),
+                    label: Text(_end == null ? 'Zmiana trwa' : Fmt.capitalize(Fmt.dayShort(_endLabelDay))),
                   ),
                 ),
                 const SizedBox(width: 10),
-                Expanded(
+                SizedBox(
+                  width: 110,
                   child: OutlinedButton(
                     onPressed: () async {
                       final t = await pickTime(
@@ -647,11 +737,24 @@ class _ShiftDialogState extends ConsumerState<ShiftDialog> {
                       );
                       if (t != null) setState(() => _end = t);
                     },
-                    child: Text(_end == null ? 'Trwa' : 'Do ${_fmt(_end!)}', style: const TextStyle(fontFeatures: _tabular)),
+                    child: Text(_end == null ? 'Trwa' : _fmt(_end!), style: const TextStyle(fontFeatures: _tabular)),
                   ),
                 ),
               ],
             ),
+            if (_ended case final ended?)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Text(
+                  ended.isAfter(_at(_day, _start))
+                      ? 'Czas zmiany: ${hoursText(ended.difference(_at(_day, _start)))} h'
+                      : 'Koniec zmiany musi być po jej początku.',
+                  style: text.bodyMedium?.copyWith(
+                    fontFeatures: _tabular,
+                    color: ended.isAfter(_at(_day, _start)) ? AppColors.textMuted : AppColors.error,
+                  ),
+                ),
+              ),
             if (s != null && s.isEdited) ...[
               const SizedBox(height: 12),
               Container(
@@ -661,8 +764,8 @@ class _ShiftDialogState extends ConsumerState<ShiftDialog> {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  'Przed poprawką: ${_hm(s.originalStartedAt!)} – '
-                  '${s.originalEndedAt == null ? 'trwała' : _hm(s.originalEndedAt!)}',
+                  'Przed poprawką: ${Fmt.dayShort(s.originalStartedAt!)} ${_hm(s.originalStartedAt!)} – '
+                  '${_endText(s.originalStartedAt!, s.originalEndedAt, open: 'trwała')}',
                   style: text.bodyMedium?.copyWith(color: editedColor, fontFeatures: _tabular),
                 ),
               ),

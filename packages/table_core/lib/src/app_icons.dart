@@ -78,6 +78,7 @@ abstract final class AppIcons {
   static const arrowLeft = AppIconData('assets/icons/arrow-left.svg');
   static const arrowUpRight = AppIconData('assets/icons/arrow-up-right.svg');
   static const arrowsClockwise = AppIconData('assets/icons/arrows-clockwise.svg');
+  static const arrowsMerge = AppIconData('assets/icons/arrows-merge.svg');
   static const arrowsSplit = AppIconData('assets/icons/arrows-split.svg');
   static const briefcase = AppIconData('assets/icons/briefcase.svg');
   static const cashRegister = AppIconData('assets/icons/cash-register.svg');

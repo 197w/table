@@ -820,6 +820,39 @@ class _Ticket extends StatelessWidget {
               ],
             ),
           ),
+          // Zamówienie na wynos: adres dostawy albo imię gościa przy odbiorze osobistym.
+          if (ticket.address != null || ticket.customer != null)
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 10, 20, 10),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceRaised.withValues(alpha: 0.5),
+                border: Border(bottom: BorderSide(color: AppColors.ring)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Glyph(
+                      ticket.address != null ? AppIcons.mapPin : AppIcons.shoppingBag,
+                      size: 20,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      ticket.address != null
+                          ? [ticket.address!, ?ticket.customer].join(' · ')
+                          : 'Odbiór osobisty · ${ticket.customer}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: text.titleMedium?.copyWith(fontSize: 19, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Column(

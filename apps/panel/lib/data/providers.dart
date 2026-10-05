@@ -679,18 +679,70 @@ final staffCodesProvider = FutureProvider.autoDispose
       (ref, id) => (ref..cacheFor()).watch(repositoryProvider).staffCodes(id),
     );
 
-/// Grafik na żywo: przyjęcie albo zmiana godzin w aplikacji od razu widać w panelu.
-class ScheduleLive extends Notifier<int> {
-  ScheduleLive(this.restaurantId);
+/// Tabela lokalu na żywo. Stan to wersja: każda zmiana w tabeli ją podbija, więc zależne listy pobierają dane
+/// od nowa. Po zerwaniu połączenia (uśpiony komputer, brak internetu) kanał zakłada się od nowa i dociąga
+/// zmiany z przerwy; na wszelki wypadek dane odświeżają się też co minutę.
+abstract class TableLive extends Notifier<int> {
+  TableLive(this.restaurantId);
 
   final String restaurantId;
 
+  /// Tabela w bazie, np. `staff_shifts`.
+  String get table;
+
+  /// Ostatnia wersja dla tabeli i lokalu. Przeżywa ponowne połączenie (obiekt buduje się wtedy od nowa).
+  static final _versions = <String, int>{};
+
   @override
   int build() {
-    final stop = ref.watch(repositoryProvider).watchSchedule(restaurantId, () => state++);
-    ref.onDispose(stop);
-    return 0;
+    final key = '$table:$restaurantId';
+    var alive = true;
+    var offline = false;
+    Timer? retry;
+
+    void bump() {
+      if (!alive) return;
+      final next = state + 1;
+      _versions[key] = next;
+      state = next;
+    }
+
+    final stop = ref.watch(repositoryProvider).watchTable(
+      table,
+      restaurantId,
+      onChange: bump,
+      onLive: (live) {
+        if (!alive) return;
+        if (live) {
+          if (offline) bump();
+          offline = false;
+        } else {
+          offline = true;
+          retry ??= Timer(const Duration(seconds: 5), () {
+            if (alive) ref.invalidateSelf();
+          });
+        }
+      },
+    );
+    final poll = Timer.periodic(const Duration(minutes: 1), (_) => bump());
+    ref.onDispose(() {
+      alive = false;
+      retry?.cancel();
+      poll.cancel();
+      stop();
+    });
+    final version = (_versions[key] ?? 0) + 1;
+    _versions[key] = version;
+    return version;
   }
+}
+
+/// Grafik na żywo: przyjęcie albo zmiana godzin w aplikacji od razu widać w panelu.
+class ScheduleLive extends TableLive {
+  ScheduleLive(super.restaurantId);
+
+  @override
+  String get table => 'staff_schedule';
 }
 
 final scheduleLiveProvider = NotifierProvider.autoDispose.family<ScheduleLive, int, String>(ScheduleLive.new);
@@ -704,6 +756,39 @@ final plannedShiftsProvider = FutureProvider.autoDispose.family<List<PlannedShif
     to: DateTime(q.weekStart.year, q.weekStart.month, q.weekStart.day + 7),
   );
 });
+
+typedef ScheduleQuery = ({String restaurantId, DateTime from, DateTime to});
+
+/// Grafik lokalu od [from] do [to] (bez tego dnia), na żywo.
+final scheduleRangeProvider = FutureProvider.autoDispose.family<List<PlannedShift>, ScheduleQuery>((ref, q) {
+  ref.cacheFor();
+  ref.watch(scheduleLiveProvider(q.restaurantId));
+  return ref.watch(repositoryProvider).plannedShifts(q.restaurantId, from: q.from, to: q.to);
+});
+
+/// Edycja grafiku: zmiany zbierają się tutaj i trafiają do bazy dopiero po „Zapisz”. Przeżywają przejście
+/// do innej zakładki i automatyczne wylogowanie; gdy zaloguje się ktoś inny, znikają (`StaffScreen`).
+class ScheduleDraftNotifier extends Notifier<ScheduleDraft> {
+  ScheduleDraftNotifier(this.restaurantId);
+
+  final String restaurantId;
+
+  @override
+  ScheduleDraft build() => const ScheduleDraft();
+
+  void start(String editor) => state = ScheduleDraft(editing: true, editor: editor);
+
+  void put(ScheduleChange change) =>
+      state = ScheduleDraft(editing: true, editor: state.editor, changes: {...state.changes, change.key: change});
+
+  void undo(String key) =>
+      state = ScheduleDraft(editing: true, editor: state.editor, changes: {...state.changes}..remove(key));
+
+  void close() => state = const ScheduleDraft();
+}
+
+final scheduleDraftProvider =
+    NotifierProvider.family<ScheduleDraftNotifier, ScheduleDraft, String>(ScheduleDraftNotifier.new);
 
 /// Statystyki pracownika za miesiąc (pierwszy dzień miesiąca).
 typedef MemberStatsQuery = ({String memberId, DateTime month});
@@ -765,19 +850,18 @@ final effectivePermissionsProvider = Provider.autoDispose.family<Set<String>?, S
 
 typedef ShiftQuery = ({String restaurantId, DateTime from, DateTime to});
 
-/// Zmiany na żywo: skan w aplikacji Table for employees od razu widać w panelu.
-class ShiftsLive extends Notifier<int> {
-  ShiftsLive(this.restaurantId);
-
-  final String restaurantId;
+/// Zmiany na żywo: skan w aplikacji Table for employees i koniec zmiany od razu widać w panelu.
+class ShiftsLive extends TableLive {
+  ShiftsLive(super.restaurantId);
 
   @override
-  int build() {
-    final stop = ref.watch(repositoryProvider).watchShifts(restaurantId, () => state++);
-    ref.onDispose(stop);
-    return 0;
-  }
+  String get table => 'staff_shifts';
 }
+
+/// Zegar dla trwających zmian: co 30 sekund, żeby czas pracy „trwa” rósł na ekranie.
+final clockProvider = StreamProvider.autoDispose<DateTime>(
+  (ref) => Stream.periodic(const Duration(seconds: 30), (_) => DateTime.now()),
+);
 
 final shiftsLiveProvider = NotifierProvider.autoDispose.family<ShiftsLive, int, String>(ShiftsLive.new);
 

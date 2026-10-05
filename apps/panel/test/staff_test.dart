@@ -33,6 +33,27 @@ void main() {
     expect(KitchenTicket.fromRows([_row('a')]).single.waiter, isNull);
   });
 
+  test('bilecik zamówienia z dostawą pokazuje adres, a odbiór imię gościa', () {
+    Map<String, dynamic> takeaway(String kind) => {
+      ..._row('a'),
+      'orders': {
+        'table_id': null,
+        'kind': kind,
+        'number': 7,
+        'delivery_address': kind == 'delivery' ? 'Lipowa 12/3, Białystok' : null,
+        'customer_name': 'Ola',
+      },
+    };
+    final delivery = KitchenTicket.fromRows([takeaway('delivery')]).single;
+    expect(delivery.takeawayLabel, 'Dostawa #7');
+    expect(delivery.address, 'Lipowa 12/3, Białystok');
+    expect(delivery.customer, 'Ola');
+    final pickup = KitchenTicket.fromRows([takeaway('pickup')]).single;
+    expect(pickup.address, isNull);
+    expect(pickup.customer, 'Ola');
+    expect(KitchenTicket.fromRows([_row('a')]).single.customer, isNull);
+  });
+
   test('zgłoszenie godzin przyjęte ze zmienionymi godzinami', () {
     final shift = PlannedShift.fromJson({
       'id': 's1',

@@ -506,7 +506,7 @@ enum _SettleMode {
   final String label;
 }
 
-/// Zamknięcie rachunku: rabat z kodu rezerwacji, napiwek i płatność całości, równy podział na osoby
+/// Zamknięcie rachunku: rabat (kod wpisany przy rachunku albo z rezerwacji), napiwek i płatność całości, równy podział na osoby
 /// albo płatność za wybrane pozycje (reszta zostaje na stoliku). Zwraca true, gdy rachunek jest zamknięty.
 class _SettleSheet extends ConsumerStatefulWidget {
   const _SettleSheet({required this.restaurantId, required this.orderId, required this.memberId});
@@ -557,6 +557,33 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
     for (final l in order.lines)
       if (l.status != LineStatus.cancelled) (_picked[l.id] ?? 0) * l.unitPriceGrosze,
   ].fold(0, (a, b) => a + b);
+
+  /// Kod rabatowy przy rachunku: wybór w arkuszu z podpowiedziami albo usunięcie (null).
+  Future<void> _discount({required bool remove}) async {
+    String? code;
+    if (!remove) {
+      code = await showModalBottomSheet<String>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        builder: (_) => _DiscountSheet(restaurantId: widget.restaurantId),
+      );
+      if (code == null || !mounted) return;
+    }
+    setState(() => _busy = true);
+    try {
+      await ref.read(waiterRepositoryProvider).setDiscount(widget.orderId, code, widget.memberId);
+      ref.invalidate(orderDueProvider(widget.orderId));
+      if (mounted) {
+        showMessage(context, code == null ? 'Kod usunięty z rachunku.' : 'Kod $code dodany do rachunku.', tone: ToastTone.success);
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   Future<void> _run(Future<void> Function() action, {required bool closes, required String message}) async {
     setState(() => _busy = true);
@@ -744,6 +771,33 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
                   ],
                 ),
             if (_mode == _SettleMode.items) const SizedBox(height: 8),
+            // Kod rabatowy przy rachunku (zastępuje kod z rezerwacji).
+            if (due?.code case final code?)
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+                decoration: BoxDecoration(color: AppColors.accentTint, borderRadius: BorderRadius.circular(12)),
+                child: Row(
+                  children: [
+                    Glyph(AppIcons.sealPercent, size: 18, color: AppColors.accent),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text('Kod ${due?.label ?? code}', style: text.bodyMedium)),
+                    TextButton(
+                      onPressed: _busy ? null : () => _discount(remove: true),
+                      child: const Text('Usuń'),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: OutlinedButton.icon(
+                  onPressed: _busy ? null : () => _discount(remove: false),
+                  icon: const Glyph(AppIcons.sealPercent, size: 18),
+                  label: Text(due?.reservationCode != null ? 'Inny kod rabatowy' : 'Kod rabatowy'),
+                ),
+              ),
             money('Suma', order.total, color: AppColors.textMuted),
             if (due != null && due.discount > 0) money('Rabat ${due.label ?? ''}', -due.discount, color: AppColors.accent),
             if (due != null && due.deposit > 0) money('Zadatek z rezerwacji', -due.deposit, color: AppColors.accent),
@@ -1210,6 +1264,123 @@ class _OptionsSheetState extends State<_OptionsSheet> {
 
 /// Odstęp od dołu ekranu dla okien wysuwanych z dołu: klawiatura albo przyciski systemu
 /// Androida (aplikacja rysuje się pod nimi), zależnie od tego, co jest wyżej.
+/// Wpisanie kodu rabatowego z podpowiedziami kodów lokalu, które działają dziś. Zwraca kod.
+class _DiscountSheet extends ConsumerStatefulWidget {
+  const _DiscountSheet({required this.restaurantId});
+
+  final String restaurantId;
+
+  @override
+  ConsumerState<_DiscountSheet> createState() => _DiscountSheetState();
+}
+
+class _DiscountSheetState extends ConsumerState<_DiscountSheet> {
+  final _code = TextEditingController();
+  Timer? _debounce;
+  List<WDiscountHint> _hints = const [];
+  int _request = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load('');
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _code.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load(String query) async {
+    final request = ++_request;
+    try {
+      final hints = await ref.read(waiterRepositoryProvider).discountHints(widget.restaurantId, query);
+      if (mounted && request == _request) setState(() => _hints = hints);
+    } catch (_) {
+      // Bez podpowiedzi kod i tak można wpisać.
+    }
+  }
+
+  void _changed(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 250), () => _load(value));
+  }
+
+  void _submit(String value) {
+    final code = value.trim().toUpperCase();
+    if (code.isNotEmpty) Navigator.pop(context, code);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + _bottomInset(context)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Kod rabatowy', style: text.titleLarge),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _code,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.characters,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]')),
+                    LengthLimitingTextInputFormatter(20),
+                  ],
+                  onChanged: _changed,
+                  onSubmitted: _submit,
+                  decoration: const InputDecoration(hintText: 'Wpisz albo wybierz z listy'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              FilledButton(
+                onPressed: () => _submit(_code.text),
+                style: _compact,
+                child: const Text('Dodaj'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_hints.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                _code.text.isEmpty ? 'Lokal nie ma teraz aktywnych kodów.' : 'Brak pasujących kodów.',
+                style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+              ),
+            )
+          else
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 280),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final h in _hints)
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                      leading: Glyph(AppIcons.sealPercent, size: 20, color: AppColors.accent),
+                      title: Text(h.code, style: text.titleSmall),
+                      subtitle: h.note == null ? null : Text(h.note!, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      trailing: Text(h.valueText, style: text.titleSmall?.copyWith(color: AppColors.accent)),
+                      onTap: () => Navigator.pop(context, h.code),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 double _bottomInset(BuildContext context) {
   final keyboard = MediaQuery.viewInsetsOf(context).bottom;
   final system = MediaQuery.viewPaddingOf(context).bottom;

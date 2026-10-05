@@ -6,6 +6,7 @@ import 'package:table_core/table_core.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
+import 'discount_code_field.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -24,7 +25,7 @@ enum _Mode {
 /// VAT zawarty w kwocie brutto przy danej stawce.
 int _vatOf(int gross, int rate) => (gross * rate / (100 + rate)).round();
 
-/// Zamknięcie rachunku: rabat z kodu rezerwacji, napiwek i płatność całości, równy podział na osoby
+/// Zamknięcie rachunku: rabat (kod wpisany przy rachunku albo z rezerwacji), napiwek i płatność całości, równy podział na osoby
 /// albo płatność za wybrane pozycje (reszta zostaje na stoliku). Zwraca true, gdy rachunek jest zamknięty.
 class SettleDialog extends ConsumerStatefulWidget {
   const SettleDialog({super.key, required this.restaurantId, required this.orderId, required this.title});
@@ -310,7 +311,9 @@ class _SettleDialogState extends ConsumerState<SettleDialog> {
               if (_mode == _Mode.items) itemPicker else itemsList,
               const SizedBox(height: 8),
               Divider(height: 1, color: AppColors.ring),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
+              DiscountCodeField(restaurantId: widget.restaurantId, orderId: widget.orderId, due: due),
+              const SizedBox(height: 12),
               money('Suma', order.totalGrosze, color: AppColors.textMuted),
               if (due != null && due.discountGrosze > 0)
                 money('Rabat ${due.label ?? ''}', -due.discountGrosze, color: AppColors.accent),

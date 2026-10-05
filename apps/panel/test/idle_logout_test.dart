@@ -35,25 +35,40 @@ void main() {
     }
   }
 
-  testWidgets('pełny dostęp właściciela wylogowuje się po 30 s bez ruchu', (tester) async {
+  testWidgets('pracownik wylogowuje się po 30 s bez ruchu', (tester) async {
     final container = await pump(tester, PanelRoutes.reservations);
-    container.read(panelMemberProvider.notifier).signIn(ActingMember.account());
+    container.read(panelMemberProvider.notifier).signIn(_anna);
     await wait(tester, kIdleLogoutSeconds - 1);
-    expect(container.read(panelMemberProvider)?.isAccount, isTrue);
+    expect(container.read(panelMemberProvider)?.name, 'Anna Kowalska');
+    expect(container.read(idleSecondsProvider), kIdleLogoutSeconds - 1);
     await wait(tester, 2);
     expect(container.read(panelMemberProvider), isNull);
     await tester.pump(const Duration(seconds: 6));
   });
 
-  testWidgets('w Kuchni pracownik zostaje, a właściciel się wylogowuje', (tester) async {
+  testWidgets('pełny dostęp właściciela nie wylogowuje się sam', (tester) async {
+    final container = await pump(tester, PanelRoutes.reservations);
+    container.read(panelMemberProvider.notifier).signIn(ActingMember.account());
+    await wait(tester, kIdleLogoutSeconds * 3);
+    expect(container.read(panelMemberProvider)?.isAccount, isTrue);
+    // Bez odliczania w górnym pasku.
+    expect(container.read(idleSecondsProvider), 0);
+  });
+
+  testWidgets('po właścicielu pracownik znowu wylogowuje się po 30 s', (tester) async {
+    final container = await pump(tester, PanelRoutes.orders);
+    container.read(panelMemberProvider.notifier).signIn(ActingMember.account());
+    await wait(tester, kIdleLogoutSeconds + 5);
+    container.read(panelMemberProvider.notifier).signIn(_anna);
+    await wait(tester, kIdleLogoutSeconds + 1);
+    expect(container.read(panelMemberProvider), isNull);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('w Kuchni pracownik zostaje', (tester) async {
     final container = await pump(tester, PanelRoutes.kitchen);
     container.read(panelMemberProvider.notifier).signIn(_anna);
     await wait(tester, kIdleLogoutSeconds + 5);
     expect(container.read(panelMemberProvider)?.name, 'Anna Kowalska');
-
-    container.read(panelMemberProvider.notifier).signIn(ActingMember.account());
-    await wait(tester, kIdleLogoutSeconds + 1);
-    expect(container.read(panelMemberProvider), isNull);
-    await tester.pump(const Duration(seconds: 6));
   });
 }
