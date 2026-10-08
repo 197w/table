@@ -841,13 +841,29 @@ class _Ticket extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      ticket.address != null
-                          ? [ticket.address!, ?ticket.customer].join(' · ')
-                          : 'Odbiór osobisty · ${ticket.customer}',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: text.titleMedium?.copyWith(fontSize: 19, fontWeight: FontWeight.w500),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          ticket.address != null
+                              ? [ticket.address!, ?ticket.customer].join(' · ')
+                              : 'Odbiór osobisty · ${ticket.customer}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: text.titleMedium?.copyWith(fontSize: 19, fontWeight: FontWeight.w500),
+                        ),
+                        if (ticket.note != null)
+                          Text(
+                            ticket.note!,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.titleSmall?.copyWith(
+                              fontSize: 17,
+                              color: const Color(0xFFD99A15),
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ],
@@ -925,7 +941,11 @@ class _Line extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final details = item.details;
+    // Wariant i dodatki szarym tekstem; zmiany składników osobno i wyraźnie, żeby kuchnia ich nie przeoczyła.
+    final details = [
+      ?item.variant,
+      for (final a in item.addons) '+ ${a.name.toLowerCase()}',
+    ].join(', ').ifEmpty;
     final cancelled = item.status == OrderItemStatus.cancelled;
     final struck = done || cancelled;
     final decoration = struck ? TextDecoration.lineThrough : null;
@@ -1015,6 +1035,33 @@ class _Line extends StatelessWidget {
                             color: AppColors.textMuted,
                             decoration: decoration,
                           ),
+                        ),
+                      ),
+                    if (item.changes.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (final c in item.changes)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: (c.extra ? AppColors.accent : _late).withValues(alpha: 0.16),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  '${c.extra ? 'WIĘCEJ' : 'BEZ'} ${c.name.toLowerCase()}',
+                                  style: text.titleLarge?.copyWith(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w600,
+                                    color: c.extra ? AppColors.accent : _late,
+                                    decoration: decoration,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     if (item.note != null)

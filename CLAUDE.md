@@ -80,7 +80,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość: flutter_map + latlong2 (mapa dostawcy, kafelki OpenStreetMap; przed wydaniem w sklepach przejść na płatnego dostawcę kafelków).
   Pracownik: geolocator (pozycja dostawcy w drodze).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0054, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0055, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -260,7 +260,21 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   z kontem w oknie pracownika („Konto w panelu”, `panel_link_staff_account`). Konto obsługi ma wtedy uprawnienia
   stanowiska (`private.has_permission`, `panel_my_permissions`). Kierownik i właściciel mają wszystkie.
 - Zamówienia (`orders`, `order_items`, tylko Pro): zakładka „Zamówienia” widoczna z uprawnieniem `orders`.
-  Rachunek otwiera się przy pierwszej pozycji, jeden otwarty na stolik. Cenę, nazwę i VAT liczy baza z menu
+  Rachunek otwiera się przy pierwszej pozycji, jeden otwarty na stolik. Przy stoliku i w nagłówku rachunku czas
+  oczekiwania na danie (od najstarszej pozycji wysłanej na kuchnię, a niewydanej; `PanelOrder.waitingSince`, kolory
+  według progów kuchni). Lista stolików ma na górze „Nowe zamówienie” (`NewOrderDialog`, `takeaway_form.dart`):
+  w lokalu (wybór stolika), na dostawę albo na odbiór. Dostawa i odbiór (0055) wymagają imienia i nazwiska albo nazwy
+  lokalu, telefonu, „opłacone” albo „do opłacenia”, a dostawa też ulicy, numeru domu/lokalu i miasta; NIP i komentarze
+  (do zamówienia oraz tylko dla pracowników, `staff_note`) są opcjonalne. Po telefonie widać liczbę i kwotę wcześniejszych
+  zamówień i „Uzupełnij dane” z ostatniego (`panel_customer_lookup`, ostatnie 9 cyfr `private.phone_key`).
+  Zamówienie powstaje jako szkic (`fulfillment = 'draft'`, `panel_takeaway_create`, sekcja „Na wynos · do przyjęcia”
+  na liście stolików), dania dokłada się z menu, „Przyjmij” z czasem przygotowania wysyła je na kuchnię i do Dostaw
+  (`panel_takeaway_submit`), „Porzuć” je usuwa (`panel_takeaway_discard`), dane zmienia `panel_takeaway_update`.
+  Opłacone z panelu to `payment_choice = 'prepaid'` (dostawca nic nie pobiera, w zamknięciu płatność „inne”).
+  Przy daniu (przycisk ołówka na kafelku albo okno wariantów) zmiana składników: „Bez / Normalnie / Więcej” dla składników
+  receptury i dowolny inny składnik (`order_items.changes`, `p_changes` w `panel_add_order_item`); kuchnia pokazuje
+  „BEZ …” i „WIĘCEJ …” wyraźnie, magazyn nie zdejmuje składnika „bez”, a „więcej” zdejmuje podwójnie. To samo u kelnera
+  w Table for employees. Suwaki list mają odstęp od rogów kart (`scrollbarTheme` w `PanelTheme`). Cenę, nazwę i VAT liczy baza z menu
   (`panel_add_order_item`), zapis tylko przez funkcje `panel_*`. Stany pozycji: new → sent (kuchnia) → ready
   (kuchnia zbiła, „do wydania”) → served (kelner zaniósł). Pozycje z `menu_items.show_in_kitchen = false`
   (np. napoje) po wysłaniu od razu są „do wydania”.
@@ -273,7 +287,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `panel_settle_order` zapisuje płatności w `order_payments` (method, amount, tip), `panel_order_due` liczy kwotę do zapłaty.
   Stare `panel_close_order` zostało dla starszych wersji: gotówka, karta albo inne. Karty podarunkowe usunięte (0038): nie ma ich
   w panelu ani w aplikacji Table, `purchase_gift_card` zwraca błąd, dane kart i stare płatności kartą zostają w bazie
-  (historia zamówień i sprzedaż je pokazują). Historia zamkniętych rachunków: „Rezerwacje” → „Historia zamówień”.
+  (historia zamówień i sprzedaż je pokazują). Historia zamkniętych rachunków: „Rezerwacje” → „Historia zamówień”,
+  z podziałem Wszystkie / W restauracji / Dostawy / Odbiór osobisty (`HistoryKind`, z liczbą) i kwotą z dostawą.
   Paragon fiskalny jeszcze na kasie, integrację z drukarką fiskalną robimy później.
 - Dostawy i odbiór osobisty (0039, 0040, tylko Pro): lokal włącza je w „Ustawienia lokalu” → „Dostawa i odbiór”
   (`delivery_enabled`, `pickup_enabled`, `takeaway_cash` = gotówka, opłata, minimalne zamówienie, obszar). Gość zamawia

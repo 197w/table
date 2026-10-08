@@ -59,4 +59,36 @@ void main() {
     expect([for (final m in grouped.first.$2) m.number], [13]);
     expect(grouped.last.$2, isEmpty);
   });
+
+  test('kurs z panelu: firma, komentarz dla pracowników, opłacone i zmiany składników', () {
+    final c = Course.fromJson({
+      'id': 'o9',
+      'number': 9,
+      'fulfillment': 'ready',
+      'customer_name': 'Jan Kowalski',
+      'customer_company': 'Biuro ABC',
+      'customer_phone': '600100200',
+      'delivery_address': 'Lipowa 14/3, Białystok',
+      'staff_note': 'Stały klient',
+      'payment_choice': 'prepaid',
+      'payment_status': 'paid',
+      'total_grosze': 4400,
+      'items': [
+        {
+          'name': 'Pizza',
+          'quantity': 1,
+          'addons': [],
+          'changes': [
+            {'name': 'Cebula', 'kind': 'without'},
+            {'name': 'Ser', 'kind': 'extra'},
+          ],
+        },
+      ],
+    });
+    expect(c.company, 'Biuro ABC');
+    expect(c.staffNote, 'Stały klient');
+    expect(c.prepaid, isTrue);
+    expect(c.cash, isFalse);
+    expect(c.items.single.details, 'bez: cebula, więcej: ser');
+  });
 }

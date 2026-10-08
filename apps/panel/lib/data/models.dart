@@ -1376,11 +1376,15 @@ class OrderItem {
     this.sentAt,
     this.readyAt,
     this.recalledAt,
+    this.changes = const [],
   });
 
   final String id;
   final String orderId;
   final String? menuItemId;
+
+  /// Zmiany składników („bez cebuli”, „więcej sera”).
+  final List<ItemChange> changes;
   final String name;
   final String? variant;
   final List<MenuOption> addons;
@@ -1405,11 +1409,12 @@ class OrderItem {
 
   int get totalGrosze => unitPriceGrosze * quantity;
 
-  /// Wariant i dodatki w jednym wierszu, np. „Duża, + skwarki”.
+  /// Wariant, dodatki i zmiany składników w jednym wierszu, np. „Duża, + skwarki, bez: cebula”.
   String? get details {
     final parts = [
       ?variant,
       for (final a in addons) '+ ${a.name.toLowerCase()}',
+      for (final c in changes) c.label,
     ];
     return parts.isEmpty ? null : parts.join(', ');
   }
@@ -1432,6 +1437,7 @@ class OrderItem {
       sentAt: _toDateOrNull(json['sent_at']),
       readyAt: _toDateOrNull(json['ready_at']),
       recalledAt: _toDateOrNull(json['recalled_at']),
+      changes: ItemChange.listFrom(json['changes']),
     );
   }
 }
@@ -1456,10 +1462,24 @@ class PanelOrder {
     this.depositGrosze = 0,
     this.tipGrosze = 0,
     this.payments = const [],
+    this.deliveryFeeGrosze = 0,
+    this.customerName,
+    this.customerCompany,
+    this.customerPhone,
+    this.deliveryAddress,
   });
 
   /// Zadatek z rezerwacji odjęty od rachunku.
   final int depositGrosze;
+
+  /// Opłata za dostawę (zamówienie z dostawą).
+  final int deliveryFeeGrosze;
+
+  /// Klient zamówienia na wynos.
+  final String? customerName;
+  final String? customerCompany;
+  final String? customerPhone;
+  final String? deliveryAddress;
 
   final String id;
 
@@ -1497,6 +1517,20 @@ class PanelOrder {
 
   /// Pozycje zbite przez kuchnię, które kelner ma zanieść.
   int get ready => items.where((i) => i.status == OrderItemStatus.ready).length;
+
+  /// Od kiedy stolik czeka na jedzenie: najstarsza pozycja wysłana na kuchnię, a jeszcze niewydana.
+  DateTime? get waitingSince {
+    DateTime? since;
+    for (final i in items) {
+      if (i.status != OrderItemStatus.sent && i.status != OrderItemStatus.ready) continue;
+      final at = i.sentAt ?? i.createdAt;
+      if (since == null || at.isBefore(since)) since = at;
+    }
+    return since;
+  }
+
+  /// Kwota do zapłaty z dostawą (historia zamówień).
+  int get billGrosze => totalGrosze + deliveryFeeGrosze;
 
   /// Pozycje, które liczą się do rachunku.
   List<OrderItem> get active =>
@@ -1546,6 +1580,11 @@ class PanelOrder {
         for (final p in (json['order_payments'] as List? ?? const []))
           PaymentPart.fromJson(p as Map<String, dynamic>),
       ],
+      deliveryFeeGrosze: _toInt(json['delivery_fee_grosze']),
+      customerName: json['customer_name'] as String?,
+      customerCompany: json['customer_company'] as String?,
+      customerPhone: json['customer_phone'] as String?,
+      deliveryAddress: json['delivery_address'] as String?,
     );
   }
 
@@ -1568,6 +1607,7 @@ enum OrderKind {
 
 /// Etap zamówienia na wynos.
 enum TakeawayStage {
+  draft('draft', 'Szkic'),
   awaitingPayment('awaiting_payment', 'Czeka na płatność'),
   placed('placed', 'Nowe'),
   accepted('accepted', 'W przygotowaniu'),
@@ -1612,12 +1652,38 @@ class TakeawayOrder {
     this.courierName,
     this.rejectReason,
     this.courseId,
+    this.company,
+    this.nip,
+    this.staffNote,
+    this.street,
+    this.house,
+    this.city,
+    this.prepaid = false,
+    this.fromApp = true,
   });
 
   final String id;
   final OrderKind kind;
   final int number;
   final TakeawayStage stage;
+
+  /// Nazwa lokalu albo firmy (zamiast imienia i nazwiska) i NIP, z zamówienia przyjętego w panelu.
+  final String? company;
+  final String? nip;
+
+  /// Komentarz widoczny tylko dla pracowników.
+  final String? staffNote;
+
+  /// Adres z formularza panelu (ulica, numer domu albo lokalu, miasto).
+  final String? street;
+  final String? house;
+  final String? city;
+
+  /// Opłacone wcześniej (zamówienie przyjęte w panelu, np. przelewem); dostawca nic nie pobiera.
+  final bool prepaid;
+
+  /// Złożone przez gościa w aplikacji Table (inaczej przyjęte w panelu).
+  final bool fromApp;
 
   /// Kurs dostawcy: dostawy połączone w jeden kurs mają ten sam numer i jadą z jednym dostawcą.
   final String? courseId;
@@ -1676,6 +1742,133 @@ class TakeawayOrder {
     courierName: (json['courier'] as Map<String, dynamic>?)?['name'] as String?,
     rejectReason: json['reject_reason'] as String?,
     courseId: json['course_id'] as String?,
+    company: (json['customer_company'] as String?)?.ifEmpty,
+    nip: (json['customer_nip'] as String?)?.ifEmpty,
+    staffNote: (json['staff_note'] as String?)?.ifEmpty,
+    street: json['address_street'] as String?,
+    house: json['address_house'] as String?,
+    city: json['address_city'] as String?,
+    prepaid: json['payment_choice'] == 'prepaid',
+    fromApp: json['guest_id'] != null,
+  );
+
+  /// Imię i nazwisko (bez nazwy firmy, gdy jest tylko ona).
+  String? get personName => company != null && customerName == company ? null : customerName.ifEmpty;
+
+  /// Dane do formularza zamówienia z panelu.
+  TakeawayCustomer get customer => TakeawayCustomer(
+    name: personName ?? '',
+    company: company ?? '',
+    nip: nip ?? '',
+    phone: customerPhone,
+    street: street ?? '',
+    house: house ?? '',
+    city: city ?? '',
+    note: note ?? '',
+    staffNote: staffNote ?? '',
+    paid: prepaid || (paid && !cash),
+  );
+}
+
+/// Dane klienta zamówienia przyjmowanego w panelu. Wymagane: imię i nazwisko albo nazwa lokalu, telefon,
+/// opłacone albo do opłacenia, a przy dostawie ulica, numer domu albo lokalu i miasto.
+class TakeawayCustomer {
+  const TakeawayCustomer({
+    this.name = '',
+    this.company = '',
+    this.nip = '',
+    this.phone = '',
+    this.street = '',
+    this.house = '',
+    this.city = '',
+    this.note = '',
+    this.staffNote = '',
+    this.paid,
+  });
+
+  final String name;
+  final String company;
+  final String nip;
+  final String phone;
+  final String street;
+  final String house;
+  final String city;
+
+  /// Komentarz do zamówienia (dla kuchni i dostawcy) i komentarz tylko dla pracowników.
+  final String note;
+  final String staffNote;
+
+  /// Null: jeszcze nie wybrano.
+  final bool? paid;
+
+  static String digits(String v) => v.replaceAll(RegExp(r'[^0-9]'), '');
+
+  /// Czego brakuje, żeby przyjąć zamówienie. Pusta lista: wszystko jest.
+  List<String> missing(OrderKind kind) => [
+    if (name.trim().isEmpty && company.trim().isEmpty) 'imię i nazwisko albo nazwa lokalu',
+    if (digits(phone).length < 9) 'telefon',
+    if (nip.trim().isNotEmpty && digits(nip).length != 10) 'NIP (10 cyfr)',
+    if (kind == OrderKind.delivery && street.trim().isEmpty) 'ulica',
+    if (kind == OrderKind.delivery && house.trim().isEmpty) 'numer domu albo lokalu',
+    if (kind == OrderKind.delivery && city.trim().isEmpty) 'miasto',
+    if (paid == null) 'opłacone czy do opłacenia',
+  ];
+
+  Map<String, dynamic> toJson() => {
+    'name': name.trim(),
+    'company': company.trim(),
+    'nip': digits(nip),
+    'phone': phone.trim(),
+    'street': street.trim(),
+    'house': house.trim(),
+    'city': city.trim(),
+    'note': note.trim(),
+    'staff_note': staffNote.trim(),
+    'paid': paid,
+  };
+}
+
+/// Wcześniejsze zamówienia klienta po numerze telefonu i dane z ostatniego.
+class CustomerLookup {
+  const CustomerLookup({
+    this.orders = 0,
+    this.spentGrosze = 0,
+    this.lastAt,
+    this.name,
+    this.company,
+    this.nip,
+    this.street,
+    this.house,
+    this.city,
+    this.address,
+  });
+
+  final int orders;
+  final int spentGrosze;
+  final DateTime? lastAt;
+  final String? name;
+  final String? company;
+  final String? nip;
+  final String? street;
+  final String? house;
+  final String? city;
+
+  /// Adres z zamówienia z aplikacji (bez rozbicia na ulicę i numer).
+  final String? address;
+
+  bool get known => name != null || company != null;
+
+  factory CustomerLookup.fromJson(Map<String, dynamic> json) => CustomerLookup(
+    orders: _toInt(json['orders']),
+    spentGrosze: _toInt(json['spent_grosze']),
+    lastAt: _toDateOrNull(json['last_at']),
+    name: (json['name'] as String?)?.ifEmpty,
+    company: (json['company'] as String?)?.ifEmpty,
+    nip: (json['nip'] as String?)?.ifEmpty,
+    street: (json['street'] as String?)?.ifEmpty,
+    house: (json['house'] as String?)?.ifEmpty,
+    city: (json['city'] as String?)?.ifEmpty,
+    address: (json['address'] as String?)?.ifEmpty,
   );
 }
 
@@ -1702,10 +1895,14 @@ class KitchenTicket {
     this.takeawayLabel,
     this.address,
     this.customer,
+    this.note,
   });
 
   final String orderId;
   final String? tableId;
+
+  /// Komentarz do zamówienia na wynos i komentarz tylko dla pracowników, razem.
+  final String? note;
 
   /// „Dostawa #12” albo „Na wynos #12” zamiast stolika.
   final String? takeawayLabel;
@@ -1752,7 +1949,15 @@ class KitchenTicket {
             _ => null,
           },
           customer: switch (list.first['orders'] as Map<String, dynamic>?) {
-            final o? when o['kind'] != null && o['kind'] != 'dine_in' => (o['customer_name'] as String?)?.ifEmpty,
+            final o? when o['kind'] != null && o['kind'] != 'dine_in' =>
+              (o['customer_company'] as String?)?.ifEmpty ?? (o['customer_name'] as String?)?.ifEmpty,
+            _ => null,
+          },
+          note: switch (list.first['orders'] as Map<String, dynamic>?) {
+            final o? when o['kind'] != null && o['kind'] != 'dine_in' => [
+              ?(o['delivery_note'] as String?)?.ifEmpty,
+              ?(o['staff_note'] as String?)?.ifEmpty,
+            ].join(' · ').ifEmpty,
             _ => null,
           },
           sentAt: _toDate(list.first['sent_at']),
@@ -2647,7 +2852,7 @@ class SalesStats {
   }
 }
 
-extension _IfEmpty on String {
+extension IfEmptyText on String {
   /// Pusty napis zamienia na null.
   String? get ifEmpty => isEmpty ? null : this;
 }
@@ -2692,11 +2897,14 @@ enum InventoryUnit {
 
 /// Składnik w recepturze dania: ile zużywa jedna porcja, w jednostce [unit].
 class RecipeLine {
-  const RecipeLine({required this.itemId, required this.amount, required this.unit});
+  const RecipeLine({required this.itemId, required this.amount, required this.unit, this.name});
 
   final String itemId;
   final double amount;
   final InventoryUnit unit;
+
+  /// Nazwa składnika z inwentaryzacji (do zmian przy nabijaniu: „bez cebuli”).
+  final String? name;
 
   Map<String, dynamic> toJson() => {'item_id': itemId, 'amount': amount, 'unit': unit.key};
 
@@ -2704,7 +2912,29 @@ class RecipeLine {
     itemId: json['item_id'] as String,
     amount: _toDouble(json['amount']) ?? 0,
     unit: InventoryUnit.fromKey(json['unit']),
+    name: (json['inventory_items'] as Map<String, dynamic>?)?['name'] as String?,
   );
+}
+
+/// Zmiana składnika w pozycji: „bez cebuli” albo „więcej sera”. [itemId] tylko dla składnika z receptury.
+class ItemChange {
+  const ItemChange(this.name, {required this.extra, this.itemId});
+
+  final String name;
+
+  /// true: więcej składnika, false: bez składnika.
+  final bool extra;
+  final String? itemId;
+
+  String get label => extra ? 'więcej: ${name.toLowerCase()}' : 'bez: ${name.toLowerCase()}';
+
+  Map<String, dynamic> toJson() => {'name': name, 'kind': extra ? 'extra' : 'without', 'item_id': itemId};
+
+  static List<ItemChange> listFrom(Object? json) => [
+    for (final c in json is List ? json : const [])
+      if (c is Map && c['name'] is String)
+        ItemChange(c['name'] as String, extra: c['kind'] == 'extra', itemId: c['item_id'] as String?),
+  ];
 }
 
 /// Stan składnika teraz: ostatnia inwentaryzacja, w której go policzono, minus sprzedaż od tej chwili.

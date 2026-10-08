@@ -637,6 +637,20 @@ final takeawayOrdersProvider = FutureProvider.autoDispose.family<List<TakeawayOr
 );
 
 /// Dostawcy na zmianie. Odświeżają się razem z zamówieniami (koniec kursu zwalnia dostawcę).
+/// Szkice zamówień na wynos z panelu (Zamówienia), na żywo razem z rachunkami.
+final takeawayDraftsProvider = FutureProvider.autoDispose.family<List<TakeawayOrder>, String>((ref, id) {
+  ref.watch(ordersLiveProvider(id));
+  return ref.watch(repositoryProvider).takeawayDrafts(id);
+});
+
+typedef LookupQuery = ({String restaurantId, String phone});
+
+/// Wcześniejsze zamówienia klienta po telefonie (ostatnie 9 cyfr).
+final customerLookupProvider = FutureProvider.autoDispose.family<CustomerLookup, LookupQuery>((ref, q) {
+  ref.cacheFor(const Duration(minutes: 2));
+  return ref.watch(repositoryProvider).customerLookup(q.restaurantId, q.phone);
+});
+
 final couriersProvider = FutureProvider.autoDispose.family<List<Courier>, String>(
   (ref, id) {
     ref.cacheFor();

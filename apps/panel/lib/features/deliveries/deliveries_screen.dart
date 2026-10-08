@@ -365,10 +365,38 @@ class _OrderCardState extends State<_OrderCard> {
               ],
             ),
             const SizedBox(height: 8),
-            Text('${o.customerName} · ${o.customerPhone}', style: text.bodyMedium?.copyWith(fontFeatures: _tabular)),
+            if (o.company != null)
+              Text(
+                [o.company!, if (o.nip != null) 'NIP ${o.nip}'].join(' · '),
+                style: text.labelLarge?.copyWith(fontFeatures: _tabular),
+              ),
+            Text(
+              '${o.personName ?? o.customerName} · ${o.customerPhone}',
+              style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
+            ),
             if (o.address != null) Text(o.address!, style: text.titleSmall),
             if (o.note != null)
               Text(o.note!, style: text.bodySmall?.copyWith(color: _cashColor, fontStyle: FontStyle.italic)),
+            if (o.staffNote != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Glyph(AppIcons.lock, size: 12, color: AppColors.textMuted),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        o.staffNote!,
+                        style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 10),
             for (final i in o.active)
               Padding(
@@ -381,12 +409,18 @@ class _OrderCardState extends State<_OrderCard> {
             const SizedBox(height: 8),
             Row(
               children: [
-                Glyph(o.cash ? AppIcons.money : AppIcons.creditCard, size: 16, color: o.cash ? _cashColor : AppColors.accent),
+                Glyph(
+                  o.prepaid ? AppIcons.checkCircle : (o.cash ? AppIcons.money : AppIcons.creditCard),
+                  size: 16,
+                  color: o.cash && !o.prepaid ? _cashColor : AppColors.accent,
+                ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    o.cash
-                        ? 'Gotówka ${delivery ? 'u dostawcy' : 'przy odbiorze'}'
+                    o.prepaid
+                        ? 'Opłacone wcześniej (przyjęte w panelu)'
+                        : o.cash
+                        ? 'Do zapłaty ${delivery ? 'u dostawcy' : 'przy odbiorze'}'
                         : 'Karta online · opłacone${o.testPayment ? ' (test)' : ''}',
                     style: muted,
                   ),
@@ -508,7 +542,7 @@ class _OrderCardState extends State<_OrderCard> {
           FilledButton(
             style: FilledButton.styleFrom(minimumSize: compact),
             onPressed: busy ? null : widget.onHanded,
-            child: Text(o.cash ? 'Wydane · pobrano ${Fmt.price(o.totalGrosze)}' : 'Wydane gościowi'),
+            child: Text(o.cash && !o.prepaid ? 'Wydane · pobrano ${Fmt.price(o.totalGrosze)}' : 'Wydane gościowi'),
           ),
         ];
       case TakeawayStage.ready:

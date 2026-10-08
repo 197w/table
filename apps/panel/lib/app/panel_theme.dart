@@ -44,6 +44,12 @@ abstract final class PanelTheme {
 
     return base.copyWith(
       visualDensity: VisualDensity.standard,
+      // Suwaki list mają odstęp od końców i boku, żeby nie wychodziły poza zaokrąglone rogi kart.
+      scrollbarTheme: const ScrollbarThemeData(
+        mainAxisMargin: 12,
+        crossAxisMargin: 4,
+        radius: Radius.circular(8),
+      ),
       // Im większy napis, tym ciaśniejsze odstępy liter. Tekst zwykły zostaje.
       textTheme: base.textTheme.copyWith(
         displaySmall: base.textTheme.displaySmall?.copyWith(letterSpacing: -1),

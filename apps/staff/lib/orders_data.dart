@@ -41,6 +41,33 @@ class WOption {
   ];
 }
 
+/// Zmiana składnika w pozycji: „bez cebuli” albo „więcej sera”. [itemId] tylko dla składnika z receptury.
+class WChange {
+  const WChange(this.name, {required this.extra, this.itemId});
+
+  final String name;
+  final bool extra;
+  final String? itemId;
+
+  String get label => extra ? 'więcej: ${name.toLowerCase()}' : 'bez: ${name.toLowerCase()}';
+
+  Map<String, dynamic> toJson() => {'name': name, 'kind': extra ? 'extra' : 'without', 'item_id': itemId};
+
+  static List<WChange> listFrom(Object? v) => [
+    for (final c in v is List ? v : const [])
+      if (c is Map && c['name'] is String)
+        WChange(c['name'] as String, extra: c['kind'] == 'extra', itemId: c['item_id'] as String?),
+  ];
+}
+
+/// Składnik z receptury dania (z inwentaryzacji): do zmian „bez” i „więcej”.
+class WIngredient {
+  const WIngredient(this.id, this.name);
+
+  final String id;
+  final String name;
+}
+
 class WMenuItem {
   const WMenuItem({
     required this.id,
@@ -50,6 +77,7 @@ class WMenuItem {
     required this.addons,
     required this.available,
     this.description,
+    this.ingredients = const [],
   });
 
   final String id;
@@ -59,6 +87,7 @@ class WMenuItem {
   final List<WOption> variants;
   final List<WOption> addons;
   final bool available;
+  final List<WIngredient> ingredients;
 
   bool get hasOptions => variants.isNotEmpty || addons.isNotEmpty;
 
@@ -76,6 +105,11 @@ class WMenuItem {
     variants: WOption.listFrom(j['variants']),
     addons: WOption.listFrom(j['addons']),
     available: j['available'] != false,
+    ingredients: [
+      for (final r in (j['menu_item_ingredients'] as List? ?? const []).cast<Map<String, dynamic>>())
+        if ((r['inventory_items'] as Map<String, dynamic>?)?['name'] case final String name)
+          WIngredient(r['item_id'] as String, name),
+    ],
   );
 }
 
@@ -109,12 +143,14 @@ class WLine {
     this.variant,
     this.addons = const [],
     this.note,
+    this.changes = const [],
   });
 
   final String id;
   final String name;
   final String? variant;
   final List<WOption> addons;
+  final List<WChange> changes;
   final int unitPriceGrosze;
   final int quantity;
   final String? note;
@@ -124,7 +160,7 @@ class WLine {
   int get total => unitPriceGrosze * quantity;
 
   String? get details {
-    final parts = [?variant, for (final a in addons) '+ ${a.name.toLowerCase()}'];
+    final parts = [?variant, for (final a in addons) '+ ${a.name.toLowerCase()}', for (final c in changes) c.label];
     return parts.isEmpty ? null : parts.join(', ');
   }
 
@@ -133,6 +169,7 @@ class WLine {
     name: j['name'] as String,
     variant: j['variant'] as String?,
     addons: WOption.listFrom(j['addons']),
+    changes: WChange.listFrom(j['changes']),
     unitPriceGrosze: _toInt(j['unit_price_grosze']),
     quantity: _toInt(j['quantity']),
     note: j['note'] as String?,
@@ -279,7 +316,10 @@ class WaiterRepository {
   Future<List<WMenuSection>> menu(String restaurantId) => _guard(() async {
     final rows = await _db
         .from('menu_sections')
-        .select('id, name, position, menu_items(id, name, description, price_grosze, variants, addons, available, position)')
+        .select(
+          'id, name, position, menu_items(id, name, description, price_grosze, variants, addons, available, position, '
+          'menu_item_ingredients(item_id, inventory_items(name)))',
+        )
         .eq('restaurant_id', restaurantId)
         .order('position');
     return [
@@ -333,6 +373,7 @@ class WaiterRepository {
     List<String> addons = const [],
     int quantity = 1,
     String? note,
+    List<WChange> changes = const [],
   }) => _guard(
     () => _db.rpc<String>('panel_add_order_item', params: {
       'p_order_id': orderId,
@@ -343,6 +384,7 @@ class WaiterRepository {
       'p_note': note,
       'p_course': 1,
       'p_member_id': memberId,
+      if (changes.isNotEmpty) 'p_changes': [for (final c in changes) c.toJson()],
     }),
   );
 

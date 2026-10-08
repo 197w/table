@@ -429,7 +429,7 @@ class PanelRepository {
             'id, name, position, '
             'menu_items(id, section_id, name, description, price_grosze, allergens, position, '
             'variants, addons, vat_rate, available, show_in_kitchen, photo_url, '
-            'menu_item_ingredients(item_id, amount, unit))',
+            'menu_item_ingredients(item_id, amount, unit, inventory_items(name)))',
           )
           .eq('restaurant_id', restaurantId)
           .order('position');
@@ -608,17 +608,85 @@ class PanelRepository {
       final rows = await _db
           .from('orders')
           .select(
-            'id, kind, number, fulfillment, opened_at, closed_at, customer_name, customer_phone, delivery_address, '
-            'delivery_note, delivery_fee_grosze, payment_choice, payment_status, payment_test, promised_at, accepted_at, '
-            'picked_up_at, courier_member, reject_reason, course_id, courier:staff_members!orders_courier_member_fkey(name), '
-            'order_items(*)',
+            _takeawayColumns,
           )
           .eq('restaurant_id', restaurantId)
           .neq('kind', 'dine_in')
-          .neq('fulfillment', 'awaiting_payment')
+          // Szkice z panelu są w Zamówieniach, a zamówienia czekające na płatność kartą jeszcze nie istnieją.
+          .not('fulfillment', 'in', '(awaiting_payment,draft)')
           .or('closed_at.is.null,closed_at.gte.${since.toUtc().toIso8601String()}')
           .order('opened_at');
       return rows.map(TakeawayOrder.fromJson).toList();
+    });
+  }
+
+  static const _takeawayColumns =
+      'id, kind, number, fulfillment, opened_at, closed_at, customer_name, customer_company, customer_nip, '
+      'customer_phone, delivery_address, address_street, address_house, address_city, delivery_note, staff_note, '
+      'delivery_fee_grosze, payment_choice, payment_status, payment_test, promised_at, accepted_at, picked_up_at, '
+      'courier_member, reject_reason, course_id, guest_id, courier:staff_members!orders_courier_member_fkey(name), '
+      'order_items(*)';
+
+  /// Szkice zamówień na wynos przyjmowanych w panelu: dane klienta są, dania się dokłada.
+  Future<List<TakeawayOrder>> takeawayDrafts(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db
+          .from('orders')
+          .select(_takeawayColumns)
+          .eq('restaurant_id', restaurantId)
+          .eq('fulfillment', 'draft')
+          .eq('status', 'open')
+          .order('opened_at');
+      return rows.map(TakeawayOrder.fromJson).toList();
+    });
+  }
+
+  /// Nowe zamówienie na dostawę albo odbiór z panelu (szkic). Zwraca jego numer w bazie.
+  Future<String> createTakeaway(String restaurantId, OrderKind kind, TakeawayCustomer customer, {String? memberId}) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>('panel_takeaway_create', params: {
+        'p_restaurant_id': restaurantId,
+        'p_kind': kind.db,
+        'p_customer': customer.toJson(),
+        'p_member_id': memberId,
+      });
+      return json['id'] as String;
+    });
+  }
+
+  Future<void> updateTakeaway(String orderId, TakeawayCustomer customer, {String? memberId}) {
+    return _guard(
+      () => _db.rpc<void>('panel_takeaway_update', params: {
+        'p_order_id': orderId,
+        'p_customer': customer.toJson(),
+        'p_member_id': memberId,
+      }),
+    );
+  }
+
+  /// „Przyjmij”: szkic idzie na kuchnię i do Dostaw z czasem przygotowania.
+  Future<void> submitTakeaway(String orderId, int minutes, {String? memberId}) {
+    return _guard(
+      () => _db.rpc<void>('panel_takeaway_submit', params: {
+        'p_order_id': orderId,
+        'p_minutes': minutes,
+        'p_member_id': memberId,
+      }),
+    );
+  }
+
+  Future<void> discardTakeaway(String orderId) {
+    return _guard(() => _db.rpc<void>('panel_takeaway_discard', params: {'p_order_id': orderId}));
+  }
+
+  /// Wcześniejsze zamówienia klienta po numerze telefonu.
+  Future<CustomerLookup> customerLookup(String restaurantId, String phone) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>(
+        'panel_customer_lookup',
+        params: {'p_restaurant_id': restaurantId, 'p_phone': phone},
+      );
+      return CustomerLookup.fromJson(json);
     });
   }
 
@@ -677,7 +745,7 @@ class PanelRepository {
     return _guard(() async {
       final rows = await _db
           .from('order_items')
-          .select('*, menu_items(show_in_kitchen), member:staff_members(name), orders!inner(table_id, status, kind, number, delivery_address, customer_name, opener:staff_members!opened_by_member(name))')
+          .select('*, menu_items(show_in_kitchen), member:staff_members(name), orders!inner(table_id, status, kind, number, delivery_address, customer_name, customer_company, delivery_note, staff_note, opener:staff_members!opened_by_member(name))')
           .eq('restaurant_id', restaurantId)
           .inFilter('status', ['sent', 'ready', 'cancelled'])
           .eq('orders.status', 'open')
@@ -1255,6 +1323,7 @@ class PanelRepository {
           .select(
             'id, table_id, reservation_id, note, status, opened_at, closed_at, '
             'payment_method, gift_card_grosze, kind, number, discount_grosze, discount_label, deposit_grosze, tip_grosze, '
+            'delivery_fee_grosze, customer_name, customer_company, customer_phone, delivery_address, '
             'order_items(*), order_payments(method, amount_grosze, tip_grosze)',
           )
           .eq('restaurant_id', restaurantId)
@@ -1296,6 +1365,7 @@ class PanelRepository {
     String? note,
     int course = 1,
     String? memberId,
+    List<ItemChange> changes = const [],
   }) {
     return _guard(
       () => _db.rpc<String>(
@@ -1309,6 +1379,7 @@ class PanelRepository {
           'p_note': note,
           'p_course': course,
           'p_member_id': memberId,
+          if (changes.isNotEmpty) 'p_changes': [for (final c in changes) c.toJson()],
         },
       ),
     );

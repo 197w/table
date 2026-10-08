@@ -142,4 +142,31 @@ void main() {
     expect(hint.note, isNull);
     expect(WDiscountHint.fromJson({'code': 'PIEC', 'kind': 'amount', 'value': 500}).valueText, '−5,00 zł');
   });
+
+  test('menu kelnera ze składnikami i zmiany w pozycji', () {
+    final item = WMenuItem.fromJson({
+      'id': 'm1',
+      'name': 'Pizza',
+      'price_grosze': 3600,
+      'variants': [],
+      'addons': [],
+      'menu_item_ingredients': [
+        {'item_id': 'inv1', 'inventory_items': {'name': 'Cebula'}},
+        {'item_id': 'inv2', 'inventory_items': null},
+      ],
+    });
+    expect(item.ingredients.single.name, 'Cebula');
+    const change = WChange('Cebula', extra: false, itemId: 'inv1');
+    expect(change.toJson(), {'name': 'Cebula', 'kind': 'without', 'item_id': 'inv1'});
+    final line = WLine.fromJson({
+      'id': 'l1',
+      'name': 'Pizza',
+      'unit_price_grosze': 3600,
+      'quantity': 1,
+      'status': 'new',
+      'created_at': '2026-10-08T10:00:00Z',
+      'changes': [change.toJson()],
+    });
+    expect(line.details, 'bez: cebula');
+  });
 }

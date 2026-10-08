@@ -23,7 +23,26 @@ enum _Filter {
   };
 }
 
-/// Historia zamówień: zamknięte rachunki z wybranego dnia. Podsumowanie obrotu widzi tylko osoba
+/// Gdzie było zamówienie: w restauracji, z dostawą albo z odbiorem osobistym.
+enum HistoryKind {
+  all('Wszystkie', AppIcons.receipt),
+  dineIn('W restauracji', AppIcons.forkKnife),
+  delivery('Dostawy', AppIcons.moped),
+  pickup('Odbiór osobisty', AppIcons.shoppingBag);
+
+  const HistoryKind(this.label, this.icon);
+  final String label;
+  final AppIconData icon;
+
+  bool matches(PanelOrder o) => switch (this) {
+    all => true,
+    dineIn => o.kind == OrderKind.dineIn,
+    delivery => o.kind == OrderKind.delivery,
+    pickup => o.kind == OrderKind.pickup,
+  };
+}
+
+/// Historia zamówień: zamknięte rachunki z wybranego dnia, z podziałem na restaurację, dostawy i odbiór osobisty. Podsumowanie obrotu widzi tylko osoba
 /// z uprawnieniem „Przychody” (kierownik, właściciel); kelner widzi same rachunki.
 class OrderHistoryScreen extends ConsumerStatefulWidget {
   const OrderHistoryScreen({super.key, this.embedded = false});
@@ -38,6 +57,7 @@ class OrderHistoryScreen extends ConsumerStatefulWidget {
 class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
   DateTime _day = dateOnly(DateTime.now());
   _Filter _filter = _Filter.all;
+  HistoryKind _kind = HistoryKind.all;
   String? _selectedId;
 
   void _shift(int days) => setState(() {
@@ -93,6 +113,30 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     final tables = ref.watch(tablesProvider(restaurant.id)).value ?? const <DiningTable>[];
     final labels = {for (final t in tables) ?t.id: '${t.isSeat ? 'Miejsce' : 'Stolik'} ${t.label}'};
     String labelOf(PanelOrder o) => o.takeawayLabel ?? labels[o.tableId] ?? 'Bez stolika';
+    final all = async.value ?? const <PanelOrder>[];
+
+    // Podział na restaurację, dostawy i odbiór osobisty (z liczbą zamówień), obok filtr opłacone/anulowane.
+    Widget filters() => Row(
+      children: [
+        SegmentedTabs<HistoryKind>(
+          options: [
+            for (final k in HistoryKind.values)
+              (k, k == HistoryKind.all ? k.label : '${k.label} (${all.where(k.matches).length})'),
+          ],
+          selected: _kind,
+          onChanged: (k) => setState(() {
+            _kind = k;
+            _selectedId = null;
+          }),
+        ),
+        const SizedBox(width: 12),
+        SegmentedTabs<_Filter>(
+          options: [for (final f in _Filter.values) (f, f.label)],
+          selected: _filter,
+          onChanged: (f) => setState(() => _filter = f),
+        ),
+      ],
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -102,11 +146,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
             padding: const EdgeInsets.fromLTRB(32, 0, 32, 16),
             child: Row(
               children: [
-                SegmentedTabs<_Filter>(
-                  options: [for (final f in _Filter.values) (f, f.label)],
-                  selected: _filter,
-                  onChanged: (f) => setState(() => _filter = f),
-                ),
+                filters(),
                 const Spacer(),
                 _daySwitcher(today),
               ],
@@ -117,14 +157,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
           actions: [
             _daySwitcher(today),
           ],
-          below: Align(
-            alignment: Alignment.centerLeft,
-            child: SegmentedTabs<_Filter>(
-              options: [for (final f in _Filter.values) (f, f.label)],
-              selected: _filter,
-              onChanged: (f) => setState(() => _filter = f),
-            ),
-          ),
+          below: Align(alignment: Alignment.centerLeft, child: filters()),
         ),
         Expanded(
           child: Padding(
@@ -136,7 +169,8 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
                 error: e,
                 onRetry: () => ref.invalidate(orderHistoryProvider(query)),
               ),
-              data: (orders) {
+              data: (everything) {
+                final orders = everything.where(_kind.matches).toList();
                 final visible = orders.where(_filter.matches).toList();
                 PanelOrder? selected;
                 for (final o in orders) {
@@ -158,9 +192,16 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
                               child: visible.isEmpty
                                   ? MessageView(
                                       icon: AppIcons.receipt,
-                                      title: orders.isEmpty ? 'Brak zamkniętych rachunków' : 'Nic w tym filtrze',
+                                      title: orders.isEmpty
+                                          ? switch (_kind) {
+                                              HistoryKind.dineIn => 'Brak rachunków w restauracji',
+                                              HistoryKind.delivery => 'Brak dostaw',
+                                              HistoryKind.pickup => 'Brak odbiorów osobistych',
+                                              HistoryKind.all => 'Brak zamkniętych rachunków',
+                                            }
+                                          : 'Nic w tym filtrze',
                                       message: orders.isEmpty
-                                          ? 'Tego dnia nie zamknięto ani nie anulowano żadnego rachunku.'
+                                          ? 'Tego dnia nic tu nie zamknięto ani nie anulowano.'
                                           : 'Wybierz inny filtr, żeby zobaczyć pozostałe rachunki.',
                                     )
                                   : ListView.separated(
@@ -212,7 +253,7 @@ class _Summary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final paid = orders.where((o) => o.isPaid).toList();
-    final revenue = paid.fold<int>(0, (s, o) => s + o.totalGrosze - o.discountGrosze);
+    final revenue = paid.fold<int>(0, (s, o) => s + o.billGrosze - o.discountGrosze);
     final gift = paid.fold<int>(0, (s, o) => s + (o.giftCardGrosze ?? 0));
     final tips = paid.fold<int>(0, (s, o) => s + o.tipGrosze);
     final cancelled = orders.where((o) => o.isCancelled).length;
@@ -294,7 +335,8 @@ class _OrderRow extends StatelessWidget {
     // Anulowany rachunek pokazuje, co na nim było, przekreślone.
     final items = muted ? order.items : order.active;
     final count = items.fold<int>(0, (s, i) => s + i.quantity);
-    final value = items.fold<int>(0, (s, i) => s + i.totalGrosze);
+    final value = items.fold<int>(0, (s, i) => s + i.totalGrosze) + order.deliveryFeeGrosze;
+    final customer = order.customerCompany ?? order.customerName;
 
     return Material(
       color: selected ? AppColors.surfaceRaised : Colors.transparent,
@@ -318,7 +360,12 @@ class _OrderRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(label, style: text.labelLarge),
+                    Text(
+                      customer == null || order.kind == OrderKind.dineIn ? label : '$label · $customer',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: text.labelLarge,
+                    ),
                     Text(
                       '${_pieces(count)} · ${_paymentLabel(order)}',
                       style: text.bodySmall?.copyWith(
@@ -382,10 +429,21 @@ class _OrderDetail extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 2),
+                if (order.kind != OrderKind.dineIn && (order.customerName ?? order.customerCompany) != null)
+                  Text(
+                    [
+                      ?order.customerCompany,
+                      if (order.customerName != order.customerCompany) ?order.customerName,
+                      ?order.customerPhone,
+                    ].join(' · '),
+                    style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
+                  ),
+                if (order.deliveryAddress != null) Text(order.deliveryAddress!, style: text.bodyMedium),
                 Text(
                   [
                     '${Fmt.time(order.openedAt)}–${closed == null ? '…' : Fmt.time(closed)}',
-                    if (minutes != null) '$minutes min przy stoliku',
+                    if (minutes != null)
+                      order.kind == OrderKind.dineIn ? '$minutes min przy stoliku' : '$minutes min od zamówienia',
                   ].join(' · '),
                   style: text.bodyMedium?.copyWith(
                     color: AppColors.textMuted,
@@ -460,12 +518,20 @@ class _OrderDetail extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (order.deliveryFeeGrosze > 0)
+                  Row(
+                    children: [
+                      Text('Dostawa', style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
+                      const Spacer(),
+                      Text(Fmt.price(order.deliveryFeeGrosze), style: text.bodyMedium?.copyWith(fontFeatures: _tabular)),
+                    ],
+                  ),
                 Row(
                   children: [
                     Text('Razem', style: text.titleMedium),
                     const Spacer(),
                     Text(
-                      Fmt.price(order.totalGrosze),
+                      Fmt.price(order.billGrosze),
                       style: text.headlineSmall?.copyWith(fontFeatures: _tabular),
                     ),
                   ],
@@ -507,7 +573,7 @@ class _OrderDetail extends StatelessWidget {
                     if (order.paymentMethod != null && order.paymentMethod != PaymentMethod.giftCard)
                       _PayRow(
                         label: order.paymentMethod!.label,
-                        amount: order.totalGrosze - (gift ?? 0),
+                        amount: order.billGrosze - order.discountGrosze - (gift ?? 0),
                       ),
                   ],
                 ],

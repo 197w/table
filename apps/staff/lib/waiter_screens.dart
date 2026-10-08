@@ -927,13 +927,13 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
     if (mounted) Navigator.pop(context);
   }
 
-  Future<void> _add(WMenuItem item) async {
+  Future<void> _add(WMenuItem item, {bool withOptions = false}) async {
     if (!item.available) {
       showMessage(context, '„${item.name}” jest chwilowo niedostępne.');
       return;
     }
     _Choice choice = const _Choice();
-    if (item.hasOptions) {
+    if (item.hasOptions || withOptions) {
       final picked = await showModalBottomSheet<_Choice>(
         context: context,
         isScrollControlled: true,
@@ -963,6 +963,7 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
           addons: choice.addons,
           quantity: choice.quantity,
           note: choice.note,
+          changes: choice.changes,
         );
         ref.invalidate(openOrdersProvider(job.restaurantId));
         if (mounted) {
@@ -1088,6 +1089,13 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
                                     ],
                                   ),
                                 ),
+                                // Zmiana składników („bez cebuli”, „więcej sera”) i uwaga dla kuchni.
+                                if (item.available)
+                                  IconButton(
+                                    tooltip: 'Zmień składniki',
+                                    onPressed: () => _add(item, withOptions: true),
+                                    icon: Glyph(AppIcons.notePencil, size: 20, color: AppColors.textMuted),
+                                  ),
                                 Glyph(
                                   item.hasOptions ? AppIcons.sliders : AppIcons.plus,
                                   size: 20,
@@ -1128,15 +1136,18 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
 }
 
 class _Choice {
-  const _Choice({this.variant, this.addons = const [], this.quantity = 1, this.note});
+  const _Choice({this.variant, this.addons = const [], this.quantity = 1, this.note, this.changes = const []});
 
   final String? variant;
   final List<String> addons;
   final int quantity;
   final String? note;
+
+  /// Zmiany składników: „bez cebuli”, „więcej sera”.
+  final List<WChange> changes;
 }
 
-/// Wybór wariantu, dodatków, ilości i uwagi dla kuchni.
+/// Wybór wariantu, dodatków, zmian składników, ilości i uwagi dla kuchni.
 class _OptionsSheet extends StatefulWidget {
   const _OptionsSheet({required this.item});
 
@@ -1152,10 +1163,28 @@ class _OptionsSheetState extends State<_OptionsSheet> {
   int _quantity = 1;
   final _note = TextEditingController();
 
+  /// Składniki z receptury: false = bez, true = więcej (brak w mapie: normalnie).
+  final _recipe = <String, bool>{};
+
+  /// Inne składniki wpisane ręcznie.
+  final _custom = <WChange>[];
+  final _customName = TextEditingController();
+
   @override
   void dispose() {
     _note.dispose();
+    _customName.dispose();
     super.dispose();
+  }
+
+  void _addCustom(bool extra) {
+    final name = _customName.text.trim();
+    if (name.isEmpty) return;
+    setState(() {
+      _custom.removeWhere((c) => c.name.toLowerCase() == name.toLowerCase());
+      _custom.add(WChange(name, extra: extra));
+      _customName.clear();
+    });
   }
 
   int get _price {
@@ -1217,6 +1246,71 @@ class _OptionsSheetState extends State<_OptionsSheet> {
               ),
             ],
             const SizedBox(height: 16),
+            Text('Składniki', style: text.titleSmall),
+            const SizedBox(height: 8),
+            for (final r in item.ingredients)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(r.name, style: text.bodyMedium)),
+                    ChoiceChip(
+                      label: const Text('Bez'),
+                      selected: _recipe[r.id] == false,
+                      onSelected: (on) => setState(() => on ? _recipe[r.id] = false : _recipe.remove(r.id)),
+                    ),
+                    const SizedBox(width: 6),
+                    ChoiceChip(
+                      label: const Text('Więcej'),
+                      selected: _recipe[r.id] == true,
+                      onSelected: (on) => setState(() => on ? _recipe[r.id] = true : _recipe.remove(r.id)),
+                    ),
+                  ],
+                ),
+              ),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _customName,
+                    maxLength: 40,
+                    decoration: InputDecoration(
+                      hintText: item.ingredients.isEmpty ? 'Składnik, np. cebula' : 'Inny składnik',
+                      counterText: '',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: () => _addCustom(false),
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                  child: const Text('Bez'),
+                ),
+                const SizedBox(width: 6),
+                OutlinedButton(
+                  onPressed: () => _addCustom(true),
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                  child: const Text('Więcej'),
+                ),
+              ],
+            ),
+            if (_custom.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final c in _custom)
+                      InputChip(
+                        label: Text(c.label),
+                        onDeleted: () => setState(() => _custom.remove(c)),
+                        deleteIcon: const Glyph(AppIcons.close, size: 14),
+                      ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 16),
             Row(
               children: [
                 Text('Ilość', style: text.titleSmall),
@@ -1251,6 +1345,11 @@ class _OptionsSheetState extends State<_OptionsSheet> {
                         ],
                         quantity: _quantity,
                         note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+                        changes: [
+                          for (final r in item.ingredients)
+                            if (_recipe[r.id] case final extra?) WChange(r.name, extra: extra, itemId: r.id),
+                          ..._custom,
+                        ],
                       ),
                     ),
               child: Text(needsVariant ? 'Wybierz wariant' : 'Dodaj · ${Fmt.price(_price)}'),
@@ -1262,8 +1361,6 @@ class _OptionsSheetState extends State<_OptionsSheet> {
   }
 }
 
-/// Odstęp od dołu ekranu dla okien wysuwanych z dołu: klawiatura albo przyciski systemu
-/// Androida (aplikacja rysuje się pod nimi), zależnie od tego, co jest wyżej.
 /// Wpisanie kodu rabatowego z podpowiedziami kodów lokalu, które działają dziś. Zwraca kod.
 class _DiscountSheet extends ConsumerStatefulWidget {
   const _DiscountSheet({required this.restaurantId});
@@ -1381,6 +1478,8 @@ class _DiscountSheetState extends ConsumerState<_DiscountSheet> {
   }
 }
 
+/// Odstęp od dołu ekranu dla okien wysuwanych z dołu: klawiatura albo przyciski systemu
+/// Androida (aplikacja rysuje się pod nimi), zależnie od tego, co jest wyżej.
 double _bottomInset(BuildContext context) {
   final keyboard = MediaQuery.viewInsetsOf(context).bottom;
   final system = MediaQuery.viewPaddingOf(context).bottom;

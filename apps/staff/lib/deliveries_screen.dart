@@ -416,9 +416,23 @@ class _CourseCard extends StatelessWidget {
               const SizedBox(height: 4),
               Text(c.note!, style: text.bodyMedium?.copyWith(color: _cash, fontStyle: FontStyle.italic)),
             ],
+            if (c.staffNote != null) ...[
+              const SizedBox(height: 4),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Glyph(AppIcons.lock, size: 14, color: AppColors.textMuted),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(c.staffNote!, style: text.bodyMedium?.copyWith(color: AppColors.textMuted))),
+                ],
+              ),
+            ],
             const SizedBox(height: 6),
             Text(
-              '${c.customerName} · ${c.customerPhone}',
+              '${[?c.company, if (c.customerName != c.company) c.customerName].join(' · ')} · ${c.customerPhone}',
               style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
             ),
             const SizedBox(height: 14),
@@ -523,8 +537,10 @@ class _PaymentBox extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final c = course;
-    final (color, icon, title) = c.cash
-        ? (_cash, AppIcons.money, 'Pobierz ${Fmt.price(c.totalGrosze)} gotówką')
+    final (color, icon, title) = c.prepaid
+        ? (AppColors.accent, AppIcons.checkCircle, 'Opłacone · ${Fmt.price(c.totalGrosze)}. Nic nie pobierasz.')
+        : c.cash
+        ? (_cash, AppIcons.money, 'Pobierz ${Fmt.price(c.totalGrosze)}')
         : (AppColors.accent, AppIcons.creditCard, 'Opłacone kartą online · ${Fmt.price(c.totalGrosze)}');
     return Container(
       padding: const EdgeInsets.all(14),

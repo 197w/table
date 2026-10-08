@@ -27,7 +27,14 @@ enum CourseStage {
 }
 
 class CourseItem {
-  const CourseItem({required this.name, required this.quantity, this.variant, this.addons = const [], this.note});
+  const CourseItem({
+    required this.name,
+    required this.quantity,
+    this.variant,
+    this.addons = const [],
+    this.note,
+    this.changes = const [],
+  });
 
   final String name;
   final int quantity;
@@ -35,8 +42,11 @@ class CourseItem {
   final List<String> addons;
   final String? note;
 
+  /// Zmiany składników, np. „bez: cebula”.
+  final List<String> changes;
+
   String? get details {
-    final parts = [?variant, for (final a in addons) '+ ${a.toLowerCase()}'];
+    final parts = [?variant, for (final a in addons) '+ ${a.toLowerCase()}', ...changes];
     return parts.isEmpty ? null : parts.join(', ');
   }
 
@@ -46,6 +56,11 @@ class CourseItem {
     variant: j['variant'] as String?,
     addons: [for (final a in j['addons'] as List? ?? const []) a.toString()],
     note: j['note'] as String?,
+    changes: [
+      for (final c in j['changes'] as List? ?? const [])
+        if (c is Map && c['name'] is String)
+          '${c['kind'] == 'extra' ? 'więcej' : 'bez'}: ${(c['name'] as String).toLowerCase()}',
+    ],
   );
 }
 
@@ -66,11 +81,23 @@ class Course {
     this.testPayment = false,
     this.promisedAt,
     this.courseId,
+    this.company,
+    this.staffNote,
+    this.prepaid = false,
   });
 
   final String id;
   final int number;
   final CourseStage stage;
+
+  /// Nazwa lokalu albo firmy klienta (zamówienie przyjęte w panelu).
+  final String? company;
+
+  /// Komentarz tylko dla pracowników (gość go nie widzi).
+  final String? staffNote;
+
+  /// Opłacone wcześniej (zamówienie przyjęte w panelu): nic nie pobierasz.
+  final bool prepaid;
 
   /// Kilka dostaw połączonych w panelu w jeden kurs ma ten sam numer kursu.
   final String? courseId;
@@ -115,6 +142,9 @@ class Course {
     totalGrosze: _toInt(j['total_grosze']),
     promisedAt: _date(j['promised_at']),
     courseId: j['course_id'] as String?,
+    company: (j['customer_company'] as String?)?.trim().isEmpty ?? true ? null : j['customer_company'] as String,
+    staffNote: (j['staff_note'] as String?)?.trim().isEmpty ?? true ? null : j['staff_note'] as String,
+    prepaid: j['payment_choice'] == 'prepaid',
     items: [for (final i in j['items'] as List? ?? const []) CourseItem.fromJson(i as Map<String, dynamic>)],
   );
 }

@@ -9,12 +9,15 @@ import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
 import 'settle_dialog.dart';
+import 'takeaway_form.dart';
 import '../floor/floor_canvas.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
 /// Zamówienia przy stoliku: kelner wybiera stolik, nabija pozycje z menu,
 /// wysyła je na kuchnię i zamyka rachunek. Układ jest pod dotyk, żeby działał też na tablecie.
+/// „Nowe zamówienie” na górze listy stolików przyjmuje też dostawę i odbiór osobisty (np. przez telefon):
+/// dane klienta, dania z menu i „Przyjmij”, po którym zamówienie idzie na kuchnię i do Dostaw.
 class OrdersScreen extends ConsumerStatefulWidget {
   const OrdersScreen({super.key, this.tableId});
 
@@ -27,6 +30,12 @@ class OrdersScreen extends ConsumerStatefulWidget {
 
 class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   late String? _tableId = widget.tableId;
+
+  /// Wybrany szkic zamówienia na wynos (zamiast stolika).
+  String? _takeawayId;
+
+  /// Czas przygotowania przy „Przyjmij” zamówienia na wynos.
+  int _prepMinutes = 30;
   String? _sectionId;
   String _query = '';
   final _search = TextEditingController();
@@ -39,7 +48,10 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   void didUpdateWidget(covariant OrdersScreen old) {
     super.didUpdateWidget(old);
     if (widget.tableId != null && widget.tableId != old.tableId) {
-      setState(() => _tableId = widget.tableId);
+      setState(() {
+        _tableId = widget.tableId;
+        _takeawayId = null;
+      });
     }
   }
 
@@ -74,9 +86,10 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         .openOrder(restaurantId, tableId, memberId: ref.read(panelMemberProvider)?.dbMemberId);
   }
 
+  /// Dokłada pozycję do rachunku stolika albo szkicu na wynos ([orderId] daje numer rachunku).
   Future<void> _add(
     String restaurantId,
-    DiningTable table,
+    Future<String> Function() orderId,
     MenuItem item, {
     bool withOptions = false,
   }) async {
@@ -99,16 +112,17 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     final repo = ref.read(repositoryProvider);
     unawaited(
       _enqueue(restaurantId, () async {
-        final orderId = await _orderIdFor(restaurantId, table.id!);
         await repo.addOrderItem(
-          orderId: orderId,
+          orderId: await orderId(),
           menuItemId: item.id,
           variant: choice.variant,
           addons: choice.addons,
           quantity: choice.quantity,
           note: choice.note,
+          changes: choice.changes,
           memberId: ref.read(panelMemberProvider)?.dbMemberId,
         );
+        if (_takeawayId != null) ref.invalidate(takeawayDraftsProvider(restaurantId));
       }),
     );
   }
@@ -193,7 +207,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     showMessage(context, 'Rachunek przeniesiony na stolik ${target.label}.');
   }
 
-  Future<void> _itemMenu(String restaurantId, DiningTable? table, MenuItem item, Offset at) async {
+  Future<void> _itemMenu(String restaurantId, Future<String> Function()? target, MenuItem item, Offset at) async {
     final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
     final choice = await showMenu<String>(
       context: context,
@@ -204,8 +218,8 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         side: BorderSide(color: AppColors.ringStrong),
       ),
       items: [
-        if (table != null && item.available)
-          const PopupMenuItem(value: 'note', child: Text('Dodaj z uwagą…')),
+        if (target != null && item.available)
+          const PopupMenuItem(value: 'note', child: Text('Dodaj ze zmianą składników albo uwagą…')),
         if (ref.read(memberPermissionsProvider).contains('menu_availability'))
           PopupMenuItem(
             value: 'toggle',
@@ -214,8 +228,8 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       ],
     );
     if (!mounted || choice == null) return;
-    if (choice == 'note' && table != null) {
-      await _add(restaurantId, table, item, withOptions: true);
+    if (choice == 'note' && target != null) {
+      await _add(restaurantId, target, item, withOptions: true);
       return;
     }
     try {
@@ -230,6 +244,86 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     } catch (e) {
       if (mounted) showError(context, e);
     }
+  }
+
+  String? get _memberId => ref.read(panelMemberProvider)?.dbMemberId;
+
+  /// „Nowe zamówienie”: stolik w lokalu albo dostawa lub odbiór z danymi klienta (szkic do uzupełnienia daniami).
+  Future<void> _newOrder(PanelRestaurant restaurant, List<DiningTable> tables, List<PanelOrder> orders) async {
+    final choice = await showDialog<NewOrderChoice>(
+      context: context,
+      builder: (_) => NewOrderDialog(restaurantId: restaurant.id, city: restaurant.city, tables: tables, orders: orders),
+    );
+    if (choice == null || !mounted) return;
+    if (choice.table case final table?) {
+      setState(() {
+        _tableId = table.id;
+        _takeawayId = null;
+      });
+      return;
+    }
+    final kind = choice.kind!;
+    try {
+      final id = await ref
+          .read(repositoryProvider)
+          .createTakeaway(restaurant.id, kind, choice.customer!, memberId: _memberId);
+      ref.invalidate(takeawayDraftsProvider(restaurant.id));
+      if (!mounted) return;
+      setState(() {
+        _takeawayId = id;
+        _tableId = null;
+      });
+      showMessage(context, 'Dane klienta zapisane. Dodaj dania z menu i kliknij „Przyjmij”.');
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _editTakeaway(String restaurantId, TakeawayOrder order) async {
+    final customer = await showDialog<TakeawayCustomer>(
+      context: context,
+      builder: (_) => TakeawayEditDialog(restaurantId: restaurantId, order: order),
+    );
+    if (customer == null || !mounted) return;
+    await _enqueue(restaurantId, () async {
+      await ref.read(repositoryProvider).updateTakeaway(order.id, customer, memberId: _memberId);
+      ref
+        ..invalidate(takeawayDraftsProvider(restaurantId))
+        ..invalidate(customerLookupProvider);
+    });
+  }
+
+  Future<void> _submitTakeaway(String restaurantId, TakeawayOrder order) async {
+    var ok = false;
+    await _enqueue(restaurantId, () async {
+      await ref.read(repositoryProvider).submitTakeaway(order.id, _prepMinutes, memberId: _memberId);
+      ok = true;
+    });
+    if (!ok || !mounted) return;
+    ref
+      ..invalidate(takeawayDraftsProvider(restaurantId))
+      ..invalidate(takeawayOrdersProvider(restaurantId));
+    setState(() => _takeawayId = null);
+    showMessage(
+      context,
+      '${order.label} przyjęte: gotowe ok. ${Fmt.time(DateTime.now().add(Duration(minutes: _prepMinutes)))}. '
+      'Jest na kuchni i w zakładce Dostawy.',
+      tone: ToastTone.success,
+    );
+  }
+
+  Future<void> _discardTakeaway(String restaurantId, TakeawayOrder order) async {
+    final ok = await confirm(
+      context,
+      title: 'Porzucić ${order.label}?',
+      message: 'Zamówienie i dodane dania znikną. Nic nie poszło jeszcze na kuchnię.',
+      action: 'Porzuć',
+      destructive: true,
+    );
+    if (!ok) return;
+    await _enqueue(restaurantId, () => ref.read(repositoryProvider).discardTakeaway(order.id));
+    ref.invalidate(takeawayDraftsProvider(restaurantId));
+    if (mounted) setState(() => _takeawayId = null);
   }
 
   @override
@@ -263,9 +357,17 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
 
     final tables = tablesAsync.value ?? const <DiningTable>[];
     final orders = ordersAsync.value ?? const <PanelOrder>[];
+    final drafts = ref.watch(takeawayDraftsProvider(restaurant.id)).value ?? const <TakeawayOrder>[];
+    TakeawayOrder? draft;
+    for (final d in drafts) {
+      if (d.id == _takeawayId) draft = d;
+    }
+    // Czas oczekiwania stolików na jedzenie: progi z ustawień kuchni, odświeżanie co 30 s.
+    final kitchen = ref.watch(kitchenConfigProvider(restaurant.id)).value ?? const KitchenConfig();
+    if (orders.any((o) => o.waitingSince != null)) ref.watch(clockProvider);
     DiningTable? table;
     for (final t in tables) {
-      if (t.id == _tableId) table = t;
+      if (draft == null && t.id == _tableId) table = t;
     }
     PanelOrder? order;
     for (final o in orders) {
@@ -306,6 +408,12 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                     message: 'Rozstaw stoliki w zakładce „Edycja sali”, a tutaj nabijesz do nich zamówienia.',
                   );
                 }
+                // Rachunek, do którego trafiają dania z menu: stolika albo szkicu na wynos.
+                final Future<String> Function()? target = draft != null
+                    ? (() async => draft!.id)
+                    : table != null
+                    ? (() => _orderIdFor(restaurant.id, table!.id!))
+                    : null;
                 return LayoutBuilder(
                   builder: (context, c) {
                     // Na wąskim oknie kolumny stolików i rachunku się zwężają, żeby menu miało miejsce.
@@ -321,8 +429,19 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                             zones: zones,
                             tables: tables,
                             orders: orders,
+                            drafts: drafts,
                             selectedId: table?.id,
-                            onSelect: (t) => setState(() => _tableId = t.id),
+                            selectedDraftId: draft?.id,
+                            kitchen: kitchen,
+                            onSelect: (t) => setState(() {
+                              _tableId = t.id;
+                              _takeawayId = null;
+                            }),
+                            onSelectDraft: (d) => setState(() {
+                              _takeawayId = d.id;
+                              _tableId = null;
+                            }),
+                            onNewOrder: () => _newOrder(restaurant, tables, orders),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -332,31 +451,63 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                             sectionId: _sectionId,
                             query: _query,
                             search: _search,
-                            enabled: table != null,
+                            enabled: table != null || draft != null,
                             onSection: (id) => setState(() => _sectionId = id),
                             onQuery: (q) => setState(() => _query = q.trim().toLowerCase()),
                             onRetry: () => ref.invalidate(menuProvider(restaurant.id)),
-                            onTap: (item) => table == null
-                                ? showMessage(context, 'Najpierw wybierz stolik z listy po lewej.')
-                                : _add(restaurant.id, table, item),
-                            onMenu: (item, at) => _itemMenu(restaurant.id, table, item, at),
+                            onTap: (item) => target == null
+                                ? showMessage(context, 'Najpierw wybierz stolik albo „Nowe zamówienie” po lewej.')
+                                : _add(restaurant.id, target, item),
+                            onOptions: (item) => target == null
+                                ? showMessage(context, 'Najpierw wybierz stolik albo „Nowe zamówienie” po lewej.')
+                                : _add(restaurant.id, target, item, withOptions: true),
+                            onMenu: (item, at) => _itemMenu(restaurant.id, target, item, at),
                           ),
                         ),
                         const SizedBox(width: 16),
                         SizedBox(
                           width: orderWidth,
-                          child: table == null
+                          child: draft != null
+                              ? _TakeawayPanel(
+                                  restaurantId: restaurant.id,
+                                  order: draft,
+                                  minutes: _prepMinutes,
+                                  onMinutes: (m) => setState(() => _prepMinutes = m),
+                                  onEdit: () => _editTakeaway(restaurant.id, draft!),
+                                  onDiscard: () => _discardTakeaway(restaurant.id, draft!),
+                                  onSubmit: () => _submitTakeaway(restaurant.id, draft!),
+                                  onQuantity: (item, q) => _enqueue(restaurant.id, () async {
+                                    await (q < 1
+                                        ? ref.read(repositoryProvider).updateOrderItem(item.id, status: OrderItemStatus.cancelled)
+                                        : ref.read(repositoryProvider).updateOrderItem(item.id, quantity: q));
+                                    ref.invalidate(takeawayDraftsProvider(restaurant.id));
+                                  }),
+                                  onNote: (item) async {
+                                    final note = await showDialog<String>(
+                                      context: context,
+                                      builder: (_) => _NoteDialog(initial: item.note ?? ''),
+                                    );
+                                    if (note == null) return;
+                                    await _enqueue(restaurant.id, () async {
+                                      await ref.read(repositoryProvider).updateOrderItem(item.id, note: note);
+                                      ref.invalidate(takeawayDraftsProvider(restaurant.id));
+                                    });
+                                  },
+                                )
+                              : table == null
                               ? const Card(
                                   child: MessageView(
                                     icon: AppIcons.receipt,
                                     title: 'Wybierz stolik',
-                                    message: 'Stoliki z otwartym rachunkiem mają kwotę przy numerze.',
+                                    message: 'Stoliki z otwartym rachunkiem mają kwotę przy numerze. '
+                                        'Dostawę i odbiór przyjmiesz przyciskiem „Nowe zamówienie”.',
                                   ),
                                 )
                               : _OrderPanel(
                                   table: table,
                                   order: order,
                                   reservation: reservation,
+                                  kitchen: kitchen,
                                   onQuantity: (item, q) => _enqueue(
                                     restaurant.id,
                                     () => q < 1
@@ -439,15 +590,27 @@ class _TablesPanel extends StatelessWidget {
     required this.zones,
     required this.tables,
     required this.orders,
+    required this.drafts,
     required this.selectedId,
+    required this.selectedDraftId,
+    required this.kitchen,
     required this.onSelect,
+    required this.onSelectDraft,
+    required this.onNewOrder,
   });
 
   final List<FloorZone> zones;
   final List<DiningTable> tables;
   final List<PanelOrder> orders;
+  final List<TakeawayOrder> drafts;
   final String? selectedId;
+  final String? selectedDraftId;
+
+  /// Progi czasu oczekiwania (żółty, czerwony) z ustawień kuchni.
+  final KitchenConfig kitchen;
   final ValueChanged<DiningTable> onSelect;
+  final ValueChanged<TakeawayOrder> onSelectDraft;
+  final VoidCallback onNewOrder;
 
   @override
   Widget build(BuildContext context) {
@@ -455,10 +618,39 @@ class _TablesPanel extends StatelessWidget {
     final byTable = {for (final o in orders) ?o.tableId: o};
     final zoneList = orderedZones(zones, tables);
 
+    // Karta przycina zawartość, a lista ma odstęp od góry i dołu, żeby suwak nie wychodził poza zaokrąglony obrys.
     return Card(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+            child: FilledButton.icon(
+              onPressed: onNewOrder,
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+              icon: const Glyph(AppIcons.plus, size: 18),
+              label: const Text('Nowe zamówienie'),
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 14),
+              children: [
+          if (drafts.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 10, 8, 6),
+              child: Text(
+                'NA WYNOS · DO PRZYJĘCIA',
+                style: text.labelSmall?.copyWith(color: AppColors.textDisabled, fontWeight: FontWeight.w600),
+              ),
+            ),
+            for (final d in drafts)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: _DraftTile(order: d, selected: d.id == selectedDraftId, onTap: () => onSelectDraft(d)),
+              ),
+          ],
           for (final zone in zoneList) ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 10, 8, 6),
@@ -478,14 +670,93 @@ class _TablesPanel extends StatelessWidget {
                   table: t,
                   order: byTable[t.id],
                   selected: t.id == selectedId,
+                  kitchen: kitchen,
                   onTap: () => onSelect(t),
                 ),
               ),
           ],
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
+}
+
+/// Szkic zamówienia na wynos na liście: numer, klient i kwota.
+class _DraftTile extends StatelessWidget {
+  const _DraftTile({required this.order, required this.selected, required this.onTap});
+
+  final TakeawayOrder order;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final delivery = order.kind == OrderKind.delivery;
+    return PanelPress(
+      scale: 0.98,
+      child: Material(
+        color: selected ? AppColors.surfaceRaised : Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: selected ? AppColors.accent : Colors.transparent),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          splashColor: Colors.transparent,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD99A15).withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFD99A15)),
+                  ),
+                  child: Glyph(delivery ? AppIcons.moped : AppIcons.shoppingBag, size: 17, color: const Color(0xFFD99A15)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(order.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.labelLarge),
+                      Text(
+                        [order.company ?? order.customerName, if (order.active.isNotEmpty) Fmt.price(order.totalGrosze)]
+                            .join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Czas oczekiwania stolika na jedzenie, np. „12 min”, i kolor według progów kuchni.
+(String, Color) _waitLabel(DateTime since, KitchenConfig kitchen) {
+  final minutes = DateTime.now().difference(since).inMinutes;
+  final color = minutes >= kitchen.lateMinutes
+      ? const Color(0xFFE5484D)
+      : minutes >= kitchen.warnMinutes
+      ? const Color(0xFFD99A15)
+      : AppColors.textMuted;
+  return (minutes < 1 ? '<1 min' : '$minutes min', color);
 }
 
 class _TableTile extends StatelessWidget {
@@ -493,12 +764,14 @@ class _TableTile extends StatelessWidget {
     required this.table,
     required this.order,
     required this.selected,
+    required this.kitchen,
     required this.onTap,
   });
 
   final DiningTable table;
   final PanelOrder? order;
   final bool selected;
+  final KitchenConfig kitchen;
   final VoidCallback onTap;
 
   @override
@@ -507,6 +780,8 @@ class _TableTile extends StatelessWidget {
     final open = order != null;
     final unsent = order?.unsent ?? 0;
     final ready = order?.ready ?? 0;
+    final waiting = order?.waitingSince;
+    final wait = waiting == null ? null : _waitLabel(waiting, kitchen);
 
     return PanelPress(
       scale: 0.98,
@@ -548,14 +823,36 @@ class _TableTile extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      open ? Fmt.price(order!.totalGrosze) : '${table.seats} os.',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: (open ? text.labelLarge : text.bodyMedium)?.copyWith(
-                        color: open ? AppColors.text : AppColors.textMuted,
-                        fontFeatures: _tabular,
-                      ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          open ? Fmt.price(order!.totalGrosze) : '${table.seats} os.',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: (open ? text.labelLarge : text.bodyMedium)?.copyWith(
+                            color: open ? AppColors.text : AppColors.textMuted,
+                            fontFeatures: _tabular,
+                          ),
+                        ),
+                        // Ile stolik czeka na jedzenie od wysłania na kuchnię.
+                        if (wait != null)
+                          Tooltip(
+                            message: 'Stolik czeka na danie od ${Fmt.time(waiting!)}',
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Glyph(AppIcons.clock, size: 12, color: wait.$2),
+                                const SizedBox(width: 4),
+                                Text(
+                                  wait.$1,
+                                  style: text.labelSmall?.copyWith(color: wait.$2, fontFeatures: _tabular),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   // Zielony licznik: kuchnia zbiła dania, trzeba je zanieść.
@@ -624,6 +921,7 @@ class _MenuPanel extends StatelessWidget {
     required this.onQuery,
     required this.onRetry,
     required this.onTap,
+    required this.onOptions,
     required this.onMenu,
   });
 
@@ -638,6 +936,9 @@ class _MenuPanel extends StatelessWidget {
   final ValueChanged<String> onQuery;
   final VoidCallback onRetry;
   final ValueChanged<MenuItem> onTap;
+
+  /// Dodanie ze zmianą składników albo uwagą.
+  final ValueChanged<MenuItem> onOptions;
   final void Function(MenuItem item, Offset globalPosition) onMenu;
 
   @override
@@ -733,6 +1034,7 @@ class _MenuPanel extends StatelessWidget {
                           item: items[i],
                           enabled: enabled,
                           onTap: () => onTap(items[i]),
+                          onOptions: () => onOptions(items[i]),
                           onMenu: (at) => onMenu(items[i], at),
                         ),
                       ),
@@ -750,12 +1052,14 @@ class _ItemTile extends StatelessWidget {
     required this.item,
     required this.enabled,
     required this.onTap,
+    required this.onOptions,
     required this.onMenu,
   });
 
   final MenuItem item;
   final bool enabled;
   final VoidCallback onTap;
+  final VoidCallback onOptions;
   final ValueChanged<Offset> onMenu;
 
   @override
@@ -809,8 +1113,19 @@ class _ItemTile extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (item.hasOptions && !off)
-                          Glyph(AppIcons.sliders, size: 14, color: AppColors.textMuted),
+                        // Zmiana składników („bez cebuli”, „więcej sera”) i uwaga dla kuchni.
+                        if (!off)
+                          SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: IconButton(
+                              tooltip: 'Zmień składniki albo dodaj uwagę',
+                              padding: EdgeInsets.zero,
+                              style: IconButton.styleFrom(backgroundColor: Colors.transparent, side: BorderSide.none),
+                              onPressed: onOptions,
+                              icon: Glyph(item.hasOptions ? AppIcons.sliders : AppIcons.notePencil, size: 15, color: AppColors.textMuted),
+                            ),
+                          ),
                       ],
                     ),
                   ],
@@ -826,12 +1141,15 @@ class _ItemTile extends StatelessWidget {
 
 /// Wybór kelnera w oknie pozycji z wariantami i dodatkami.
 class _Choice {
-  const _Choice({this.variant, this.addons = const [], this.quantity = 1, this.note});
+  const _Choice({this.variant, this.addons = const [], this.quantity = 1, this.note, this.changes = const []});
 
   final String? variant;
   final List<String> addons;
   final int quantity;
   final String? note;
+
+  /// Zmiany składników: „bez cebuli”, „więcej sera”.
+  final List<ItemChange> changes;
 }
 
 class _AddItemDialog extends StatefulWidget {
@@ -849,10 +1167,33 @@ class _AddItemDialogState extends State<_AddItemDialog> {
   int _quantity = 1;
   final _note = TextEditingController();
 
+  /// Składniki z receptury: false = bez, true = więcej (brak w mapie: normalnie).
+  final _recipe = <String, bool>{};
+
+  /// Inne składniki wpisane ręcznie (nie z receptury).
+  final _custom = <ItemChange>[];
+  final _customName = TextEditingController();
+
   @override
   void dispose() {
     _note.dispose();
+    _customName.dispose();
     super.dispose();
+  }
+
+  List<RecipeLine> get _ingredients => [
+    for (final r in widget.item.ingredients)
+      if (r.name != null) r,
+  ];
+
+  void _addCustom(bool extra) {
+    final name = _customName.text.trim();
+    if (name.isEmpty) return;
+    setState(() {
+      _custom.removeWhere((c) => c.name.toLowerCase() == name.toLowerCase());
+      _custom.add(ItemChange(name, extra: extra));
+      _customName.clear();
+    });
   }
 
   int get _unitPrice {
@@ -886,6 +1227,11 @@ class _AddItemDialogState extends State<_AddItemDialog> {
         ],
         quantity: _quantity,
         note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+        changes: [
+          for (final r in _ingredients)
+            if (_recipe[r.itemId] case final extra?) ItemChange(r.name!, extra: extra, itemId: r.itemId),
+          ..._custom,
+        ],
       ),
     );
   }
@@ -942,6 +1288,73 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                 ),
                 const SizedBox(height: 18),
               ],
+              Text('Składniki', style: text.titleSmall),
+              const SizedBox(height: 4),
+              Text(
+                'Usuń albo dodaj składnik. Kuchnia zobaczy zmianę na bilecie.',
+                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 8),
+              for (final r in _ingredients)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(r.name!, style: text.bodyMedium)),
+                      SegmentedTabs<int>(
+                        options: const [(0, 'Bez'), (1, 'Normalnie'), (2, 'Więcej')],
+                        selected: switch (_recipe[r.itemId]) {
+                          false => 0,
+                          true => 2,
+                          null => 1,
+                        },
+                        onChanged: (v) => setState(() {
+                          if (v == 1) {
+                            _recipe.remove(r.itemId);
+                          } else {
+                            _recipe[r.itemId] = v == 2;
+                          }
+                        }),
+                      ),
+                    ],
+                  ),
+                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _customName,
+                      maxLength: 40,
+                      decoration: InputDecoration(
+                        hintText: _ingredients.isEmpty ? 'Składnik, np. cebula' : 'Inny składnik',
+                        isDense: true,
+                        counterText: '',
+                      ),
+                      onSubmitted: (_) => _addCustom(false),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(onPressed: () => _addCustom(false), child: const Text('Bez')),
+                  const SizedBox(width: 6),
+                  OutlinedButton(onPressed: () => _addCustom(true), child: const Text('Więcej')),
+                ],
+              ),
+              if (_custom.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final c in _custom)
+                      InputChip(
+                        label: Text(c.label),
+                        onDeleted: () => setState(() => _custom.remove(c)),
+                        deleteIcon: const Glyph(AppIcons.close, size: 14),
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 18),
               Row(
                 children: [
                   Text('Ilość', style: text.titleSmall),
@@ -1110,11 +1523,13 @@ class _OrderPanel extends StatelessWidget {
     required this.onCancel,
     required this.onMove,
     required this.canCancelSent,
+    required this.kitchen,
   });
 
   final DiningTable table;
   final PanelOrder? order;
   final PanelReservation? reservation;
+  final KitchenConfig kitchen;
   final void Function(OrderItem item, int quantity) onQuantity;
   final ValueChanged<OrderItem> onNote;
   final void Function(OrderItem item, OrderItemStatus status) onStatus;
@@ -1143,6 +1558,8 @@ class _OrderPanel extends StatelessWidget {
     ].where((g) => g.$2.isNotEmpty).toList();
     final unsent = order?.unsent ?? 0;
     final total = order?.totalGrosze ?? 0;
+    final waiting = order?.waitingSince;
+    final wait = waiting == null ? null : _waitLabel(waiting, kitchen);
 
     return Card(
       child: Column(
@@ -1172,6 +1589,20 @@ class _OrderPanel extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
                       ),
+                      if (wait != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Row(
+                            children: [
+                              Glyph(AppIcons.clock, size: 14, color: wait.$2),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Czeka na danie ${wait.$1} (od ${Fmt.time(waiting!)})',
+                                style: text.labelMedium?.copyWith(color: wait.$2, fontFeatures: _tabular),
+                              ),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -1287,6 +1718,156 @@ class _OrderPanel extends StatelessWidget {
                     onPressed: total > 0 ? onClose : null,
                     icon: const Glyph(AppIcons.receipt, size: 18),
                     label: const Text('Zamknij rachunek'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Szkic zamówienia na wynos: dane klienta, dania i „Przyjmij” z czasem przygotowania.
+class _TakeawayPanel extends StatelessWidget {
+  const _TakeawayPanel({
+    required this.restaurantId,
+    required this.order,
+    required this.minutes,
+    required this.onMinutes,
+    required this.onEdit,
+    required this.onDiscard,
+    required this.onSubmit,
+    required this.onQuantity,
+    required this.onNote,
+  });
+
+  final String restaurantId;
+  final TakeawayOrder order;
+  final int minutes;
+  final ValueChanged<int> onMinutes;
+  final VoidCallback onEdit;
+  final VoidCallback onDiscard;
+  final VoidCallback onSubmit;
+  final void Function(OrderItem item, int quantity) onQuantity;
+  final ValueChanged<OrderItem> onNote;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final o = order;
+    final items = o.active;
+    final dishes = items.fold(0, (s, i) => s + i.totalGrosze);
+    final delivery = o.kind == OrderKind.delivery;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 8, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(o.label, style: text.titleLarge),
+                      Text(
+                        'Do przyjęcia · dodaj dania z menu',
+                        style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  tooltip: 'Więcej',
+                  icon: Glyph(AppIcons.dotsVertical, size: 18, color: AppColors.textMuted),
+                  onSelected: (v) => v == 'edit' ? onEdit() : onDiscard(),
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(value: 'edit', child: Text('Zmień dane klienta')),
+                    PopupMenuItem(
+                      value: 'discard',
+                      child: Text('Porzuć zamówienie', style: TextStyle(color: AppColors.error)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              children: [
+                TakeawayCustomerCard(restaurantId: restaurantId, order: o, onEdit: onEdit),
+                const SizedBox(height: 12),
+                if (items.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Text(
+                      'Stuknij danie w menu, żeby dodać je do zamówienia.',
+                      textAlign: TextAlign.center,
+                      style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                    ),
+                  )
+                else
+                  for (final item in items)
+                    _OrderLine(
+                      item: item,
+                      canCancelSent: false,
+                      onQuantity: (q) => onQuantity(item, q),
+                      onNote: () => onNote(item),
+                      onStatus: (s) => onQuantity(item, 0),
+                    ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: AppColors.ring),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (delivery && o.feeGrosze > 0) ...[
+                  Row(
+                    children: [
+                      Text('Dania', style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
+                      const Spacer(),
+                      Text(Fmt.price(dishes), style: text.bodyMedium?.copyWith(fontFeatures: _tabular)),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Text('Dostawa', style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
+                      const Spacer(),
+                      Text(Fmt.price(o.feeGrosze), style: text.bodyMedium?.copyWith(fontFeatures: _tabular)),
+                    ],
+                  ),
+                ],
+                Row(
+                  children: [
+                    Text('Razem', style: text.titleMedium),
+                    const Spacer(),
+                    Text(Fmt.price(dishes + o.feeGrosze), style: text.headlineSmall?.copyWith(fontFeatures: _tabular)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text('Czas przygotowania', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
+                const SizedBox(height: 6),
+                SegmentedTabs<int>(
+                  options: const [(15, '15 min'), (30, '30'), (45, '45'), (60, '60')],
+                  selected: minutes,
+                  onChanged: onMinutes,
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 48,
+                  child: FilledButton.icon(
+                    onPressed: items.isEmpty ? null : onSubmit,
+                    icon: const Glyph(AppIcons.send, size: 18),
+                    label: Text('Przyjmij · $minutes min'),
                   ),
                 ),
               ],
