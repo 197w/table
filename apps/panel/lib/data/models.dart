@@ -1083,7 +1083,7 @@ enum StaffPermission {
   fleet('fleet', 'Flota', 'Pojazdy dostawców: dodawanie, zmiana i przypisanie', 'Zamówienia'),
   kitchen('kitchen', 'Kuchnia', 'Ekran zamówień na kuchni', 'Kuchnia'),
   kitchenSettings('kitchen_settings', 'Ustawienia kuchni', 'Progi czasu i pozycje ukryte na kuchni', 'Kuchnia'),
-  serving('serving', 'Wydanie', 'Ekran dań gotowych z kuchni do zaniesienia gościom', 'Kuchnia'),
+  serving('serving', 'Kompletowanie', 'Dania gotowe z kuchni do zaniesienia gościom i spakowania na wynos', 'Zamówienia'),
   staff('staff', 'Pracownicy', 'Dodawanie i edycja pracowników, ich statystyki', 'Zespół'),
   staffLogins('staff_logins', 'Kody pracowników', 'Podgląd i zmiana czterocyfrowych kodów pracowników', 'Zespół'),
   schedule('schedule', 'Grafik', 'Przyjmowanie, zmiana i odrzucanie godzin pracowników', 'Zespół'),
@@ -1397,11 +1397,15 @@ class OrderItem {
     this.readyAt,
     this.recalledAt,
     this.changes = const [],
+    this.guestNo,
   });
 
   final String id;
   final String orderId;
   final String? menuItemId;
+
+  /// Osoba przy stoliku (1, 2, 3...), do podziału rachunku. Null: pozycja wspólna.
+  final int? guestNo;
 
   /// Zmiany składników („bez cebuli”, „więcej sera”).
   final List<ItemChange> changes;
@@ -1458,6 +1462,7 @@ class OrderItem {
       readyAt: _toDateOrNull(json['ready_at']),
       recalledAt: _toDateOrNull(json['recalled_at']),
       changes: ItemChange.listFrom(json['changes']),
+      guestNo: json['guest_no'] == null ? null : _toInt(json['guest_no']),
     );
   }
 }
@@ -2416,7 +2421,7 @@ class OwnerDetails {
   );
 }
 
-/// Karta na ekranie „Wydanie”: dania gotowe z kuchni dla jednego stolika albo zamówienie na wynos do spakowania.
+/// Karta na ekranie „Kompletowanie”: dania gotowe z kuchni dla jednego stolika albo zamówienie na wynos do spakowania.
 class ServingTicket {
   const ServingTicket({
     required this.orderId,

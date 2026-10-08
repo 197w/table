@@ -853,7 +853,7 @@ class PanelRepository {
     });
   }
 
-  /// Ekran „Wydanie”: pozycje z otwartych rachunków, które są na kuchni albo już gotowe.
+  /// Ekran „Kompletowanie”: pozycje z otwartych rachunków, które są na kuchni albo już gotowe.
   Future<List<ServingTicket>> servingTickets(String restaurantId) {
     return _guard(() async {
       final rows = await _db
@@ -1412,6 +1412,7 @@ class PanelRepository {
     int course = 1,
     String? memberId,
     List<ItemChange> changes = const [],
+    int? guest,
   }) {
     return _guard(
       () => _db.rpc<String>(
@@ -1426,8 +1427,16 @@ class PanelRepository {
           'p_course': course,
           'p_member_id': memberId,
           if (changes.isNotEmpty) 'p_changes': [for (final c in changes) c.toJson()],
+          'p_guest': ?guest,
         },
       ),
+    );
+  }
+
+  /// Przypisuje pozycje do osoby przy stoliku (null: wspólne), do podziału rachunku.
+  Future<void> setItemsGuest(List<String> itemIds, int? guest) {
+    return _guard(
+      () => _db.rpc<void>('panel_set_items_guest', params: {'p_item_ids': itemIds, 'p_guest': guest}),
     );
   }
 

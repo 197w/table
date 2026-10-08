@@ -9,7 +9,8 @@ void main() {
       expect(panelTabLabels[tab.route], isNotNull, reason: tab.route);
       expect(tabForRoute(tab.route), tab.route, reason: 'ścieżka ${tab.route} nie może zaczynać innej');
     }
-    expect(PanelSection.forRoute(PanelRoutes.orders), PanelSection.reservations);
+    expect(PanelSection.forRoute(PanelRoutes.orders), PanelSection.orders);
+    expect(PanelSection.forRoute(PanelRoutes.pickup), PanelSection.orders);
     expect(PanelSection.forRoute(PanelRoutes.inventory), PanelSection.management);
     expect(PanelSection.forRoute(PanelRoutes.menu), PanelSection.management);
     expect(PanelSection.forRoute(PanelRoutes.stats), PanelSection.management);

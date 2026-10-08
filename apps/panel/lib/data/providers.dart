@@ -521,7 +521,7 @@ final ownerDetailsProvider = FutureProvider.autoDispose.family<OwnerDetails, Str
   (ref, id) => (ref..cacheFor()).watch(repositoryProvider).ownerDetails(id),
 );
 
-/// Karty na ekranie „Wydanie”. Odświeżają się na żywo razem z rachunkami.
+/// Karty na ekranie „Kompletowanie”. Odświeżają się na żywo razem z rachunkami.
 final servingTicketsProvider = FutureProvider.autoDispose.family<List<ServingTicket>, String>(
   (ref, id) {
     ref.cacheFor();
@@ -530,7 +530,7 @@ final servingTicketsProvider = FutureProvider.autoDispose.family<List<ServingTic
   },
 );
 
-/// Wyciszony dźwięk nowych dań na ekranie „Wydanie”. Pamiętany na komputerze.
+/// Wyciszony dźwięk nowych dań na ekranie „Kompletowanie”. Pamiętany na komputerze.
 class ServingMutedNotifier extends Notifier<bool> {
   static const _key = 'panel_wydanie_wyciszone';
 

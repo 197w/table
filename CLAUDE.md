@@ -80,7 +80,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość: flutter_map + latlong2 (mapa dostawcy, kafelki OpenStreetMap; przed wydaniem w sklepach przejść na płatnego dostawcę kafelków).
   Pracownik: geolocator (pozycja dostawcy w drodze).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0057, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0058, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -113,7 +113,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Logowanie e-mailem i hasłem. Obowiązkowe 2FA dodajemy przed wydaniem.
 - Układ jak w UniFi (`shell.dart`, `sections.dart`, 0.11.0). Górny pasek: lokal po lewej (logo, kropka połączenia
   na żywo, plan; strzałka i lista tylko przy kilku lokalach konta), grupy zakładek (`PanelSection`, `_SectionTab`: same ikony bez ramek, wybrana w kolorze akcentu z nazwą):
-  Rezerwacje (Rezerwacje, Zamówienia, Historia zamówień `/historia`, Wydanie), Kuchnia (Kuchnia), Dostawy (Dostawy, Flota),
+  Rezerwacje (Rezerwacje), Zamówienia (Zamówienia, Historia zamówień `/historia`, Kompletowanie `/wydanie`,
+  Odbiór `/odbior`), Kuchnia (Kuchnia), Dostawy (Dostawy, Flota),
   Pracownicy (Pracownicy: Zespół i Grafik, Statystyki zespołu `/zespol`), Baza klientów (Klienci `/klienci`, Opinie),
   Management (Podsumowanie dnia `/podsumowanie`, Godziny pracy `/godziny`, Menu, Inwentaryzacja, Statystyki,
   Kody rabatowe `/rabaty`, Eksport `/eksport`);
@@ -210,7 +211,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `for_member`; `staff_scan` kończy wtedy zmianę).
   Po 30 sekundach bez ruchu myszy i klawiatury panel sam wylogowuje pracownika i zamyka otwarte okna
   (`IdleLogout` w `MaterialApp.builder`, `kIdleLogoutSeconds`; ostatnie 10 s odlicza górny pasek).
-  Kuchnia i Wydanie nie wylogowują pracownika. Pełny dostęp właściciela (`ActingMember.account()`, hasło konta)
+  Kuchnia i Kompletowanie nie wylogowują pracownika. Pełny dostęp właściciela (`ActingMember.account()`, hasło konta)
   nie wylogowuje się sam: trwa do „Wyloguj” (tak chce użytkownik; bez odliczania w górnym pasku).
   Klawisze tylko liczą ruch, handler zwraca false (nic nie połyka).
   Wylogowanie konta restauracji (menu pracownika, ekran bez uprawnień) wymaga hasła konta (`signOutRestaurantAccount`).
@@ -278,7 +279,14 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Rachunek otwiera się przy pierwszej pozycji, jeden otwarty na stolik; przed nim pytanie o liczbę gości (0056,
   `orders.guests`, „Pomiń” = `guests_skipped`, liczy się w statystykach; z rezerwacji liczba osób z niej; zmiana w nagłówku
   rachunku, `panel_set_order_guests`; u kelnera `_GuestsSheet`). Przy zamykaniu gotówką „Bez reszty”: reszta idzie do
-  napiwku pracownika, który przyjmuje płatność. Przy stoliku i w nagłówku rachunku czas
+  napiwku pracownika, który przyjmuje płatność. Nagłówek Zamówień: zegar, „W kuchni: N” (zamówienia z pozycjami
+  na kuchni) i „Średnio” (`panel_kitchen_stats`, ostatnia godzina albo dziś). Stolik z rachunkiem jest podświetlony
+  na zielono, a gdy ktoś nabija pozycje (panel albo aplikacja kelnera, stan new) na żółto z „Nabijane…”.
+  Podział rachunku już przy nabijaniu (0058): pasek „Dla: Wspólne / Osoba 1 / Osoba 2 / +” nad pozycjami, nowe
+  pozycje idą do wybranej osoby (`order_items.guest_no`, `p_guest` w `panel_add_order_item`), przeniesienie w menu
+  pozycji (`panel_set_items_guest`), kwoty osób w pasku; przy zamykaniu „Po pozycjach” jednym kliknięciem wybiera
+  pozycje osoby (`PersonBadge`, `person_badge.dart`). Telefon w „Nowe zamówienie” zaczyna się od „+48 ”.
+  Przy stoliku i w nagłówku rachunku czas
   oczekiwania na danie (od najstarszej pozycji wysłanej na kuchnię, a niewydanej; `PanelOrder.waitingSince`, kolory
   według progów kuchni). Lista stolików ma na górze „Nowe zamówienie” (`NewOrderDialog`, `takeaway_form.dart`):
   w lokalu (wybór stolika), na dostawę albo na odbiór. Dostawa i odbiór (0055) wymagają imienia i nazwiska albo nazwy
@@ -326,6 +334,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   numer dnia `number`. Panel „Dostawy” (`/dostawy`, uprawnienie `orders`, dźwięk i powiadomienie przy nowym):
   przyjęcie z czasem (`panel_takeaway_accept`, pozycje idą na kuchnię), gotowe, wydanie odbioru, odrzucenie, ręczna
   zmiana dostawcy (`panel_takeaway_assign`, `panel_couriers`). Gość śledzi zamówienie na żywo („Moje” → „Zamówienia”).
+  Od paczki 3 „Dostawy” pokazują tylko dostawy, a odbiór osobisty ma zakładkę „Odbiór” w grupie Zamówienia (ten sam
+  `DeliveriesScreen(kind: OrderKind.pickup)`: telefon, imię, godzina złożenia albo na którą, dania, kwota, opłacone;
+  „Pokaż” w powiadomieniu otwiera właściwą zakładkę).
   Dostawcy (stanowisko z `deliveries` wpisanym wprost, bez „ALL”): kolejka `private.courier_queue`: kto pierwszy zaczął
   zmianę albo najdawniej skończył kurs, dostaje pierwszy kurs (`private.dispatch_deliveries`, triggery na zamówieniach
   i zmianach; koniec zmiany oddaje nieodebrane kursy kolejce). W Table for employees zakładka „Dostawy”
@@ -349,8 +360,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   ustawienia (progi, wyprzedzenie zamówień na godzinę „Na wynos” i „Na dostawę”, pozycje ukryte,
   `panel_set_kitchen_config`). Pełny ekran chowa menu. Nowy bilecik dzwoni. Zamówienia na godzinę czekają w pasku
   „Zaplanowane” po prawej (tylko gdy są; godzina wejścia do kuchni, bez odliczania), o swojej porze przechodzą
-  do bilecików (dzwonią) z paskiem „NA GODZINĘ · odbiór/u klienta HH:MM”. Wydanie pokazuje je dopiero wtedy.
-- Wydanie (`/wydanie`, `features/serving`, uprawnienie `serving`, grupa Kuchnia; w 0042 dostały je stanowiska
+  do bilecików (dzwonią) z paskiem „NA GODZINĘ · odbiór/u klienta HH:MM”. Kompletowanie pokazuje je dopiero wtedy.
+- Kompletowanie (dawniej Wydanie; `/wydanie`, `features/serving`, uprawnienie `serving`, grupa Zamówienia; w 0042 dostały je stanowiska
   z `orders`): karty stolików z daniami gotowymi z kuchni (najdłużej czekające pierwsze, żółte po 2 min, czerwone
   po 4 min), stuknięcie pozycji albo „Wydane” wywołuje `panel_serve_items` (ready → served, `p_undo` cofa),
   pod kartą „Jeszcze na kuchni”. Zamówienia na wynos w przygotowaniu: „Spakowane” (`panel_takeaway_ready`),

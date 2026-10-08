@@ -21,8 +21,8 @@ class ReservationAlerts {
   /// Otwiera zakładkę Rezerwacje. Ustawia ją aplikacja panelu (router).
   VoidCallback? onOpen;
 
-  /// Otwiera zakładkę Dostawy.
-  VoidCallback? onOpenTakeaway;
+  /// Otwiera zakładkę Dostawy albo Odbiór (według rodzaju zamówienia).
+  void Function(OrderKind kind)? onOpenTakeaway;
 
   /// Nowe zamówienie z dostawą albo odbiorem osobistym z aplikacji Table.
   Future<void> onTakeaway(TakeawayOrder order, {required bool muted}) async {
@@ -42,9 +42,9 @@ class ReservationAlerts {
       details,
       title: 'Nowe zamówienie: ${order.label}',
       tone: ToastTone.success,
-      icon: AppIcons.moped,
+      icon: order.kind == OrderKind.pickup ? AppIcons.shoppingBag : AppIcons.moped,
       actionLabel: onOpenTakeaway == null ? null : 'Pokaż',
-      onAction: onOpenTakeaway,
+      onAction: onOpenTakeaway == null ? null : () => onOpenTakeaway?.call(order.kind),
       duration: const Duration(seconds: 15),
     );
     if (!_ready) return;

@@ -9,7 +9,7 @@ import '../data/providers.dart';
 import 'app.dart';
 
 /// Automatyczne wylogowanie pracownika z panelu po [kIdleLogoutSeconds] sekundach bez ruchu myszy,
-/// kliknięcia, przewinięcia i klawisza. Kuchnia i Wydanie nie wylogowują pracownika: to ekrany, na które się patrzy.
+/// kliknięcia, przewinięcia i klawisza. Kuchnia i Kompletowanie nie wylogowują pracownika: to ekrany, na które się patrzy.
 /// Pełny dostęp właściciela (hasło konta restauracji) nie wylogowuje się sam: trwa, dopóki właściciel się nie wyloguje.
 /// Wylogowanie zamyka otwarte okna (np. rachunek), żeby następna osoba nie pracowała na cudzym koncie.
 class IdleLogout extends ConsumerStatefulWidget {

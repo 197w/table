@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_panel/app/app.dart';
 import 'package:table_panel/app/idle_logout.dart';
+import 'package:table_panel/app/sections.dart';
 import 'package:table_panel/data/models.dart';
 import 'package:table_panel/data/providers.dart';
 import 'package:table_panel/shared/panel_widgets.dart';
@@ -65,11 +66,15 @@ void main() {
     expect(tickets[1].readySince.isAtSameMomentAs(DateTime.parse('2026-10-01T17:04:00Z')), isTrue);
   });
 
-  test('zakładka Wydanie ma własne uprawnienie', () {
+  test('Kompletowanie ma własne uprawnienie, a Odbiór jest w grupie Zamówienia', () {
     expect(StaffPermission.values.map((p) => p.key), contains('serving'));
     expect(canOpenRoute(PanelRoutes.serving, {'serving'}), isTrue);
     expect(canOpenRoute(PanelRoutes.serving, {'kitchen'}), isFalse);
-    expect(panelTabLabels[PanelRoutes.serving], 'Wydanie');
+    expect(panelTabLabels[PanelRoutes.serving], 'Kompletowanie');
+    expect(canOpenRoute(PanelRoutes.pickup, {'orders'}), isTrue);
+    expect(PanelSection.forRoute(PanelRoutes.pickup), PanelSection.orders);
+    expect(PanelSection.forRoute(PanelRoutes.serving), PanelSection.orders);
+    expect(PanelSection.reservations.tabs.map((t) => t.route), [PanelRoutes.reservations]);
   });
 
   test('dane właściciela: puste, gdy wiersza nie ma, i wypełnione z bazy', () {

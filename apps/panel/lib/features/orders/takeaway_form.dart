@@ -247,7 +247,8 @@ class TakeawayForm extends ConsumerStatefulWidget {
 }
 
 class _TakeawayFormState extends ConsumerState<TakeawayForm> {
-  late final _phone = TextEditingController(text: widget.initial.phone);
+  // Nowy klient: numer zaczyna się od +48, można go zmienić na inny kraj.
+  late final _phone = TextEditingController(text: widget.initial.phone.isEmpty ? '+48 ' : widget.initial.phone);
   late final _name = TextEditingController(text: widget.initial.name);
   late final _company = TextEditingController(text: widget.initial.company);
   late final _nip = TextEditingController(text: widget.initial.nip);
@@ -263,7 +264,13 @@ class _TakeawayFormState extends ConsumerState<TakeawayForm> {
   Timer? _debounce;
 
   /// Telefon, dla którego szukamy wcześniejszych zamówień (po chwili od ostatniej cyfry).
-  late String _lookupPhone = TakeawayCustomer.digits(widget.initial.phone);
+  late String _lookupPhone = _localDigits(widget.initial.phone);
+
+  /// Cyfry numeru bez kierunkowego 48 (po nim baza szuka ostatnich 9 cyfr).
+  static String _localDigits(String phone) {
+    final d = TakeawayCustomer.digits(phone);
+    return d.length > 9 && d.startsWith('48') ? d.substring(2) : d;
+  }
 
   @override
   void dispose() {
@@ -297,7 +304,7 @@ class _TakeawayFormState extends ConsumerState<TakeawayForm> {
     _changed();
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), () {
-      if (mounted) setState(() => _lookupPhone = TakeawayCustomer.digits(_phone.text));
+      if (mounted) setState(() => _lookupPhone = _localDigits(_phone.text));
     });
   }
 

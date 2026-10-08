@@ -36,7 +36,7 @@ String _plural(int n, String one, String few, String many) {
   return '$n ${isFew ? few : many}';
 }
 
-/// Ekran „Wydanie”: dania gotowe z kuchni czekają, aż ktoś zaniesie je gościom.
+/// Ekran „Kompletowanie”: dania gotowe z kuchni czekają, aż ktoś zaniesie je gościom albo spakuje na wynos.
 /// Karta to stolik (albo zamówienie na wynos do spakowania), najdłużej czekające pierwsze.
 /// Stuknięcie pozycji wydaje ją, „Wydane” wydaje całą kartę. Nowe gotowe danie dzwoni.
 class ServingScreen extends ConsumerStatefulWidget {
@@ -161,7 +161,7 @@ class _ServingScreenState extends ConsumerState<ServingScreen> {
       return const Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(child: ProGate(feature: 'Wydanie')),
+          Expanded(child: ProGate(feature: 'Kompletowanie')),
         ],
       );
     }

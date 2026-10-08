@@ -8,6 +8,7 @@ import 'package:table_core/table_core.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
+import 'person_badge.dart';
 import 'settle_dialog.dart';
 import 'takeaway_form.dart';
 import '../floor/floor_canvas.dart';
@@ -39,6 +40,9 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
 
   /// Liczba gości wybrana przed otwarciem rachunku stolika (null: kelner pominął pytanie).
   final _guestsFor = <String, int?>{};
+
+  /// Podział rachunku: osoba, której przypisują się nowe pozycje (null: wspólne). Zmienia się ze stolikiem.
+  int? _person;
   String? _sectionId;
   String _query = '';
   final _search = TextEditingController();
@@ -54,6 +58,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       setState(() {
         _tableId = widget.tableId;
         _takeawayId = null;
+        _person = null;
       });
     }
   }
@@ -154,9 +159,11 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     }
     HapticFeedback.selectionClick();
     final repo = ref.read(repositoryProvider);
+    final guest = _takeawayId == null ? _person : null;
     unawaited(
       _enqueue(restaurantId, () async {
         await repo.addOrderItem(
+          guest: guest,
           orderId: await orderId(),
           menuItemId: item.id,
           variant: choice.variant,
@@ -425,11 +432,36 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       if (order?.reservationId == r.id) reservation = r;
     }
 
+    final now = DateTime.now();
+    final inKitchen = {
+      for (final t in ref.watch(kitchenTicketsProvider(restaurant.id)).value ?? const <KitchenTicket>[])
+        if (!t.upcomingAt(now) && t.items.any((i) => i.status == OrderItemStatus.sent)) t.orderId,
+    }.length;
+    final stats = ref.watch(kitchenStatsProvider(restaurant.id)).value ?? const KitchenStats();
+    final avgSeconds = stats.hourSeconds ?? stats.todaySeconds;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
           actions: [
+            const _ClockPill(),
+            Tooltip(
+              message: 'Zamówienia, które kuchnia teraz robi (stoliki i na wynos)',
+              child: PanelPill(
+                'W kuchni: $inKitchen',
+                icon: AppIcons.cookingPot,
+              ),
+            ),
+            Tooltip(
+              message: stats.hourSeconds != null
+                  ? 'Średni czas kuchni w ostatniej godzinie (${stats.hourCount})'
+                  : 'Średni czas kuchni dzisiaj (${stats.todayCount})',
+              child: PanelPill(
+                avgSeconds == null ? 'Średnio —' : 'Średnio ${_minutesLabel(avgSeconds)}',
+                icon: AppIcons.timer,
+              ),
+            ),
             switch (live) {
               LiveStatus.live => const PanelPill('Na żywo', dotColor: Color(0xFF2FB673)),
               LiveStatus.connecting => const PanelPill('Łączenie…', dotColor: Color(0xFFD99A15)),
@@ -481,6 +513,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                             selectedDraftId: draft?.id,
                             kitchen: kitchen,
                             onSelect: (t) => setState(() {
+                              if (_tableId != t.id) _person = null;
                               _tableId = t.id;
                               _takeawayId = null;
                             }),
@@ -551,6 +584,12 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                                   order: order,
                                   reservation: reservation,
                                   kitchen: kitchen,
+                                  person: _person,
+                                  onPerson: (p) => setState(() => _person = p),
+                                  onItemGuest: (item, guest) => _enqueue(
+                                    restaurant.id,
+                                    () => ref.read(repositoryProvider).setItemsGuest([item.id], guest),
+                                  ),
                                   onGuests: order == null ? null : () => _changeGuests(restaurant.id, table!, order!),
                                   onQuantity: (item, q) => _enqueue(
                                     restaurant.id,
@@ -829,14 +868,27 @@ class _TableTile extends StatelessWidget {
     final ready = order?.ready ?? 0;
     final waiting = order?.waitingSince;
     final wait = waiting == null ? null : _waitLabel(waiting, kitchen);
+    // Podświetlenie: żółte, gdy ktoś właśnie nabija pozycje (panel albo aplikacja kelnera), zielone przy rachunku.
+    final composing = unsent > 0;
+    final glow = composing ? _amber : (open ? AppColors.accent : null);
 
     return PanelPress(
       scale: 0.98,
       child: Material(
-        color: selected ? AppColors.surfaceRaised : Colors.transparent,
+        color: selected
+            ? AppColors.surfaceRaised
+            : glow == null
+            ? Colors.transparent
+            : glow.withValues(alpha: composing ? 0.12 : 0.07),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
-          side: BorderSide(color: selected ? AppColors.accent : Colors.transparent),
+          side: BorderSide(
+            color: selected
+                ? AppColors.accent
+                : glow == null
+                ? Colors.transparent
+                : glow.withValues(alpha: composing ? 0.55 : 0.3),
+          ),
         ),
         child: InkWell(
           onTap: onTap,
@@ -883,6 +935,11 @@ class _TableTile extends StatelessWidget {
                             fontFeatures: _tabular,
                           ),
                         ),
+                        if (composing && wait == null)
+                          Text(
+                            'Nabijane…',
+                            style: text.labelSmall?.copyWith(color: _amber, fontWeight: FontWeight.w600),
+                          ),
                         // Ile stolik czeka na jedzenie od wysłania na kuchnię.
                         if (wait != null)
                           Tooltip(
@@ -1572,12 +1629,20 @@ class _OrderPanel extends StatelessWidget {
     required this.canCancelSent,
     required this.kitchen,
     required this.onGuests,
+    required this.person,
+    required this.onPerson,
+    required this.onItemGuest,
   });
 
   final DiningTable table;
   final PanelOrder? order;
   final PanelReservation? reservation;
   final KitchenConfig kitchen;
+
+  /// Podział rachunku: osoba, której przypisują się nowe pozycje (null: wspólne).
+  final int? person;
+  final ValueChanged<int?> onPerson;
+  final void Function(OrderItem item, int? guest) onItemGuest;
 
   /// Zmiana liczby gości przy otwartym rachunku.
   final VoidCallback? onGuests;
@@ -1611,6 +1676,11 @@ class _OrderPanel extends StatelessWidget {
     final total = order?.totalGrosze ?? 0;
     final waiting = order?.waitingSince;
     final wait = waiting == null ? null : _waitLabel(waiting, kitchen);
+    final active = order?.active ?? const <OrderItem>[];
+    // Osoby: co najmniej dwie, a więcej, gdy pozycje albo wybór już je mają.
+    final people = [2, person ?? 0, for (final i in active) i.guestNo ?? 0].reduce((a, b) => a > b ? a : b);
+    final split = active.any((i) => i.guestNo != null);
+    int sumFor(int? guest) => active.where((i) => i.guestNo == guest).fold(0, (s, i) => s + i.totalGrosze);
 
     return Card(
       child: Column(
@@ -1698,6 +1768,14 @@ class _OrderPanel extends StatelessWidget {
             ),
           ),
           Divider(height: 1, color: AppColors.ring),
+          // Podział rachunku już przy nabijaniu: nowe pozycje trafiają do wybranej osoby.
+          _SplitBar(
+            people: people,
+            person: person,
+            sumFor: split ? sumFor : null,
+            onPerson: onPerson,
+          ),
+          Divider(height: 1, color: AppColors.ring),
           Expanded(
             child: groups.isEmpty
                 ? const MessageView(
@@ -1756,6 +1834,8 @@ class _OrderPanel extends StatelessWidget {
                             onQuantity: (q) => onQuantity(item, q),
                             onNote: () => onNote(item),
                             onStatus: (s) => onStatus(item, s),
+                            people: people,
+                            onGuest: item.status == OrderItemStatus.cancelled ? null : (g) => onItemGuest(item, g),
                           ),
                       ],
                     ],
@@ -1970,6 +2050,8 @@ class _OrderLine extends StatelessWidget {
     required this.onQuantity,
     required this.onNote,
     required this.onStatus,
+    this.people = 0,
+    this.onGuest,
   });
 
   final OrderItem item;
@@ -1977,6 +2059,10 @@ class _OrderLine extends StatelessWidget {
   final ValueChanged<int> onQuantity;
   final VoidCallback onNote;
   final ValueChanged<OrderItemStatus> onStatus;
+
+  /// Podział rachunku: ile osób do wyboru i przypisanie pozycji (null: bez podziału, np. na wynos).
+  final int people;
+  final ValueChanged<int?>? onGuest;
 
   @override
   Widget build(BuildContext context) {
@@ -2007,6 +2093,14 @@ class _OrderLine extends StatelessWidget {
                 Text.rich(
                   TextSpan(
                     children: [
+                      if (item.guestNo case final g?)
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.middle,
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: PersonBadge(g),
+                          ),
+                        ),
                       if (!fresh || item.quantity > 1)
                         TextSpan(
                           text: '${item.quantity}× ',
@@ -2059,10 +2153,17 @@ class _OrderLine extends StatelessWidget {
             onSelected: (v) => switch (v) {
               'note' => onNote(),
               'served' => onStatus(OrderItemStatus.served),
+              _ when v.startsWith('guest:') => onGuest?.call(int.parse(v.substring(6)) == 0 ? null : int.parse(v.substring(6))),
               _ => onStatus(OrderItemStatus.cancelled),
             },
             itemBuilder: (_) => [
               if (fresh) const PopupMenuItem(value: 'note', child: Text('Uwaga dla kuchni')),
+              if (onGuest != null) ...[
+                for (var g = 1; g <= people; g++)
+                  if (item.guestNo != g) PopupMenuItem(value: 'guest:$g', child: Text('Na rachunek osoby $g')),
+                if (item.guestNo != null) const PopupMenuItem(value: 'guest:0', child: Text('Wspólne')),
+                const PopupMenuDivider(),
+              ],
               if (item.status == OrderItemStatus.sent || ready)
                 const PopupMenuItem(value: 'served', child: Text('Wydane')),
               if (fresh || canCancelSent)
@@ -2082,6 +2183,105 @@ class _OrderLine extends StatelessWidget {
 }
 
 String _guestsWord(int n) => n == 1 ? 'gość' : 'gości';
+
+const _amber = Color(0xFFD99A15);
+
+/// „12 min” albo „<1 min”.
+String _minutesLabel(int seconds) => seconds < 60 ? '<1 min' : '${(seconds / 60).round()} min';
+
+/// Bieżąca godzina w nagłówku Zamówień.
+class _ClockPill extends StatefulWidget {
+  const _ClockPill();
+
+  @override
+  State<_ClockPill> createState() => _ClockPillState();
+}
+
+class _ClockPillState extends State<_ClockPill> {
+  late final Timer _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => PanelPill(Fmt.time(DateTime.now()), icon: AppIcons.clock);
+}
+
+/// Pasek podziału rachunku: „Wspólne”, osoby 1, 2... i „+”. Z kwotami, gdy pozycje są już podzielone.
+class _SplitBar extends StatelessWidget {
+  const _SplitBar({required this.people, required this.person, required this.sumFor, required this.onPerson});
+
+  final int people;
+  final int? person;
+  final int Function(int? guest)? sumFor;
+  final ValueChanged<int?> onPerson;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    String label(String name, int? guest) {
+      final sum = sumFor?.call(guest);
+      return sum == null || sum == 0 ? name : '$name · ${Fmt.price(sum)}';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Tooltip(
+              message: 'Nowe pozycje trafią na rachunek wybranej osoby. Przy zamykaniu zapłaci za nie osobno.',
+              child: Text('Dla:', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                ChoiceChip(
+                  label: Text(label('Wspólne', null), style: const TextStyle(fontFeatures: _tabular)),
+                  selected: person == null,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) => onPerson(null),
+                ),
+                for (var g = 1; g <= people; g++)
+                  ChoiceChip(
+                    avatar: PersonBadge(g, size: 18),
+                    label: Text(label('Osoba $g', g), style: const TextStyle(fontFeatures: _tabular)),
+                    selected: person == g,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) => onPerson(g),
+                  ),
+                if (people < 30)
+                  IconButton(
+                    tooltip: 'Kolejna osoba',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => onPerson(people + 1),
+                    icon: const Glyph(AppIcons.plus, size: 16),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// Ilu gości siedzi przy stoliku. Wpisanie jest dobrowolne: „Pomiń” liczy się w statystykach zespołu.
 class _GuestsDialog extends StatefulWidget {

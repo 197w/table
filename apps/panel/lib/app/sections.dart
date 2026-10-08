@@ -15,9 +15,13 @@ class PanelTab {
 enum PanelSection {
   reservations('Rezerwacje', AppIcons.calendarDots, [
     PanelTab(PanelRoutes.reservations, 'Rezerwacje', AppIcons.calendarDots),
+  ]),
+  // Rachunki przy stolikach, historia, kompletowanie dań i paczek oraz wydawanie zamówień na odbiór.
+  orders('Zamówienia', AppIcons.receipt, [
     PanelTab(PanelRoutes.orders, 'Zamówienia', AppIcons.receipt),
     PanelTab(PanelRoutes.history, 'Historia zamówień', AppIcons.clockBack),
-    PanelTab(PanelRoutes.serving, 'Wydanie', AppIcons.callBell),
+    PanelTab(PanelRoutes.serving, 'Kompletowanie', AppIcons.callBell),
+    PanelTab(PanelRoutes.pickup, 'Odbiór', AppIcons.shoppingBag),
   ]),
   kitchen('Kuchnia', AppIcons.chefHat, [
     PanelTab(PanelRoutes.kitchen, 'Kuchnia', AppIcons.chefHat),

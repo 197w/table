@@ -28,6 +28,7 @@ import '../features/staff/staff_screen.dart';
 import '../features/staff/team_stats_screen.dart';
 import '../features/stats/stats_screen.dart';
 import 'idle_logout.dart';
+import '../data/models.dart';
 import '../shared/panel_widgets.dart';
 import 'panel_theme.dart';
 import 'reservation_alerts.dart';
@@ -57,7 +58,8 @@ class _PanelAppState extends ConsumerState<PanelApp>
     _router = _buildRouter(_authRefresh, root: _rootNavigator, shell: _shellNavigator);
     // Przycisk „Pokaż” w powiadomieniu o nowej rezerwacji otwiera Rezerwacje.
     ReservationAlerts.instance.onOpen = () => _router.go(PanelRoutes.reservations);
-    ReservationAlerts.instance.onOpenTakeaway = () => _router.go(PanelRoutes.deliveries);
+    ReservationAlerts.instance.onOpenTakeaway =
+        (kind) => _router.go(kind == OrderKind.pickup ? PanelRoutes.pickup : PanelRoutes.deliveries);
   }
 
   @override
@@ -172,6 +174,7 @@ GoRouter _buildRouter(
           ),
           _page(PanelRoutes.history, const OrderHistoryScreen()),
           _page(PanelRoutes.deliveries, const DeliveriesScreen()),
+          _page(PanelRoutes.pickup, const DeliveriesScreen(kind: OrderKind.pickup)),
           _page(PanelRoutes.fleet, const FleetScreen()),
           _page(PanelRoutes.kitchen, const KitchenScreen()),
           _page(PanelRoutes.serving, const ServingScreen()),
@@ -222,6 +225,7 @@ abstract final class PanelRoutes {
   static const fleet = '/flota';
   static const kitchen = '/kuchnia';
   static const serving = '/wydanie';
+  static const pickup = '/odbior';
   static const staff = '/pracownicy';
   static const teamStats = '/zespol';
   static const customers = '/klienci';
@@ -246,6 +250,7 @@ const _routePermissions = {
   PanelRoutes.fleet: {'fleet'},
   PanelRoutes.kitchen: {'kitchen'},
   PanelRoutes.serving: {'serving'},
+  PanelRoutes.pickup: {'orders'},
   PanelRoutes.floor: {'floor_edit'},
   // W Pracownikach każda część ma własne uprawnienie: zespół, loginy, grafik, stanowiska.
   PanelRoutes.staff: {'staff', 'staff_logins', 'schedule', 'positions'},
@@ -271,7 +276,8 @@ const panelTabLabels = {
   PanelRoutes.deliveries: 'Dostawy',
   PanelRoutes.fleet: 'Flota',
   PanelRoutes.kitchen: 'Kuchnia',
-  PanelRoutes.serving: 'Wydanie',
+  PanelRoutes.serving: 'Kompletowanie',
+  PanelRoutes.pickup: 'Odbiór',
   PanelRoutes.floor: 'Edycja sali',
   PanelRoutes.staff: 'Pracownicy',
   PanelRoutes.teamStats: 'Statystyki zespołu',

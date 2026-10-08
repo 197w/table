@@ -30,11 +30,13 @@ const _courseColors = [
 
 Color _courseColor(String courseId) => _courseColors[courseId.codeUnits.fold(0, (a, c) => a + c) % _courseColors.length];
 
-/// Zamówienia gości z aplikacji Table: dostawa i odbiór osobisty. Nowe przyjmuje się z czasem przygotowania
-/// (pozycje idą na kuchnię), gotowe dostawy rozwożą dostawcy z kolejki w Table for employees,
-/// odbiór osobisty wydaje obsługa.
+/// Zamówienia na wynos jednego rodzaju: „Dostawy” (dostawa) albo „Odbiór” (odbiór osobisty, grupa Zamówienia).
+/// Nowe przyjmuje się z czasem przygotowania (pozycje idą na kuchnię), gotowe dostawy rozwożą dostawcy z kolejki
+/// w Table for employees, odbiór osobisty wydaje obsługa.
 class DeliveriesScreen extends ConsumerStatefulWidget {
-  const DeliveriesScreen({super.key});
+  const DeliveriesScreen({super.key, this.kind = OrderKind.delivery});
+
+  final OrderKind kind;
 
   @override
   ConsumerState<DeliveriesScreen> createState() => _DeliveriesScreenState();
@@ -135,11 +137,12 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
   Widget build(BuildContext context) {
     final restaurant = ref.watch(currentRestaurantProvider);
     if (restaurant == null) return const LoadingView();
+    final pickup = widget.kind == OrderKind.pickup;
     if (!restaurant.isPro) {
-      return const Column(
+      return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(child: ProGate(feature: 'Dostawy i odbiór osobisty')),
+          Expanded(child: ProGate(feature: pickup ? 'Odbiór osobisty' : 'Dostawy')),
         ],
       );
     }
@@ -148,7 +151,7 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
     final settings = ref.watch(profileProvider(rid)).value?.delivery ?? const DeliverySettings();
     final async = ref.watch(takeawayOrdersProvider(rid));
     final couriers = ref.watch(couriersProvider(rid)).value ?? const <Courier>[];
-    final orders = async.value ?? const <TakeawayOrder>[];
+    final orders = [for (final o in async.value ?? const <TakeawayOrder>[]) if (o.kind == widget.kind) o];
     final active = orders.where((o) => !o.stage.finished).toList();
     final finished = orders.where((o) => o.stage.finished).toList()
       ..sort((a, b) => (b.closedAt ?? b.openedAt).compareTo(a.closedAt ?? a.openedAt));
@@ -161,14 +164,14 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
             children: [
               IconTabs<int>(
                 options: [
-                  (0, AppIcons.moped, 'Aktywne (${active.length})'),
+                  (0, pickup ? AppIcons.shoppingBag : AppIcons.moped, 'Aktywne (${active.length})'),
                   (1, AppIcons.checkCircle, 'Zakończone dziś (${finished.length})'),
                 ],
                 selected: _tab,
                 onChanged: (t) => setState(() => _tab = t),
               ),
               const Spacer(),
-              if (couriers.isNotEmpty) _CouriersStrip(couriers: couriers),
+              if (!pickup && couriers.isNotEmpty) _CouriersStrip(couriers: couriers),
             ],
           ),
         ),
@@ -183,10 +186,10 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
               if (_tab == 1) return _FinishedList(orders: finished);
               if (active.isEmpty) {
                 return MessageView(
-                  icon: AppIcons.moped,
-                  title: 'Brak zamówień na wynos',
+                  icon: pickup ? AppIcons.shoppingBag : AppIcons.moped,
+                  title: pickup ? 'Brak zamówień na odbiór' : 'Brak dostaw',
                   message: settings.any
-                      ? 'Nowe zamówienia z aplikacji Table pojawią się tutaj z dźwiękiem.'
+                      ? 'Nowe zamówienia z aplikacji Table i z „Nowe zamówienie” w Zamówieniach pojawią się tutaj z dźwiękiem.'
                       : 'Włącz dostawę albo odbiór osobisty w „Dane lokalu”, żeby goście mogli zamawiać w aplikacji.',
                 );
               }
@@ -243,7 +246,7 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
                     column('W przygotowaniu', AppColors.textMuted, active.where((o) => o.stage == TakeawayStage.accepted).toList()),
                     const SizedBox(width: 16),
                     column(
-                      'Gotowe i w drodze',
+                      pickup ? 'Do odbioru' : 'Gotowe i w drodze',
                       AppColors.accent,
                       active.where((o) => o.stage == TakeawayStage.ready || o.stage == TakeawayStage.onTheWay).toList(),
                     ),
@@ -393,6 +396,11 @@ class _OrderCardState extends State<_OrderCard> {
               '${o.personName ?? o.customerName} · ${o.customerPhone}',
               style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
             ),
+            if (!delivery)
+              Text(
+                'Złożone o ${_hm(o.openedAt)}${o.fromApp ? ' w aplikacji Table' : ''}',
+                style: muted,
+              ),
             if (o.address != null) Text(o.address!, style: text.titleSmall),
             if (o.note != null)
               Text(o.note!, style: text.bodySmall?.copyWith(color: _cashColor, fontStyle: FontStyle.italic)),

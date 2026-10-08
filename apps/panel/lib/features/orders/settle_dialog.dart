@@ -7,6 +7,7 @@ import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
 import 'discount_code_field.dart';
+import 'person_badge.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -241,15 +242,49 @@ class _SettleDialogState extends ConsumerState<SettleDialog> {
       ],
     );
 
+    // Podział z nabijania: osoby z pozycjami i ich kwoty.
+    final guests = {for (final i in order.active) ?i.guestNo}.toList()..sort();
+    final shared = order.active.where((i) => i.guestNo == null).toList();
+    int sumOf(Iterable<OrderItem> items) => items.fold(0, (s, i) => s + i.totalGrosze);
+    void pickGuest(int? guest) => setState(() {
+      _picked
+        ..clear()
+        ..addAll({for (final i in order.active) if (i.guestNo == guest) i.id: i.quantity});
+    });
+
     // Wybór pozycji do zapłaty: ile sztuk każdej pozycji płaci ta osoba.
     final itemPicker = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (guests.isNotEmpty) ...[
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final g in guests)
+                ActionChip(
+                  avatar: PersonBadge(g, size: 18),
+                  label: Text(
+                    'Osoba $g · ${Fmt.price(sumOf(order.active.where((i) => i.guestNo == g)))}',
+                    style: const TextStyle(fontFeatures: _tabular),
+                  ),
+                  onPressed: () => pickGuest(g),
+                ),
+              if (shared.isNotEmpty)
+                ActionChip(
+                  label: Text('Wspólne · ${Fmt.price(sumOf(shared))}', style: const TextStyle(fontFeatures: _tabular)),
+                  onPressed: () => pickGuest(null),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+        ],
         for (final i in order.active)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 2),
             child: Row(
               children: [
+                if (i.guestNo case final g?) ...[PersonBadge(g, size: 18), const SizedBox(width: 6)],
                 Expanded(child: Text([i.name, ?i.details].join(' · '), style: text.bodyMedium)),
                 IconButton(
                   visualDensity: VisualDensity.compact,
