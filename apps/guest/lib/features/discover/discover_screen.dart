@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
@@ -10,6 +12,14 @@ import '../../data/providers.dart';
 import 'restaurant_cards.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
+
+/// Wysokość rzędu z przyciskami: co najmniej 48 dp do dotyku (Android), a z większą czcionką systemu więcej.
+double _tapRow(BuildContext context, double fontSize) =>
+    math.max(48, MediaQuery.textScalerOf(context).scale(fontSize) * 1.3 + 22);
+
+/// Czas animacji albo zero przy włączonym „Ogranicz ruch”.
+Duration _motion(BuildContext context, int ms) =>
+    MediaQuery.disableAnimationsOf(context) ? Duration.zero : Duration(milliseconds: ms);
 
 /// Odkrywaj: wyszukiwarka, kategorie kuchni z własnymi ikonami, szybkie filtry z „Filtry” i „Sortuj”,
 /// liczba lokali i przełącznik widoku (karty ze zdjęciem albo zwarte wiersze).
@@ -41,91 +51,180 @@ class DiscoverScreen extends ConsumerWidget {
               ..invalidate(searchResultsProvider);
             await ref.read(searchResultsProvider.future);
           },
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              const SliverToBoxAdapter(child: _Header()),
-              const SliverToBoxAdapter(child: _SearchField()),
-              SliverToBoxAdapter(child: _CuisineRow(selected: filter.cuisine)),
-              SliverToBoxAdapter(child: _FilterRow(filter: filter, city: city, hasLocation: hasLocation)),
-              if (locationOff && filter.city == null && city != null)
-                SliverToBoxAdapter(
-                  child: _LocationHint(city: city, onEnable: () => ref.invalidate(locationProvider)),
-                ),
-              ...results.when(
-                skipLoadingOnReload: true,
-                loading: () => const [
-                  SliverFillRemaining(hasScrollBody: false, child: LoadingView()),
-                ],
-                error: (e, _) => [
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: ErrorView(error: e, onRetry: () => ref.invalidate(searchResultsProvider)),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 960),
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  const SliverToBoxAdapter(child: _Header()),
+                  const SliverToBoxAdapter(child: _SearchField()),
+                  SliverToBoxAdapter(child: _CuisineRow(selected: filter.cuisine)),
+                  SliverToBoxAdapter(
+                    child: _FilterRow(filter: filter, city: city, hasLocation: hasLocation),
                   ),
-                ],
-                data: (data) {
-                  final items = data.items;
-                  if (items.isEmpty) {
-                    final filtered = data.total > 0;
-                    final byCuisine = filter.cuisine != null;
-                    return [
+                  if (locationOff && filter.city == null && city != null)
+                    SliverToBoxAdapter(
+                      child: _LocationHint(city: city, onEnable: () => ref.invalidate(locationProvider)),
+                    ),
+                  ...results.when(
+                    skipLoadingOnReload: true,
+                    // Szkielety kart w miejscu listy zamiast samego kółka ładowania.
+                    loading: () => [const _SkeletonList()],
+                    error: (e, _) => [
                       SliverFillRemaining(
                         hasScrollBody: false,
-                        child: MessageView(
-                          icon: AppIcons.search,
-                          title: filtered
-                              ? 'Żaden lokal nie pasuje do filtrów'
-                              : byCuisine
-                              ? 'Brak lokali z tą kuchnią'
-                              : 'Brak lokali w pobliżu',
-                          message: filtered
-                              ? 'Bez filtrów jest ${Fmt.restaurants(data.total)}.'
-                              : byCuisine
-                              ? 'Wybierz inną kuchnię albo pokaż wszystkie.'
-                              : 'W promieniu ${Fmt.radius(10, unit)} nie ma jeszcze lokali. Wybierz miasto u góry.',
-                          actionLabel: filtered
-                              ? 'Wyczyść filtry'
-                              : byCuisine
-                              ? 'Pokaż wszystkie kuchnie'
-                              : null,
-                          onAction: filtered
-                              ? () => notifier.set(filter.withoutExtras())
-                              : byCuisine
-                              ? () => notifier.setCuisine(null)
-                              : null,
+                        child: ErrorView(error: e, onRetry: () => ref.invalidate(searchResultsProvider)),
+                      ),
+                    ],
+                    data: (data) {
+                      final items = data.items;
+                      if (items.isEmpty) {
+                        final filtered = data.total > 0;
+                        final byCuisine = filter.cuisine != null;
+                        return [
+                          SliverFillRemaining(
+                            hasScrollBody: false,
+                            child: MessageView(
+                              icon: AppIcons.search,
+                              title: filtered
+                                  ? 'Żaden lokal nie pasuje do filtrów'
+                                  : byCuisine
+                                  ? 'Brak lokali z tą kuchnią'
+                                  : 'Brak lokali w pobliżu',
+                              message: filtered
+                                  ? 'Bez filtrów jest ${Fmt.restaurants(data.total)}.'
+                                  : byCuisine
+                                  ? 'Wybierz inną kuchnię albo pokaż wszystkie.'
+                                  : 'W promieniu ${Fmt.radius(10, unit)} nie ma jeszcze lokali. Wybierz miasto u góry.',
+                              actionLabel: filtered
+                                  ? 'Wyczyść filtry'
+                                  : byCuisine
+                                  ? 'Pokaż wszystkie kuchnie'
+                                  : null,
+                              onAction: filtered
+                                  ? () => notifier.set(filter.withoutExtras())
+                                  : byCuisine
+                                  ? () => notifier.setCuisine(null)
+                                  : null,
+                            ),
+                          ),
+                        ];
+                      }
+                      final cards = layout == DiscoverLayout.cards;
+                      return [
+                        SliverToBoxAdapter(
+                          child: _ResultsBar(
+                            count: items.length,
+                            city: city,
+                            unit: unit,
+                            layout: layout,
+                            onLayout: (l) => ref.read(discoverLayoutProvider.notifier).set(l),
+                          ),
                         ),
-                      ),
-                    ];
-                  }
-                  final cards = layout == DiscoverLayout.cards;
-                  return [
-                    SliverToBoxAdapter(
-                      child: _ResultsBar(
-                        count: items.length,
-                        city: city,
-                        unit: unit,
-                        layout: layout,
-                        onLayout: (l) => ref.read(discoverLayoutProvider.notifier).set(l),
-                      ),
-                    ),
-                    SliverPadding(
-                      padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + MediaQuery.paddingOf(context).bottom),
-                      sliver: SliverList.separated(
-                        itemCount: items.length,
-                        separatorBuilder: (_, _) => SizedBox(height: cards ? 16 : 8),
-                        itemBuilder: (context, i) {
-                          final r = items[i];
-                          final best = r.id == data.bestMatchId;
-                          return cards
-                              ? RestaurantCard(restaurant: r, showDistance: hasLocation, unit: unit, bestMatch: best)
-                              : RestaurantRow(restaurant: r, showDistance: hasLocation, unit: unit, bestMatch: best);
-                        },
-                      ),
-                    ),
-                  ];
-                },
+                        SliverPadding(
+                          padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + MediaQuery.paddingOf(context).bottom),
+                          sliver: SliverLayoutBuilder(
+                            builder: (context, box) {
+                              // Tablet: dwie kolumny, żeby zdjęcia nie zajmowały całego ekranu.
+                              final columns = box.crossAxisExtent >= 640 ? 2 : 1;
+                              final gap = cards ? 16.0 : 8.0;
+                              Widget tile(RestaurantSummary r) {
+                                final best = r.id == data.bestMatchId;
+                                return cards
+                                    ? RestaurantCard(
+                                        key: ValueKey(r.id),
+                                        restaurant: r,
+                                        showDistance: hasLocation,
+                                        unit: unit,
+                                        bestMatch: best,
+                                      )
+                                    : RestaurantRow(
+                                        key: ValueKey(r.id),
+                                        restaurant: r,
+                                        showDistance: hasLocation,
+                                        unit: unit,
+                                        bestMatch: best,
+                                      );
+                              }
+
+                              final rows = (items.length / columns).ceil();
+                              return SliverList.separated(
+                                itemCount: rows,
+                                separatorBuilder: (_, _) => SizedBox(height: gap),
+                                itemBuilder: (context, row) {
+                                  if (columns == 1) return tile(items[row]);
+                                  return Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      for (var c = 0; c < columns; c++) ...[
+                                        if (c > 0) SizedBox(width: gap),
+                                        Expanded(
+                                          child: row * columns + c < items.length
+                                              ? tile(items[row * columns + c])
+                                              : const SizedBox.shrink(),
+                                        ),
+                                      ],
+                                    ],
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ];
+                    },
+                  ),
+                ],
               ),
-            ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Szkielety kart, dopóki lista się nie wczyta (bez migania i bez animacji).
+class _SkeletonList extends StatelessWidget {
+  const _SkeletonList();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget bar(double width, double height) => Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(color: AppColors.surfaceRaised, borderRadius: BorderRadius.circular(6)),
+    );
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 52, 16, 24),
+      sliver: SliverList.separated(
+        itemCount: 3,
+        separatorBuilder: (_, _) => const SizedBox(height: 16),
+        itemBuilder: (context, _) => ExcludeSemantics(
+          child: Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: AppColors.ring),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: ColoredBox(color: AppColors.surfaceRaised),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [bar(180, 16), const SizedBox(height: 10), bar(120, 12)],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -252,8 +351,9 @@ class _CuisineRow extends ConsumerWidget {
     final cuisines = ref.watch(cuisinesProvider);
     if (cuisines.isEmpty) return const SizedBox(height: 8);
     final notifier = ref.read(discoverFilterProvider.notifier);
+    final label = MediaQuery.textScalerOf(context).scale(12) * 1.3;
     return SizedBox(
-      height: 104,
+      height: 16 + 56 + 6 + label + 8,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(12, 16, 12, 0),
@@ -270,7 +370,10 @@ class _CuisineRow extends ConsumerWidget {
               label: cuisineLabel(c.slug),
               selected: selected == c.slug,
               // Drugie dotknięcie wybranej kuchni pokazuje znowu wszystkie.
-              onTap: () => notifier.setCuisine(selected == c.slug ? null : c.slug),
+              onTap: () {
+                HapticFeedback.selectionClick();
+                notifier.setCuisine(selected == c.slug ? null : c.slug);
+              },
             ),
         ],
       ),
@@ -295,12 +398,14 @@ class _CuisineTile extends StatelessWidget {
       excludeSemantics: true,
       child: PressScale(
         onTap: onTap,
-        child: SizedBox(
-          width: 76,
+        // Kafelek tak szeroki, jak nazwa kuchni: przy dużej czcionce słowo się nie łamie i nie ucina.
+        child: Container(
+          constraints: const BoxConstraints(minWidth: 76),
+          padding: const EdgeInsets.symmetric(horizontal: 6),
           child: Column(
             children: [
               AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
+                duration: _motion(context, 180),
                 curve: Curves.easeOut,
                 width: 56,
                 height: 56,
@@ -308,10 +413,7 @@ class _CuisineTile extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: selected ? AppColors.accentTint : AppColors.surface,
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: selected ? AppColors.accent : AppColors.ring,
-                    width: selected ? 1.5 : 1,
-                  ),
+                  border: Border.all(color: selected ? AppColors.accent : AppColors.ring, width: selected ? 1.5 : 1),
                 ),
                 child: Glyph(
                   selected ? icon.duotone : icon,
@@ -323,10 +425,12 @@ class _CuisineTile extends StatelessWidget {
               Text(
                 label,
                 maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                softWrap: false,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontFamily: AppTheme.fontFamily,
                   fontSize: 12,
+                  height: 1.2,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                   color: selected ? AppColors.text : AppColors.textMuted,
                 ),
@@ -355,13 +459,15 @@ class _FilterRow extends ConsumerWidget {
     final cities = ref.watch(citiesProvider).value ?? const <City>[];
     final unit = ref.watch(distanceUnitProvider);
     final count = filter.extraCount;
+    final row = _tapRow(context, 14);
     return SizedBox(
-      height: 58,
+      height: row + 12,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
         children: [
           DropdownPill<String?>(
+            tapHeight: row,
             icon: AppIcons.mapPin,
             title: 'Gdzie szukać',
             label: city ?? 'W pobliżu',
@@ -394,6 +500,7 @@ class _FilterRow extends ConsumerWidget {
           ),
           const SizedBox(width: 8),
           DropdownPill<DiscoverSort>(
+            tapHeight: row,
             icon: AppIcons.sort,
             title: 'Sortuj',
             label: filter.sort.label,
@@ -446,8 +553,10 @@ class _Chip extends StatelessWidget {
       excludeSemantics: true,
       child: PressScale(
         onTap: onTap,
+        // Pigułka 40 px, a pole dotyku pełna wysokość rzędu (48 dp).
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
+          duration: _motion(context, 160),
+          margin: const EdgeInsets.symmetric(vertical: 4),
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
             color: selected ? AppColors.accentTint : AppColors.surface,
@@ -530,17 +639,21 @@ class _ResultsBar extends StatelessWidget {
             child: Text.rich(
               TextSpan(
                 children: [
-                  TextSpan(text: Fmt.restaurants(count), style: text.titleMedium?.copyWith(fontFeatures: _tabular)),
+                  TextSpan(
+                    text: Fmt.restaurants(count),
+                    style: text.titleMedium?.copyWith(fontFeatures: _tabular),
+                  ),
                   TextSpan(
                     text: city == null ? ' w promieniu ${Fmt.radius(10, unit)}' : ' · $city',
                     style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
                   ),
                 ],
               ),
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
@@ -588,11 +701,15 @@ class _LayoutButton extends StatelessWidget {
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: onTap,
+        onTap: () {
+          if (!selected) HapticFeedback.selectionClick();
+          onTap();
+        },
+        // Razem z ramką przełącznika pole dotyku ma 48 dp.
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          width: 38,
-          height: 32,
+          duration: _motion(context, 160),
+          width: 46,
+          height: 42,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: selected ? AppColors.surfaceRaised : Colors.transparent,
@@ -631,6 +748,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
     final all = ref.watch(searchResultsProvider).value ?? const <RestaurantSummary>[];
     final matching = applyDiscoverFilter(all, _f, hasLocation: widget.hasLocation).length;
     final unit = ref.watch(distanceUnitProvider);
+    final chip = _tapRow(context, 14);
 
     Widget section(String title) => Padding(
       padding: const EdgeInsets.fromLTRB(0, 18, 0, 10),
@@ -683,7 +801,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                             ),
                           ),
                         ),
-                    ].map((c) => SizedBox(height: 40, child: c)).toList(),
+                    ].map((c) => SizedBox(height: chip, child: c)).toList(),
                   ),
                   section('Ocena kuchni'),
                   Wrap(
@@ -692,7 +810,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                     children: [
                       for (final (value, label) in const [(null, 'Wszystkie'), (4.0, '4,0+'), (4.5, '4,5+')])
                         SizedBox(
-                          height: 40,
+                          height: chip,
                           child: _Chip(
                             icon: AppIcons.star,
                             label: label,
@@ -710,7 +828,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                       children: [
                         for (final km in const [null, 2, 5])
                           SizedBox(
-                            height: 40,
+                            height: chip,
                             child: _Chip(
                               icon: AppIcons.mapPin,
                               label: km == null ? 'Do ${Fmt.radius(10, unit)}' : 'Do ${Fmt.radius(km, unit)}',

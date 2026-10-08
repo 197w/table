@@ -109,6 +109,10 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   z ikoną, `RestaurantCover`), nazwa i szczegóły pod zdjęciem. Górna karta przy „Polecane” ma „Najlepsze
   dopasowanie” (`bestMatch`: ocena, odległość, kuchnie lokali z rezerwacji i zamówień gościa). Filtry z okna działają
   na gotowej liście (`applyDiscoverFilter`, `discoverResultsProvider`). To samo zdjęcie jest na górze strony lokalu.
+  Dostępność (zasady skilla ui-ux-pro-max): pola dotyku co najmniej 48 dp (`DropdownPill.tapHeight`, pigułki 40 px
+  w rzędzie 48), karta czytana jako jedno zdanie (`restaurantSemantics`), bez rezerwacji w aplikacji ikona telefonu
+  (nie tylko szary kolor), rzędy rosną z czcionką systemu, nazwy kuchni bez ucinania, „Ogranicz ruch” wyłącza
+  animacje, szkielety kart przy ładowaniu, zdjęcia dekodowane w rozmiarze karty (`cacheWidth`), tablet: dwie kolumny.
 - `apps/staff/lib`: `data.dart` (repozytorium i providery), `orders_data.dart`, `login_screen.dart`, `home_screen.dart`,
   `scan_screen.dart`, `schedule_screen.dart`, `settings_screen.dart`, `shell.dart`, `waiter_screens.dart`,
   `deliveries_data.dart`, `deliveries_screen.dart`

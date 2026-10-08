@@ -338,9 +338,13 @@ class DropdownPill<T> extends StatefulWidget {
     required this.options,
     required this.selected,
     required this.onSelected,
+    this.tapHeight = 40,
   });
 
   final AppIconData icon;
+
+  /// Wysokość pola dotyku. Pigułka zostaje 40 px, a pole rośnie (na telefonie 48 dp, wymóg Androida).
+  final double tapHeight;
 
   /// Nazwa filtra, na przykład „Miasto”. Nagłówek listy i etykieta dla czytnika ekranu.
   final String title;
@@ -469,6 +473,7 @@ class _DropdownPillState<T> extends State<DropdownPill<T>>
               duration: const Duration(milliseconds: 150),
               curve: Curves.easeOut,
               height: 40,
+              margin: EdgeInsets.symmetric(vertical: (widget.tapHeight - 40).clamp(0, 24) / 2),
               // Po stronie ikony odstęp o 2 px mniejszy, żeby pigułka wyglądała na wyśrodkowaną.
               padding: const EdgeInsets.only(left: 12, right: 10),
               decoration: BoxDecoration(

@@ -58,13 +58,7 @@ Color cuisineColor(String slug) => switch (slug) {
 /// Zdjęcie lokalu na kartę. Bez zdjęcia: spokojna karta w kolorze kuchni z jej ikoną,
 /// żeby wszystkie karty miały ten sam układ niezależnie od tego, co wgrał lokal.
 class RestaurantCover extends StatelessWidget {
-  const RestaurantCover({
-    super.key,
-    required this.url,
-    required this.cuisine,
-    this.height,
-    this.compact = false,
-  });
+  const RestaurantCover({super.key, required this.url, required this.cuisine, this.height, this.compact = false});
 
   /// Zdjęcie lokalu albo dania. Null: karta z ikoną kuchni.
   final String? url;
@@ -78,21 +72,28 @@ class RestaurantCover extends StatelessWidget {
   Widget build(BuildContext context) {
     final url = this.url;
     final fallback = _CuisineCover(slug: cuisine, compact: compact);
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final dpr = MediaQuery.devicePixelRatioOf(context);
     return SizedBox(
       height: height,
       width: double.infinity,
       child: url == null
           ? fallback
-          : Image.network(
-              url,
-              fit: BoxFit.cover,
-              // Zanim zdjęcie dojdzie, karta ma już kolor kuchni, a nie białą plamę.
-              frameBuilder: (context, child, frame, sync) => AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
-                child: frame == null && !sync ? fallback : child,
+          : LayoutBuilder(
+              // Zdjęcie dekodowane w rozmiarze, w jakim je widać (miniatura 72 px nie trzyma w pamięci 1200 px).
+              builder: (context, box) => Image.network(
+                url,
+                fit: BoxFit.cover,
+                excludeFromSemantics: true,
+                cacheWidth: box.maxWidth.isFinite ? (box.maxWidth * dpr).round() : null,
+                // Zanim zdjęcie dojdzie, karta ma już kolor kuchni, a nie białą plamę.
+                frameBuilder: (context, child, frame, sync) => AnimatedSwitcher(
+                  duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 220),
+                  layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
+                  child: frame == null && !sync ? fallback : child,
+                ),
+                errorBuilder: (_, _, _) => fallback,
               ),
-              errorBuilder: (_, _, _) => fallback,
             ),
     );
   }
@@ -174,7 +175,7 @@ class RatingBadge extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Glyph(AppIcons.starFill, size: large ? 16 : 14, color: const Color(0xFFE0A21B)),
+        Glyph(AppIcons.starFill, size: large ? 16 : 14, color: starColor()),
         const SizedBox(width: 4),
         Text(
           Fmt.rating(r.foodAvg!),
@@ -189,6 +190,32 @@ class RatingBadge extends StatelessWidget {
     );
   }
 }
+
+/// Złota gwiazdka oceny: na jasnym tle ciemniejsza, żeby miała kontrast co najmniej 3:1.
+Color starColor() =>
+    AppColors.palette.brightness == Brightness.dark ? const Color(0xFFE0A21B) : const Color(0xFFA86A00);
+
+/// Opis lokalu dla czytnika ekranu: jedna wypowiedź zamiast kilkunastu osobnych napisów.
+String restaurantSemantics(
+  RestaurantSummary r, {
+  required bool showDistance,
+  required DistanceUnit unit,
+  bool bestMatch = false,
+}) => [
+  if (bestMatch) 'Najlepsze dopasowanie',
+  r.name,
+  'kuchnia ${cuisineLabel(r.cuisine).toLowerCase()}',
+  'ceny ${r.priceLevel} na 4',
+  if (showDistance) Fmt.distance(r.distanceM, unit),
+  if (r.foodAvg != null && r.verifiedReviews > 0)
+    'ocena kuchni ${Fmt.rating(r.foodAvg!)}, ${Fmt.reviews(r.verifiedReviews)}'
+  else
+    'brak ocen',
+  r.isPro ? 'rezerwacja w aplikacji' : 'rezerwacja telefoniczna',
+  if (r.isPro && r.deliveryEnabled) 'dostawa',
+  if (r.isPro && r.pickupEnabled) 'na wynos',
+  if (r.matchedDish != null) 'w menu: ${r.matchedDish}',
+].join(', ');
 
 /// Kuchnia, ceny i odległość w jednym wierszu.
 String restaurantMeta(RestaurantSummary r, {required bool showDistance, required DistanceUnit unit}) => [
@@ -219,74 +246,82 @@ class RestaurantCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final r = restaurant;
-    return PressScale(
-      onTap: () => context.push(AppRoutes.restaurant(r.id)),
-      child: Card(
-        margin: EdgeInsets.zero,
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Stack(
-              children: [
-                AspectRatio(aspectRatio: 16 / 9, child: RestaurantCover(url: r.coverUrl, cuisine: r.cuisine)),
-                if (bestMatch) const Positioned(top: 12, left: 12, child: BestMatchLabel()),
-              ],
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    void open() => context.push(AppRoutes.restaurant(r.id));
+    return Semantics(
+      button: true,
+      label: restaurantSemantics(r, showDistance: showDistance, unit: unit, bestMatch: bestMatch),
+      excludeSemantics: true,
+      onTap: open,
+      child: PressScale(
+        onTap: open,
+        child: Card(
+          margin: EdgeInsets.zero,
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Stack(
                 children: [
-                  Row(
-                    children: [
-                      ImageOutline(
-                        radius: 8,
-                        child: RestaurantLogo(name: r.name, logoUrl: r.logoUrl, size: 30, radius: 8),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(r.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.titleMedium),
-                      ),
-                      const SizedBox(width: 8),
-                      RatingBadge(restaurant: r),
-                    ],
+                  AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: RestaurantCover(url: r.coverUrl, cuisine: r.cuisine),
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    restaurantMeta(r, showDistance: showDistance, unit: unit),
-                    style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-                  ),
-                  if (r.matchedDish != null) ...[
-                    const SizedBox(height: 4),
-                    _MatchedDish(name: r.matchedDish!),
-                  ],
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      _Feature(
-                        icon: AppIcons.calendarCheck,
-                        label: r.isPro ? 'Rezerwacja online' : 'Rezerwacja telefoniczna',
-                        on: r.isPro,
-                      ),
-                      if (r.canOrder)
-                        _Feature(
-                          icon: r.deliveryEnabled ? AppIcons.moped : AppIcons.shoppingBag,
-                          label: r.deliveryEnabled && r.pickupEnabled
-                              ? 'Dostawa i na wynos'
-                              : r.deliveryEnabled
-                              ? 'Dostawa'
-                              : 'Na wynos',
-                          on: true,
-                        ),
-                    ],
-                  ),
+                  if (bestMatch) const Positioned(top: 12, left: 12, child: BestMatchLabel()),
                 ],
               ),
-            ),
-          ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        ImageOutline(
+                          radius: 8,
+                          child: RestaurantLogo(name: r.name, logoUrl: r.logoUrl, size: 30, radius: 8),
+                        ),
+                        const SizedBox(width: 10),
+                        // Dłuższa nazwa przechodzi do drugiej linii zamiast się ucinać.
+                        Expanded(
+                          child: Text(r.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: text.titleMedium),
+                        ),
+                        const SizedBox(width: 8),
+                        RatingBadge(restaurant: r),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      restaurantMeta(r, showDistance: showDistance, unit: unit),
+                      style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                    ),
+                    if (r.matchedDish != null) ...[const SizedBox(height: 4), _MatchedDish(name: r.matchedDish!)],
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        _Feature(
+                          icon: r.isPro ? AppIcons.calendarCheck : AppIcons.phone,
+                          label: r.isPro ? 'Rezerwacja online' : 'Rezerwacja telefoniczna',
+                          on: r.isPro,
+                        ),
+                        if (r.canOrder)
+                          _Feature(
+                            icon: r.deliveryEnabled ? AppIcons.moped : AppIcons.shoppingBag,
+                            label: r.deliveryEnabled && r.pickupEnabled
+                                ? 'Dostawa i na wynos'
+                                : r.deliveryEnabled
+                                ? 'Dostawa'
+                                : 'Na wynos',
+                            on: true,
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -312,69 +347,86 @@ class RestaurantRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final r = restaurant;
-    return PressScale(
-      onTap: () => context.push(AppRoutes.restaurant(r.id)),
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: bestMatch ? AppColors.accent.withValues(alpha: 0.6) : AppColors.ring),
-        ),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: SizedBox(width: 72, height: 72, child: RestaurantCover(url: r.coverUrl, cuisine: r.cuisine, compact: true)),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (bestMatch) ...[
-                    Text(
-                      'Najlepsze dopasowanie',
-                      style: text.labelSmall?.copyWith(color: AppColors.accent, fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 2),
-                  ],
-                  Text(r.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.titleSmall),
-                  const SizedBox(height: 2),
-                  Text(
-                    restaurantMeta(r, showDistance: false, unit: unit),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-                  ),
-                  if (r.matchedDish != null) _MatchedDish(name: r.matchedDish!),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      _MiniFeature(icon: AppIcons.calendarCheck, on: r.isPro, label: 'Rezerwacja w aplikacji'),
-                      if (r.isPro && r.deliveryEnabled) const _MiniFeature(icon: AppIcons.moped, on: true, label: 'Dostawa'),
-                      if (r.isPro && r.pickupEnabled)
-                        const _MiniFeature(icon: AppIcons.shoppingBag, on: true, label: 'Na wynos'),
+    void open() => context.push(AppRoutes.restaurant(r.id));
+    return Semantics(
+      button: true,
+      label: restaurantSemantics(r, showDistance: showDistance, unit: unit, bestMatch: bestMatch),
+      excludeSemantics: true,
+      onTap: open,
+      child: PressScale(
+        onTap: open,
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: bestMatch ? AppColors.accent.withValues(alpha: 0.6) : AppColors.ring),
+          ),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  width: 72,
+                  height: 72,
+                  child: RestaurantCover(url: r.coverUrl, cuisine: r.cuisine, compact: true),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (bestMatch) ...[
+                      Text(
+                        'Najlepsze dopasowanie',
+                        style: text.labelSmall?.copyWith(color: AppColors.accent, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 2),
                     ],
-                  ),
+                    Text(r.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: text.titleSmall),
+                    const SizedBox(height: 2),
+                    Text(
+                      restaurantMeta(r, showDistance: false, unit: unit),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                    ),
+                    if (r.matchedDish != null) _MatchedDish(name: r.matchedDish!),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        // Bez rezerwacji w aplikacji: telefon (inny kształt, nie tylko szary kolor).
+                        _MiniFeature(
+                          icon: r.isPro ? AppIcons.calendarCheck : AppIcons.phone,
+                          on: r.isPro,
+                          label: r.isPro ? 'Rezerwacja w aplikacji' : 'Rezerwacja telefoniczna',
+                        ),
+                        if (r.isPro && r.deliveryEnabled)
+                          const _MiniFeature(icon: AppIcons.moped, on: true, label: 'Dostawa'),
+                        if (r.isPro && r.pickupEnabled)
+                          const _MiniFeature(icon: AppIcons.shoppingBag, on: true, label: 'Na wynos'),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  RatingBadge(restaurant: r),
+                  if (showDistance) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      Fmt.distance(r.distanceM, unit),
+                      style: text.labelMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                    ),
+                  ],
                 ],
               ),
-            ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                RatingBadge(restaurant: r),
-                if (showDistance) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    Fmt.distance(r.distanceM, unit),
-                    style: text.labelMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-                  ),
-                ],
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -450,10 +502,7 @@ class _Feature extends StatelessWidget {
     final color = on ? AppColors.text : AppColors.textMuted;
     return Container(
       padding: const EdgeInsets.fromLTRB(7, 4, 9, 4),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceRaised,
-        borderRadius: BorderRadius.circular(8),
-      ),
+      decoration: BoxDecoration(color: AppColors.surfaceRaised, borderRadius: BorderRadius.circular(8)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -483,7 +532,8 @@ class _MiniFeature extends StatelessWidget {
       child: Glyph(
         icon,
         size: 15,
-        color: on ? AppColors.accent : AppColors.textDisabled,
+        // Przygaszony, ale z kontrastem co najmniej 3:1 (ikona niesie informację).
+        color: on ? AppColors.accent : AppColors.textMuted,
         semanticLabel: label,
       ),
     );
