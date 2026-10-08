@@ -303,7 +303,8 @@ class PanelRepository {
           .select(
             'id, name, cuisine, description, address, city, phone, slot_interval_min, max_party_size, price_level, logo_url, '
             'deposit_min_party, deposit_per_person_grosze, '
-            'schedule_period, inventory_period, delivery_enabled, pickup_enabled, takeaway_cash, '
+            'schedule_period, schedule_deadline_dow, schedule_deadline_time, inventory_period, delivery_enabled, '
+            'pickup_enabled, takeaway_cash, '
             'delivery_fee_grosze, delivery_min_grosze, delivery_area, opening_hours(weekday, opens, closes)',
           )
           .eq('id', restaurantId)
@@ -551,7 +552,7 @@ class PanelRepository {
     return _guard(() async {
       final rows = await _db
           .from('orders')
-          .select('id, table_id, reservation_id, note, opened_at, order_items(*)')
+          .select('id, table_id, reservation_id, note, opened_at, guests, guests_skipped, order_items(*)')
           .eq('restaurant_id', restaurantId)
           .eq('kind', 'dine_in')
           .eq('status', 'open')
@@ -820,13 +821,34 @@ class PanelRepository {
   }
 
   /// Statystyki zespołu za miesiąc kalendarzowy [month].
-  Future<List<TeamStat>> teamStats(String restaurantId, DateTime month) {
+  /// Parametry okresu statystyk zespołu: od północy, ostatnie dni albo bieżący miesiąc.
+  static Map<String, dynamic> _teamPeriod(TeamPeriod period) {
+    final now = DateTime.now();
+    return switch (period) {
+      TeamPeriod.today => {'p_from': DateTime(now.year, now.month, now.day).toUtc().toIso8601String()},
+      TeamPeriod.week => {'p_days': 7},
+      TeamPeriod.twoWeeks => {'p_days': 14},
+      TeamPeriod.month => {'p_month': _isoDay(monthStart(now))},
+    };
+  }
+
+  Future<List<TeamStat>> teamStats(String restaurantId, TeamPeriod period) {
     return _guard(() async {
       final rows = await _db.rpc<List<dynamic>>(
         'panel_team_stats',
-        params: {'p_restaurant_id': restaurantId, 'p_month': _isoDay(monthStart(month))},
+        params: {'p_restaurant_id': restaurantId, ..._teamPeriod(period)},
       );
       return [for (final r in rows) TeamStat.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
+  Future<TeamSummary> teamSummary(String restaurantId, TeamPeriod period) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>(
+        'panel_team_summary',
+        params: {'p_restaurant_id': restaurantId, ..._teamPeriod(period)},
+      );
+      return TeamSummary.fromJson(json);
     });
   }
 
@@ -1347,12 +1369,29 @@ class PanelRepository {
 
   /// Otwiera rachunek przy stoliku albo zwraca już otwarty. [memberId] to pracownik
   /// zalogowany kodem QR, zapisany jako ten, kto rachunek otworzył.
-  Future<String> openOrder(String restaurantId, String tableId, {String? memberId}) {
+  /// Otwiera rachunek stolika (albo zwraca otwarty). [guests]: liczba gości; [skipGuests]: kelner pominął pytanie.
+  Future<String> openOrder(String restaurantId, String tableId, {String? memberId, int? guests, bool skipGuests = false}) {
     return _guard(
       () => _db.rpc<String>(
         'panel_open_order',
-        params: {'p_restaurant_id': restaurantId, 'p_table_id': tableId, 'p_member_id': memberId},
+        params: {
+          'p_restaurant_id': restaurantId,
+          'p_table_id': tableId,
+          'p_member_id': memberId,
+          'p_guests': guests,
+          'p_skip_guests': skipGuests,
+        },
       ),
+    );
+  }
+
+  Future<void> setOrderGuests(String orderId, int guests, {String? memberId}) {
+    return _guard(
+      () => _db.rpc<void>('panel_set_order_guests', params: {
+        'p_order_id': orderId,
+        'p_guests': guests,
+        'p_member_id': memberId,
+      }),
     );
   }
 
@@ -1710,7 +1749,7 @@ class PanelRepository {
     return _guard(() async {
       final rows = await _db
           .from('staff_members')
-          .select()
+          .select('*, staff_member_positions(position_id)')
           .eq('restaurant_id', restaurantId)
           .order('name');
       return rows.map(StaffMember.fromJson).toList();
@@ -1747,6 +1786,29 @@ class PanelRepository {
       }
       final created = await _db.from('staff_members').insert(row).select('id').single();
       return created['id'] as String;
+    });
+  }
+
+  /// Dodatkowe stanowiska pracownika (główne zapisuje [saveStaffMember]).
+  Future<void> setMemberPositions(String memberId, List<String> positionIds) {
+    return _guard(
+      () => _db.rpc<void>('panel_set_member_positions', params: {
+        'p_member_id': memberId,
+        'p_position_ids': positionIds,
+      }),
+    );
+  }
+
+  /// Uwagi pracowników na tygodnie od [from] do [to] (poniedziałki).
+  Future<List<WeekNote>> weekNotes(String restaurantId, DateTime from, DateTime to) {
+    return _guard(() async {
+      final rows = await _db
+          .from('staff_week_notes')
+          .select('member_id, week_start, note')
+          .eq('restaurant_id', restaurantId)
+          .gte('week_start', _isoDay(from))
+          .lte('week_start', _isoDay(to));
+      return rows.map(WeekNote.fromJson).toList();
     });
   }
 

@@ -584,6 +584,8 @@ class RestaurantProfile {
     this.description,
     this.logoUrl,
     this.schedulePeriod = 'week',
+    this.scheduleDeadlineDow,
+    this.scheduleDeadlineTime = '20:00',
     this.inventoryPeriod = 'week',
     this.delivery = const DeliverySettings(),
   });
@@ -595,6 +597,11 @@ class RestaurantProfile {
 
   /// Na jaki okres pracownicy zgłaszają godziny: week, two_weeks albo month.
   final String schedulePeriod;
+
+  /// Termin zgłaszania dyspozycyjności: dzień tygodnia (1 = poniedziałek) i godzina przed początkiem okresu.
+  /// Null: bez terminu.
+  final int? scheduleDeadlineDow;
+  final String scheduleDeadlineTime;
 
   /// Co ile lokal robi inwentaryzację: day, week, two_weeks albo month.
   final String inventoryPeriod;
@@ -639,6 +646,8 @@ class RestaurantProfile {
       hours: hours,
       logoUrl: json['logo_url'] as String?,
       schedulePeriod: json['schedule_period'] as String? ?? 'week',
+      scheduleDeadlineDow: json['schedule_deadline_dow'] == null ? null : _toInt(json['schedule_deadline_dow']),
+      scheduleDeadlineTime: (json['schedule_deadline_time'] as String?)?.substring(0, 5) ?? '20:00',
       inventoryPeriod: json['inventory_period'] as String? ?? 'week',
       delivery: DeliverySettings.fromJson(json),
     );
@@ -970,6 +979,7 @@ class StaffMember {
     this.position,
     this.phone,
     this.userId,
+    this.extraPositionIds = const [],
   });
 
   final String id;
@@ -979,6 +989,12 @@ class StaffMember {
   final String? firstName;
   final String? lastName;
   final String? positionId;
+
+  /// Dodatkowe stanowiska (np. kelner, który bywa też barmanem). Uprawnienia są sumą wszystkich.
+  final List<String> extraPositionIds;
+
+  /// Wszystkie stanowiska pracownika: główne i dodatkowe.
+  List<String> get positionIds => [?positionId, for (final p in extraPositionIds) if (p != positionId) p];
 
   /// Nazwa stanowiska zapisana przy pracowniku. Aktualną nazwę bierzemy ze stanowisk.
   final String? position;
@@ -1003,6 +1019,10 @@ class StaffMember {
       color: _toInt(json['color']),
       active: json['active'] != false,
       userId: json['user_id'] as String?,
+      extraPositionIds: [
+        for (final p in json['staff_member_positions'] as List? ?? const [])
+          if (p is Map && p['position_id'] is String) p['position_id'] as String,
+      ],
     );
   }
 }
@@ -1467,7 +1487,13 @@ class PanelOrder {
     this.customerCompany,
     this.customerPhone,
     this.deliveryAddress,
+    this.guests,
+    this.guestsSkipped = false,
   });
+
+  /// Liczba gości przy stoliku. Null: nie wpisano (pominięte, gdy [guestsSkipped]).
+  final int? guests;
+  final bool guestsSkipped;
 
   /// Zadatek z rezerwacji odjęty od rachunku.
   final int depositGrosze;
@@ -1585,6 +1611,8 @@ class PanelOrder {
       customerCompany: json['customer_company'] as String?,
       customerPhone: json['customer_phone'] as String?,
       deliveryAddress: json['delivery_address'] as String?,
+      guests: json['guests'] == null ? null : _toInt(json['guests']),
+      guestsSkipped: json['guests_skipped'] == true,
     );
   }
 
@@ -2108,12 +2136,24 @@ class TeamStat {
     this.rateGrosze,
     this.earningsGrosze,
     this.contract = Contract.zlecenie,
+    this.tipsCashGrosze = 0,
+    this.tipsCardGrosze = 0,
+    this.guests = 0,
+    this.guestsSkipped = 0,
   });
 
   final String memberId;
   final String name;
   final String? position;
   final bool active;
+
+  /// Napiwki z płatności, które przyjął pracownik: gotówką i kartą (z innymi).
+  final int tipsCashGrosze;
+  final int tipsCardGrosze;
+
+  /// Goście przy stolikach, które otworzył, i ile razy pominął wpisanie ich liczby.
+  final int guests;
+  final int guestsSkipped;
 
   /// Stawka i zarobek brutto w miesiącu. Null bez stawki albo bez uprawnienia „Pracownicy”.
   final int? rateGrosze;
@@ -2144,6 +2184,53 @@ class TeamStat {
     rateGrosze: json['rate'] == null ? null : _toInt(json['rate']),
     earningsGrosze: json['earnings'] == null ? null : _toInt(json['earnings']),
     contract: Contract.from(json['contract']),
+    tipsCashGrosze: _toInt(json['tips_cash']),
+    tipsCardGrosze: _toInt(json['tips_card']),
+    guests: _toInt(json['guests']),
+    guestsSkipped: _toInt(json['guests_skipped']),
+  );
+}
+
+/// Okres statystyk zespołu.
+enum TeamPeriod {
+  today('Dzisiaj'),
+  week('7 dni'),
+  twoWeeks('14 dni'),
+  month('W tym miesiącu');
+
+  const TeamPeriod(this.label);
+  final String label;
+}
+
+/// Całość okresu w statystykach zespołu: obrót lokalu, goście, pominięcia i napiwki.
+class TeamSummary {
+  const TeamSummary({
+    this.revenueGrosze = 0,
+    this.tables = 0,
+    this.guests = 0,
+    this.skipped = 0,
+    this.tipsCashGrosze = 0,
+    this.tipsCardGrosze = 0,
+  });
+
+  final int revenueGrosze;
+
+  /// Rachunki stolików (bez części rachunku).
+  final int tables;
+  final int guests;
+
+  /// Rachunki, przy których pominięto liczbę gości.
+  final int skipped;
+  final int tipsCashGrosze;
+  final int tipsCardGrosze;
+
+  factory TeamSummary.fromJson(Map<String, dynamic> json) => TeamSummary(
+    revenueGrosze: _toInt(json['revenue']),
+    tables: _toInt(json['tables']),
+    guests: _toInt(json['guests']),
+    skipped: _toInt(json['skipped']),
+    tipsCashGrosze: _toInt(json['tips_cash']),
+    tipsCardGrosze: _toInt(json['tips_card']),
   );
 }
 
@@ -2473,7 +2560,13 @@ enum PlannedShiftStatus {
   pending('Czeka na decyzję'),
   accepted('Przyjęte'),
   rejected('Odrzucone'),
-  off('Wolne');
+  off('Wolne'),
+
+  /// Propozycja przełożonego: pracownik przyjmie ją albo odrzuci w aplikacji.
+  proposed('Propozycja'),
+
+  /// Pracownik nie może pracować (zgłosił to albo nie zgłosił dyspozycyjności).
+  unavailable('Niedostępny');
 
   const PlannedShiftStatus(this.label);
   final String label;
@@ -2494,11 +2587,15 @@ class PlannedShift {
     this.requestedEnds,
     this.note,
     this.answer,
+    this.positionId,
   });
 
   final String id;
   final String memberId;
   final DateTime day;
+
+  /// Stanowisko na ten dzień (pracownik może mieć kilka).
+  final String? positionId;
 
   /// Godziny jako „HH:MM”: zgłoszone albo (po przyjęciu) zatwierdzone. Puste przy wolnym dniu.
   final String starts;
@@ -2538,6 +2635,22 @@ class PlannedShift {
     requestedEnds: _hm(json['requested_ends']),
     note: json['note'] as String?,
     answer: json['answer'] as String?,
+    positionId: json['position_id'] as String?,
+  );
+}
+
+/// Uwaga pracownika na tydzień (np. „w środę egzamin”), z aplikacji Table for employees.
+class WeekNote {
+  const WeekNote({required this.memberId, required this.weekStart, required this.note});
+
+  final String memberId;
+  final DateTime weekStart;
+  final String note;
+
+  factory WeekNote.fromJson(Map<String, dynamic> json) => WeekNote(
+    memberId: json['member_id'] as String,
+    weekStart: DateTime.parse(json['week_start'] as String),
+    note: json['note'] as String,
   );
 }
 
@@ -2573,7 +2686,7 @@ List<DateTime> periodWeeks(({DateTime from, DateTime to}) period) {
 }
 
 /// Co przełożony zmienia w grafiku w trybie edycji. Zmiany czekają na „Zapisz” (`panel_save_schedule`).
-enum ScheduleAction { accept, reject, add, off, delete }
+enum ScheduleAction { accept, reject, add, propose, off, delete }
 
 /// Klucz dnia pracownika w grafiku.
 String scheduleKey(String memberId, DateTime day) => '$memberId@${day.year}-${day.month}-${day.day}';
@@ -2588,11 +2701,15 @@ class ScheduleChange {
     this.starts,
     this.ends,
     this.answer,
+    this.positionId,
   });
 
   final ScheduleAction action;
   final String memberId;
   final DateTime day;
+
+  /// Stanowisko na ten dzień.
+  final String? positionId;
 
   /// Wpis w bazie, którego dotyczy zmiana (przyjęcie, odrzucenie, usunięcie).
   final String? id;
@@ -2610,6 +2727,7 @@ class ScheduleChange {
     'starts': starts,
     'ends': ends,
     'answer': answer?.trim().ifEmpty,
+    'position_id': positionId,
   };
 
   /// Jak dzień będzie wyglądał po zapisie (podgląd w grafiku). Null: dzień bez wpisu.
@@ -2625,6 +2743,7 @@ class ScheduleChange {
       requestedEnds: entry?.requestedEnds,
       note: entry?.note,
       answer: answer?.trim().ifEmpty,
+      positionId: positionId ?? entry?.positionId,
     );
     return switch (action) {
       ScheduleAction.delete => null,
@@ -2635,6 +2754,11 @@ class ScheduleChange {
       ),
       ScheduleAction.accept || ScheduleAction.add => shift(
         PlannedShiftStatus.accepted,
+        starts: starts ?? entry?.starts ?? '',
+        ends: ends ?? entry?.ends ?? '',
+      ),
+      ScheduleAction.propose => shift(
+        PlannedShiftStatus.proposed,
         starts: starts ?? entry?.starts ?? '',
         ends: ends ?? entry?.ends ?? '',
       ),

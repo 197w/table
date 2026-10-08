@@ -125,6 +125,7 @@ class PlannedShift {
     this.requestedEnds,
     this.note,
     this.answer,
+    this.positionName,
   });
 
   final String id;
@@ -132,11 +133,15 @@ class PlannedShift {
   final String restaurantName;
   final DateTime day;
 
+  /// Stanowisko na ten dzień (gdy pracownik ma kilka).
+  final String? positionName;
+
   /// Godziny jako „HH:MM”: zgłoszone albo (po przyjęciu) zatwierdzone. Puste przy wolnym dniu.
   final String starts;
   final String ends;
 
-  /// pending: czeka na przełożonego, accepted: przyjęte, rejected: odrzucone, off: wolne.
+  /// pending: czeka na przełożonego, accepted: przyjęte, rejected: odrzucone, off: wolne,
+  /// proposed: propozycja przełożonego (przyjmuję albo nie mogę), unavailable: nie mogę pracować.
   final String status;
 
   /// Co zgłosiłem. Null: godziny wpisał przełożony.
@@ -149,6 +154,8 @@ class PlannedShift {
   bool get accepted => status == 'accepted';
   bool get rejected => status == 'rejected';
   bool get off => status == 'off';
+  bool get proposed => status == 'proposed';
+  bool get unavailable => status == 'unavailable';
 
   /// Przyjęte, ale z innymi godzinami, niż zgłosiłem.
   bool get changed => accepted && requestedStarts != null && (requestedStarts != starts || requestedEnds != ends);
@@ -167,6 +174,7 @@ class PlannedShift {
     requestedEnds: _hm(j['requested_ends']),
     note: j['note'] as String?,
     answer: j['answer'] as String?,
+    positionName: j['position_name'] as String?,
   );
 }
 
@@ -242,6 +250,47 @@ class StaffRepository {
 
   Future<void> deleteHours(String id) => _guard(() => _db.rpc<void>('staff_delete_hours', params: {'p_id': id}));
 
+  /// Nie mogę pracować w tym dniu.
+  Future<void> markUnavailable({required String memberId, required DateTime day, String? note}) => _guard(
+    () => _db.rpc<void>('staff_mark_unavailable', params: {
+      'p_member_id': memberId,
+      'p_day': _isoDay(day),
+      'p_note': note,
+    }),
+  );
+
+  /// Odpowiedź na propozycję przełożonego: przyjmuję albo nie mogę.
+  Future<void> answerProposal(String id, {required bool accept, String? note}) => _guard(
+    () => _db.rpc<void>('staff_answer_proposal', params: {'p_id': id, 'p_accept': accept, 'p_note': note}),
+  );
+
+  /// Do kiedy mogę zgłaszać dyspozycyjność na okres z dniem [day]. Null: lokal nie ustawił terminu.
+  Future<DateTime?> scheduleDeadline(String memberId, DateTime day) => _guard(() async {
+    final value = await _db.rpc<dynamic>('staff_schedule_deadline', params: {
+      'p_member_id': memberId,
+      'p_day': _isoDay(day),
+    });
+    return value is String ? DateTime.parse(value).toLocal() : null;
+  });
+
+  /// Moje uwagi na tygodnie od [from] do [to]: poniedziałek tygodnia → uwaga.
+  Future<Map<DateTime, String>> weekNotes(DateTime from, DateTime to) => _guard(() async {
+    final rows = await _db
+        .from('staff_week_notes')
+        .select('week_start, note')
+        .gte('week_start', _isoDay(from))
+        .lte('week_start', _isoDay(to));
+    return {for (final r in rows) DateTime.parse(r['week_start'] as String): r['note'] as String};
+  });
+
+  Future<void> setWeekNote(String memberId, DateTime week, String note) => _guard(
+    () => _db.rpc<void>('staff_set_week_note', params: {
+      'p_member_id': memberId,
+      'p_week': _isoDay(week),
+      'p_note': note,
+    }),
+  );
+
   /// Moje czterocyfrowe kody do panelu według numeru pracownika.
   Future<Map<String, String>> codes() => _guard(() async {
     final rows = await _db.rpc<List<dynamic>>('staff_my_codes');
@@ -303,6 +352,18 @@ final schedulePeriodProvider = FutureProvider.autoDispose
       if (ref.watch(sessionProvider) == null) return Future.value(const []);
       return ref.watch(staffRepositoryProvider).schedule(from: period.from, to: period.to);
     });
+
+/// Termin zgłaszania dyspozycyjności na okres (pierwszy dzień okresu) w moim lokalu.
+final scheduleDeadlineProvider = FutureProvider.autoDispose.family<DateTime?, ({String memberId, DateTime day})>((ref, q) {
+  if (ref.watch(sessionProvider) == null) return Future.value(null);
+  return ref.watch(staffRepositoryProvider).scheduleDeadline(q.memberId, q.day);
+});
+
+/// Moje uwagi na tygodnie okresu grafiku.
+final weekNotesProvider = FutureProvider.autoDispose.family<Map<DateTime, String>, ({DateTime from, DateTime to})>((ref, q) {
+  if (ref.watch(sessionProvider) == null) return Future.value(const {});
+  return ref.watch(staffRepositoryProvider).weekNotes(q.from, q.to);
+});
 
 final codesProvider = FutureProvider.autoDispose<Map<String, String>>((ref) {
   if (ref.watch(sessionProvider) == null) return Future.value(const {});

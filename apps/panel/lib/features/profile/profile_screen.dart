@@ -1207,17 +1207,33 @@ class _SchedulePeriodCard extends ConsumerStatefulWidget {
 class _SchedulePeriodCardState extends ConsumerState<_SchedulePeriodCard> {
   bool _busy = false;
 
-  Future<void> _set(String period) async {
+  Future<void> _set(String period) => _save({'schedule_period': period}, 'Okres grafiku zapisany.');
+
+  Future<void> _save(Map<String, dynamic> values, String done) async {
     setState(() => _busy = true);
     try {
-      await ref.read(repositoryProvider).updateProfile(widget.profile.id, {'schedule_period': period});
+      await ref.read(repositoryProvider).updateProfile(widget.profile.id, values);
       ref.invalidate(profileProvider(widget.profile.id));
-      if (mounted) showMessage(context, 'Okres grafiku zapisany.');
+      if (mounted) showMessage(context, done);
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  static const _weekdays = ['poniedziałek', 'wtorek', 'środa', 'czwartek', 'piątek', 'sobota', 'niedziela'];
+
+  Future<void> _pickDeadlineTime() async {
+    final parts = widget.profile.scheduleDeadlineTime.split(':');
+    final picked = await pickTime(
+      context,
+      initial: TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1])),
+      title: 'Godzina terminu',
+    );
+    if (picked == null) return;
+    final hm = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+    await _save({'schedule_deadline_time': hm}, 'Termin zgłaszania zapisany.');
   }
 
   @override
@@ -1241,6 +1257,43 @@ class _SchedulePeriodCardState extends ConsumerState<_SchedulePeriodCard> {
               onChanged: (v) {
                 if (v != widget.profile.schedulePeriod) _set(v);
               },
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text('Termin zgłaszania dyspozycyjności', style: text.titleSmall),
+          const SizedBox(height: 4),
+          Text(
+            'Do kiedy pracownicy wpisują godziny na następny okres. Po terminie wpisywanie w aplikacji się wyłącza, '
+            'a dni bez zgłoszenia są „Niedostępny”.',
+            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 10),
+          IgnorePointer(
+            ignoring: !widget.editable || _busy,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 240,
+                  child: DropdownButtonFormField<int?>(
+                    initialValue: widget.profile.scheduleDeadlineDow,
+                    decoration: const InputDecoration(labelText: 'Dzień przed okresem', isDense: true),
+                    icon: const Glyph(AppIcons.caretDown, size: 16),
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('Bez terminu')),
+                      for (var d = 1; d <= 7; d++)
+                        DropdownMenuItem(value: d, child: Text('${Fmt.capitalize(_weekdays[d - 1])} przed')),
+                    ],
+                    onChanged: (v) => _save({'schedule_deadline_dow': v}, 'Termin zgłaszania zapisany.'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                if (widget.profile.scheduleDeadlineDow != null)
+                  OutlinedButton.icon(
+                    onPressed: _pickDeadlineTime,
+                    icon: const Glyph(AppIcons.clock, size: 16),
+                    label: Text('do ${widget.profile.scheduleDeadlineTime}'),
+                  ),
+              ],
             ),
           ),
         ],

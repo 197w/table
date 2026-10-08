@@ -13,8 +13,9 @@ String _two(int n) => n.toString().padLeft(2, '0');
 /// Godziny jako „37:45”.
 String _hours(int seconds) => '${seconds ~/ 3600}:${_two(seconds % 3600 ~/ 60)}';
 
-/// Statystyki zespołu (grupa Pracownicy): godziny, zmiany, rachunki, sprzedaż, pozycje, kursy i zarobek na osobę
-/// w miesiącu kalendarzowym. Uprawnienie „Statystyki”, zarobki tylko z uprawnieniem „Pracownicy”.
+/// Statystyki zespołu (grupa Pracownicy): godziny, zmiany, rachunki, sprzedaż, pozycje, kursy, goście (i pominięcia
+/// liczby gości), napiwki gotówką i kartą oraz zarobek na osobę: dziś, 7 i 14 dni albo bieżący miesiąc.
+/// Uprawnienie „Statystyki”, zarobki i udział wypłat w obrocie tylko z uprawnieniem „Pracownicy”.
 class TeamStatsScreen extends ConsumerStatefulWidget {
   const TeamStatsScreen({super.key});
 
@@ -23,24 +24,29 @@ class TeamStatsScreen extends ConsumerStatefulWidget {
 }
 
 class _TeamStatsScreenState extends ConsumerState<TeamStatsScreen> {
-  /// Pierwszy dzień wybranego miesiąca.
-  DateTime _month = monthStart(DateTime.now());
+  TeamPeriod _period = TeamPeriod.month;
 
   @override
   Widget build(BuildContext context) {
     final restaurant = ref.watch(currentRestaurantProvider);
     if (restaurant == null) return const LoadingView();
-    final query = (restaurantId: restaurant.id, month: _month);
+    final query = (restaurantId: restaurant.id, period: _period);
     final async = ref.watch(teamStatsProvider(query));
+    final summary = ref.watch(teamSummaryProvider(query)).value ?? const TeamSummary();
     final canPay = ref.watch(memberPermissionsProvider).contains('staff');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
-          actions: [
-            MonthSwitcher(month: _month, onChanged: (m) => setState(() => _month = m)),
-          ],
+          below: Align(
+            alignment: Alignment.centerLeft,
+            child: SegmentedTabs<TeamPeriod>(
+              options: [for (final p in TeamPeriod.values) (p, p.label)],
+              selected: _period,
+              onChanged: (p) => setState(() => _period = p),
+            ),
+          ),
         ),
         Expanded(
           child: async.when(
@@ -67,6 +73,8 @@ class _TeamStatsScreenState extends ConsumerState<TeamStatsScreen> {
               );
               final pay = canPay && people.any((s) => s.rateGrosze != null);
               final best = people.fold(0, (m, s) => s.revenueGrosze > m ? s.revenueGrosze : m);
+              // Jaka część obrotu lokalu idzie na wypłaty (brutto) w wybranym okresie.
+              final payShare = summary.revenueGrosze > 0 ? payroll / summary.revenueGrosze * 100 : null;
 
               return SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
@@ -101,8 +109,21 @@ class _TeamStatsScreenState extends ConsumerState<TeamStatsScreen> {
                             color: TileColors.violet,
                           ),
                         ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: StatTile(
+                            label: 'Kursy dostaw',
+                            value: '$deliveries',
+                            icon: AppIcons.moped,
+                            color: TileColors.amber,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
                         if (pay) ...[
-                          const SizedBox(width: 14),
                           Expanded(
                             child: StatTile(
                               label: 'Wynagrodzenia brutto',
@@ -112,14 +133,37 @@ class _TeamStatsScreenState extends ConsumerState<TeamStatsScreen> {
                               color: TileColors.violet,
                             ),
                           ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: StatTile(
+                              label: 'Wypłaty z obrotu',
+                              value: payShare == null ? '—' : '${payShare.toStringAsFixed(1).replaceAll('.', ',')}%',
+                              hint: 'obrót lokalu ${Fmt.price(summary.revenueGrosze)}',
+                              icon: AppIcons.chartPie,
+                              color: TileColors.rose,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
                         ],
+                        Expanded(
+                          child: StatTile(
+                            label: 'Napiwki',
+                            value: Fmt.price(summary.tipsCashGrosze + summary.tipsCardGrosze),
+                            hint: 'gotówka ${Fmt.price(summary.tipsCashGrosze)} · karta ${Fmt.price(summary.tipsCardGrosze)}',
+                            icon: AppIcons.handCoins,
+                            color: TileColors.green,
+                          ),
+                        ),
                         const SizedBox(width: 14),
                         Expanded(
                           child: StatTile(
-                            label: 'Kursy dostaw',
-                            value: '$deliveries',
-                            icon: AppIcons.moped,
-                            color: TileColors.amber,
+                            label: 'Goście przy stolikach',
+                            value: '${summary.guests}',
+                            hint: summary.skipped == 0
+                                ? 'liczba gości wpisana przy każdym stoliku'
+                                : 'bez liczby gości: ${summary.skipped} z ${summary.tables} stolików',
+                            icon: AppIcons.users,
+                            color: TileColors.blue,
                           ),
                         ),
                       ],
@@ -150,7 +194,7 @@ class _TeamStatsScreenState extends ConsumerState<TeamStatsScreen> {
   }
 }
 
-const _column = 112.0;
+const _column = 100.0;
 
 class _HeaderRow extends StatelessWidget {
   const _HeaderRow({required this.pay});
@@ -171,7 +215,9 @@ class _HeaderRow extends StatelessWidget {
           cell('Rachunki'),
           cell('Pozycje'),
           cell('Kursy'),
-          if (pay) cell('Zarobek'),
+          cell('Goście'),
+          cell('Napiwki'),
+          if (pay) SizedBox(width: _column + 30, child: Text('Zarobek', textAlign: TextAlign.end, style: style)),
           SizedBox(width: _column + 60, child: Text('Sprzedaż', textAlign: TextAlign.end, style: style)),
         ],
       ),
@@ -218,29 +264,63 @@ class _MemberRow extends StatelessWidget {
           cell('${s.ordersClosed}', muted: s.ordersClosed == 0),
           cell('${s.items}', muted: s.items == 0),
           cell('${s.deliveries}', muted: s.deliveries == 0),
-          if (pay)
-            Tooltip(
-              message: s.rateGrosze == null
-                  ? 'Bez stawki'
-                  : '${s.contract.label} · ${Fmt.price(s.rateGrosze!)}/h brutto',
-              child: SizedBox(
-                width: _column,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      s.earningsGrosze == null ? '—' : Fmt.price(s.earningsGrosze!),
-                      style: value?.copyWith(
-                        color: s.earningsGrosze == null || s.earningsGrosze == 0 ? AppColors.textMuted : null,
-                      ),
-                    ),
-                    if (s.earningsGrosze != null)
-                      Text(
-                        'netto ${Fmt.price(Payroll.monthlyNet(s.contract, s.earningsGrosze!))}',
-                        style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-                      ),
-                  ],
+          // Goście przy otwartych stolikach i ile razy pominięto ich liczbę.
+          SizedBox(
+            width: _column,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('${s.guests}', style: value?.copyWith(color: s.guests == 0 ? AppColors.textMuted : null)),
+                if (s.guestsSkipped > 0)
+                  Text(
+                    'pominięte: ${s.guestsSkipped}',
+                    style: text.bodySmall?.copyWith(color: const Color(0xFFD99A15), fontFeatures: _tabular),
+                  ),
+              ],
+            ),
+          ),
+          // Napiwki z płatności, które przyjął: gotówką i kartą.
+          SizedBox(
+            width: _column,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  s.tipsCashGrosze + s.tipsCardGrosze == 0 ? '—' : Fmt.price(s.tipsCashGrosze + s.tipsCardGrosze),
+                  style: value?.copyWith(color: s.tipsCashGrosze + s.tipsCardGrosze == 0 ? AppColors.textMuted : null),
                 ),
+                if (s.tipsCashGrosze + s.tipsCardGrosze > 0)
+                  Text(
+                    'got. ${Fmt.price(s.tipsCashGrosze)} · karta ${Fmt.price(s.tipsCardGrosze)}',
+                    textAlign: TextAlign.end,
+                    style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular, fontSize: 11),
+                  ),
+              ],
+            ),
+          ),
+          // Zarobek ze stawką widoczną od razu (bez najeżdżania).
+          if (pay)
+            SizedBox(
+              width: _column + 30,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    s.earningsGrosze == null ? '—' : Fmt.price(s.earningsGrosze!),
+                    style: value?.copyWith(
+                      color: s.earningsGrosze == null || s.earningsGrosze == 0 ? AppColors.textMuted : null,
+                    ),
+                  ),
+                  Text(
+                    s.rateGrosze == null ? 'bez stawki' : '${Fmt.price(s.rateGrosze!)}/h brutto',
+                    style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                  ),
+                  if (s.earningsGrosze != null)
+                    Text(
+                      'netto ${Fmt.price(Payroll.monthlyNet(s.contract, s.earningsGrosze!))}',
+                      style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                    ),
+                ],
               ),
             ),
           SizedBox(

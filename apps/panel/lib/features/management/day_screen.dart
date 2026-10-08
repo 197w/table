@@ -92,7 +92,6 @@ class _DaySummaryScreenState extends ConsumerState<DaySummaryScreen> {
                         child: StatTile(
                           label: 'Gotówka',
                           value: Fmt.price(s.cashGrosze),
-                          hint: s.tipsCashGrosze > 0 ? '+ napiwki ${Fmt.price(s.tipsCashGrosze)}' : null,
                           icon: AppIcons.money,
                           color: TileColors.amber,
                         ),
@@ -102,7 +101,6 @@ class _DaySummaryScreenState extends ConsumerState<DaySummaryScreen> {
                         child: StatTile(
                           label: 'Karta (terminal)',
                           value: Fmt.price(s.cardGrosze),
-                          hint: s.tipsCardGrosze > 0 ? '+ napiwki ${Fmt.price(s.tipsCardGrosze)}' : null,
                           icon: AppIcons.creditCard,
                           color: TileColors.blue,
                         ),
@@ -152,7 +150,8 @@ class _DaySummaryScreenState extends ConsumerState<DaySummaryScreen> {
   }
 }
 
-/// Zgodność wpisanej kwoty z tym, co policzył panel: zielone „Zgadza się” albo żółta różnica.
+/// Zgodność wpisanej kwoty z tym, co policzył panel: duża kwota z panelu i zielone „Zgadza się” albo żółta różnica.
+/// Widać ją od razu przy zamykaniu dnia.
 class _Check extends StatelessWidget {
   const _Check({required this.expected, required this.actual, required this.label});
 
@@ -166,20 +165,37 @@ class _Check extends StatelessWidget {
     final a = actual;
     final diff = a == null ? null : a - expected;
     final color = diff == null ? AppColors.textMuted : (diff == 0 ? _ok : _warn);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text('$label ${Fmt.price(expected)}', style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular)),
-        if (diff != null) ...[
-          const SizedBox(width: 10),
-          Glyph(diff == 0 ? AppIcons.checkCircle : AppIcons.warning, size: 14, color: color),
-          const SizedBox(width: 4),
-          Text(
-            diff == 0 ? 'Zgadza się' : 'Różnica ${diff > 0 ? '+' : '−'}${Fmt.price(diff.abs())}',
-            style: text.bodySmall?.copyWith(color: color, fontWeight: FontWeight.w600, fontFeatures: _tabular),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      decoration: BoxDecoration(
+        color: diff == null ? AppColors.surfaceRaised : color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: diff == null ? AppColors.ring : color.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: text.labelLarge?.copyWith(color: AppColors.textMuted)),
+                Text(
+                  Fmt.price(expected),
+                  style: text.headlineMedium?.copyWith(fontWeight: FontWeight.w600, fontFeatures: _tabular),
+                ),
+              ],
+            ),
           ),
+          if (diff != null) ...[
+            Glyph(diff == 0 ? AppIcons.checkCircle : AppIcons.warning, size: 22, color: color),
+            const SizedBox(width: 8),
+            Text(
+              diff == 0 ? 'Zgadza się' : 'Różnica ${diff > 0 ? '+' : '−'}${Fmt.price(diff.abs())}',
+              style: text.titleMedium?.copyWith(color: color, fontWeight: FontWeight.w600, fontFeatures: _tabular),
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 }
@@ -368,8 +384,7 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Sprzedaż gotówką ${Fmt.price(s.cashGrosze)}'
-            '${s.tipsCashGrosze > 0 ? ' + napiwki ${Fmt.price(s.tipsCashGrosze)}' : ''}'
+            'Gotówka z rachunków ${Fmt.price(s.cashGrosze + s.tipsCashGrosze)}'
             '${s.pettyOutGrosze > 0 ? ' − wydatki ${Fmt.price(s.pettyOutGrosze)}' : ''}'
             '${s.pettyInGrosze > 0 ? ' + wpłaty ${Fmt.price(s.pettyInGrosze)}' : ''}',
             style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),

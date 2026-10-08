@@ -80,7 +80,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość: flutter_map + latlong2 (mapa dostawcy, kafelki OpenStreetMap; przed wydaniem w sklepach przejść na płatnego dostawcę kafelków).
   Pracownik: geolocator (pozycja dostawcy w drodze).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0055, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0056, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -125,7 +125,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Ustawienia lokalu: rezerwacje w aplikacji (co ile minut, największa grupa), zadatek przy rezerwacji, grafik pracowników,
   okres inwentaryzacji, dostawa i odbiór.
 - Management (0048–0050): Podsumowanie dnia (`panel_day_summary`, uprawnienie `day_close`): sprzedaż według płatności
-  (gotówka, karta z terminala, karta online z aplikacji i zadatki, inne), napiwki, rabaty, raport dobowy z kasy fiskalnej,
+  (gotówka, karta z terminala, karta online z aplikacji i zadatki, inne), rabaty, raport dobowy z kasy fiskalnej
+  (napiwków tu nie pokazujemy, są w statystykach zespołu; „Obrót w panelu”, „Karty w panelu” i „Powinno być” to duże kafle),
   terminale (kilka, nazwa i kwota), policzona gotówka i notatka (`day_reports`, `panel_save_day_report`), petty cash
   (wydatki i wpłaty z kasy, `petty_cash`, `panel_add_petty`, `panel_delete_petty`); zgodność kwot zielona albo żółta różnica.
   Godziny pracy (uprawnienie `timesheet`; wcześniej „Czas pracy” w Pracownikach): miesiąc z sumą godzin każdego pracownika
@@ -169,7 +170,10 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   liczy `private.customer_key` (0047). Notatki o kliencie: `customer_notes` (RLS: tylko obsługa lokalu,
   `has_staff_role`; goście ich nie widzą), `panel_add_customer_note`, `panel_delete_customer_note`, wspólny widżet
   `NotesView` (`shared/notes_view.dart`, Enter dodaje). Statystyki zespołu (`/zespol`, uprawnienie `stats`):
-  `panel_team_stats` (godziny, zmiany, rachunki, pozycje, kursy, sprzedaż na osobę, 7/30/90 dni).
+  `panel_team_stats` (godziny, zmiany, rachunki, pozycje, kursy, goście i pominięcia liczby gości, napiwki gotówką
+  i kartą z `order_payments.member_id`, zarobek ze stawką widoczną od razu, sprzedaż na osobę) i `panel_team_summary`
+  (obrót lokalu, goście, pominięcia, napiwki; kafel „Wypłaty z obrotu” = wynagrodzenia brutto / obrót); okres
+  Dzisiaj / 7 dni / 14 dni / W tym miesiącu (`TeamPeriod`, `p_from` albo `p_days` albo `p_month`).
 - Zakładki nie mają tytułów ani opisów (`PageHeader`: tylko akcje i rząd zakładek); nazwę widać w menu bocznym.
   Przyciski (`actions`) stoją po prawej w tym samym rzędzie co zakładki i filtry (`below`); osobny rząd nad nimi
   tylko z `actionsInRow: false` (Edycja sali).
@@ -229,6 +233,17 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `periodWeeks`), aplikacja Table for employees ten sam okres (okres pobiera od nowa przy otwarciu Grafiku). Okres, na który pracownicy zgłaszają
   godziny, ustawia lokal w „Ustawienia lokalu” → „Grafik pracowników” (`schedule_period`: week, two_weeks, month;
   pary tygodni liczone od poniedziałku 5.01.2026, `staff_my_jobs` zwraca okres). Czas pracy: Management → „Godziny pracy”.
+  Od 0056: dzień bez zgłoszenia to „Niedostępny” (pracownik może też sam zgłosić „Nie mogę”, `staff_mark_unavailable`,
+  stan `unavailable`); takiej osobie nie da się wpisać zmiany (`panel_add_hours`/`panel_decide_hours` odmawiają), tylko
+  wysłać propozycję (`panel_propose_hours`, stan `proposed`, fioletowy), którą pracownik przyjmuje albo odrzuca w aplikacji
+  (`staff_answer_proposal`; odrzucenie = niedostępny). Termin zgłaszania: „Ustawienia lokalu” → „Grafik pracowników”
+  (`schedule_deadline_dow`, `schedule_deadline_time`: ostatni wybrany dzień tygodnia przed początkiem okresu o godzinie,
+  `private.schedule_deadline`); po nim aplikacja nie przyjmuje zgłoszeń (`check_schedule_deadline`). Uwaga pracownika
+  na tydzień (`staff_week_notes`, `staff_set_week_note`; w panelu ikona przy nazwisku). Pracownik może mieć kilka
+  stanowisk (`staff_member_positions`, `panel_set_member_positions`, okno pracownika „Dodatkowe stanowiska”; uprawnienia
+  to suma, `private.member_permissions`, dostawca: `private.is_courier`), w grafiku stanowisko na dzień
+  (`staff_schedule.position_id`, wybór w oknie dnia, widać w aplikacji). Pod siatką: przyjętych osób, godziny pracy dnia
+  i ile osób na jakim stanowisku; kolumna „Tydzień” z godzinami pracownika.
 - Statystyki (Management) mają zakładki: Sprzedaż (`panel_sales_stats`) i Rezerwacje i goście; okres 7/30/90 dni
   w rzędzie zakładek. Historia zamówień jest osobną zakładką w grupie Rezerwacje.
 - Role w `restaurant_staff`: owner, manager, staff. Kierownik i właściciel zmieniają salę, menu, dane lokalu
@@ -260,7 +275,10 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   z kontem w oknie pracownika („Konto w panelu”, `panel_link_staff_account`). Konto obsługi ma wtedy uprawnienia
   stanowiska (`private.has_permission`, `panel_my_permissions`). Kierownik i właściciel mają wszystkie.
 - Zamówienia (`orders`, `order_items`, tylko Pro): zakładka „Zamówienia” widoczna z uprawnieniem `orders`.
-  Rachunek otwiera się przy pierwszej pozycji, jeden otwarty na stolik. Przy stoliku i w nagłówku rachunku czas
+  Rachunek otwiera się przy pierwszej pozycji, jeden otwarty na stolik; przed nim pytanie o liczbę gości (0056,
+  `orders.guests`, „Pomiń” = `guests_skipped`, liczy się w statystykach; z rezerwacji liczba osób z niej; zmiana w nagłówku
+  rachunku, `panel_set_order_guests`; u kelnera `_GuestsSheet`). Przy zamykaniu gotówką „Bez reszty”: reszta idzie do
+  napiwku pracownika, który przyjmuje płatność. Przy stoliku i w nagłówku rachunku czas
   oczekiwania na danie (od najstarszej pozycji wysłanej na kuchnię, a niewydanej; `PanelOrder.waitingSince`, kolory
   według progów kuchni). Lista stolików ma na górze „Nowe zamówienie” (`NewOrderDialog`, `takeaway_form.dart`):
   w lokalu (wybór stolika), na dostawę albo na odbiór. Dostawa i odbiór (0055) wymagają imienia i nazwiska albo nazwy

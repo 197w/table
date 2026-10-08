@@ -169,4 +169,30 @@ void main() {
     });
     expect(line.details, 'bez: cebula');
   });
+
+  test('propozycja przełożonego i niedostępny dzień ze stanowiskiem', () {
+    final proposal = PlannedShift.fromJson({
+      'id': 's1',
+      'member_id': 'm1',
+      'restaurant_name': 'REVE',
+      'day': '2026-10-14',
+      'starts': '12:00:00',
+      'ends': '20:00:00',
+      'status': 'proposed',
+      'position_name': 'Barman',
+    });
+    expect(proposal.proposed, isTrue);
+    expect(proposal.positionName, 'Barman');
+    final no = PlannedShift.fromJson({
+      'id': 's2',
+      'member_id': 'm1',
+      'restaurant_name': 'REVE',
+      'day': '2026-10-15',
+      'starts': null,
+      'ends': null,
+      'status': 'unavailable',
+    });
+    expect(no.unavailable, isTrue);
+    expect(no.starts, '');
+  });
 }

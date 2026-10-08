@@ -370,6 +370,15 @@ class _SettleDialogState extends ConsumerState<SettleDialog> {
                                 fontFeatures: _tabular,
                               ),
                             ),
+                          // Gość zostawia resztę: idzie do napiwku pracownika, który przyjmuje płatność.
+                          if (change != null && change > 0) ...[
+                            const SizedBox(width: 12),
+                            OutlinedButton.icon(
+                              onPressed: () => setState(() => _tip.text = groszeToText(received! - payDue)),
+                              icon: const Glyph(AppIcons.handCoins, size: 16),
+                              label: const Text('Bez reszty'),
+                            ),
+                          ],
                         ],
                       ),
                     ],

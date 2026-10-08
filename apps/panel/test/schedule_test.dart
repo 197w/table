@@ -101,4 +101,71 @@ void main() {
     expect(find.text('Czas zmiany: 41:54 h'), findsOneWidget);
     expect(find.text('18:09'), findsOneWidget);
   });
+
+  group('paczka 1: stanowiska, propozycje, statystyki', () {
+    test('pracownik z kilkoma stanowiskami', () {
+      final m = StaffMember.fromJson({
+        'id': 'm1',
+        'name': 'Ola',
+        'color': 1,
+        'active': true,
+        'position_id': 'p1',
+        'staff_member_positions': [
+          {'position_id': 'p2'},
+          {'position_id': 'p1'},
+        ],
+      });
+      expect(m.positionIds, ['p1', 'p2']);
+    });
+
+    test('propozycja ze stanowiskiem i niedostępny dzień', () {
+      final day = DateTime(2026, 10, 14);
+      final c = ScheduleChange(
+        ScheduleAction.propose,
+        memberId: 'm1',
+        day: day,
+        starts: '12:00',
+        ends: '20:00',
+        positionId: 'p2',
+      );
+      final shown = c.apply(null)!;
+      expect(shown.status, PlannedShiftStatus.proposed);
+      expect(shown.positionId, 'p2');
+      expect(c.toJson()['action'], 'propose');
+      expect(c.toJson()['position_id'], 'p2');
+      final unavailable = PlannedShift.fromJson({
+        'id': 's1',
+        'member_id': 'm1',
+        'day': '2026-10-14',
+        'status': 'unavailable',
+        'position_id': null,
+      });
+      expect(unavailable.status, PlannedShiftStatus.unavailable);
+      expect(unavailable.status.label, 'Niedostępny');
+    });
+
+    test('statystyki zespołu z napiwkami i gośćmi', () {
+      final t = TeamStat.fromJson({
+        'member_id': 'm1',
+        'name': 'Ola',
+        'active': true,
+        'seconds': 3600,
+        'tips_cash': 600,
+        'tips_card': 250,
+        'guests': 12,
+        'guests_skipped': 2,
+      });
+      expect(t.tipsCashGrosze + t.tipsCardGrosze, 850);
+      expect(t.guestsSkipped, 2);
+      final sum = TeamSummary.fromJson({'revenue': 440000, 'guests': 30, 'skipped': 3, 'tables': 12});
+      expect(sum.revenueGrosze, 440000);
+      expect(sum.skipped, 3);
+    });
+
+    test('rachunek z liczbą gości', () {
+      final o = PanelOrder.fromJson({'id': 'o1', 'opened_at': '2026-10-08T10:00:00Z', 'guests': 4, 'order_items': []});
+      expect(o.guests, 4);
+      expect(PanelOrder.fromJson({'id': 'o2', 'opened_at': '2026-10-08T10:00:00Z', 'guests_skipped': true}).guestsSkipped, isTrue);
+    });
+  });
 }

@@ -89,6 +89,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     DateTime day,
     PlannedShift? existing,
     ScheduleChange? staged,
+    List<StaffPosition> positions,
   ) async {
     final result = await showDialog<_HoursResult>(
       context: context,
@@ -98,6 +99,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
         existing: existing,
         shown: staged == null ? existing : staged.apply(existing),
         staged: staged != null,
+        positions: positions,
       ),
     );
     if (result == null || !mounted) return;
@@ -324,6 +326,12 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
               ];
               bool inPeriod(DateTime d) => !d.isBefore(period.from) && !d.isAfter(period.to);
               final waiting = planned.where((p) => p.status == PlannedShiftStatus.pending && inPeriod(p.day)).length;
+              // Uwagi pracowników na tygodnie (z aplikacji Table for employees).
+              final notes = {
+                for (final n in ref.watch(weekNotesProvider(query)).value ?? const <WeekNote>[])
+                  '${n.memberId}@${dateOnly(n.weekStart)}': n.note,
+              };
+              final positionNames = {for (final p in positions) p.id: p.name};
               final text = Theme.of(context).textTheme;
               return SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
@@ -370,7 +378,10 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                           planned: planned,
                           inPeriod: inPeriod,
                           changed: changes.keys.toSet(),
-                          positionNames: {for (final p in positions) p.id: p.name},
+                          positionNames: positionNames,
+                          notes: {
+                            for (final m in members) m.id: ?notes['${m.id}@$week'],
+                          },
                           onOpenMember: canStaff ? (m) => _openMember(restaurant.id, m) : null,
                           onHours: editing
                               ? (m, day, _) => _hours(
@@ -379,6 +390,11 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                                   day,
                                   savedByKey[scheduleKey(m.id, day)],
                                   changes[scheduleKey(m.id, day)],
+                                  [
+                                    for (final id in m.positionIds)
+                                      for (final p in positions)
+                                        if (p.id == id) p,
+                                  ],
                                 )
                               : null,
                         ),
@@ -390,9 +406,11 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                     const SizedBox(height: 8),
                     Text(
                       'Pracownicy zgłaszają w aplikacji Table for employees, od której do której mogą pracować '
-                      '(okres grafiku: $unit, zmiana w „Ustawieniach lokalu”). Kliknij „Edytuj”, żeby przyjąć zgłoszenie '
-                      '(także ze zmienionymi godzinami), odrzucić je, wpisać godziny samemu albo dać wolne. '
-                      'Zmiany trafiają do pracowników dopiero po „Zapisz”. Po decyzji pracownik nie może już zmienić tego dnia.',
+                      '(okres grafiku: $unit, zmiana i termin zgłaszania w „Ustawieniach lokalu”). Dzień bez zgłoszenia '
+                      'to „Niedostępny”: takiej osobie nie da się wpisać zmiany, ale można wysłać propozycję, którą przyjmie '
+                      'albo odrzuci w aplikacji. Kliknij „Edytuj”, żeby przyjąć zgłoszenie (także ze zmienionymi godzinami '
+                      'i stanowiskiem na ten dzień), odrzucić je, wysłać propozycję albo dać wolne. Zmiany trafiają do '
+                      'pracowników dopiero po „Zapisz”.',
                       style: text.bodySmall?.copyWith(color: AppColors.textMuted),
                     ),
                   ],
@@ -440,11 +458,16 @@ const _pending = Color(0xFFE08A1E);
 /// Kolor wolnego dnia.
 const _off = Color(0xFF3B82F6);
 
+/// Kolor propozycji przełożonego, na którą czeka odpowiedź pracownika.
+const _proposed = Color(0xFF8B5CF6);
+
 Color _statusColor(PlannedShiftStatus s) => switch (s) {
   PlannedShiftStatus.accepted => AppColors.accent,
   PlannedShiftStatus.pending => _pending,
   PlannedShiftStatus.rejected => AppColors.error,
   PlannedShiftStatus.off => _off,
+  PlannedShiftStatus.proposed => _proposed,
+  PlannedShiftStatus.unavailable => AppColors.textMuted,
 };
 
 AppIconData _statusIcon(PlannedShiftStatus s) => switch (s) {
@@ -452,7 +475,24 @@ AppIconData _statusIcon(PlannedShiftStatus s) => switch (s) {
   PlannedShiftStatus.pending => AppIcons.clock,
   PlannedShiftStatus.rejected => AppIcons.prohibit,
   PlannedShiftStatus.off => AppIcons.sun,
+  PlannedShiftStatus.proposed => AppIcons.send,
+  PlannedShiftStatus.unavailable => AppIcons.userMinus,
 };
+
+/// Minuty między „HH:MM” a „HH:MM” (koniec może być 24:00).
+int _minutesBetween(String starts, String ends) {
+  int m(String hm) {
+    final p = hm.split(':');
+    return int.parse(p[0]) * 60 + int.parse(p[1]);
+  }
+
+  if (starts.isEmpty || ends.isEmpty) return 0;
+  final d = m(ends) - m(starts);
+  return d > 0 ? d : 0;
+}
+
+/// Czas jako „37:30 h”.
+String _hoursLabel(int minutes) => '${minutes ~/ 60}:${_two(minutes % 60)} h';
 
 class _Legend extends StatelessWidget {
   const _Legend();
@@ -1291,11 +1331,15 @@ class _WeekGrid extends StatelessWidget {
     required this.positionNames,
     required this.onOpenMember,
     required this.onHours,
+    this.notes = const {},
   });
 
   final DateTime week;
   final List<StaffMember> members;
   final List<PlannedShift> planned;
+
+  /// Uwagi pracowników na ten tydzień według numeru pracownika.
+  final Map<String, String> notes;
 
   /// Dni spoza okresu (np. koniec poprzedniego miesiąca) są wyszarzone i nieklikalne.
   final bool Function(DateTime day) inPeriod;
@@ -1316,6 +1360,40 @@ class _WeekGrid extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final days = [for (var i = 0; i < 7; i++) DateTime(week.year, week.month, week.day + i)];
     final today = dateOnly(DateTime.now());
+    final byId = {for (final m in members) m.id: m};
+
+    // Przyjęte zmiany w dniu (tylko pracownicy z listy).
+    List<PlannedShift> acceptedOn(DateTime day) => [
+      for (final p in planned)
+        if (dateOnly(p.day) == day && p.status == PlannedShiftStatus.accepted && byId.containsKey(p.memberId)) p,
+    ];
+    // Godziny pracownika w tym tygodniu (przyjęte, w okresie).
+    int weekMinutes(String memberId) => [
+      for (final p in planned)
+        if (p.memberId == memberId &&
+            p.status == PlannedShiftStatus.accepted &&
+            !dateOnly(p.day).isBefore(days.first) &&
+            !dateOnly(p.day).isAfter(days.last) &&
+            inPeriod(dateOnly(p.day)))
+          _minutesBetween(p.starts, p.ends),
+    ].fold(0, (a, b) => a + b);
+    // Ile osób na jakim stanowisku w dniu: stanowisko z grafiku albo główne pracownika.
+    Map<String, int> positionsOn(DateTime day) {
+      final counts = <String, int>{};
+      for (final p in acceptedOn(day)) {
+        final name = positionNames[p.positionId ?? byId[p.memberId]?.positionId] ?? byId[p.memberId]?.position ?? 'Bez stanowiska';
+        counts[name] = (counts[name] ?? 0) + 1;
+      }
+      return counts;
+    }
+
+    Widget footerLabel(String label) => SizedBox(
+      width: 220,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Text(label, style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
+      ),
+    );
 
     Widget headerCell(int i) {
       final isToday = days[i] == today;
@@ -1357,6 +1435,14 @@ class _WeekGrid extends StatelessWidget {
               ),
             ),
             for (var i = 0; i < 7; i++) headerCell(i),
+            SizedBox(
+              width: 76,
+              child: Text(
+                'Tydzień',
+                textAlign: TextAlign.center,
+                style: text.labelMedium?.copyWith(color: AppColors.textMuted),
+              ),
+            ),
           ],
         ),
         for (final m in members) ...[
@@ -1395,10 +1481,11 @@ class _WeekGrid extends StatelessWidget {
                                     color: m.active ? AppColors.text : AppColors.textMuted,
                                   ),
                                 ),
-                                if (positionNames[m.positionId] != null || m.position != null || !m.active)
+                                if (m.positionIds.isNotEmpty || m.position != null || !m.active)
                                   Text(
                                     [
-                                      ?(positionNames[m.positionId] ?? m.position),
+                                      if (m.positionIds.isEmpty) ?m.position,
+                                      for (final id in m.positionIds) ?positionNames[id],
                                       if (!m.active) 'nieaktywny',
                                     ].join(' · '),
                                     maxLines: 1,
@@ -1408,6 +1495,15 @@ class _WeekGrid extends StatelessWidget {
                               ],
                             ),
                           ),
+                          // Uwaga pracownika na ten tydzień.
+                          if (notes[m.id] case final note?)
+                            Tooltip(
+                              message: 'Uwaga na tydzień: $note',
+                              child: const Padding(
+                                padding: EdgeInsets.only(left: 6),
+                                child: Glyph(AppIcons.chatText, size: 16, color: _pending),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -1421,9 +1517,26 @@ class _WeekGrid extends StatelessWidget {
                       isToday: day == today,
                       outside: !inPeriod(day),
                       changed: changed.contains(scheduleKey(m.id, day)),
+                      positionName: () {
+                        final e = planned.where((p) => p.memberId == m.id && dateOnly(p.day) == day).firstOrNull;
+                        // Stanowisko pokazujemy tylko u osób z kilkoma stanowiskami.
+                        return e?.positionId == null || m.positionIds.length < 2 ? null : positionNames[e!.positionId];
+                      }(),
                       onTap: onHours == null || !inPeriod(day) ? null : (existing) => onHours!(m, day, existing),
                     ),
                   ),
+                SizedBox(
+                  width: 76,
+                  child: Center(
+                    child: Text(
+                      weekMinutes(m.id) == 0 ? '—' : _hoursLabel(weekMinutes(m.id)),
+                      style: text.labelLarge?.copyWith(
+                        fontFeatures: _tabular,
+                        color: weekMinutes(m.id) == 0 ? AppColors.textDisabled : null,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -1431,23 +1544,73 @@ class _WeekGrid extends StatelessWidget {
         Divider(height: 1, color: AppColors.ring),
         Row(
           children: [
-            SizedBox(
-              width: 220,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Text('Przyjętych osób', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
-              ),
-            ),
+            footerLabel('Przyjętych osób'),
             for (final day in days)
               Expanded(
                 child: Text(
-                  inPeriod(day)
-                      ? '${planned.where((p) => dateOnly(p.day) == day && p.status == PlannedShiftStatus.accepted && members.any((m) => m.id == p.memberId)).length}'
-                      : '',
+                  inPeriod(day) ? '${acceptedOn(day).length}' : '',
                   textAlign: TextAlign.center,
                   style: text.titleSmall?.copyWith(fontFeatures: _tabular),
                 ),
               ),
+            const SizedBox(width: 76),
+          ],
+        ),
+        // Łączne godziny pracy w dniu i ile osób na jakim stanowisku.
+        Row(
+          children: [
+            footerLabel('Godziny pracy'),
+            for (final day in days)
+              Expanded(
+                child: Text(
+                  inPeriod(day)
+                      ? (() {
+                          final minutes = acceptedOn(day).fold(0, (a, p) => a + _minutesBetween(p.starts, p.ends));
+                          return minutes == 0 ? '—' : _hoursLabel(minutes);
+                        })()
+                      : '',
+                  textAlign: TextAlign.center,
+                  style: text.labelLarge?.copyWith(fontFeatures: _tabular, color: AppColors.textMuted),
+                ),
+              ),
+            SizedBox(
+              width: 76,
+              child: Text(
+                () {
+                  final minutes = [for (final day in days) if (inPeriod(day)) ...acceptedOn(day)]
+                      .fold(0, (a, p) => a + _minutesBetween(p.starts, p.ends));
+                  return minutes == 0 ? '' : _hoursLabel(minutes);
+                }(),
+                textAlign: TextAlign.center,
+                style: text.labelLarge?.copyWith(fontFeatures: _tabular),
+              ),
+            ),
+          ],
+        ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            footerLabel('Na stanowiskach'),
+            for (final day in days)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 8, 4, 10),
+                  child: Column(
+                    children: [
+                      if (inPeriod(day))
+                        for (final e in positionsOn(day).entries)
+                          Text(
+                            '${e.key} ${e.value}',
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                          ),
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(width: 76),
           ],
         ),
       ],
@@ -1465,11 +1628,15 @@ class _DayCell extends StatelessWidget {
     required this.outside,
     required this.changed,
     required this.onTap,
+    this.positionName,
   });
 
   final StaffMember member;
   final PlannedShift? entry;
   final bool isToday;
+
+  /// Stanowisko na ten dzień (u osób z kilkoma stanowiskami).
+  final String? positionName;
 
   /// Dzień spoza okresu grafiku.
   final bool outside;
@@ -1497,14 +1664,18 @@ class _DayCell extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(6),
           child: e == null
+              // Bez zgłoszenia pracownik jest niedostępny: można mu tylko wysłać propozycję.
               ? Center(
-                  child: onTap == null
+                  child: changed
+                      ? Glyph(AppIcons.trash, size: 14, color: AppColors.textDisabled)
+                      : outside
                       ? const SizedBox.shrink()
-                      : Glyph(changed ? AppIcons.trash : AppIcons.plus, size: 14, color: AppColors.textDisabled),
+                      : Text('Niedostępny', style: text.labelSmall?.copyWith(color: AppColors.textDisabled)),
                 )
               : Tooltip(
                   message: [
                     e.status.label,
+                    ?positionName,
                     if (e.changed || (e.off && e.requestedStarts != null))
                       'Zgłoszone: ${e.requestedStarts}–${e.requestedEnds}',
                     if (e.note != null) 'Pracownik: ${e.note}',
@@ -1516,19 +1687,25 @@ class _DayCell extends StatelessWidget {
                       color: switch (e.status) {
                         PlannedShiftStatus.accepted => color.withValues(alpha: 0.9),
                         PlannedShiftStatus.pending => _pending.withValues(alpha: 0.16),
-                        PlannedShiftStatus.rejected => Colors.transparent,
+                        PlannedShiftStatus.rejected || PlannedShiftStatus.unavailable => Colors.transparent,
                         PlannedShiftStatus.off => _off.withValues(alpha: 0.14),
+                        PlannedShiftStatus.proposed => _proposed.withValues(alpha: 0.14),
                       },
                       borderRadius: BorderRadius.circular(8),
                       border: switch (e.status) {
                         PlannedShiftStatus.accepted => null,
                         PlannedShiftStatus.pending => Border.all(color: _pending),
-                        PlannedShiftStatus.rejected => Border.all(color: AppColors.ring),
+                        PlannedShiftStatus.rejected || PlannedShiftStatus.unavailable => Border.all(color: AppColors.ring),
                         PlannedShiftStatus.off => Border.all(color: _off.withValues(alpha: 0.6)),
+                        PlannedShiftStatus.proposed => Border.all(color: _proposed.withValues(alpha: 0.7)),
                       },
                     ),
-                    child: Row(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Row(
+                          children: [
                         Glyph(
                           _statusIcon(e.status),
                           size: 13,
@@ -1537,7 +1714,11 @@ class _DayCell extends StatelessWidget {
                         const SizedBox(width: 5),
                         Expanded(
                           child: Text(
-                            e.off ? 'Wolne' : '${e.starts}–${e.ends}',
+                            e.off
+                                ? 'Wolne'
+                                : e.status == PlannedShiftStatus.unavailable
+                                ? 'Niedostępny'
+                                : '${e.starts}–${e.ends}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: text.labelMedium?.copyWith(
@@ -1545,13 +1726,25 @@ class _DayCell extends StatelessWidget {
                               fontWeight: FontWeight.w600,
                               color: switch (e.status) {
                                 PlannedShiftStatus.accepted => Colors.white,
-                                PlannedShiftStatus.pending || PlannedShiftStatus.off => AppColors.text,
-                                PlannedShiftStatus.rejected => AppColors.textMuted,
+                                PlannedShiftStatus.pending || PlannedShiftStatus.off || PlannedShiftStatus.proposed =>
+                                  AppColors.text,
+                                PlannedShiftStatus.rejected || PlannedShiftStatus.unavailable => AppColors.textMuted,
                               },
                               decoration: e.status == PlannedShiftStatus.rejected ? TextDecoration.lineThrough : null,
                             ),
                           ),
                         ),
+                          ],
+                        ),
+                        if (positionName != null)
+                          Text(
+                            positionName!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.labelSmall?.copyWith(
+                              color: e.status == PlannedShiftStatus.accepted ? Colors.white70 : AppColors.textMuted,
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -1598,10 +1791,14 @@ class _HoursDialog extends StatefulWidget {
     required this.existing,
     required this.shown,
     required this.staged,
+    this.positions = const [],
   });
 
   final StaffMember member;
   final DateTime day;
+
+  /// Stanowiska pracownika (do wyboru na ten dzień).
+  final List<StaffPosition> positions;
 
   /// Wpis zapisany w bazie.
   final PlannedShift? existing;
@@ -1621,6 +1818,13 @@ class _HoursDialogState extends State<_HoursDialog> {
   late TimeOfDay _starts = _parse(_initial(widget.shown?.starts, widget.existing?.requestedStarts, '10:00'));
   late TimeOfDay _ends = _parse(_initial(widget.shown?.ends, widget.existing?.requestedEnds, '18:00'));
   late final _answer = TextEditingController(text: widget.shown?.answer ?? '');
+  late String? _positionId = widget.shown?.positionId ?? widget.member.positionId;
+
+  /// Pracownik niedostępny (bez zgłoszenia, zgłosił, że nie może, albo czeka propozycja): tylko propozycja.
+  bool get _onlyProposal {
+    final e = widget.existing;
+    return e == null || e.status == PlannedShiftStatus.unavailable || e.status == PlannedShiftStatus.proposed;
+  }
 
   static TimeOfDay _parse(String hm) {
     final p = hm.split(':');
@@ -1641,6 +1845,9 @@ class _HoursDialogState extends State<_HoursDialog> {
       starts: starts,
       ends: ends,
       answer: _answer.text,
+      positionId: action == ScheduleAction.accept || action == ScheduleAction.add || action == ScheduleAction.propose
+          ? _positionId
+          : null,
     ),
     undo: false,
   ));
@@ -1669,7 +1876,7 @@ class _HoursDialogState extends State<_HoursDialog> {
       return;
     }
     _done(
-      widget.existing == null ? ScheduleAction.add : ScheduleAction.accept,
+      _onlyProposal ? ScheduleAction.propose : ScheduleAction.accept,
       starts: _fmt(_starts),
       ends: _fmt(_ends),
     );
@@ -1718,11 +1925,15 @@ class _HoursDialogState extends State<_HoursDialog> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            shown.requestedStarts == null
-                                ? (shown.off
-                                      ? 'Wolne (dał przełożony)'
-                                      : '${shown.status.label}: ${shown.starts}–${shown.ends} (wpisane przez przełożonego)')
-                                : 'Pracownik zgłosił ${shown.requestedStarts}–${shown.requestedEnds}',
+                            switch (shown.status) {
+                              PlannedShiftStatus.unavailable => 'Pracownik zgłosił, że nie może pracować',
+                              PlannedShiftStatus.proposed =>
+                                'Propozycja ${shown.starts}–${shown.ends}: czeka na odpowiedź pracownika',
+                              _ when shown.requestedStarts == null => shown.off
+                                  ? 'Wolne (dał przełożony)'
+                                  : '${shown.status.label}: ${shown.starts}–${shown.ends} (wpisane przez przełożonego)',
+                              _ => 'Pracownik zgłosił ${shown.requestedStarts}–${shown.requestedEnds}',
+                            },
                             style: text.titleSmall?.copyWith(fontFeatures: _tabular),
                           ),
                           if (shown.requestedStarts != null)
@@ -1749,13 +1960,14 @@ class _HoursDialogState extends State<_HoursDialog> {
               Text(
                 widget.staged
                     ? 'Wpis zostanie usunięty po „Zapisz”.'
-                    : 'Pracownik nie zgłosił godzin na ten dzień. Możesz wpisać je sam (będą przyjęte) albo dać wolne.',
+                    : 'Pracownik jest niedostępny: nie zgłosił dyspozycyjności na ten dzień. Możesz wysłać mu propozycję '
+                        'godzin (przyjmie ją albo odrzuci w aplikacji) albo dać wolne.',
                 style: text.bodySmall?.copyWith(color: AppColors.textMuted),
               ),
             const SizedBox(height: 16),
             Text(
-              existing == null
-                  ? 'Godziny'
+              _onlyProposal
+                  ? 'Proponowane godziny'
                   : shown?.off ?? false
                   ? 'Godziny, jeśli jednak ma pracować'
                   : 'Godziny do przyjęcia (możesz je zmienić)',
@@ -1776,6 +1988,17 @@ class _HoursDialogState extends State<_HoursDialog> {
                 ],
               ],
             ),
+            // Stanowisko na ten dzień: u osób z kilkoma stanowiskami do wyboru.
+            if (widget.positions.length > 1) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: widget.positions.any((p) => p.id == _positionId) ? _positionId : widget.positions.first.id,
+                decoration: const InputDecoration(labelText: 'Stanowisko tego dnia'),
+                icon: const Glyph(AppIcons.caretDown, size: 16),
+                items: [for (final p in widget.positions) DropdownMenuItem(value: p.id, child: Text(p.name))],
+                onChanged: (v) => setState(() => _positionId = v),
+              ),
+            ],
             const SizedBox(height: 12),
             TextField(
               controller: _answer,
@@ -1801,7 +2024,10 @@ class _HoursDialogState extends State<_HoursDialog> {
             style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
             child: const Text('Usuń'),
           ),
-        if (existing != null && !existing.off && shown?.status != PlannedShiftStatus.rejected)
+        if (existing != null &&
+            !existing.off &&
+            !_onlyProposal &&
+            shown?.status != PlannedShiftStatus.rejected)
           TextButton(
             onPressed: () => _done(ScheduleAction.reject),
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
@@ -1822,7 +2048,9 @@ class _HoursDialogState extends State<_HoursDialog> {
         FilledButton(
           onPressed: _accept,
           child: Text(
-            existing == null || existing.off
+            _onlyProposal
+                ? (existing?.status == PlannedShiftStatus.proposed ? 'Zmień propozycję' : 'Wyślij propozycję')
+                : existing!.off
                 ? 'Dodaj godziny'
                 : (changedHours ? 'Przyjmij zmienione' : 'Przyjmij'),
           ),
@@ -1855,6 +2083,9 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
   late final _lastName = TextEditingController(text: widget.member?.lastName ?? '');
   late final _phone = TextEditingController(text: widget.member?.phone ?? '');
   late String? _positionId = widget.member?.positionId;
+
+  /// Dodatkowe stanowiska (np. kelner, który bywa też barmanem).
+  late final Set<String> _extraPositions = {...?widget.member?.extraPositionIds};
   late int _color = widget.member?.color ?? 0;
   late bool _active = widget.member?.active ?? true;
   /// Stawka brutto i netto za godzinę: wpisanie jednej liczy drugą według rodzaju umowy.
@@ -1954,6 +2185,13 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
         color: _color,
         active: _active,
       );
+      final extras = [for (final p in positions) if (_extraPositions.contains(p.id) && p.id != position.id) p.id];
+      if (widget.member != null || extras.isNotEmpty) {
+        final before = {...?widget.member?.extraPositionIds};
+        if (before.length != extras.length || !before.containsAll(extras)) {
+          await ref.read(repositoryProvider).setMemberPositions(id, extras);
+        }
+      }
       final rate = _gross.text.trim().isEmpty ? null : parseGrosze(_gross.text);
       if (_rateLoaded && (rate != _savedRate?.grossGrosze || (rate != null && _contract != _savedRate?.contract))) {
         await ref.read(repositoryProvider).setStaffRate(id, rate, _contract);
@@ -2063,6 +2301,27 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
               ],
               onChanged: (v) => setState(() => _positionId = v),
             ),
+            if (positions.length > 1) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Dodatkowe stanowiska (uprawnienia z wszystkich, w grafiku wybór na dany dzień)',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final p in positions)
+                    if (p.id != _positionId)
+                      FilterChip(
+                        label: Text(p.name),
+                        selected: _extraPositions.contains(p.id),
+                        onSelected: (on) => setState(() => on ? _extraPositions.add(p.id) : _extraPositions.remove(p.id)),
+                      ),
+                ],
+              ),
+            ],
             const SizedBox(height: 12),
             DropdownButtonFormField<Contract>(
               initialValue: _contract,

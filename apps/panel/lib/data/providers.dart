@@ -470,11 +470,15 @@ final customersProvider = FutureProvider.autoDispose.family<List<Customer>, Stri
   (ref, id) => (ref..cacheFor()).watch(repositoryProvider).customers(id),
 );
 
-typedef TeamStatsQuery = ({String restaurantId, DateTime month});
+typedef TeamStatsQuery = ({String restaurantId, TeamPeriod period});
 
 /// Statystyki zespołu za miesiąc (pierwszy dzień miesiąca).
 final teamStatsProvider = FutureProvider.autoDispose.family<List<TeamStat>, TeamStatsQuery>(
-  (ref, q) => (ref..cacheFor()).watch(repositoryProvider).teamStats(q.restaurantId, q.month),
+  (ref, q) => (ref..cacheFor()).watch(repositoryProvider).teamStats(q.restaurantId, q.period),
+);
+
+final teamSummaryProvider = FutureProvider.autoDispose.family<TeamSummary, TeamStatsQuery>(
+  (ref, q) => (ref..cacheFor()).watch(repositoryProvider).teamSummary(q.restaurantId, q.period),
 );
 
 /// Stawki brutto za godzinę i rodzaje umów według numeru pracownika.
@@ -778,6 +782,13 @@ final scheduleRangeProvider = FutureProvider.autoDispose.family<List<PlannedShif
   ref.cacheFor();
   ref.watch(scheduleLiveProvider(q.restaurantId));
   return ref.watch(repositoryProvider).plannedShifts(q.restaurantId, from: q.from, to: q.to);
+});
+
+/// Uwagi pracowników na tygodnie grafiku, na żywo.
+final weekNotesProvider = FutureProvider.autoDispose.family<List<WeekNote>, ScheduleQuery>((ref, q) {
+  ref.cacheFor();
+  ref.watch(scheduleLiveProvider(q.restaurantId));
+  return ref.watch(repositoryProvider).weekNotes(q.restaurantId, q.from, q.to);
 });
 
 /// Edycja grafiku: zmiany zbierają się tutaj i trafiają do bazy dopiero po „Zapisz”. Przeżywają przejście

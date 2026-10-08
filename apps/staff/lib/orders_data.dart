@@ -357,13 +357,17 @@ class WaiterRepository {
     return () => unawaited(_db.removeChannel(channel));
   }
 
-  Future<String> openOrder(String restaurantId, String tableId, String memberId) => _guard(
-    () => _db.rpc<String>('panel_open_order', params: {
-      'p_restaurant_id': restaurantId,
-      'p_table_id': tableId,
-      'p_member_id': memberId,
-    }),
-  );
+  /// Otwiera rachunek stolika (albo zwraca otwarty). [guests]: liczba gości; [skipGuests]: kelner pominął pytanie.
+  Future<String> openOrder(String restaurantId, String tableId, String memberId, {int? guests, bool skipGuests = false}) =>
+      _guard(
+        () => _db.rpc<String>('panel_open_order', params: {
+          'p_restaurant_id': restaurantId,
+          'p_table_id': tableId,
+          'p_member_id': memberId,
+          'p_guests': guests,
+          'p_skip_guests': skipGuests,
+        }),
+      );
 
   Future<void> addItem({
     required String orderId,

@@ -18,6 +18,14 @@ const _pending = Color(0xFFE08A1E);
 /// Kolor wolnego dnia (daje go przełożony w panelu).
 const _off = Color(0xFF3B82F6);
 
+/// Kolor propozycji przełożonego, na którą czeka moja odpowiedź.
+const _proposed = Color(0xFF8B5CF6);
+
+const _weekdaysLong = ['pon.', 'wt.', 'śr.', 'czw.', 'pt.', 'sob.', 'niedz.'];
+
+/// Termin jak „czw. 8.10, 20:00”.
+String _deadlineText(DateTime d) => '${_weekdaysLong[d.weekday - 1]} ${d.day}.${_two(d.month)}, ${_hm(d)}';
+
 String _two(int n) => n.toString().padLeft(2, '0');
 String _hm(DateTime t) => '${_two(t.hour)}:${_two(t.minute)}';
 DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -85,9 +93,11 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       showDragHandle: true,
       builder: (_) => HoursSheet(jobs: jobs, day: day, existing: existing),
     );
-    if (saved == true) {
-      ref.invalidate(schedulePeriodProvider);
-      if (mounted) showMessage(context, 'Zgłoszone. Przełożony przyjmie godziny, zmieni je albo odrzuci.');
+    if (saved != null) ref.invalidate(schedulePeriodProvider);
+    if (saved == true && mounted) {
+      showMessage(context, 'Zgłoszone. Przełożony przyjmie godziny, zmieni je albo odrzuci.');
+    } else if (saved == false && mounted) {
+      showMessage(context, 'Zapisane: nie możesz pracować w tym dniu.');
     }
   }
 
@@ -115,13 +125,71 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     }
   }
 
-  Future<void> _open(List<Job> jobs, DateTime day, PlannedShift? entry) async {
+  /// Odpowiedź na propozycję przełożonego.
+  Future<void> _answer(PlannedShift entry, bool accept) async {
+    try {
+      await ref.read(staffRepositoryProvider).answerProposal(entry.id, accept: accept);
+      ref.invalidate(schedulePeriodProvider);
+      if (mounted) {
+        showMessage(
+          context,
+          accept ? 'Przyjęte: ${entry.starts}–${entry.ends}. Dzień jest w Twoim grafiku.' : 'Przełożony zobaczy, że nie możesz.',
+          tone: accept ? ToastTone.success : ToastTone.info,
+        );
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  /// Uwaga na tydzień dla przełożonego (np. „w środę egzamin”).
+  Future<void> _weekNote(List<Job> jobs, DateTime week, String? current) async {
+    final controller = TextEditingController(text: current ?? '');
+    final note = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Uwaga na tydzień ${week.day}.${_two(week.month)}'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 300,
+          maxLines: 3,
+          decoration: const InputDecoration(hintText: 'Na przykład: w środę mam egzamin'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Anuluj')),
+          FilledButton(
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Zapisz'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (note == null || jobs.isEmpty) return;
+    try {
+      await ref.read(staffRepositoryProvider).setWeekNote(jobs.first.memberId, week, note);
+      ref.invalidate(weekNotesProvider);
+      if (mounted) showMessage(context, note.isEmpty ? 'Uwaga usunięta.' : 'Uwaga zapisana. Przełożony zobaczy ją w grafiku.');
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _open(List<Job> jobs, DateTime day, PlannedShift? entry, {required bool closed}) async {
     final today = _day(DateTime.now());
     if (entry == null) {
-      if (!day.isBefore(today) && jobs.isNotEmpty) await _hours(jobs, day);
+      if (day.isBefore(today) || jobs.isEmpty) return;
+      if (closed) {
+        showMessage(context, 'Termin zgłaszania na ten okres minął. Jesteś niedostępny. Zapytaj przełożonego.');
+        return;
+      }
+      await _hours(jobs, day);
       return;
     }
-    final editable = entry.pending && !day.isBefore(today);
+    final editable = (entry.pending || entry.unavailable) && !day.isBefore(today) && !closed;
+    final answerable = entry.proposed && !day.isBefore(today);
     await showModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
@@ -144,13 +212,25 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                 onEdit: editable
                     ? () {
                         Navigator.pop(context);
-                        _hours(jobs, day, entry);
+                        _hours(jobs, day, entry.unavailable ? null : entry);
                       }
                     : null,
                 onDelete: editable
                     ? () {
                         Navigator.pop(context);
                         _delete(entry);
+                      }
+                    : null,
+                onAccept: answerable
+                    ? () {
+                        Navigator.pop(context);
+                        _answer(entry, true);
+                      }
+                    : null,
+                onDecline: answerable
+                    ? () {
+                        Navigator.pop(context);
+                        _answer(entry, false);
                       }
                     : null,
               ),
@@ -173,7 +253,18 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       for (var d = period.from; !d.isAfter(period.to); d = DateTime(d.year, d.month, d.day + 1)) d,
     ];
     final today = _day(DateTime.now());
-    final open = days.where((d) => !d.isBefore(today) && (byDay[d]?.pending ?? true)).toList();
+    // Termin zgłaszania dyspozycyjności na ten okres: po nim wpisywanie się wyłącza.
+    final deadline = jobs.isEmpty
+        ? null
+        : ref.watch(scheduleDeadlineProvider((memberId: jobs.first.memberId, day: period.from))).value;
+    final closed = deadline != null && DateTime.now().isAfter(deadline);
+    // Uwagi na tygodnie okresu (poniedziałki).
+    final firstMonday = period.from.subtract(Duration(days: period.from.weekday - 1));
+    final notes = ref.watch(weekNotesProvider((from: firstMonday, to: period.to))).value ?? const <DateTime, String>{};
+    final open = closed
+        ? const <DateTime>[]
+        : days.where((d) => !d.isBefore(today) && (byDay[d] == null || byDay[d]!.pending || byDay[d]!.unavailable)).toList();
+    final proposals = byDay.values.where((e) => e.proposed).length;
     final accepted = byDay.values.where((e) => e.accepted).length;
     final waiting = byDay.values.where((e) => e.pending).length;
     final rejected = byDay.values.where((e) => e.rejected).length;
@@ -230,8 +321,19 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                 _Count(color: _pending, label: 'Czeka', count: waiting),
                 _Count(color: AppColors.error, label: 'Odrzucone', count: rejected),
                 if (free > 0) _Count(color: _off, label: 'Wolne', count: free),
+                if (proposals > 0) _Count(color: _proposed, label: 'Propozycje', count: proposals),
               ],
             ),
+            if (deadline != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                closed
+                    ? 'Termin zgłaszania minął (${_deadlineText(deadline)}). Dni bez zgłoszenia: niedostępny.'
+                    : 'Zgłoś dyspozycyjność do ${_deadlineText(deadline)}.',
+                textAlign: TextAlign.center,
+                style: text.bodySmall?.copyWith(color: closed ? AppColors.textMuted : _pending),
+              ),
+            ],
             if (open.isNotEmpty && jobs.isNotEmpty) ...[
               const SizedBox(height: 14),
               FilledButton.icon(
@@ -244,13 +346,24 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
             if (async.isLoading && !async.hasValue)
               const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
             else
-              for (final d in days)
+              for (final d in days) ...[
+                // Na początku tygodnia: moja uwaga na ten tydzień dla przełożonego.
+                if (d == period.from || d.weekday == DateTime.monday)
+                  _WeekNoteRow(
+                    week: d.subtract(Duration(days: d.weekday - 1)),
+                    note: notes[d.subtract(Duration(days: d.weekday - 1))],
+                    onTap: jobs.isEmpty
+                        ? null
+                        : () => _weekNote(jobs, d.subtract(Duration(days: d.weekday - 1)), notes[d.subtract(Duration(days: d.weekday - 1))]),
+                  ),
                 _DayRow(
                   day: d,
                   today: today,
                   entry: byDay[d],
-                  onTap: () => _open(jobs, d, byDay[d]),
+                  closed: closed,
+                  onTap: () => _open(jobs, d, byDay[d], closed: closed),
                 ),
+              ],
             const SizedBox(height: 28),
             HoursHistory(shifts: shifts),
           ],
@@ -284,13 +397,67 @@ class _Count extends StatelessWidget {
 }
 
 /// Jeden dzień okresu: dzień tygodnia i data, godziny i stan zgłoszenia.
+/// Uwaga na tydzień: dotknięcie dodaje albo zmienia.
+class _WeekNoteRow extends StatelessWidget {
+  const _WeekNoteRow({required this.week, required this.note, required this.onTap});
+
+  final DateTime week;
+  final String? note;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final end = week.add(const Duration(days: 6));
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              Text(
+                'Tydzień ${week.day}.${_two(week.month)}–${end.day}.${_two(end.month)}',
+                style: text.labelLarge?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  note ?? 'Dodaj uwagę na tydzień',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: text.bodySmall?.copyWith(color: note == null ? AppColors.accent : _pending),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Glyph(note == null ? AppIcons.plus : AppIcons.chatText, size: 14, color: AppColors.textMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _DayRow extends StatelessWidget {
-  const _DayRow({required this.day, required this.today, required this.entry, required this.onTap});
+  const _DayRow({
+    required this.day,
+    required this.today,
+    required this.entry,
+    required this.onTap,
+    this.closed = false,
+  });
 
   final DateTime day;
   final DateTime today;
   final PlannedShift? entry;
   final VoidCallback onTap;
+
+  /// Termin zgłaszania minął: dzień bez zgłoszenia to „Niedostępny”.
+  final bool closed;
 
   @override
   Widget build(BuildContext context) {
@@ -299,10 +466,12 @@ class _DayRow extends StatelessWidget {
     final past = day.isBefore(today);
     final isToday = day == today;
     final (Color color, String status) = switch (e) {
-      null => (AppColors.textMuted, past ? 'Brak godzin' : 'Nie zgłoszono'),
+      null => (AppColors.textMuted, past ? 'Brak godzin' : (closed ? 'Niedostępny' : 'Nie zgłoszono')),
       final e when e.accepted => (AppColors.accent, e.changed ? 'Przyjęte ze zmianą' : 'Przyjęte'),
       final e when e.rejected => (AppColors.error, 'Odrzucone'),
       final e when e.off => (_off, 'Wolne'),
+      final e when e.proposed => (_proposed, 'Propozycja przełożonego: odpowiedz'),
+      final e when e.unavailable => (AppColors.textMuted, 'Nie mogę'),
       _ => (_pending, 'Czeka na decyzję'),
     };
     return Opacity(
@@ -351,9 +520,9 @@ class _DayRow extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (e != null && !e.off)
+                        if (e != null && !e.off && !e.unavailable)
                           Text(
-                            '${e.starts}–${e.ends}',
+                            '${e.starts}–${e.ends}${e.positionName == null ? '' : ' · ${e.positionName}'}',
                             style: text.titleMedium?.copyWith(
                               fontFeatures: _tabular,
                               decoration: e.rejected ? TextDecoration.lineThrough : null,
@@ -646,11 +815,21 @@ class _HoursHistoryState extends State<HoursHistory> {
 }
 
 class _EntryCard extends StatelessWidget {
-  const _EntryCard({required this.entry, required this.onEdit, required this.onDelete});
+  const _EntryCard({
+    required this.entry,
+    required this.onEdit,
+    required this.onDelete,
+    this.onAccept,
+    this.onDecline,
+  });
 
   final PlannedShift entry;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+
+  /// Propozycja przełożonego: przyjmuję albo nie mogę.
+  final VoidCallback? onAccept;
+  final VoidCallback? onDecline;
 
   @override
   Widget build(BuildContext context) {
@@ -662,6 +841,10 @@ class _EntryCard extends StatelessWidget {
         ? (AppColors.error, AppIcons.prohibit, 'Odrzucone')
         : e.off
         ? (_off, AppIcons.sun, 'Wolne')
+        : e.proposed
+        ? (_proposed, AppIcons.send, 'Propozycja przełożonego')
+        : e.unavailable
+        ? (AppColors.textMuted, AppIcons.userMinus, 'Nie mogę pracować')
         : (_pending, AppIcons.clock, 'Czeka na decyzję przełożonego');
     return Card(
       child: Padding(
@@ -678,13 +861,16 @@ class _EntryCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              e.off ? 'Masz wolne' : '${e.starts}–${e.ends}',
+              e.off ? 'Masz wolne' : (e.unavailable ? 'Niedostępny' : '${e.starts}–${e.ends}'),
               style: text.headlineSmall?.copyWith(
                 fontFeatures: _tabular,
                 decoration: e.rejected ? TextDecoration.lineThrough : null,
               ),
             ),
-            Text(e.restaurantName, style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
+            Text(
+              [e.restaurantName, ?e.positionName].join(' · '),
+              style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+            ),
             if (e.changed || (e.off && e.requestedStarts != null))
               Text(
                 'Zgłaszałeś ${e.requestedStarts}–${e.requestedEnds}',
@@ -698,7 +884,28 @@ class _EntryCard extends StatelessWidget {
               const SizedBox(height: 6),
               Text('Przełożony: ${e.answer}', style: text.bodyMedium),
             ],
-            if (onEdit != null || onDelete != null) ...[
+            if (onAccept != null || onDecline != null) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48), foregroundColor: AppColors.error),
+                      onPressed: onDecline,
+                      child: const Text('Nie mogę'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
+                      onPressed: onAccept,
+                      child: const Text('Przyjmuję'),
+                    ),
+                  ),
+                ],
+              ),
+            ] else if (onEdit != null || onDelete != null) ...[
               const SizedBox(height: 12),
               // Przyciski w motywie Table zajmują całą szerokość, więc w wierszu dostają Expanded.
               Row(
@@ -707,7 +914,7 @@ class _EntryCard extends StatelessWidget {
                     child: OutlinedButton(
                       style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
                       onPressed: onEdit,
-                      child: const Text('Zmień'),
+                      child: Text(e.unavailable ? 'Mogę jednak' : 'Zmień'),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -796,6 +1003,19 @@ class _HoursSheetState extends ConsumerState<HoursSheet> {
     }
   }
 
+  /// Nie mogę pracować w tym dniu.
+  Future<void> _unavailable() async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(staffRepositoryProvider).markUnavailable(memberId: _memberId, day: widget.day, note: _note.text);
+      if (mounted) Navigator.pop(context, false);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
@@ -855,6 +1075,8 @@ class _HoursSheetState extends ConsumerState<HoursSheet> {
             ),
             const SizedBox(height: 8),
             FilledButton(onPressed: _busy ? null : _send, child: const Text('Zgłoś')),
+            const SizedBox(height: 4),
+            TextButton(onPressed: _busy ? null : _unavailable, child: const Text('Nie mogę w tym dniu')),
           ],
         ),
       ),

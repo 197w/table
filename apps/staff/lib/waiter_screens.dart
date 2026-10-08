@@ -873,12 +873,26 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
                 ),
                 if (change != null) ...[
                   const SizedBox(height: 8),
-                  Text(
-                    change >= 0 ? 'Reszta ${Fmt.price(change)}' : 'Brakuje ${Fmt.price(-change)}',
-                    style: text.titleMedium?.copyWith(
-                      color: change >= 0 ? AppColors.accent : AppColors.error,
-                      fontFeatures: _tabular,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          change >= 0 ? 'Reszta ${Fmt.price(change)}' : 'Brakuje ${Fmt.price(-change)}',
+                          style: text.titleMedium?.copyWith(
+                            color: change >= 0 ? AppColors.accent : AppColors.error,
+                            fontFeatures: _tabular,
+                          ),
+                        ),
+                      ),
+                      // Gość zostawia resztę: idzie do Twojego napiwku.
+                      if (change > 0)
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
+                          onPressed: () => setState(() => _tip.text = _text(received - payDue)),
+                          icon: const Glyph(AppIcons.handCoins, size: 16),
+                          label: const Text('Bez reszty'),
+                        ),
+                    ],
                   ),
                 ],
               ],
@@ -920,6 +934,10 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
   Future<void> _queue = Future.value();
   bool _leaving = false;
 
+  /// Liczba gości przy nowym rachunku: zapytana raz, przed pierwszym daniem (null: pominięta).
+  bool _askedGuests = false;
+  int? _guests;
+
   /// Do szczegółów rachunku, gdy wszystkie stuknięte dania są już zapisane.
   Future<void> _next() async {
     setState(() => _leaving = true);
@@ -944,6 +962,22 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
       if (picked == null || !mounted) return;
       choice = picked;
     }
+    // Nowy rachunek stolika: najpierw liczba gości (można pominąć, pominięcie widać w statystykach).
+    if (!_askedGuests) {
+      final open = (ref.read(openOrdersProvider(widget.job.restaurantId)).value ?? const <WOrder>[])
+          .any((o) => o.tableId == widget.table.id);
+      if (!open) {
+        final answer = await showModalBottomSheet<({int? guests})>(
+          context: context,
+          useSafeArea: true,
+          showDragHandle: true,
+          builder: (_) => _GuestsSheet(title: widget.table.title),
+        );
+        if (answer == null || !mounted) return;
+        _guests = answer.guests;
+      }
+      _askedGuests = true;
+    }
     HapticFeedback.selectionClick();
     final repo = ref.read(waiterRepositoryProvider);
     final job = widget.job;
@@ -954,7 +988,14 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
           if (o.tableId == widget.table.id) order = o;
         }
         // Otwarcie zwraca istniejący rachunek, więc szybkie stuknięcia nie otworzą dwóch.
-        final orderId = order?.id ?? await repo.openOrder(job.restaurantId, widget.table.id, job.memberId);
+        final orderId = order?.id ??
+            await repo.openOrder(
+              job.restaurantId,
+              widget.table.id,
+              job.memberId,
+              guests: _guests,
+              skipGuests: _guests == null,
+            );
         await repo.addItem(
           orderId: orderId,
           menuItemId: item.id,
@@ -1356,6 +1397,55 @@ class _OptionsSheetState extends State<_OptionsSheet> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Ilu gości przy stoliku. „Pomiń” jest dozwolone, ale liczy się w statystykach zespołu.
+class _GuestsSheet extends StatelessWidget {
+  const _GuestsSheet({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + _bottomInset(context)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('$title · ilu gości?', style: text.titleLarge),
+          const SizedBox(height: 14),
+          GridView.count(
+            crossAxisCount: 4,
+            shrinkWrap: true,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            childAspectRatio: 1.6,
+            physics: const NeverScrollableScrollPhysics(),
+            children: [
+              for (var n = 1; n <= 12; n++)
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(minimumSize: Size.zero, padding: EdgeInsets.zero),
+                  onPressed: () => Navigator.pop<({int? guests})>(context, (guests: n)),
+                  child: Text('$n', style: const TextStyle(fontSize: 20, fontFeatures: _tabular)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: () => Navigator.pop<({int? guests})>(context, (guests: null)),
+            child: const Text('Pomiń'),
+          ),
+          Text(
+            'Pominięcie liczy się w statystykach zespołu.',
+            textAlign: TextAlign.center,
+            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+          ),
+        ],
       ),
     );
   }

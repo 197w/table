@@ -36,6 +36,9 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
 
   /// Czas przygotowania przy „Przyjmij” zamówienia na wynos.
   int _prepMinutes = 30;
+
+  /// Liczba gości wybrana przed otwarciem rachunku stolika (null: kelner pominął pytanie).
+  final _guestsFor = <String, int?>{};
   String? _sectionId;
   String _query = '';
   final _search = TextEditingController();
@@ -81,9 +84,50 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   Future<String> _orderIdFor(String restaurantId, String tableId) async {
     final order = _orderOf(restaurantId, tableId);
     if (order != null) return order.id;
-    return ref
-        .read(repositoryProvider)
-        .openOrder(restaurantId, tableId, memberId: ref.read(panelMemberProvider)?.dbMemberId);
+    final guests = _guestsFor[tableId];
+    return ref.read(repositoryProvider).openOrder(
+      restaurantId,
+      tableId,
+      memberId: ref.read(panelMemberProvider)?.dbMemberId,
+      guests: guests,
+      skipGuests: _guestsFor.containsKey(tableId) && guests == null,
+    );
+  }
+
+  /// Dotknięcie dania: przy nowym rachunku stolika najpierw liczba gości (można pominąć), potem dodanie.
+  Future<void> _tapItem(
+    String restaurantId,
+    DiningTable? table,
+    Future<String> Function()? target,
+    MenuItem item, {
+    bool withOptions = false,
+  }) async {
+    if (target == null) {
+      showMessage(context, 'Najpierw wybierz stolik albo „Nowe zamówienie” po lewej.');
+      return;
+    }
+    if (table != null && _orderOf(restaurantId, table.id!) == null && !_guestsFor.containsKey(table.id)) {
+      final answer = await showDialog<({int? guests})>(
+        context: context,
+        builder: (_) => _GuestsDialog(table: table),
+      );
+      if (answer == null || !mounted) return;
+      _guestsFor[table.id!] = answer.guests;
+    }
+    await _add(restaurantId, target, item, withOptions: withOptions);
+  }
+
+  Future<void> _changeGuests(String restaurantId, DiningTable table, PanelOrder order) async {
+    final answer = await showDialog<({int? guests})>(
+      context: context,
+      builder: (_) => _GuestsDialog(table: table, initial: order.guests, canSkip: false),
+    );
+    final guests = answer?.guests;
+    if (guests == null || !mounted) return;
+    await _enqueue(
+      restaurantId,
+      () => ref.read(repositoryProvider).setOrderGuests(order.id, guests, memberId: ref.read(panelMemberProvider)?.dbMemberId),
+    );
   }
 
   /// Dokłada pozycję do rachunku stolika albo szkicu na wynos ([orderId] daje numer rachunku).
@@ -455,12 +499,8 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                             onSection: (id) => setState(() => _sectionId = id),
                             onQuery: (q) => setState(() => _query = q.trim().toLowerCase()),
                             onRetry: () => ref.invalidate(menuProvider(restaurant.id)),
-                            onTap: (item) => target == null
-                                ? showMessage(context, 'Najpierw wybierz stolik albo „Nowe zamówienie” po lewej.')
-                                : _add(restaurant.id, target, item),
-                            onOptions: (item) => target == null
-                                ? showMessage(context, 'Najpierw wybierz stolik albo „Nowe zamówienie” po lewej.')
-                                : _add(restaurant.id, target, item, withOptions: true),
+                            onTap: (item) => _tapItem(restaurant.id, table, target, item),
+                            onOptions: (item) => _tapItem(restaurant.id, table, target, item, withOptions: true),
                             onMenu: (item, at) => _itemMenu(restaurant.id, target, item, at),
                           ),
                         ),
@@ -508,6 +548,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                                   order: order,
                                   reservation: reservation,
                                   kitchen: kitchen,
+                                  onGuests: order == null ? null : () => _changeGuests(restaurant.id, table!, order!),
                                   onQuantity: (item, q) => _enqueue(
                                     restaurant.id,
                                     () => q < 1
@@ -1524,12 +1565,16 @@ class _OrderPanel extends StatelessWidget {
     required this.onMove,
     required this.canCancelSent,
     required this.kitchen,
+    required this.onGuests,
   });
 
   final DiningTable table;
   final PanelOrder? order;
   final PanelReservation? reservation;
   final KitchenConfig kitchen;
+
+  /// Zmiana liczby gości przy otwartym rachunku.
+  final VoidCallback? onGuests;
   final void Function(OrderItem item, int quantity) onQuantity;
   final ValueChanged<OrderItem> onNote;
   final void Function(OrderItem item, OrderItemStatus status) onStatus;
@@ -1573,9 +1618,33 @@ class _OrderPanel extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '${table.isSeat ? 'Miejsce' : 'Stolik'} ${table.label}',
-                        style: text.titleLarge,
+                      Row(
+                        children: [
+                          Text(
+                            '${table.isSeat ? 'Miejsce' : 'Stolik'} ${table.label}',
+                            style: text.titleLarge,
+                          ),
+                          // Liczba gości: dotknięcie zmienia. Pominięta jest żółta.
+                          if (order != null) ...[
+                            const SizedBox(width: 10),
+                            ActionChip(
+                              onPressed: onGuests,
+                              avatar: Glyph(
+                                AppIcons.users,
+                                size: 14,
+                                color: order.guests == null ? const Color(0xFFD99A15) : AppColors.textMuted,
+                              ),
+                              label: Text(
+                                order.guests == null ? 'Ilu gości?' : '${order.guests} ${_guestsWord(order.guests!)}',
+                                style: TextStyle(
+                                  fontFeatures: _tabular,
+                                  color: order.guests == null ? const Color(0xFFD99A15) : null,
+                                ),
+                              ),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ],
+                        ],
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -1993,6 +2062,116 @@ class _OrderLine extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+String _guestsWord(int n) => n == 1 ? 'gość' : 'gości';
+
+/// Ilu gości siedzi przy stoliku. Wpisanie jest dobrowolne: „Pomiń” liczy się w statystykach zespołu.
+class _GuestsDialog extends StatefulWidget {
+  const _GuestsDialog({required this.table, this.initial, this.canSkip = true});
+
+  final DiningTable table;
+  final int? initial;
+  final bool canSkip;
+
+  @override
+  State<_GuestsDialog> createState() => _GuestsDialogState();
+}
+
+class _GuestsDialogState extends State<_GuestsDialog> {
+  final _other = TextEditingController();
+
+  @override
+  void dispose() {
+    _other.dispose();
+    super.dispose();
+  }
+
+  void _pick(int n) => Navigator.pop<({int? guests})>(context, (guests: n));
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final suggested = widget.initial ?? widget.table.seats;
+    return AlertDialog(
+      title: Text('${widget.table.isSeat ? 'Miejsce' : 'Stolik'} ${widget.table.label} · ilu gości?'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (var n = 1; n <= 12; n++)
+                  SizedBox(
+                    width: 56,
+                    height: 52,
+                    child: n == suggested
+                        ? FilledButton(
+                            onPressed: () => _pick(n),
+                            style: FilledButton.styleFrom(padding: EdgeInsets.zero),
+                            child: Text('$n', style: const TextStyle(fontSize: 18, fontFeatures: _tabular)),
+                          )
+                        : OutlinedButton(
+                            onPressed: () => _pick(n),
+                            style: OutlinedButton.styleFrom(padding: EdgeInsets.zero),
+                            child: Text('$n', style: const TextStyle(fontSize: 18, fontFeatures: _tabular)),
+                          ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _other,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(2)],
+                    decoration: const InputDecoration(labelText: 'Inna liczba', isDense: true),
+                    onSubmitted: (v) {
+                      final n = int.tryParse(v);
+                      if (n != null && n >= 1 && n <= 99) _pick(n);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton(
+                  onPressed: () {
+                    final n = int.tryParse(_other.text);
+                    if (n != null && n >= 1 && n <= 99) _pick(n);
+                  },
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+            if (widget.canSkip) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Możesz pominąć, ale pominięcia liczą się w statystykach zespołu.',
+                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+          child: const Text('Anuluj'),
+        ),
+        if (widget.canSkip)
+          TextButton(
+            onPressed: () => Navigator.pop<({int? guests})>(context, (guests: null)),
+            child: const Text('Pomiń'),
+          ),
+      ],
     );
   }
 }
