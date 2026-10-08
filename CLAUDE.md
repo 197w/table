@@ -98,10 +98,11 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   wybrane zakładki i dolne menu, powiadomienia, puste ekrany, kafle `IconBadge`).
 - `apps/guest/lib`: `app` (router, dolne menu, preferencje), `core` (mapy, lokalizacja), `data`, `features`
   (m.in. `ordering`: zamawianie z dostawą i na wynos).
-  Odkrywaj (`features/discover`, nowy wygląd z 10.2026): powitanie z wyborem „W pobliżu” albo miasta, wyszukiwarka
+  Odkrywaj (`features/discover`, nowy wygląd z 10.2026): powitanie na całą szerokość, wyszukiwarka
   „Szukaj lokali, dań albo kuchni” (`search_restaurants` od 0060 szuka też po kuchni i nazwach dań, `matched_dish`
   = „W menu: …”), kategorie kuchni z własnymi ikonami na spokojnym tle (`cuisineIcon`, ikony Phosphor z better-icons),
-  „Filtry” (okno: ceny, ocena, odległość, rezerwacja w aplikacji, dostawa, na wynos; licznik „Pokaż N lokali”),
+  w rzędzie filtrów „W pobliżu” albo miasto, „Filtry” (okno: ceny, ocena, odległość, rezerwacja w aplikacji, dostawa,
+  na wynos; licznik „Pokaż N lokali”),
   „Sortuj” (Polecane / Najlepsza kuchnia / Najbliżej) i szybkie filtry, liczba lokali i przełącznik widoku
   (`DiscoverLayout`: karty ze zdjęciem albo zwarte wiersze, zapamiętany). Karta: zdjęcie na całą szerokość
   (`restaurants.cover_url` z „Dane lokalu” w panelu, inaczej pierwsze zdjęcie dania, inaczej karta w kolorze kuchni

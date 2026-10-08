@@ -44,10 +44,10 @@ class DiscoverScreen extends ConsumerWidget {
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              SliverToBoxAdapter(child: _Header(city: city, hasLocation: hasLocation)),
+              const SliverToBoxAdapter(child: _Header()),
               const SliverToBoxAdapter(child: _SearchField()),
               SliverToBoxAdapter(child: _CuisineRow(selected: filter.cuisine)),
-              SliverToBoxAdapter(child: _FilterRow(filter: filter, hasLocation: hasLocation)),
+              SliverToBoxAdapter(child: _FilterRow(filter: filter, city: city, hasLocation: hasLocation)),
               if (locationOff && filter.city == null && city != null)
                 SliverToBoxAdapter(
                   child: _LocationHint(city: city, onEnable: () => ref.invalidate(locationProvider)),
@@ -133,12 +133,9 @@ class DiscoverScreen extends ConsumerWidget {
   }
 }
 
-/// Powitanie i miejsce, którego lokale widać: „W pobliżu” albo wybrane miasto.
+/// Powitanie na całą szerokość (na telefonie z większą czcionką imię się nie ucina).
 class _Header extends ConsumerWidget {
-  const _Header({required this.city, required this.hasLocation});
-
-  final String? city;
-  final bool hasLocation;
+  const _Header();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -146,38 +143,9 @@ class _Header extends ConsumerWidget {
     // Bez konta albo bez podanego imienia samo „Witaj!”.
     final name = ref.watch(profileProvider).value?.firstName?.trim();
     final greeting = (name == null || name.isEmpty) ? 'Witaj!' : 'Witaj, $name!';
-    final cities = ref.watch(citiesProvider).value ?? const <City>[];
-    final unit = ref.watch(distanceUnitProvider);
-    final notifier = ref.read(discoverFilterProvider.notifier);
-
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 16, 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(greeting, style: text.headlineSmall, maxLines: 1, overflow: TextOverflow.ellipsis),
-          ),
-          const SizedBox(width: 8),
-          DropdownPill<String?>(
-            icon: AppIcons.mapPin,
-            title: 'Gdzie szukać',
-            label: city ?? 'W pobliżu',
-            selected: city,
-            options: [
-              DropdownOption(
-                value: null,
-                label: 'W pobliżu',
-                trailing: hasLocation ? Fmt.radius(10, unit) : 'wyłączone',
-              ),
-              for (final c in cities) DropdownOption(value: c.name, label: c.name, trailing: '${c.restaurants}'),
-            ],
-            onSelected: (value) {
-              notifier.setCity(value);
-              if (value == null && !hasLocation) ref.invalidate(locationProvider);
-            },
-          ),
-        ],
-      ),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: Text(greeting, style: text.headlineMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
     );
   }
 }
@@ -371,16 +339,21 @@ class _CuisineTile extends StatelessWidget {
   }
 }
 
-/// „Filtry” (więcej opcji), „Sortuj” i szybkie filtry zawsze pod ręką.
+/// Gdzie szukać („W pobliżu” albo miasto), „Filtry” (więcej opcji), „Sortuj” i szybkie filtry zawsze pod ręką.
 class _FilterRow extends ConsumerWidget {
-  const _FilterRow({required this.filter, required this.hasLocation});
+  const _FilterRow({required this.filter, required this.city, required this.hasLocation});
 
   final DiscoverFilter filter;
+
+  /// Miasto, którego lokale są na liście. Null oznacza „W pobliżu”.
+  final String? city;
   final bool hasLocation;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notifier = ref.read(discoverFilterProvider.notifier);
+    final cities = ref.watch(citiesProvider).value ?? const <City>[];
+    final unit = ref.watch(distanceUnitProvider);
     final count = filter.extraCount;
     return SizedBox(
       height: 58,
@@ -388,6 +361,25 @@ class _FilterRow extends ConsumerWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
         children: [
+          DropdownPill<String?>(
+            icon: AppIcons.mapPin,
+            title: 'Gdzie szukać',
+            label: city ?? 'W pobliżu',
+            selected: city,
+            options: [
+              DropdownOption(
+                value: null,
+                label: 'W pobliżu',
+                trailing: hasLocation ? Fmt.radius(10, unit) : 'wyłączone',
+              ),
+              for (final c in cities) DropdownOption(value: c.name, label: c.name, trailing: '${c.restaurants}'),
+            ],
+            onSelected: (value) {
+              notifier.setCity(value);
+              if (value == null && !hasLocation) ref.invalidate(locationProvider);
+            },
+          ),
+          const SizedBox(width: 8),
           _Chip(
             icon: AppIcons.sliders,
             label: count == 0 ? 'Filtry' : 'Filtry · $count',
