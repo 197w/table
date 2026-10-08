@@ -173,6 +173,7 @@ class ReservationsLive extends Notifier<LiveState> {
             inserted,
             muted: ref.read(alertsMutedProvider),
           );
+          if (inserted['source'] == 'app') ref.read(tabNewsProvider.notifier).add(TabNews.reservations);
         }
       },
       onStatus: (status) {
@@ -515,6 +516,25 @@ class PanelSectionNotifier extends Notifier<String?> {
 }
 
 final panelSectionProvider = NotifierProvider<PanelSectionNotifier, String?>(PanelSectionNotifier.new);
+
+/// Coś nowego w zakładce: nowa rezerwacja z aplikacji, nowe zamówienie na dostawę albo odbiór, nowe danie
+/// do wydania. Kropka na ikonie zakładki i jej grupy, dopóki ktoś nie zajrzy do zakładki.
+enum TabNews { reservations, deliveries, pickup, serving }
+
+class TabNewsNotifier extends Notifier<Set<TabNews>> {
+  @override
+  Set<TabNews> build() => const {};
+
+  void add(TabNews news) {
+    if (!state.contains(news)) state = {...state, news};
+  }
+
+  void seen(TabNews news) {
+    if (state.contains(news)) state = {...state}..remove(news);
+  }
+}
+
+final tabNewsProvider = NotifierProvider<TabNewsNotifier, Set<TabNews>>(TabNewsNotifier.new);
 
 /// Dane właściciela w „Dane lokalu”.
 final ownerDetailsProvider = FutureProvider.autoDispose.family<OwnerDetails, String>(

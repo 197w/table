@@ -58,6 +58,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       for (final c in all)
         if (query.isEmpty ||
             c.name.toLowerCase().contains(query) ||
+            (c.company?.toLowerCase().contains(query) ?? false) ||
+            (c.address?.toLowerCase().contains(query) ?? false) ||
             (digits.length >= 3 && (c.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '').contains(digits)))
           c,
     ];
@@ -282,7 +284,12 @@ class _CustomerTile extends StatelessWidget {
                         ],
                       ),
                       Text(
-                        c.phone == null ? 'Bez telefonu' : Fmt.phone(c.phone),
+                        [
+                          c.phone == null ? 'Bez telefonu' : Fmt.phone(c.phone),
+                          ?c.company,
+                        ].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
                       ),
                     ],
@@ -534,6 +541,37 @@ class _CustomerDetail extends ConsumerWidget {
                   for (final d in dates) Text(d, style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
                 ],
               ),
+              // Dane z zamówień na wynos: firma z NIP-em i ostatni adres dostawy.
+              if (c.company != null || c.address != null) ...[
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 14,
+                  runSpacing: 2,
+                  children: [
+                    if (c.company != null)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Glyph(AppIcons.briefcase, size: 14, color: AppColors.textMuted),
+                          const SizedBox(width: 6),
+                          SelectableText(
+                            [c.company!, if (c.nip != null) 'NIP ${c.nip}'].join(' · '),
+                            style: text.bodyMedium,
+                          ),
+                        ],
+                      ),
+                    if (c.address != null)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Glyph(AppIcons.mapPin, size: 14, color: AppColors.textMuted),
+                          const SizedBox(width: 6),
+                          SelectableText(c.address!, style: text.bodyMedium),
+                        ],
+                      ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),

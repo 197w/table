@@ -2122,11 +2122,19 @@ class Customer {
     this.firstSeen,
     this.lastVisit,
     this.nextReservation,
+    this.company,
+    this.nip,
+    this.address,
   });
 
   final String key;
   final String name;
   final String? phone;
+
+  /// Z zamówień na wynos (baza dopisuje klienta sama): firma, NIP i ostatni adres dostawy.
+  final String? company;
+  final String? nip;
+  final String? address;
 
   /// Gość ma konto w aplikacji Table.
   final bool fromApp;
@@ -2161,6 +2169,9 @@ class Customer {
     firstSeen: _toDateOrNull(json['first_seen']),
     lastVisit: _toDateOrNull(json['last_visit']),
     nextReservation: _toDateOrNull(json['next_reservation']),
+    company: (json['company'] as String?)?.ifEmpty,
+    nip: (json['nip'] as String?)?.ifEmpty,
+    address: (json['address'] as String?)?.ifEmpty,
   );
 }
 

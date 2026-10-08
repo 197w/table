@@ -33,6 +33,12 @@ class PanelShell extends ConsumerWidget {
     // Połączenie na żywo z rezerwacjami działa na każdej zakładce,
     // żeby dźwięk nowej rezerwacji z aplikacji było słychać zawsze.
     final current = ref.watch(currentRestaurantProvider);
+    // Grupy według uprawnień zalogowanego pracownika (bez niego: konta panelu).
+    final permissions = current == null
+        ? const <String>{}
+        : ref.watch(effectivePermissionsProvider(current.id)) ?? const <String>{};
+    bool allowed(String route) => canOpenRoute(route, permissions);
+    final news = ref.read(tabNewsProvider.notifier);
     if (current != null && current.isPro) {
       ref.watch(reservationsLiveProvider(current.id).select((s) => s.status));
       // Nowe zamówienie na wynos (gotówka od razu, karta po opłaceniu): dźwięk i powiadomienie na każdej zakładce.
@@ -44,21 +50,36 @@ class PanelShell extends ConsumerWidget {
         for (final o in now) {
           if (o.stage == TakeawayStage.placed && !waiting.contains(o.id)) {
             ReservationAlerts.instance.onTakeaway(o, muted: ref.read(alertsMutedProvider));
+            news.add(o.kind == OrderKind.pickup ? TabNews.pickup : TabNews.deliveries);
           }
         }
       });
+      // Nowe danie gotowe z kuchni: kropka na „Kompletowanie”.
+      if (allowed(PanelRoutes.serving)) {
+        ref.listen(servingTicketsProvider(current.id), (previous, next) {
+          final before = previous?.value;
+          final now = next.value;
+          if (before == null || now == null) return;
+          final was = {for (final t in before) ...t.readyIds};
+          if (now.expand((t) => t.readyIds).any((id) => !was.contains(id))) news.add(TabNews.serving);
+        });
+      }
     }
+
+    // Kropki: zakładka z czymś nowym, dopóki ktoś do niej nie zajrzy.
+    final unseen = ref.watch(tabNewsProvider);
+    final open = _newsOf(tabForRoute(location));
+    if (open != null && unseen.contains(open)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => news.seen(open));
+    }
+    bool dot(PanelTab t) =>
+        allowed(t.route) && !location.startsWith(t.route) && unseen.contains(_newsOf(t.route));
 
     // Ekran kuchni na cały ekran: bez pasków, same bileciki.
     if (ref.watch(kitchenFullscreenProvider) && location.startsWith(PanelRoutes.kitchen)) {
       return Scaffold(body: _RouteGuard(location: location, child: child));
     }
 
-    // Grupy według uprawnień zalogowanego pracownika (bez niego: konta panelu).
-    final permissions = current == null
-        ? const <String>{}
-        : ref.watch(effectivePermissionsProvider(current.id)) ?? const <String>{};
-    bool allowed(String route) => canOpenRoute(route, permissions);
     final sections = [
       for (final s in PanelSection.values)
         if (s.tabs.any((t) => allowed(t.route))) s,
@@ -77,6 +98,7 @@ class PanelShell extends ConsumerWidget {
           _TopBar(
             sections: sections,
             section: section,
+            dots: {for (final s in sections) if (s.tabs.any(dot)) s},
             onSection: (s) {
               ref.read(panelSectionProvider.notifier).set(s.name);
               final first = s.tabs.where((t) => allowed(t.route)).firstOrNull;
@@ -89,6 +111,7 @@ class PanelShell extends ConsumerWidget {
               children: [
                 _Rail(
                   location: location,
+                  dots: {for (final t in [...?section?.tabs, ...placeTabs]) if (dot(t)) t.route},
                   tabs: [
                     for (final t in section?.tabs ?? const <PanelTab>[])
                       if (allowed(t.route)) t,
@@ -122,6 +145,15 @@ class PanelShell extends ConsumerWidget {
     );
   }
 }
+
+/// Rodzaj nowości, który pokazuje kropka na zakładce [route]. Null: zakładka bez kropek.
+TabNews? _newsOf(String? route) => switch (route) {
+  PanelRoutes.reservations => TabNews.reservations,
+  PanelRoutes.deliveries => TabNews.deliveries,
+  PanelRoutes.pickup => TabNews.pickup,
+  PanelRoutes.serving => TabNews.serving,
+  _ => null,
+};
 
 /// Pokazuje zakładkę tylko wtedy, gdy stanowisko ma do niej uprawnienie.
 /// W przeciwnym razie przenosi do pierwszej dostępnej zakładki.
@@ -173,11 +205,14 @@ class _RouteGuard extends ConsumerWidget {
 /// Górny pasek: lokal po lewej, grupy zakładek, nazwa Table na środku, a po prawej nowa wersja,
 /// odliczanie do wylogowania, motyw i zalogowany pracownik.
 class _TopBar extends ConsumerWidget {
-  const _TopBar({required this.sections, required this.section, required this.onSection});
+  const _TopBar({required this.sections, required this.section, required this.onSection, this.dots = const {}});
 
   final List<PanelSection> sections;
   final PanelSection? section;
   final ValueChanged<PanelSection> onSection;
+
+  /// Grupy z czymś nowym w którejś zakładce.
+  final Set<PanelSection> dots;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -216,7 +251,7 @@ class _TopBar extends ConsumerWidget {
                 if (sections.isNotEmpty && section != null) ...[
                   const SizedBox(width: 16),
                   for (final s in sections)
-                    _SectionTab(section: s, selected: s == section, onTap: () => onSection(s)),
+                    _SectionTab(section: s, selected: s == section, dot: dots.contains(s), onTap: () => onSection(s)),
                 ],
                 const Spacer(),
                 // Nowa wersja znaleziona w trakcie pracy: instaluje się dopiero po kliknięciu,
@@ -502,17 +537,21 @@ class _MemberMenu extends ConsumerWidget {
 
 /// Wąski pasek boczny: zakładki wybranej grupy u góry, zakładki lokalu na dole. Same ikony, nazwy w podpowiedziach.
 class _Rail extends StatelessWidget {
-  const _Rail({required this.location, required this.tabs, required this.placeTabs});
+  const _Rail({required this.location, required this.tabs, required this.placeTabs, this.dots = const {}});
 
   final String location;
   final List<PanelTab> tabs;
   final List<PanelTab> placeTabs;
+
+  /// Zakładki z czymś nowym (ścieżki).
+  final Set<String> dots;
 
   @override
   Widget build(BuildContext context) {
     Widget button(PanelTab t) => _RailButton(
       tab: t,
       selected: location.startsWith(t.route),
+      dot: dots.contains(t.route),
       onTap: () => context.go(t.route),
     );
     return Container(
@@ -549,25 +588,71 @@ class _Rail extends StatelessWidget {
 }
 
 class _RailButton extends StatelessWidget {
-  const _RailButton({required this.tab, required this.selected, required this.onTap});
+  const _RailButton({required this.tab, required this.selected, required this.onTap, this.dot = false});
 
   final PanelTab tab;
   final bool selected;
+  final bool dot;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
-      child: _BareIcon(
-        icon: tab.icon,
-        tooltip: tab.label,
-        selected: selected,
-        size: 30,
-        box: 46,
-        tooltipRight: true,
-        onTap: onTap,
+      child: _NewsDot(
+        show: dot,
+        top: 7,
+        right: 7,
+        child: _BareIcon(
+          icon: tab.icon,
+          tooltip: dot ? '${tab.label} · coś nowego' : tab.label,
+          selected: selected,
+          size: 30,
+          box: 46,
+          tooltipRight: true,
+          onTap: onTap,
+        ),
       ),
+    );
+  }
+}
+
+/// Mała kropka w rogu ikony: w zakładce jest coś nowego. Pojawia się z lekkim powiększeniem.
+class _NewsDot extends StatelessWidget {
+  const _NewsDot({required this.show, required this.child, this.top = 4, this.right = 4});
+
+  final bool show;
+  final Widget child;
+  final double top;
+  final double right;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        child,
+        Positioned(
+          top: top,
+          right: right,
+          child: IgnorePointer(
+            child: AnimatedScale(
+              scale: show ? 1 : 0,
+              duration: const Duration(milliseconds: 220),
+              curve: show ? Curves.easeOutBack : Curves.easeIn,
+              child: Container(
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF5A3C),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: PanelDepth.sidebar, width: 1.5),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -646,11 +731,14 @@ class _BareIconState extends State<_BareIcon> {
 
 /// Grupa w górnym pasku: sama ikona, a wybrana w kolorze akcentu i z nazwą, która wysuwa się obok.
 class _SectionTab extends StatefulWidget {
-  const _SectionTab({required this.section, required this.selected, required this.onTap});
+  const _SectionTab({required this.section, required this.selected, required this.onTap, this.dot = false});
 
   final PanelSection section;
   final bool selected;
   final VoidCallback onTap;
+
+  /// W którejś zakładce grupy jest coś nowego.
+  final bool dot;
 
   @override
   State<_SectionTab> createState() => _SectionTabState();
@@ -684,13 +772,18 @@ class _SectionTabState extends State<_SectionTab> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TweenAnimationBuilder<Color?>(
-                  tween: ColorTween(end: color),
-                  duration: const Duration(milliseconds: 180),
-                  builder: (context, c, _) => Glyph(
-                    selected ? widget.section.icon.duotone : widget.section.icon,
-                    size: 26,
-                    color: c,
+                _NewsDot(
+                  show: widget.dot,
+                  top: -1,
+                  right: -2,
+                  child: TweenAnimationBuilder<Color?>(
+                    tween: ColorTween(end: color),
+                    duration: const Duration(milliseconds: 180),
+                    builder: (context, c, _) => Glyph(
+                      selected ? widget.section.icon.duotone : widget.section.icon,
+                      size: 26,
+                      color: c,
+                    ),
                   ),
                 ),
                 // Nazwa wybranej grupy wysuwa się zza ikony.

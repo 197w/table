@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_icons.dart';
 
 enum AppThemeSetting {
-  system('Systemowy', AppIcons.circleHalfTilt),
+  system('Systemowy', AppIcons.monitor),
   light('Jasny', AppIcons.sun),
   dark('Ciemny', AppIcons.moon);
 

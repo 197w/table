@@ -155,6 +155,7 @@ abstract final class AppIcons {
   static const megaphone = AppIconData('assets/icons/megaphone.svg');
   static const minus = AppIconData('assets/icons/minus.svg');
   static const money = AppIconData('assets/icons/money.svg');
+  static const monitor = AppIconData('assets/icons/monitor.svg');
   static const moon = AppIconData('assets/icons/moon.svg');
   static const moped = AppIconData('assets/icons/moped.svg');
   static const move = AppIconData('assets/icons/arrows-out-cardinal.svg');

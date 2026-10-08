@@ -1,5 +1,7 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:table_panel/data/models.dart';
+import 'package:table_panel/data/providers.dart';
 import 'package:table_panel/features/orders/order_history_screen.dart';
 
 Map<String, dynamic> _item(String id, String status, {String? sentAt, List<Map<String, dynamic>>? changes}) => {
@@ -187,6 +189,28 @@ void main() {
       final c = KitchenConfig.fromJson({'kitchen_warn_minutes': 5, 'kitchen_late_minutes': 9, 'kitchen_lead_pickup_min': 15});
       expect(c.leadPickup, 15);
       expect(c.leadDelivery, 40);
+    });
+  });
+  group('paczka 4: baza klientów i kropki', () {
+    test('klient z firmą, NIP-em i adresem z zamówienia', () {
+      final c = Customer.fromJson({
+        'key': 'tel:777888999', 'name': 'Nowy Klient', 'phone': '+48 777 888 999', 'from_app': false,
+        'company': 'Biuro XYZ', 'nip': '5423456789', 'address': 'Lipowa 14/3, Białystok', 'orders': 0,
+      });
+      expect(c.company, 'Biuro XYZ');
+      expect(c.address, 'Lipowa 14/3, Białystok');
+      expect(Customer.fromJson({'key': 'imie:x', 'name': 'X', 'company': ''}).company, isNull);
+    });
+
+    test('kropka znika po zajrzeniu do zakładki', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final news = container.read(tabNewsProvider.notifier);
+      news.add(TabNews.pickup);
+      news.add(TabNews.pickup);
+      expect(container.read(tabNewsProvider), {TabNews.pickup});
+      news.seen(TabNews.pickup);
+      expect(container.read(tabNewsProvider), isEmpty);
     });
   });
 }

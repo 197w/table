@@ -80,7 +80,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość: flutter_map + latlong2 (mapa dostawcy, kafelki OpenStreetMap; przed wydaniem w sklepach przejść na płatnego dostawcę kafelków).
   Pracownik: geolocator (pozycja dostawcy w drodze).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0058, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0059, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -118,7 +118,10 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Pracownicy (Pracownicy: Zespół i Grafik, Statystyki zespołu `/zespol`), Baza klientów (Klienci `/klienci`, Opinie),
   Management (Podsumowanie dnia `/podsumowanie`, Godziny pracy `/godziny`, Menu, Inwentaryzacja, Statystyki,
   Kody rabatowe `/rabaty`, Eksport `/eksport`);
-  „Table” na środku; po prawej nowa wersja, odliczanie do wylogowania, motyw i kółko pracownika (inicjały; menu:
+  Kropki nowości (`tabNewsProvider`, `TabNews`, `_NewsDot`): nowa rezerwacja z aplikacji, nowe zamówienie na dostawę
+  albo odbiór, nowe danie do wydania; kropka na zakładce i jej grupie znika po wejściu do zakładki.
+  „Table” na środku; po prawej nowa wersja, odliczanie do wylogowania, motyw (systemowy: ikona monitora `AppIcons.monitor`)
+  i kółko pracownika (inicjały; menu:
   kod pracownika, „Zakończ zmianę”, „Wyloguj”, „Wejdź na zmianę”, e-mail i wersja, wylogowanie konta restauracji).
   Wąski pasek boczny: zakładki wybranej grupy (same ikony bez ramek, 30 px, nazwy w podpowiedziach po prawej, `tooltipOnRight`), na dole Ustawienia lokalu
   (`/ustawienia`), Dane lokalu i Edycja sali. Grupa i zakładki według uprawnień zalogowanego pracownika;
@@ -168,7 +171,11 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   zamówienia na wynos po koncie w aplikacji, telefonie (ostatnie 9 cyfr) albo imieniu: wizyty, nieobecności,
   zamówienia, wydatki, ostatnia wizyta, najbliższa rezerwacja. Układ: lista z wyszukiwaniem po lewej, po prawej
   wybrany klient (liczby, historia `panel_customer_history`, notatki) albo podsumowanie wszystkich. Klucz klienta
-  liczy `private.customer_key` (0047). Notatki o kliencie: `customer_notes` (RLS: tylko obsługa lokalu,
+  liczy `private.customer_key` (0047; od 0059 najpierw telefon: numer z konta w aplikacji albo wpisany, ostatnie
+  9 cyfr `private.customer_phone_key`, potem konto, potem imię, więc ten sam numer z aplikacji, panelu i rezerwacji
+  to jeden klient). Klient z zamówienia na wynos dopisuje się sam do `restaurant_customers` (trigger
+  `orders_remember_customer` przy przyjęciu i zmianie danych: imię, firma, NIP, ostatni adres), jest na liście od razu,
+  a w karcie klienta widać firmę z NIP-em i adres (`panel_customers` zwraca `company`, `nip`, `address`). Notatki o kliencie: `customer_notes` (RLS: tylko obsługa lokalu,
   `has_staff_role`; goście ich nie widzą), `panel_add_customer_note`, `panel_delete_customer_note`, wspólny widżet
   `NotesView` (`shared/notes_view.dart`, Enter dodaje). Statystyki zespołu (`/zespol`, uprawnienie `stats`):
   `panel_team_stats` (godziny, zmiany, rachunki, pozycje, kursy, goście i pominięcia liczby gości, napiwki gotówką
