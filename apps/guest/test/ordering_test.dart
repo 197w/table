@@ -106,6 +106,46 @@ void main() {
     expect(order.scheduledFor, DateTime.parse('2026-10-08T17:30:00Z').toLocal());
   });
 
+  group('lista lokali: filtry i najlepsze dopasowanie', () {
+    RestaurantSummary r(String id, String cuisine,
+            {int price = 2, double km = 1, double? food, int reviews = 0, bool pro = false, bool delivery = false,
+            bool pickup = false}) =>
+        RestaurantSummary.fromJson({
+          'id': id, 'name': id, 'cuisine': cuisine, 'price_level': price, 'address': 'a', 'city': 'Białystok',
+          'plan': pro ? 'pro' : 'free', 'distance_m': km * 1000, 'verified_reviews': reviews, 'food_avg': food,
+          'food_score': food, 'delivery_enabled': delivery, 'pickup_enabled': pickup, 'cover_url': '',
+        });
+    final items = [
+      r('a', 'wloska', price: 3, km: 0.5, food: 4.8, reviews: 20, pro: true, delivery: true),
+      r('b', 'polska', price: 1, km: 3, food: 4.2, reviews: 5, pro: true, pickup: true),
+      r('c', 'japonska', price: 2, km: 6),
+    ];
+
+    test('filtry z okna „Filtry”', () {
+      expect(applyDiscoverFilter(items, const DiscoverFilter(prices: {1, 2}), hasLocation: true).map((e) => e.id), ['b', 'c']);
+      expect(applyDiscoverFilter(items, const DiscoverFilter(minRating: 4.5), hasLocation: true).map((e) => e.id), ['a']);
+      expect(applyDiscoverFilter(items, const DiscoverFilter(orderOnline: true), hasLocation: true), hasLength(2));
+      expect(applyDiscoverFilter(items, const DiscoverFilter(delivery: true), hasLocation: true).single.id, 'a');
+      expect(applyDiscoverFilter(items, const DiscoverFilter(maxKm: 5), hasLocation: true), hasLength(2));
+      // Bez lokalizacji odległość nie filtruje.
+      expect(applyDiscoverFilter(items, const DiscoverFilter(maxKm: 5), hasLocation: false), hasLength(3));
+      expect(items.first.coverUrl, isNull);
+      const f = DiscoverFilter(city: 'Kraków', bookable: true, maxKm: 2);
+      expect(f.extraCount, 2);
+      expect(f.withoutExtras().extraCount, 0);
+      expect(f.withoutExtras().city, 'Kraków');
+      expect(f.copyWith(maxKm: null).maxKm, isNull);
+    });
+
+    test('najlepsze dopasowanie: ocena, odległość i kuchnia, w której gość był', () {
+      expect(bestMatch(items, visited: const {}, hasLocation: true)!.id, 'a');
+      // Gość bywa w polskiej kuchni: dopasowanie przechodzi na nią.
+      expect(bestMatch(items, visited: const {'b'}, hasLocation: false)!.id, 'b');
+      expect(bestMatch(items.take(1).toList(), visited: const {}, hasLocation: true), isNull);
+      expect(bestMatch([r('x', 'polska'), r('y', 'wloska')], visited: const {}, hasLocation: false), isNull);
+    });
+  });
+
   test('lista oczekujących: godziny co pół godziny i propozycja lokalu', () {
     expect(halfHours('12:15', '14:00'), ['12:30', '13:00', '13:30', '14:00']);
     expect(halfHours('22:00', '00:00'), ['22:00', '22:30', '23:00', '23:30', '24:00']);

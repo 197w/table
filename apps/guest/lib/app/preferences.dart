@@ -46,7 +46,20 @@ class EnumPreferenceNotifier<T extends Enum> extends Notifier<T> {
 abstract final class PreferenceKeys {
   static const language = 'jezyk';
   static const distanceUnit = 'jednostki';
+  static const discoverLayout = 'widok_lokali';
 }
+
+/// Widok listy lokali: duże karty ze zdjęciem (przeglądanie) albo zwarte wiersze (porównywanie).
+enum DiscoverLayout { cards, list }
+
+final discoverLayoutProvider =
+    NotifierProvider<EnumPreferenceNotifier<DiscoverLayout>, DiscoverLayout>(
+      () => EnumPreferenceNotifier(
+        PreferenceKeys.discoverLayout,
+        DiscoverLayout.values,
+        DiscoverLayout.cards,
+      ),
+    );
 
 final languageProvider =
     NotifierProvider<EnumPreferenceNotifier<AppLanguage>, AppLanguage>(

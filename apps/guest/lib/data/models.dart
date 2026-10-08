@@ -67,12 +67,27 @@ class RestaurantSummary {
     required this.unverifiedReviews,
     this.foodAvg,
     this.foodScore,
+    this.coverUrl,
+    this.deliveryEnabled = false,
+    this.pickupEnabled = false,
+    this.matchedDish,
   });
 
   final String id;
   final String name;
   final String cuisine;
   final int priceLevel;
+
+  /// Zdjęcie na kartę: zdjęcie lokalu albo pierwsze zdjęcie dania z menu. Null: karta z ikoną kuchni.
+  final String? coverUrl;
+  final bool deliveryEnabled;
+  final bool pickupEnabled;
+
+  /// Danie z menu pasujące do wpisanej frazy, np. „Pizza Margherita” przy „pizza”.
+  final String? matchedDish;
+
+  /// Zamówienie w aplikacji (dostawa albo odbiór) jest tylko w planie Pro.
+  bool get canOrder => isPro && (deliveryEnabled || pickupEnabled);
   final String address;
   final String city;
   final bool isPro;
@@ -100,6 +115,10 @@ class RestaurantSummary {
       unverifiedReviews: _toInt(json['unverified_reviews']),
       foodAvg: _toDouble(json['food_avg']),
       foodScore: _toDouble(json['food_score']),
+      coverUrl: (json['cover_url'] as String?)?.trim().isEmpty ?? true ? null : json['cover_url'] as String,
+      deliveryEnabled: json['delivery_enabled'] == true,
+      pickupEnabled: json['pickup_enabled'] == true,
+      matchedDish: json['matched_dish'] as String?,
     );
   }
 }
@@ -272,9 +291,24 @@ class RestaurantDetail {
     this.deliveryFeeGrosze = 0,
     this.deliveryMinGrosze = 0,
     this.deliveryArea,
+    this.coverUrl,
     this.leadPickupMin = 20,
     this.leadDeliveryMin = 40,
   });
+
+  /// Zdjęcie lokalu z panelu („Dane lokalu”). Bez niego: pierwsze zdjęcie dania z menu ([coverPhoto]).
+  final String? coverUrl;
+
+  /// Zdjęcie na górę strony lokalu: zdjęcie lokalu albo pierwsze zdjęcie dania. Null: ikona kuchni.
+  String? get coverPhoto {
+    if (coverUrl != null) return coverUrl;
+    for (final s in menu) {
+      for (final i in s.items) {
+        if (i.photoUrl != null && i.available) return i.photoUrl;
+      }
+    }
+    return null;
+  }
 
   /// Zamówienie na godzinę: najwcześniej za tyle minut (kuchnia potrzebuje czasu), osobno odbiór i dostawa.
   final int leadPickupMin;
@@ -357,6 +391,7 @@ class RestaurantDetail {
       deliveryFeeGrosze: _toInt(json['delivery_fee_grosze']),
       deliveryMinGrosze: _toInt(json['delivery_min_grosze']),
       deliveryArea: json['delivery_area'] as String?,
+      coverUrl: json['cover_url'] as String?,
       leadPickupMin: json['kitchen_lead_pickup_min'] == null ? 20 : _toInt(json['kitchen_lead_pickup_min']),
       leadDeliveryMin: json['kitchen_lead_delivery_min'] == null ? 40 : _toInt(json['kitchen_lead_delivery_min']),
     );

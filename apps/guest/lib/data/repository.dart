@@ -140,7 +140,7 @@ class Repository {
               'id, name, cuisine, price_level, description, address, city, phone, plan, is_example, logo_url, max_party_size, '
               'deposit_min_party, deposit_per_person_grosze, '
               'delivery_enabled, pickup_enabled, takeaway_cash, delivery_fee_grosze, delivery_min_grosze, delivery_area, '
-              'kitchen_lead_pickup_min, kitchen_lead_delivery_min, '
+              'kitchen_lead_pickup_min, kitchen_lead_delivery_min, cover_url, '
               'opening_hours(weekday, opens, closes), '
               'menu_sections(id, name, position, menu_items(id, name, description, price_grosze, allergens, position, variants, addons, available, photo_url))',
             )

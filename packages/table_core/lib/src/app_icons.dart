@@ -198,4 +198,25 @@ abstract final class AppIcons {
   static const warning = AppIconData('assets/icons/warning-circle.svg');
   static const wifiOff = AppIconData('assets/icons/wifi-slash.svg');
   static const wrench = AppIconData('assets/icons/wrench.svg');
+
+  // Kategorie kuchni w aplikacji gościa i przełącznik widoku listy (karty / wiersze).
+  static const avocado = AppIconData('assets/icons/avocado.svg');
+  static const bowlSteam = AppIconData('assets/icons/bowl-steam.svg');
+  static const bread = AppIconData('assets/icons/bread.svg');
+  static const cards = AppIconData('assets/icons/cards.svg');
+  static const carrot = AppIconData('assets/icons/carrot.svg');
+  static const cheese = AppIconData('assets/icons/cheese.svg');
+  static const coffee = AppIconData('assets/icons/coffee.svg');
+  static const fire = AppIconData('assets/icons/fire.svg');
+  static const fireSimple = AppIconData('assets/icons/fire-simple.svg');
+  static const fish = AppIconData('assets/icons/fish.svg');
+  static const fishSimple = AppIconData('assets/icons/fish-simple.svg');
+  static const grains = AppIconData('assets/icons/grains.svg');
+  static const hamburger = AppIconData('assets/icons/hamburger.svg');
+  static const pepper = AppIconData('assets/icons/pepper.svg');
+  static const pizza = AppIconData('assets/icons/pizza.svg');
+  static const plant = AppIconData('assets/icons/plant.svg');
+  static const rows = AppIconData('assets/icons/rows.svg');
+  static const shrimp = AppIconData('assets/icons/shrimp.svg');
+  static const wine = AppIconData('assets/icons/wine.svg');
 }

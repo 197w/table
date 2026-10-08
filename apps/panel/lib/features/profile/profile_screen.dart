@@ -6,6 +6,7 @@ import 'package:table_core/table_core.dart';
 
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../shared/menu_photo.dart';
 import '../../shared/panel_widgets.dart';
 import 'schedule_conflicts.dart';
 
@@ -54,6 +55,8 @@ class ProfileScreen extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _LogoCard(profile: profile, editable: restaurant.canManage),
+                        const SizedBox(height: 20),
+                        _CoverCard(profile: profile, editable: restaurant.canManage),
                         const SizedBox(height: 20),
                         _DetailsForm(
                           key: ValueKey('dane-${profile.id}'),
@@ -1173,6 +1176,127 @@ class _LogoCardState extends ConsumerState<_LogoCard> {
                         label: Text(profile.logoUrl == null ? 'Wgraj logo' : 'Zmień logo'),
                       ),
                       if (profile.logoUrl != null) ...[
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: _busy ? null : _remove,
+                          style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                          child: const Text('Usuń'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Zdjęcie lokalu na liście lokali w aplikacji Table (na całą szerokość karty) i na górze strony lokalu.
+/// Bez zdjęcia aplikacja pokazuje pierwsze zdjęcie dania z menu, a bez niego kartę z ikoną kuchni.
+class _CoverCard extends ConsumerStatefulWidget {
+  const _CoverCard({required this.profile, required this.editable});
+
+  final RestaurantProfile profile;
+  final bool editable;
+
+  @override
+  ConsumerState<_CoverCard> createState() => _CoverCardState();
+}
+
+class _CoverCardState extends ConsumerState<_CoverCard> {
+  bool _busy = false;
+
+  Future<void> _pick() async {
+    final Uint8List? jpeg;
+    try {
+      jpeg = await pickMenuPhoto();
+    } on FormatException {
+      if (mounted) showMessage(context, 'To nie jest zdjęcie. Wybierz plik JPG, PNG albo WEBP.');
+      return;
+    }
+    if (jpeg == null) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(repositoryProvider).uploadCover(restaurantId: widget.profile.id, jpeg: jpeg);
+      ref.invalidate(profileProvider(widget.profile.id));
+      if (mounted) showMessage(context, 'Zdjęcie zapisane. Goście zobaczą je na liście lokali.');
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _remove() async {
+    final ok = await confirm(
+      context,
+      title: 'Usunąć zdjęcie lokalu?',
+      message: 'Na liście lokali pojawi się pierwsze zdjęcie dania z menu albo karta z ikoną kuchni.',
+      action: 'Usuń',
+      destructive: true,
+    );
+    if (!ok) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(repositoryProvider).removeCover(widget.profile.id);
+      ref.invalidate(profileProvider(widget.profile.id));
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final url = widget.profile.coverUrl;
+    return PanelCard(
+      title: 'Zdjęcie na liście lokali',
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: SizedBox(
+              width: 192,
+              height: 108,
+              child: url == null
+                  ? ColoredBox(
+                      color: AppColors.surfaceRaised,
+                      child: Center(child: Glyph(AppIcons.forkKnife, size: 28, color: AppColors.textMuted)),
+                    )
+                  : Image.network(
+                      url,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => ColoredBox(color: AppColors.surfaceRaised),
+                    ),
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Zdjęcie jedzenia albo wnętrza na całą szerokość karty lokalu w aplikacji Table. '
+                  'Najlepiej poziome (16:9). Bez niego aplikacja pokazuje pierwsze zdjęcie dania z menu.',
+                  style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                ),
+                if (widget.editable) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      FilledButton.icon(
+                        onPressed: _busy ? null : _pick,
+                        icon: const Glyph(AppIcons.plus, size: 16),
+                        label: Text(url == null ? 'Wgraj zdjęcie' : 'Zmień zdjęcie'),
+                      ),
+                      if (url != null) ...[
                         const SizedBox(width: 8),
                         TextButton(
                           onPressed: _busy ? null : _remove,

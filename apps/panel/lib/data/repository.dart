@@ -302,6 +302,7 @@ class PanelRepository {
           .from('restaurants')
           .select(
             'id, name, cuisine, description, address, city, phone, slot_interval_min, max_party_size, price_level, logo_url, '
+            'cover_url, '
             'deposit_min_party, deposit_per_person_grosze, '
             'schedule_period, schedule_deadline_dow, schedule_deadline_time, inventory_period, delivery_enabled, '
             'pickup_enabled, takeaway_cash, '
@@ -1755,6 +1756,25 @@ class PanelRepository {
 
   Future<void> removeLogo(String restaurantId) {
     return updateProfile(restaurantId, {'logo_url': null});
+  }
+
+  /// Wgrywa zdjęcie lokalu (już zmniejszone, JPG) do folderu logo i zapisuje je w profilu.
+  Future<String> uploadCover({required String restaurantId, required Uint8List jpeg}) {
+    return _guard(() async {
+      final path = '$restaurantId/cover-${DateTime.now().millisecondsSinceEpoch}.jpg';
+      await _db.storage.from(logoBucket).uploadBinary(
+        path,
+        jpeg,
+        fileOptions: const FileOptions(contentType: 'image/jpeg'),
+      );
+      final url = _db.storage.from(logoBucket).getPublicUrl(path);
+      await updateProfile(restaurantId, {'cover_url': url});
+      return url;
+    });
+  }
+
+  Future<void> removeCover(String restaurantId) {
+    return updateProfile(restaurantId, {'cover_url': null});
   }
 
   // -------------------------------------------------------------

@@ -80,7 +80,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość: flutter_map + latlong2 (mapa dostawcy, kafelki OpenStreetMap; przed wydaniem w sklepach przejść na płatnego dostawcę kafelków).
   Pracownik: geolocator (pozycja dostawcy w drodze).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0059, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0060, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -98,6 +98,16 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   wybrane zakładki i dolne menu, powiadomienia, puste ekrany, kafle `IconBadge`).
 - `apps/guest/lib`: `app` (router, dolne menu, preferencje), `core` (mapy, lokalizacja), `data`, `features`
   (m.in. `ordering`: zamawianie z dostawą i na wynos).
+  Odkrywaj (`features/discover`, nowy wygląd z 10.2026): powitanie z wyborem „W pobliżu” albo miasta, wyszukiwarka
+  „Szukaj lokali, dań albo kuchni” (`search_restaurants` od 0060 szuka też po kuchni i nazwach dań, `matched_dish`
+  = „W menu: …”), kategorie kuchni z własnymi ikonami na spokojnym tle (`cuisineIcon`, ikony Phosphor z better-icons),
+  „Filtry” (okno: ceny, ocena, odległość, rezerwacja w aplikacji, dostawa, na wynos; licznik „Pokaż N lokali”),
+  „Sortuj” (Polecane / Najlepsza kuchnia / Najbliżej) i szybkie filtry, liczba lokali i przełącznik widoku
+  (`DiscoverLayout`: karty ze zdjęciem albo zwarte wiersze, zapamiętany). Karta: zdjęcie na całą szerokość
+  (`restaurants.cover_url` z „Dane lokalu” w panelu, inaczej pierwsze zdjęcie dania, inaczej karta w kolorze kuchni
+  z ikoną, `RestaurantCover`), nazwa i szczegóły pod zdjęciem. Górna karta przy „Polecane” ma „Najlepsze
+  dopasowanie” (`bestMatch`: ocena, odległość, kuchnie lokali z rezerwacji i zamówień gościa). Filtry z okna działają
+  na gotowej liście (`applyDiscoverFilter`, `discoverResultsProvider`). To samo zdjęcie jest na górze strony lokalu.
 - `apps/staff/lib`: `data.dart` (repozytorium i providery), `orders_data.dart`, `login_screen.dart`, `home_screen.dart`,
   `scan_screen.dart`, `schedule_screen.dart`, `settings_screen.dart`, `shell.dart`, `waiter_screens.dart`,
   `deliveries_data.dart`, `deliveries_screen.dart`

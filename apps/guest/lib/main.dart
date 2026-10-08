@@ -29,6 +29,11 @@ Future<void> main() async {
     DistanceUnit.values,
     DistanceUnit.kilometers,
   );
+  final discoverLayout = await EnumPreferenceNotifier.load(
+    PreferenceKeys.discoverLayout,
+    DiscoverLayout.values,
+    DiscoverLayout.cards,
+  );
 
   await Supabase.initialize(
     url: Env.supabaseUrl,
@@ -53,6 +58,13 @@ Future<void> main() async {
             PreferenceKeys.distanceUnit,
             DistanceUnit.values,
             distanceUnit,
+          ),
+        ),
+        discoverLayoutProvider.overrideWith(
+          () => EnumPreferenceNotifier(
+            PreferenceKeys.discoverLayout,
+            DiscoverLayout.values,
+            discoverLayout,
           ),
         ),
       ],

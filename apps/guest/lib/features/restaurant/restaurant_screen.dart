@@ -7,6 +7,7 @@ import 'package:table_core/table_core.dart';
 import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../discover/restaurant_cards.dart';
 import 'menu_screen.dart';
 
 const _weekdayNames = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Nie'];
@@ -89,6 +90,17 @@ class _Body extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
+        // To samo zdjęcie co na liście lokali (albo ikona kuchni), na całą szerokość.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: RestaurantCover(url: r.coverPhoto, cuisine: r.cuisine),
+            ),
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
           child: Row(

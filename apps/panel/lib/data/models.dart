@@ -583,6 +583,7 @@ class RestaurantProfile {
     required this.hours,
     this.description,
     this.logoUrl,
+    this.coverUrl,
     this.schedulePeriod = 'week',
     this.scheduleDeadlineDow,
     this.scheduleDeadlineTime = '20:00',
@@ -594,6 +595,9 @@ class RestaurantProfile {
   final DeliverySettings delivery;
 
   final String? logoUrl;
+
+  /// Zdjęcie lokalu na liście lokali i na stronie lokalu w aplikacji Table.
+  final String? coverUrl;
 
   /// Na jaki okres pracownicy zgłaszają godziny: week, two_weeks albo month.
   final String schedulePeriod;
@@ -645,6 +649,7 @@ class RestaurantProfile {
       priceLevel: _toInt(json['price_level'], 2),
       hours: hours,
       logoUrl: json['logo_url'] as String?,
+      coverUrl: json['cover_url'] as String?,
       schedulePeriod: json['schedule_period'] as String? ?? 'week',
       scheduleDeadlineDow: json['schedule_deadline_dow'] == null ? null : _toInt(json['schedule_deadline_dow']),
       scheduleDeadlineTime: (json['schedule_deadline_time'] as String?)?.substring(0, 5) ?? '20:00',
