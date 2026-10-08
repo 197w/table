@@ -138,4 +138,55 @@ void main() {
     expect(orders.where(HistoryKind.pickup.matches).single.kind, OrderKind.pickup);
     expect(orders.where(HistoryKind.all.matches), hasLength(3));
   });
+  group('zamówienia na godzinę', () {
+    test('godzina idzie do bazy w UTC, a „jak najszybciej” jako null', () {
+      final at = DateTime(2026, 10, 8, 18, 30);
+      expect(TakeawayCustomer(scheduledFor: at).toJson()['scheduled_for'], at.toUtc().toIso8601String());
+      expect(const TakeawayCustomer().toJson(), containsPair('scheduled_for', null));
+    });
+
+    test('zamówienie czeka na kuchnię do kitchen_at', () {
+      final o = TakeawayOrder.fromJson({
+        'id': 'o1', 'kind': 'delivery', 'number': 4, 'fulfillment': 'accepted', 'opened_at': '2026-10-08T10:00:00Z',
+        'scheduled_for': '2026-10-08T16:30:00Z', 'kitchen_at': '2026-10-08T15:50:00Z', 'order_items': [],
+      });
+      expect(o.scheduledFor!.isAtSameMomentAs(DateTime.parse('2026-10-08T16:30:00Z')), isTrue);
+      expect(o.waitingForKitchen(DateTime.parse('2026-10-08T15:00:00Z')), isTrue);
+      expect(o.waitingForKitchen(DateTime.parse('2026-10-08T15:51:00Z')), isFalse);
+      expect(o.customer.scheduledFor, o.scheduledFor);
+    });
+
+    test('bilecik zaplanowany czeka w pasku do swojej pory', () {
+      final tickets = KitchenTicket.fromRows([
+        {
+          ..._item('i1', 'sent', sentAt: '2026-10-08T15:50:00Z'),
+          'orders': {'kind': 'pickup', 'number': 4, 'customer_name': 'Ola', 'scheduled_for': '2026-10-08T16:10:00Z'},
+        },
+        {
+          ..._item('i2', 'sent', sentAt: '2026-10-08T10:05:00Z'),
+          'order_id': 'o2',
+          'orders': {'kind': 'dine_in', 'table_id': 't1'},
+        },
+      ]);
+      final planned = tickets.firstWhere((t) => t.orderId == 'o1');
+      final table = tickets.firstWhere((t) => t.orderId == 'o2');
+      expect(planned.upcomingAt(DateTime.parse('2026-10-08T15:00:00Z')), isTrue);
+      expect(planned.upcomingAt(DateTime.parse('2026-10-08T15:50:01Z')), isFalse);
+      // Rachunek na sali nigdy nie czeka, nawet gdy zegar komputera się spóźnia.
+      expect(table.upcomingAt(DateTime.parse('2026-10-08T10:00:00Z')), isFalse);
+    });
+
+    test('dzień i godzina', () {
+      final now = DateTime(2026, 10, 8, 12);
+      expect(dayTimeLabel(DateTime(2026, 10, 8, 18, 30), now), '18:30');
+      expect(dayTimeLabel(DateTime(2026, 10, 9, 9, 5), now), 'jutro 09:05');
+      expect(dayTimeLabel(DateTime(2026, 10, 10, 13), now), 'sb 10.10 13:00');
+    });
+
+    test('ustawienia kuchni z wyprzedzeniem', () {
+      final c = KitchenConfig.fromJson({'kitchen_warn_minutes': 5, 'kitchen_late_minutes': 9, 'kitchen_lead_pickup_min': 15});
+      expect(c.leadPickup, 15);
+      expect(c.leadDelivery, 40);
+    });
+  });
 }

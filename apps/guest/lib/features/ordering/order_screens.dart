@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../shared/day_slot_picker.dart';
 import 'courier_map.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
@@ -388,6 +389,12 @@ class CheckoutScreen extends ConsumerStatefulWidget {
 class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   OrderKind? _kind;
   PaymentChoice _payment = PaymentChoice.card;
+
+  /// „Na godzinę”: wybrany dzień i godzina. Null godziny przy [_scheduled]: jeszcze nie wybrano.
+  bool _scheduled = false;
+  DateTime? _day;
+  DateTime? _when;
+  final _slots = ScrollController();
   final _name = TextEditingController();
   final _phone = TextEditingController();
   final _street = TextEditingController();
@@ -403,6 +410,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     _street.dispose();
     _city.dispose();
     _note.dispose();
+    _slots.dispose();
     super.dispose();
   }
 
@@ -430,6 +438,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       showMessage(context, 'Minimalne zamówienie z dostawą to ${Fmt.price(r.deliveryMinGrosze)}.', tone: ToastTone.warning);
       return;
     }
+    if (_scheduled && _when == null) {
+      showMessage(context, 'Wybierz dzień i godzinę albo „Jak najszybciej”.', tone: ToastTone.warning);
+      return;
+    }
     setState(() => _busy = true);
     final repo = ref.read(repositoryProvider);
     try {
@@ -442,6 +454,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         phone: _phone.text,
         address: kind == OrderKind.delivery ? '${_street.text.trim()}, ${_city.text.trim()}' : null,
         note: _note.text,
+        scheduledFor: _scheduled ? _when : null,
       );
       if (_payment == PaymentChoice.card) {
         if (!mounted) return;
@@ -470,6 +483,86 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// „Kiedy”: jak najszybciej albo na godzinę (dzień z paska i godzina co 15 minut w godzinach otwarcia).
+  List<Widget> _whenSection(RestaurantDetail r, OrderKind kind) {
+    final text = Theme.of(context).textTheme;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final days = [for (var i = 0; i < 7; i++) DateTime(today.year, today.month, today.day + i)];
+    final open = [for (final d in days) if (r.orderSlots(kind, d, now).isNotEmpty) d];
+    final day = _day != null && open.contains(_day) ? _day! : (open.isEmpty ? today : open.first);
+    final slots = r.orderSlots(kind, day, now);
+    return [
+      Text('Kiedy', style: text.titleMedium),
+      const SizedBox(height: 10),
+      SegmentedButton<bool>(
+        showSelectedIcon: false,
+        segments: const [
+          ButtonSegment(value: false, label: Text('Jak najszybciej')),
+          ButtonSegment(value: true, label: Text('Na godzinę')),
+        ],
+        selected: {_scheduled},
+        onSelectionChanged: (s) => setState(() => _scheduled = s.first),
+      ),
+      if (_scheduled) ...[
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 64,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: days.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (context, i) => DayTile(
+              day: days[i],
+              index: i,
+              selected: days[i] == day,
+              enabled: open.contains(days[i]),
+              onTap: () => setState(() {
+                _day = days[i];
+                _when = null;
+                if (_slots.hasClients) _slots.jumpTo(0);
+              }),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (slots.isEmpty)
+          Text(
+            'W najbliższych dniach lokal nie przyjmuje zamówień na godzinę.',
+            style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+          )
+        else
+          SizedBox(
+            height: 46,
+            child: ListView.separated(
+              controller: _slots,
+              scrollDirection: Axis.horizontal,
+              itemCount: slots.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, i) => SizedBox(
+                width: 76,
+                child: SlotButton(
+                  label: Fmt.time(slots[i]),
+                  selected: slots[i] == _when,
+                  onTap: () => setState(() {
+                    _day = day;
+                    _when = slots[i];
+                  }),
+                ),
+              ),
+            ),
+          ),
+        const SizedBox(height: 8),
+        Text(
+          _when == null
+              ? (kind == OrderKind.delivery ? 'Wybierz, o której mamy przywieźć zamówienie.' : 'Wybierz, o której odbierzesz zamówienie.')
+              : '${kind == OrderKind.delivery ? 'Dostawa' : 'Odbiór'}: ${Fmt.dayLong(_when!)}, ${Fmt.time(_when!)}',
+          style: text.bodyMedium?.copyWith(color: _when == null ? AppColors.textMuted : AppColors.text),
+        ),
+      ],
+    ];
   }
 
   @override
@@ -514,10 +607,16 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     ButtonSegment(value: OrderKind.pickup, label: Text('Odbiór osobisty')),
                   ],
                   selected: {kind},
-                  onSelectionChanged: (s) => setState(() => _kind = s.first),
+                  // Dostawa i odbiór mają inny czas przygotowania, więc godzinę wybiera się od nowa.
+                  onSelectionChanged: (s) => setState(() {
+                    _kind = s.first;
+                    _when = null;
+                  }),
                 )
               else
                 Text(kind.label, style: text.titleMedium),
+              const SizedBox(height: 16),
+              ..._whenSection(r, kind),
               const SizedBox(height: 16),
               Card(
                 margin: EdgeInsets.zero,
@@ -868,6 +967,21 @@ class OrderDetailScreen extends ConsumerWidget {
                   '${o.kind.label} · ${Fmt.dateTime(o.openedAt)}',
                   style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
                 ),
+                if (o.scheduledFor case final at?) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Glyph(AppIcons.calendarDots, size: 18, color: AppColors.accent),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${o.kind == OrderKind.delivery ? 'Dostawa' : 'Odbiór'} na godzinę: ${Fmt.dateTime(at)}',
+                          style: text.titleSmall,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 16),
                 _StageCard(order: o),
                 if (o.stage == OrderStage.onTheWay) ...[
@@ -998,9 +1112,13 @@ class _StageCard extends StatelessWidget {
       );
     }
     final delivery = o.kind == OrderKind.delivery;
+    final at = o.scheduledFor;
     final steps = [
       ('Złożone', 'Czekamy, aż lokal potwierdzi'),
-      ('Przygotowujemy', o.promisedAt == null ? 'Kuchnia robi Twoje zamówienie' : 'Gotowe ok. ${_hm(o.promisedAt!)}'),
+      if (at != null)
+        ('Przyjęte na ${_hm(at)}', delivery ? 'Dostawca przywiezie je o ${_hm(at)}' : 'Będzie gotowe na ${_hm(at)}')
+      else
+        ('Przygotowujemy', o.promisedAt == null ? 'Kuchnia robi Twoje zamówienie' : 'Gotowe ok. ${_hm(o.promisedAt!)}'),
       if (delivery) ('W drodze', 'Dostawca jedzie do Ciebie') else ('Gotowe do odbioru', 'Zapraszamy do lokalu'),
       (delivery ? 'Dostarczone' : 'Odebrane', 'Smacznego!'),
     ];
@@ -1119,7 +1237,8 @@ class MyOrdersList extends ConsumerWidget {
                                 children: [
                                   Text('${o.restaurantName} · #${o.number}', style: text.titleSmall),
                                   Text(
-                                    '${Fmt.dateTime(o.openedAt)} · ${Fmt.price(o.totalGrosze)}',
+                                    '${o.scheduledFor != null ? 'na ${Fmt.dateTime(o.scheduledFor!)}' : Fmt.dateTime(o.openedAt)}'
+                                    ' · ${Fmt.price(o.totalGrosze)}',
                                     style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
                                   ),
                                 ],

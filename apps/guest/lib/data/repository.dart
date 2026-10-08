@@ -140,6 +140,7 @@ class Repository {
               'id, name, cuisine, price_level, description, address, city, phone, plan, is_example, logo_url, max_party_size, '
               'deposit_min_party, deposit_per_person_grosze, '
               'delivery_enabled, pickup_enabled, takeaway_cash, delivery_fee_grosze, delivery_min_grosze, delivery_area, '
+              'kitchen_lead_pickup_min, kitchen_lead_delivery_min, '
               'opening_hours(weekday, opens, closes), '
               'menu_sections(id, name, position, menu_items(id, name, description, price_grosze, allergens, position, variants, addons, available, photo_url))',
             )
@@ -506,10 +507,11 @@ class Repository {
 
   static const _orderColumns =
       'id, restaurant_id, kind, number, fulfillment, opened_at, delivery_address, delivery_fee_grosze, '
-      'payment_choice, payment_status, payment_test, promised_at, reject_reason, '
+      'payment_choice, payment_status, payment_test, promised_at, reject_reason, scheduled_for, '
       'restaurants(name, phone, address, city), order_items(name, quantity, unit_price_grosze, variant, addons, note, status)';
 
   /// Składa zamówienie. Ceny liczy baza z menu. Zwraca numer zamówienia.
+  /// [scheduledFor]: na godzinę (odbiór albo dostawa). Null: jak najszybciej.
   Future<String> placeOrder({
     required String restaurantId,
     required OrderKind kind,
@@ -519,6 +521,7 @@ class Repository {
     required String phone,
     String? address,
     String? note,
+    DateTime? scheduledFor,
   }) {
     return _guard(() async {
       final json = await _db.rpc<Map<String, dynamic>>('guest_place_order', params: {
@@ -530,6 +533,7 @@ class Repository {
         'p_phone': phone,
         'p_address': address,
         'p_note': note,
+        'p_scheduled_for': scheduledFor?.toUtc().toIso8601String(),
       });
       return json['id'] as String;
     });

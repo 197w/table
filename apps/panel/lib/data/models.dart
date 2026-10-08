@@ -1655,6 +1655,19 @@ enum TakeawayStage {
       values.firstWhere((s) => s.db == value, orElse: () => TakeawayStage.placed);
 }
 
+const _weekdaysShort = ['pn', 'wt', 'śr', 'cz', 'pt', 'sb', 'nd'];
+
+/// Godzina zamówienia na godzinę: „18:30”, „jutro 18:30” albo „pt 9.10 18:30”.
+String dayTimeLabel(DateTime t, [DateTime? now]) {
+  final l = t.toLocal();
+  final n = now ?? DateTime.now();
+  final hm = '${l.hour.toString().padLeft(2, '0')}:${l.minute.toString().padLeft(2, '0')}';
+  final days = DateTime(l.year, l.month, l.day).difference(DateTime(n.year, n.month, n.day)).inDays;
+  if (days == 0) return hm;
+  if (days == 1) return 'jutro $hm';
+  return '${_weekdaysShort[l.weekday - 1]} ${l.day}.${l.month.toString().padLeft(2, '0')} $hm';
+}
+
 /// Zamówienie gościa z aplikacji Table: dostawa albo odbiór osobisty.
 class TakeawayOrder {
   const TakeawayOrder({
@@ -1688,12 +1701,20 @@ class TakeawayOrder {
     this.city,
     this.prepaid = false,
     this.fromApp = true,
+    this.scheduledFor,
+    this.kitchenAt,
   });
 
   final String id;
   final OrderKind kind;
   final int number;
   final TakeawayStage stage;
+
+  /// Zamówienie na godzinę (odbiór albo dostawa). Null: jak najszybciej.
+  final DateTime? scheduledFor;
+
+  /// Przyjęte zamówienie na godzinę, które jeszcze nie weszło do kuchni: wtedy wejdzie.
+  final DateTime? kitchenAt;
 
   /// Nazwa lokalu albo firmy (zamiast imienia i nazwiska) i NIP, z zamówienia przyjętego w panelu.
   final String? company;
@@ -1737,6 +1758,9 @@ class TakeawayOrder {
 
   String get label => '${kind.label} #$number';
 
+  /// Czeka na swoją porę: kuchnia go jeszcze nie robi, dostawca nie jest przydzielony.
+  bool waitingForKitchen([DateTime? now]) => kitchenAt != null && kitchenAt!.isAfter(now ?? DateTime.now());
+
   /// Dostawę można połączyć z inną albo wyjąć z kursu, dopóki jest w lokalu.
   bool get canJoinCourse =>
       kind == OrderKind.delivery && (stage == TakeawayStage.accepted || stage == TakeawayStage.ready);
@@ -1778,6 +1802,8 @@ class TakeawayOrder {
     city: json['address_city'] as String?,
     prepaid: json['payment_choice'] == 'prepaid',
     fromApp: json['guest_id'] != null,
+    scheduledFor: _toDateOrNull(json['scheduled_for']),
+    kitchenAt: _toDateOrNull(json['kitchen_at']),
   );
 
   /// Imię i nazwisko (bez nazwy firmy, gdy jest tylko ona).
@@ -1795,6 +1821,7 @@ class TakeawayOrder {
     note: note ?? '',
     staffNote: staffNote ?? '',
     paid: prepaid || (paid && !cash),
+    scheduledFor: scheduledFor,
   );
 }
 
@@ -1812,6 +1839,7 @@ class TakeawayCustomer {
     this.note = '',
     this.staffNote = '',
     this.paid,
+    this.scheduledFor,
   });
 
   final String name;
@@ -1828,6 +1856,9 @@ class TakeawayCustomer {
 
   /// Null: jeszcze nie wybrano.
   final bool? paid;
+
+  /// Na którą godzinę (odbiór albo dostawa). Null: jak najszybciej.
+  final DateTime? scheduledFor;
 
   static String digits(String v) => v.replaceAll(RegExp(r'[^0-9]'), '');
 
@@ -1853,6 +1884,7 @@ class TakeawayCustomer {
     'note': note.trim(),
     'staff_note': staffNote.trim(),
     'paid': paid,
+    'scheduled_for': scheduledFor?.toUtc().toIso8601String(),
   };
 }
 
@@ -1924,10 +1956,17 @@ class KitchenTicket {
     this.address,
     this.customer,
     this.note,
+    this.scheduledFor,
   });
 
   final String orderId;
   final String? tableId;
+
+  /// Zamówienie na godzinę: na którą ma być gotowe (odbiór) albo u klienta (dostawa).
+  final DateTime? scheduledFor;
+
+  /// Zamówienie na godzinę, którego pora wejścia do kuchni ([sentAt]) jeszcze nie przyszła.
+  bool upcomingAt(DateTime now) => scheduledFor != null && sentAt.isAfter(now);
 
   /// Komentarz do zamówienia na wynos i komentarz tylko dla pracowników, razem.
   final String? note;
@@ -1989,6 +2028,7 @@ class KitchenTicket {
             _ => null,
           },
           sentAt: _toDate(list.first['sent_at']),
+          scheduledFor: _toDateOrNull((list.first['orders'] as Map<String, dynamic>?)?['scheduled_for']),
           waiter: {
             for (final r in list)
               if ((r['member'] as Map<String, dynamic>?)?['name'] case final String name) name,
@@ -2472,14 +2512,20 @@ class ServingTicket {
 
 /// Ustawienia ekranu kuchni: po ilu minutach bilecik żółknie i czerwienieje.
 class KitchenConfig {
-  const KitchenConfig({this.warnMinutes = 4, this.lateMinutes = 6});
+  const KitchenConfig({this.warnMinutes = 4, this.lateMinutes = 6, this.leadPickup = 20, this.leadDelivery = 40});
 
   final int warnMinutes;
   final int lateMinutes;
 
+  /// Ile minut przed godziną zamówienie na godzinę wchodzi do kuchni: na wynos i z dostawą.
+  final int leadPickup;
+  final int leadDelivery;
+
   factory KitchenConfig.fromJson(Map<String, dynamic> json) => KitchenConfig(
     warnMinutes: _toInt(json['kitchen_warn_minutes'], 4),
     lateMinutes: _toInt(json['kitchen_late_minutes'], 6),
+    leadPickup: _toInt(json['kitchen_lead_pickup_min'], 20),
+    leadDelivery: _toInt(json['kitchen_lead_delivery_min'], 40),
   );
 }
 

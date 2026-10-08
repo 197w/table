@@ -272,7 +272,13 @@ class RestaurantDetail {
     this.deliveryFeeGrosze = 0,
     this.deliveryMinGrosze = 0,
     this.deliveryArea,
+    this.leadPickupMin = 20,
+    this.leadDeliveryMin = 40,
   });
+
+  /// Zamówienie na godzinę: najwcześniej za tyle minut (kuchnia potrzebuje czasu), osobno odbiór i dostawa.
+  final int leadPickupMin;
+  final int leadDeliveryMin;
 
   /// Zamówienia w aplikacji: dostawa i odbiór osobisty (tylko plan Pro).
   final bool deliveryEnabled;
@@ -351,7 +357,40 @@ class RestaurantDetail {
       deliveryFeeGrosze: _toInt(json['delivery_fee_grosze']),
       deliveryMinGrosze: _toInt(json['delivery_min_grosze']),
       deliveryArea: json['delivery_area'] as String?,
+      leadPickupMin: json['kitchen_lead_pickup_min'] == null ? 20 : _toInt(json['kitchen_lead_pickup_min']),
+      leadDeliveryMin: json['kitchen_lead_delivery_min'] == null ? 40 : _toInt(json['kitchen_lead_delivery_min']),
     );
+  }
+
+  /// Godziny, na które można zamówić [kind] w dniu [day]: co 15 minut w godzinach otwarcia, nie wcześniej
+  /// niż za czas przygotowania (co najmniej 15 minut) od [now]. Bez godzin otwarcia: 8:00–22:00.
+  List<DateTime> orderSlots(OrderKind kind, DateTime day, DateTime now) {
+    final DateTime opens;
+    final DateTime closes;
+    if (hours.isEmpty) {
+      opens = DateTime(day.year, day.month, day.day, 8);
+      closes = DateTime(day.year, day.month, day.day, 22);
+    } else {
+      final h = hoursFor(day);
+      if (h == null) return const [];
+      DateTime at(String hm) {
+        final p = hm.split(':');
+        return DateTime(day.year, day.month, day.day, int.parse(p[0]), int.parse(p[1]));
+      }
+
+      opens = at(h.opens);
+      closes = at(h.closes);
+    }
+    final lead = kind == OrderKind.delivery ? leadDeliveryMin : leadPickupMin;
+    // 5 minut zapasu na wypełnienie koszyka i płatność.
+    final earliest = now.add(Duration(minutes: (lead < 15 ? 15 : lead) + 5));
+    var t = opens;
+    final slots = <DateTime>[];
+    while (t.isBefore(closes)) {
+      if (!t.isBefore(earliest)) slots.add(t);
+      t = t.add(const Duration(minutes: 15));
+    }
+    return slots;
   }
 
   OpeningHours? hoursFor(DateTime day) {
@@ -894,6 +933,7 @@ class GuestOrder {
     this.address,
     this.promisedAt,
     this.rejectReason,
+    this.scheduledFor,
   });
 
   final String id;
@@ -913,6 +953,9 @@ class GuestOrder {
   final String? address;
   final DateTime? promisedAt;
   final String? rejectReason;
+
+  /// Zamówienie na godzinę: odbiór w lokalu albo dostawa o tej porze. Null: jak najszybciej.
+  final DateTime? scheduledFor;
 
   int get totalGrosze => feeGrosze + items.fold(0, (sum, i) => sum + i.totalGrosze);
 
@@ -942,6 +985,7 @@ class GuestOrder {
       address: json['delivery_address'] as String?,
       promisedAt: json['promised_at'] == null ? null : DateTime.parse(json['promised_at'] as String).toLocal(),
       rejectReason: json['reject_reason'] as String?,
+      scheduledFor: json['scheduled_for'] == null ? null : DateTime.parse(json['scheduled_for'] as String).toLocal(),
     );
   }
 }

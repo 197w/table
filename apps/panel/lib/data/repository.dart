@@ -625,6 +625,7 @@ class PanelRepository {
       'id, kind, number, fulfillment, opened_at, closed_at, customer_name, customer_company, customer_nip, '
       'customer_phone, delivery_address, address_street, address_house, address_city, delivery_note, staff_note, '
       'delivery_fee_grosze, payment_choice, payment_status, payment_test, promised_at, accepted_at, picked_up_at, '
+      'scheduled_for, kitchen_at, '
       'courier_member, reject_reason, course_id, guest_id, courier:staff_members!orders_courier_member_fkey(name), '
       'order_items(*)';
 
@@ -746,7 +747,7 @@ class PanelRepository {
     return _guard(() async {
       final rows = await _db
           .from('order_items')
-          .select('*, menu_items(show_in_kitchen), member:staff_members(name), orders!inner(table_id, status, kind, number, delivery_address, customer_name, customer_company, delivery_note, staff_note, opener:staff_members!opened_by_member(name))')
+          .select('*, menu_items(show_in_kitchen), member:staff_members(name), orders!inner(table_id, status, kind, number, delivery_address, customer_name, customer_company, delivery_note, staff_note, scheduled_for, opener:staff_members!opened_by_member(name))')
           .eq('restaurant_id', restaurantId)
           .inFilter('status', ['sent', 'ready', 'cancelled'])
           .eq('orders.status', 'open')
@@ -866,6 +867,8 @@ class PanelRepository {
           .inFilter('status', ['sent', 'ready'])
           .eq('orders.status', 'open')
           .gte('sent_at', DateTime.now().subtract(const Duration(hours: 12)).toUtc().toIso8601String())
+          // Zamówienia na godzinę dopiero, gdy weszły do kuchni.
+          .lte('sent_at', DateTime.now().toUtc().toIso8601String())
           .order('sent_at');
       return ServingTicket.fromRows(rows);
     });
@@ -883,7 +886,7 @@ class PanelRepository {
     return _guard(() async {
       final row = await _db
           .from('restaurants')
-          .select('kitchen_warn_minutes, kitchen_late_minutes')
+          .select('kitchen_warn_minutes, kitchen_late_minutes, kitchen_lead_pickup_min, kitchen_lead_delivery_min')
           .eq('id', restaurantId)
           .single();
       return KitchenConfig.fromJson(row);
@@ -896,6 +899,8 @@ class PanelRepository {
     required int warnMinutes,
     required int lateMinutes,
     required List<String> hiddenItemIds,
+    int? leadPickup,
+    int? leadDelivery,
   }) {
     return _guard(
       () => _db.rpc<void>(
@@ -905,6 +910,8 @@ class PanelRepository {
           'p_warn_minutes': warnMinutes,
           'p_late_minutes': lateMinutes,
           'p_hidden_items': hiddenItemIds,
+          'p_lead_pickup': leadPickup,
+          'p_lead_delivery': leadDelivery,
         },
       ),
     );

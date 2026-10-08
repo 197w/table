@@ -15,6 +15,9 @@ const _deliveryColor = Color(0xFF3B82F6);
 const _pickupColor = Color(0xFF8B5CF6);
 const _cashColor = Color(0xFFE08A1E);
 
+/// Zamówienie na godzinę (ten sam kolor co w pasku „Zaplanowane” w Kuchni).
+const _plannedColor = Color(0xFFD946EF);
+
 /// Kolory kursów: dostawy jednego kursu mają ten sam kolor znacznika.
 const _courseColors = [
   Color(0xFF0EA5B7),
@@ -357,13 +360,29 @@ class _OrderCardState extends State<_OrderCard> {
                 Text('#${o.number}', style: text.titleLarge?.copyWith(fontFeatures: _tabular)),
                 const SizedBox(width: 8),
                 Tag(delivery ? 'DOSTAWA' : 'ODBIÓR', color: delivery ? _deliveryColor : _pickupColor),
+                if (o.scheduledFor != null) ...[
+                  const SizedBox(width: 6),
+                  const Tag('NA GODZINĘ', color: _plannedColor),
+                ],
                 const Spacer(),
                 Text(
-                  o.promisedAt != null ? 'na ${_hm(o.promisedAt!)}' : 'z ${_hm(o.openedAt)}',
-                  style: text.titleSmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                  o.scheduledFor != null
+                      ? 'na ${dayTimeLabel(o.scheduledFor!)}'
+                      : o.promisedAt != null
+                      ? 'na ${_hm(o.promisedAt!)}'
+                      : 'z ${_hm(o.openedAt)}',
+                  style: text.titleSmall?.copyWith(
+                    color: o.scheduledFor != null ? _plannedColor : AppColors.textMuted,
+                    fontFeatures: _tabular,
+                  ),
                 ),
               ],
             ),
+            if (o.waitingForKitchen())
+              Text(
+                'Do kuchni o ${_hm(o.kitchenAt!)}${delivery ? ', wtedy też dostawca' : ''}.',
+                style: text.bodySmall?.copyWith(color: _plannedColor, fontFeatures: _tabular),
+              ),
             const SizedBox(height: 8),
             if (o.company != null)
               Text(
@@ -489,6 +508,27 @@ class _OrderCardState extends State<_OrderCard> {
     final busy = widget.busy;
     const compact = Size(0, 44);
     switch (o.stage) {
+      case TakeawayStage.placed when o.scheduledFor != null:
+        // Na godzinę: bez czasu przygotowania, kuchnia dostanie zamówienie z wyprzedzeniem z ustawień kuchni.
+        return [
+          Row(
+            children: [
+              TextButton(
+                onPressed: busy ? null : widget.onReject,
+                style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                child: const Text('Odrzuć'),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton(
+                  style: FilledButton.styleFrom(minimumSize: compact),
+                  onPressed: busy ? null : () => widget.onAccept(_minutes),
+                  child: Text('Przyjmij na ${dayTimeLabel(o.scheduledFor!)}'),
+                ),
+              ),
+            ],
+          ),
+        ];
       case TakeawayStage.placed:
         return [
           Text('Czas przygotowania', style: Theme.of(context).textTheme.labelMedium?.copyWith(color: AppColors.textMuted)),

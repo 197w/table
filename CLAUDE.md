@@ -80,7 +80,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość: flutter_map + latlong2 (mapa dostawcy, kafelki OpenStreetMap; przed wydaniem w sklepach przejść na płatnego dostawcę kafelków).
   Pracownik: geolocator (pozycja dostawcy w drodze).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0056, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0057, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -289,6 +289,15 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   na liście stolików), dania dokłada się z menu, „Przyjmij” z czasem przygotowania wysyła je na kuchnię i do Dostaw
   (`panel_takeaway_submit`), „Porzuć” je usuwa (`panel_takeaway_discard`), dane zmienia `panel_takeaway_update`.
   Opłacone z panelu to `payment_choice = 'prepaid'` (dostawca nic nie pobiera, w zamknięciu płatność „inne”).
+  Zamówienie na godzinę (0057, tylko dostawa i odbiór; w panelu „Na kiedy” w formularzu, w aplikacji gościa „Kiedy”
+  w koszyku z dniami i godzinami co 15 min w godzinach otwarcia, `RestaurantDetail.orderSlots`): `orders.scheduled_for`,
+  sprawdza `private.check_scheduled` (gość: nie wcześniej niż wyprzedzenie kuchni, min. 15 min, w godzinach otwarcia;
+  oba do 7 dni). Przyjęcie (`private.takeaway_plan`) daje `promised_at = scheduled_for`, a pozycjom `sent_at` równe
+  godzinie minus wyprzedzenie z ustawień kuchni (`restaurants.kitchen_lead_pickup_min` 20 / `kitchen_lead_delivery_min`
+  40); do tego czasu `orders.kitchen_at` jest ustawione, dostawca nie jest przydzielany (`dispatch_deliveries`),
+  a pg_cron co minutę (`table_release_scheduled`, `private.release_scheduled`) czyści je po czasie, co przez trigger
+  `orders_dispatch` przydziela dostawcę. Godzinę zmienia się (`panel_takeaway_update`, klucz `scheduled_for`),
+  dopóki zamówienie nie weszło do kuchni.
   Przy daniu (przycisk ołówka na kafelku albo okno wariantów) zmiana składników: „Bez / Normalnie / Więcej” dla składników
   receptury i dowolny inny składnik (`order_items.changes`, `p_changes` w `panel_add_order_item`); kuchnia pokazuje
   „BEZ …” i „WIĘCEJ …” wyraźnie, magazyn nie zdejmuje składnika „bez”, a „więcej” zdejmuje podwójnie. To samo u kelnera
@@ -337,7 +346,10 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   ma `recalled_at` i jest niebieska. Anulowane pozycje widać na czerwono. Sterowanie klawiaturą
   (1–9, strzałki, Spacja, Enter, Backspace, F, M, Esc; strzałki przechodzą między bilecikami, Spacja zbija
   i schodzi niżej, Enter zamyka bilecik i zaznacza następny), dolny pasek ze średnim czasem (`panel_kitchen_stats`),
-  ustawienia (progi i pozycje ukryte, `panel_set_kitchen_config`). Pełny ekran chowa menu. Nowy bilecik dzwoni.
+  ustawienia (progi, wyprzedzenie zamówień na godzinę „Na wynos” i „Na dostawę”, pozycje ukryte,
+  `panel_set_kitchen_config`). Pełny ekran chowa menu. Nowy bilecik dzwoni. Zamówienia na godzinę czekają w pasku
+  „Zaplanowane” po prawej (tylko gdy są; godzina wejścia do kuchni, bez odliczania), o swojej porze przechodzą
+  do bilecików (dzwonią) z paskiem „NA GODZINĘ · odbiór/u klienta HH:MM”. Wydanie pokazuje je dopiero wtedy.
 - Wydanie (`/wydanie`, `features/serving`, uprawnienie `serving`, grupa Kuchnia; w 0042 dostały je stanowiska
   z `orders`): karty stolików z daniami gotowymi z kuchni (najdłużej czekające pierwsze, żółte po 2 min, czerwone
   po 4 min), stuknięcie pozycji albo „Wydane” wywołuje `panel_serve_items` (ready → served, `p_undo` cofa),

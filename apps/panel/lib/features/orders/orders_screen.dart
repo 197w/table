@@ -350,8 +350,11 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     setState(() => _takeawayId = null);
     showMessage(
       context,
-      '${order.label} przyjęte: gotowe ok. ${Fmt.time(DateTime.now().add(Duration(minutes: _prepMinutes)))}. '
-      'Jest na kuchni i w zakładce Dostawy.',
+      order.scheduledFor != null
+          ? '${order.label} przyjęte na ${dayTimeLabel(order.scheduledFor!)}. '
+                'Kuchnia dostanie je z wyprzedzeniem, do tego czasu czeka w „Zaplanowane”.'
+          : '${order.label} przyjęte: gotowe ok. ${Fmt.time(DateTime.now().add(Duration(minutes: _prepMinutes)))}. '
+                'Jest na kuchni i w zakładce Dostawy.',
       tone: ToastTone.success,
     );
   }
@@ -771,8 +774,11 @@ class _DraftTile extends StatelessWidget {
                     children: [
                       Text(order.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.labelLarge),
                       Text(
-                        [order.company ?? order.customerName, if (order.active.isNotEmpty) Fmt.price(order.totalGrosze)]
-                            .join(' · '),
+                        [
+                          if (order.scheduledFor != null) 'na ${dayTimeLabel(order.scheduledFor!)}',
+                          order.company ?? order.customerName,
+                          if (order.active.isNotEmpty) Fmt.price(order.totalGrosze),
+                        ].join(' · '),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
@@ -1845,7 +1851,11 @@ class _TakeawayPanel extends StatelessWidget {
                     children: [
                       Text(o.label, style: text.titleLarge),
                       Text(
-                        'Do przyjęcia · dodaj dania z menu',
+                        [
+                          'Do przyjęcia',
+                          if (o.scheduledFor != null) 'na ${dayTimeLabel(o.scheduledFor!)}',
+                          'dodaj dania z menu',
+                        ].join(' · '),
                         style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
                       ),
                     ],
@@ -1922,21 +1932,26 @@ class _TakeawayPanel extends StatelessWidget {
                     Text(Fmt.price(dishes + o.feeGrosze), style: text.headlineSmall?.copyWith(fontFeatures: _tabular)),
                   ],
                 ),
-                const SizedBox(height: 10),
-                Text('Czas przygotowania', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
-                const SizedBox(height: 6),
-                SegmentedTabs<int>(
-                  options: const [(15, '15 min'), (30, '30'), (45, '45'), (60, '60')],
-                  selected: minutes,
-                  onChanged: onMinutes,
-                ),
+                // Na godzinę: kuchnia dostanie zamówienie z wyprzedzeniem z ustawień kuchni, bez czasu przygotowania.
+                if (o.scheduledFor == null) ...[
+                  const SizedBox(height: 10),
+                  Text('Czas przygotowania', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
+                  const SizedBox(height: 6),
+                  SegmentedTabs<int>(
+                    options: const [(15, '15 min'), (30, '30'), (45, '45'), (60, '60')],
+                    selected: minutes,
+                    onChanged: onMinutes,
+                  ),
+                ],
                 const SizedBox(height: 12),
                 SizedBox(
                   height: 48,
                   child: FilledButton.icon(
                     onPressed: items.isEmpty ? null : onSubmit,
                     icon: const Glyph(AppIcons.send, size: 18),
-                    label: Text('Przyjmij · $minutes min'),
+                    label: Text(
+                      o.scheduledFor != null ? 'Przyjmij na ${dayTimeLabel(o.scheduledFor!)}' : 'Przyjmij · $minutes min',
+                    ),
                   ),
                 ),
               ],

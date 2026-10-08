@@ -79,6 +79,33 @@ void main() {
     expect(d.discountLabel, 'REVE10 · −10% od rachunku');
   });
 
+  test('zamówienie na godzinę: godziny otwarcia i czas kuchni', () {
+    final r = RestaurantDetail.fromJson({
+      'id': 'r1', 'name': 'REVE', 'cuisine': 'polska', 'price_level': 2, 'address': 'Rynek 1', 'city': 'Białystok',
+      'phone': '600', 'plan': 'pro', 'kitchen_lead_pickup_min': 20, 'kitchen_lead_delivery_min': 40,
+      // Czwartek 12:00–22:00, piątek zamknięte.
+      'opening_hours': [
+        {'weekday': 4, 'opens': '12:00:00', 'closes': '22:00:00'},
+      ],
+    }, Rating.empty);
+    final thursday = DateTime(2026, 10, 8);
+    final now = DateTime(2026, 10, 8, 17, 2);
+    // Odbiór: 20 min kuchni + 5 zapasu od 17:02, więc od 17:30; ostatnia 21:45.
+    final pickup = r.orderSlots(OrderKind.pickup, thursday, now);
+    expect(pickup.first, DateTime(2026, 10, 8, 17, 30));
+    expect(pickup.last, DateTime(2026, 10, 8, 21, 45));
+    // Dostawa: 40 + 5 minut, więc od 17:52 w górę do kwadransa: 18:00.
+    expect(r.orderSlots(OrderKind.delivery, thursday, now).first, DateTime(2026, 10, 8, 18));
+    expect(r.orderSlots(OrderKind.pickup, DateTime(2026, 10, 9), now), isEmpty);
+    // Za tydzień od otwarcia.
+    expect(r.orderSlots(OrderKind.pickup, DateTime(2026, 10, 15), now).first, DateTime(2026, 10, 15, 12));
+    final order = GuestOrder.fromJson({
+      'id': 'o1', 'restaurant_id': 'r1', 'kind': 'pickup', 'number': 3, 'fulfillment': 'accepted',
+      'opened_at': '2026-10-08T15:00:00Z', 'scheduled_for': '2026-10-08T17:30:00Z', 'order_items': [],
+    });
+    expect(order.scheduledFor, DateTime.parse('2026-10-08T17:30:00Z').toLocal());
+  });
+
   test('lista oczekujących: godziny co pół godziny i propozycja lokalu', () {
     expect(halfHours('12:15', '14:00'), ['12:30', '13:00', '13:30', '14:00']);
     expect(halfHours('22:00', '00:00'), ['22:00', '22:30', '23:00', '23:30', '24:00']);

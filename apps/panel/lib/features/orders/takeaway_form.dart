@@ -257,6 +257,9 @@ class _TakeawayFormState extends ConsumerState<TakeawayForm> {
   late final _note = TextEditingController(text: widget.initial.note);
   late final _staffNote = TextEditingController(text: widget.initial.staffNote);
   late bool? _paid = widget.initial.paid;
+
+  /// Na którą godzinę. Null: jak najszybciej.
+  late DateTime? _when = widget.initial.scheduledFor?.toLocal();
   Timer? _debounce;
 
   /// Telefon, dla którego szukamy wcześniejszych zamówień (po chwili od ostatniej cyfry).
@@ -282,6 +285,7 @@ class _TakeawayFormState extends ConsumerState<TakeawayForm> {
     note: _note.text,
     staffNote: _staffNote.text,
     paid: _paid,
+    scheduledFor: _when,
   );
 
   void _changed() {
@@ -295,6 +299,29 @@ class _TakeawayFormState extends ConsumerState<TakeawayForm> {
     _debounce = Timer(const Duration(milliseconds: 400), () {
       if (mounted) setState(() => _lookupPhone = TakeawayCustomer.digits(_phone.text));
     });
+  }
+
+  /// „Na godzinę”: domyślnie za godzinę, zaokrąglone w górę do kwadransa.
+  void _scheduleOn() {
+    if (_when != null) return;
+    final t = DateTime.now().add(const Duration(minutes: 60));
+    final extra = (15 - t.minute % 15) % 15;
+    _when = DateTime(t.year, t.month, t.day, t.hour, t.minute + extra);
+    _changed();
+  }
+
+  Future<void> _pickTime() async {
+    final when = _when;
+    if (when == null) return;
+    final picked = await pickTime(
+      context,
+      initial: TimeOfDay(hour: when.hour, minute: when.minute),
+      minuteStep: 5,
+      title: widget.kind == OrderKind.delivery ? 'Dostawa na godzinę' : 'Odbiór na godzinę',
+    );
+    if (picked == null || !mounted) return;
+    _when = DateTime(when.year, when.month, when.day, picked.hour, picked.minute);
+    _changed();
   }
 
   /// Uzupełnia puste pola danymi z ostatniego zamówienia klienta.
@@ -433,6 +460,89 @@ class _TakeawayFormState extends ConsumerState<TakeawayForm> {
           maxLength: 300,
           lines: 2,
         ),
+        const SizedBox(height: 16),
+        Text('Na kiedy', style: text.titleSmall),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _PayChoice(
+                icon: AppIcons.timer,
+                label: 'Jak najszybciej',
+                hint: 'Kuchnia zaczyna od razu po przyjęciu.',
+                selected: _when == null,
+                onTap: () {
+                  _when = null;
+                  _changed();
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _PayChoice(
+                icon: AppIcons.calendarDots,
+                label: _when == null ? 'Na godzinę' : 'Na ${dayTimeLabel(_when!)}',
+                hint: delivery ? 'Dostawa u klienta o wybranej godzinie.' : 'Odbiór w lokalu o wybranej godzinie.',
+                selected: _when != null,
+                onTap: _scheduleOn,
+              ),
+            ),
+          ],
+        ),
+        if (_when case final at?) ...[
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (var i = 0; i < 7; i++)
+                      Builder(
+                        builder: (_) {
+                          final now = DateTime.now();
+                          final day = DateTime(now.year, now.month, now.day + i);
+                          final selected =
+                              at.year == day.year && at.month == day.month && at.day == day.day;
+                          return ChoiceChip(
+                            label: Text(switch (i) {
+                              0 => 'Dziś',
+                              1 => 'Jutro',
+                              _ => dayTimeLabel(day).split(' ').take(2).join(' '),
+                            }),
+                            selected: selected,
+                            onSelected: (_) {
+                              _when = DateTime(day.year, day.month, day.day, at.hour, at.minute);
+                              _changed();
+                            },
+                          );
+                        },
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton.icon(
+                onPressed: _pickTime,
+                icon: const Glyph(AppIcons.clock, size: 16),
+                label: Text(
+                  '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}',
+                  style: const TextStyle(fontFeatures: _tabular),
+                ),
+              ),
+            ],
+          ),
+          if (!at.isAfter(DateTime.now()))
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Ta godzina już minęła.',
+                style: text.bodySmall?.copyWith(color: AppColors.error),
+              ),
+            ),
+        ],
         const SizedBox(height: 16),
         Text('Płatność *', style: text.titleSmall),
         const SizedBox(height: 8),
@@ -655,6 +765,12 @@ class TakeawayCustomerCard extends ConsumerWidget {
               ),
             ),
           if (o.address != null) line(AppIcons.mapPin, o.address!),
+          if (o.scheduledFor case final at?)
+            line(
+              AppIcons.calendarDots,
+              '${o.kind == OrderKind.delivery ? 'Dostawa' : 'Odbiór'} na ${dayTimeLabel(at)}',
+              color: const Color(0xFFD946EF),
+            ),
           if (o.note != null) line(AppIcons.chatText, o.note!, color: _amber),
           if (o.staffNote != null) line(AppIcons.lock, 'Dla pracowników: ${o.staffNote}', color: AppColors.textMuted),
           line(

@@ -18,7 +18,13 @@ const _late = Color(0xFFE5484D);
 const _blue = Color(0xFF3B82F6);
 const _blueText = Color(0xFF8AB8FF);
 
+/// Zamówienia na godzinę: pasek „Zaplanowane” i znak na bileciku.
+const _planned = Color(0xFFD946EF);
+const _plannedText = Color(0xFFF0ABFC);
+
 String _two(int n) => n.toString().padLeft(2, '0');
+
+String _at(DateTime t, DateTime now) => dayTimeLabel(t, now);
 
 /// Godzina z sekundami, np. 18:42:07.
 String _hms(DateTime t) {
@@ -71,9 +77,13 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
   @override
   void initState() {
     super.initState();
-    // Zegar i czasy bilecików idą co sekundę.
+    // Zegar i czasy bilecików idą co sekundę. Zamówienie na godzinę o swojej porze wchodzi do kuchni i dzwoni.
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      final id = ref.read(currentRestaurantProvider)?.id;
+      final tickets = id == null ? null : ref.read(kitchenTicketsProvider(id)).value;
+      if (tickets != null) _noticeNew(_inKitchen(tickets));
+      setState(() {});
     });
   }
 
@@ -86,6 +96,12 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
   }
 
   bool _isDone(OrderItem i) => _pending[i.id] ?? i.status == OrderItemStatus.ready;
+
+  /// Bileciki w kuchni, bez zamówień na godzinę, których pora jeszcze nie przyszła.
+  static List<KitchenTicket> _inKitchen(List<KitchenTicket> tickets) {
+    final now = DateTime.now();
+    return [for (final t in tickets) if (!t.upcomingAt(now)) t];
+  }
 
   /// Pozycja cofnięta przez kuchnię i robiona od nowa.
   bool _isRecalled(OrderItem i) {
@@ -335,7 +351,7 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
 
     // Dostęp do zakładki sprawdza boczne menu (PanelShell) według uprawnień stanowiska.
     ref.listen(kitchenTicketsProvider(restaurant.id), (_, next) {
-      if (next.value case final tickets?) _noticeNew(tickets);
+      if (next.value case final tickets?) _noticeNew(_inKitchen(tickets));
     });
 
     final async = ref.watch(kitchenTicketsProvider(restaurant.id));
@@ -347,11 +363,15 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
     final live = ref.watch(ordersLiveProvider(restaurant.id).select((s) => s.status));
     final fullscreen = ref.watch(kitchenFullscreenProvider);
 
-    final tickets = (async.value ?? const <KitchenTicket>[])
+    final now = DateTime.now();
+    final all = (async.value ?? const <KitchenTicket>[])
         .where(
           (t) => t.items.any((i) => i.status != OrderItemStatus.cancelled && !_isDone(i)),
         )
         .toList();
+    // Zamówienia na godzinę czekają w pasku „Zaplanowane”, dopóki nie przyjdzie ich pora.
+    final upcoming = [for (final t in all) if (t.upcomingAt(now)) t];
+    final tickets = [for (final t in all) if (!t.upcomingAt(now)) t];
     _visible = tickets;
     final pendingItems = tickets.fold<int>(
       0,
@@ -396,20 +416,29 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
                     error: e,
                     onRetry: () => ref.invalidate(kitchenTicketsProvider(restaurant.id)),
                   ),
-                  data: (_) => tickets.isEmpty
-                      ? const _Empty()
-                      : _TicketBoard(
-                          tickets: tickets,
-                          config: config,
-                          labelOf: labelOf,
-                          isDone: _isDone,
-                          isRecalled: _isRecalled,
-                          fresh: _fresh,
-                          selectedKey: _selectedKey,
-                          cursor: _cursor,
-                          onToggle: (item) => _toggle(restaurant.id, item),
-                          onBump: (t) => _bump(restaurant.id, t, labelOf(t)),
-                        ),
+                  data: (_) => Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: tickets.isEmpty
+                            ? const _Empty()
+                            : _TicketBoard(
+                                tickets: tickets,
+                                config: config,
+                                labelOf: labelOf,
+                                isDone: _isDone,
+                                isRecalled: _isRecalled,
+                                fresh: _fresh,
+                                selectedKey: _selectedKey,
+                                cursor: _cursor,
+                                onToggle: (item) => _toggle(restaurant.id, item),
+                                onBump: (t) => _bump(restaurant.id, t, labelOf(t)),
+                              ),
+                      ),
+                      // Pasek tylko wtedy, gdy są zamówienia na godzinę.
+                      if (upcoming.isNotEmpty) _PlannedPanel(tickets: upcoming, labelOf: labelOf, now: now),
+                    ],
+                  ),
                 ),
               ),
               _StatsBar(stats: stats),
@@ -682,6 +711,117 @@ class _TicketBoard extends StatelessWidget {
   }
 }
 
+/// Pasek po prawej: zamówienia na godzinę, które jeszcze nie weszły do kuchni. Bez odliczania: godzina,
+/// o której bilecik pojawi się w kuchni (godzina zamówienia minus wyprzedzenie z ustawień kuchni).
+class _PlannedPanel extends StatelessWidget {
+  const _PlannedPanel({required this.tickets, required this.labelOf, required this.now});
+
+  final List<KitchenTicket> tickets;
+  final String Function(KitchenTicket) labelOf;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Container(
+      width: 320,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border(left: BorderSide(color: AppColors.ring)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 4),
+            child: Row(
+              children: [
+                const Glyph(AppIcons.clock, size: 22, color: _plannedText),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Zaplanowane',
+                    style: text.titleLarge?.copyWith(fontSize: 24, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Text(
+                  '${tickets.length}',
+                  style: text.titleLarge?.copyWith(fontSize: 24, color: _plannedText, fontFeatures: _tabular),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
+            child: Text(
+              'Wejdą do kuchni o tej godzinie.',
+              style: text.titleSmall?.copyWith(color: AppColors.textMuted),
+            ),
+          ),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+              itemCount: tickets.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
+              itemBuilder: (context, i) {
+                final t = tickets[i];
+                final items = [for (final it in t.items) if (it.status != OrderItemStatus.cancelled) it];
+                return Container(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceRaised,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: _planned.withValues(alpha: 0.55)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _at(t.sentAt, now),
+                        style: text.headlineSmall?.copyWith(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w700,
+                          color: _plannedText,
+                          fontFeatures: _tabular,
+                        ),
+                      ),
+                      Text(
+                        [labelOf(t), ?t.customer].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.titleMedium?.copyWith(fontSize: 19, fontWeight: FontWeight.w600),
+                      ),
+                      Text(
+                        '${t.address != null ? 'U klienta' : 'Odbiór'} ${_at(t.scheduledFor!, now)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.titleSmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                      ),
+                      const SizedBox(height: 6),
+                      for (final it in items.take(6))
+                        Text(
+                          '${it.quantity}× ${it.name}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: text.titleSmall?.copyWith(fontSize: 17),
+                        ),
+                      if (items.length > 6)
+                        Text(
+                          'i jeszcze ${items.length - 6}',
+                          style: text.titleSmall?.copyWith(color: AppColors.textMuted),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Ticket extends StatelessWidget {
   const _Ticket({
     super.key,
@@ -820,6 +960,32 @@ class _Ticket extends StatelessWidget {
               ],
             ),
           ),
+          // Zamówienie na godzinę: widać od razu, na którą ma być.
+          if (ticket.scheduledFor case final at?)
+            Container(
+              color: _planned,
+              padding: const EdgeInsets.fromLTRB(16, 8, 20, 8),
+              child: Row(
+                children: [
+                  const Glyph(AppIcons.clock, size: 22, color: Colors.white),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'NA GODZINĘ · ${ticket.address != null ? 'u klienta' : 'odbiór'} ${_at(at, DateTime.now())}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: text.titleMedium?.copyWith(
+                        fontSize: 21,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.4,
+                        color: Colors.white,
+                        fontFeatures: _tabular,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           // Zamówienie na wynos: adres dostawy albo imię gościa przy odbiorze osobistym.
           if (ticket.address != null || ticket.customer != null)
             Container(
@@ -1111,6 +1277,8 @@ class _KitchenSettingsDialog extends ConsumerStatefulWidget {
 class _KitchenSettingsDialogState extends ConsumerState<_KitchenSettingsDialog> {
   late int _warnMin = widget.config.warnMinutes;
   late int _lateMin = widget.config.lateMinutes;
+  late int _leadPickup = widget.config.leadPickup;
+  late int _leadDelivery = widget.config.leadDelivery;
 
   /// Pozycje ukryte przed kuchnią. Null, dopóki menu się nie wczyta.
   Set<String>? _hidden;
@@ -1128,6 +1296,8 @@ class _KitchenSettingsDialogState extends ConsumerState<_KitchenSettingsDialog> 
         warnMinutes: _warnMin,
         lateMinutes: _lateMin,
         hiddenItemIds: (_hidden ?? const <String>{}).toList(),
+        leadPickup: _leadPickup,
+        leadDelivery: _leadDelivery,
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -1150,7 +1320,16 @@ class _KitchenSettingsDialogState extends ConsumerState<_KitchenSettingsDialog> 
     }
     final hidden = _hidden ?? <String>{};
 
-    Widget threshold(String title, String hint, Color color, int value, ValueChanged<int> onChanged) {
+    Widget threshold(
+      String title,
+      String hint,
+      Color color,
+      int value,
+      ValueChanged<int> onChanged, {
+      int min = 1,
+      int max = 120,
+      int step = 1,
+    }) {
       return Row(
         children: [
           Container(
@@ -1170,7 +1349,7 @@ class _KitchenSettingsDialogState extends ConsumerState<_KitchenSettingsDialog> 
           ),
           IconButton(
             tooltip: 'Mniej',
-            onPressed: value > 1 ? () => onChanged(value - 1) : null,
+            onPressed: value > min ? () => onChanged((value - step).clamp(min, max)) : null,
             icon: const Glyph(AppIcons.minus, size: 16),
           ),
           SizedBox(
@@ -1183,7 +1362,7 @@ class _KitchenSettingsDialogState extends ConsumerState<_KitchenSettingsDialog> 
           ),
           IconButton(
             tooltip: 'Więcej',
-            onPressed: value < 120 ? () => onChanged(value + 1) : null,
+            onPressed: value < max ? () => onChanged((value + step).clamp(min, max)) : null,
             icon: const Glyph(AppIcons.plus, size: 16),
           ),
         ],
@@ -1194,7 +1373,7 @@ class _KitchenSettingsDialogState extends ConsumerState<_KitchenSettingsDialog> 
       title: const Text('Ustawienia kuchni'),
       content: SizedBox(
         width: 520,
-        height: 560,
+        height: 680,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -1212,6 +1391,37 @@ class _KitchenSettingsDialogState extends ConsumerState<_KitchenSettingsDialog> 
               _late,
               _lateMin,
               (v) => setState(() => _lateMin = v),
+            ),
+            const SizedBox(height: 16),
+            Divider(height: 1, color: AppColors.ring),
+            const SizedBox(height: 14),
+            Text('Zamówienia na godzinę', style: text.titleSmall),
+            Text(
+              'Ile minut przed godziną odbioru albo dostawy zamówienie ma się pojawić w kuchni. '
+              'Do tego czasu czeka w pasku „Zaplanowane”.',
+              style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 8),
+            threshold(
+              'Na wynos',
+              'Odbiór osobisty w lokalu.',
+              _planned,
+              _leadPickup,
+              (v) => setState(() => _leadPickup = v),
+              min: 0,
+              max: 240,
+              step: 5,
+            ),
+            const SizedBox(height: 8),
+            threshold(
+              'Na dostawę',
+              'Razem z drogą do klienta.',
+              _planned,
+              _leadDelivery,
+              (v) => setState(() => _leadDelivery = v),
+              min: 0,
+              max: 240,
+              step: 5,
             ),
             const SizedBox(height: 16),
             Divider(height: 1, color: AppColors.ring),
