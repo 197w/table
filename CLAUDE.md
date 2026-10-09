@@ -415,7 +415,11 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   9.0.0-beta.13 i `vector_tile_renderer`. Rysujemy tylko to, czego potrzebuje dostawca: drogi dla aut i skuterów
   (bez ścieżek, dróg rowerowych, chodników, torów i promów; dojazdowe dopiero z bliska), budynki, wodę, zieleń,
   nazwy ulic, numery domów i osiedla. Bez punktów usług, placów zabaw (landuse), przystanków i granic; pilnuje
-  tego test `courier_map_test.dart`. Kolory jak panel (ciemny i jasny), napisy czcionką Geist. W rogu
+  tego test `courier_map_test.dart`. Kolory jak panel (ciemny i jasny), napisy czcionką Geist. Rysowanie
+  wektorowe (`VectorTileLayerMode.vector`; rastrowe przy przybliżeniu ładowało się bardzo długo), zaokrąglone końce
+  linii i główne ulice szersze niż pas między jezdniami (dwie jezdnie wyglądają jak jedna droga), tło mapy
+  (`mapBackground`) w kolorze stylu, osobne `id` stylów ciemnego i jasnego (biblioteka trzyma kafelki według `id`).
+  W rogu
   „© OpenFreeMap © OpenMapTiles © OpenStreetMap” i „Trasy: Google Maps” (albo OSRM).
   Funkcja Edge `maps` (`supabase/functions/maps`, z tokenem konta panelu; uprawnienia sprawdza `panel_geocode_input`,
   `panel_route_input`): `geocode` (Google Geocoding API, bez klucza Nominatim, a przy odmowie Photon; błąd usługi

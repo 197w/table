@@ -75,6 +75,11 @@ void main() {
       // Styl czyta się bez błędów i używa jednego źródła kafelków.
       final theme = vtr.ThemeReader().read(style);
       expect(theme.tileSources, {mapTileSource});
+      // Osobny identyfikator: biblioteka trzyma narysowane kafelki według niego, motywy nie mogą się mieszać.
+      expect(theme.id, dark ? 'table-dark' : 'table-light');
+      // Tło pod kafelkami w kolorze tła stylu (bez prześwitów na granicach kafelków).
+      final background = (layers.first['paint'] as Map)['background-color'] as String;
+      expect(mapBackground(dark: dark).toARGB32().toRadixString(16).substring(2), background.substring(1));
     }
   });
 }

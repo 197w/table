@@ -1,3 +1,4 @@
+import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
 /// Kolory mapy Table w jednym motywie.
@@ -47,10 +48,10 @@ const _dark = _MapColors(
   building: '#17171b',
   buildingOutline: '#1d1d22',
   service: '#1b1b20',
-  minor: '#25252b',
-  street: '#2e2e36',
-  major: '#3a3a44',
-  motorway: '#474753',
+  minor: '#232329',
+  street: '#2a2a31',
+  major: '#323239',
+  motorway: '#3b3b44',
   casing: '#101012',
   label: '#a1a1aa',
   labelMuted: '#8f8f98',
@@ -74,6 +75,11 @@ const _light = _MapColors(
   labelMuted: '#5f6561',
   halo: '#ffffff',
 );
+
+/// Tło mapy (także pod kafelkami): ten sam kolor co tło stylu, żeby przy ułamkowym przybliżeniu
+/// na granicach kafelków nie prześwitywały cienkie linie.
+Color mapBackground({required bool dark}) =>
+    Color(int.parse('FF${(dark ? _dark : _light).background.substring(1)}', radix: 16));
 
 /// Źródło kafelków w stylu (OpenFreeMap, schemat OpenMapTiles).
 const mapTileSource = 'openmaptiles';
@@ -106,6 +112,7 @@ Map<String, dynamic> tableMapStyle({required bool dark}) {
       // Drogi w tunelach rysujemy tak samo, ale bez krawędzi (nie zasłaniają tego, co nad nimi).
       if (casing) ['!=', 'brunnel', 'tunnel'],
     ],
+    // Zaokrąglone końce wypełniają styk odcinków pod kątem (proste zostawiały ciemne kliny).
     'layout': {'line-cap': 'round', 'line-join': 'round'},
     'paint': {
       'line-color': casing ? c.casing : color,
@@ -129,27 +136,31 @@ Map<String, dynamic> tableMapStyle({required bool dark}) {
     [17, 8],
     [19, 20],
   ];
+  // Główne ulice z bliska są szersze niż pas między jezdniami, więc droga z dwiema jezdniami
+  // wygląda jak jedna (bez ciemnej szczeliny pośrodku).
   const streetWidth = [
     [11, 0.8],
-    [14, 3],
-    [17, 12],
-    [19, 28],
+    [14, 3.4],
+    [17, 15],
+    [19, 34],
   ];
   const majorWidth = [
     [9, 1],
-    [13, 3.5],
-    [17, 16],
-    [19, 34],
+    [13, 4],
+    [17, 20],
+    [19, 42],
   ];
   const motorwayWidth = [
     [7, 1],
-    [12, 4],
-    [17, 18],
-    [19, 38],
+    [12, 4.5],
+    [17, 22],
+    [19, 46],
   ];
 
   return {
     'version': 8,
+    'id': dark ? 'table-dark' : 'table-light',
+    'metadata': {'version': '2'},
     'sources': {
       mapTileSource: {'type': 'vector'},
     },

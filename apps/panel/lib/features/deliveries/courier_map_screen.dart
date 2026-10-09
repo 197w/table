@@ -80,6 +80,7 @@ class _CourierMapScreenState extends ConsumerState<CourierMapScreen> {
   final _map = MapController();
   Timer? _poll;
   Timer? _routes;
+
   /// Kiedy ostatnio szukaliśmy adresu zamówienia: przy chwilowym błędzie usługi próbujemy znów po 2 minutach.
   final _geocoded = <String, DateTime>{};
 
@@ -109,6 +110,18 @@ class _CourierMapScreenState extends ConsumerState<CourierMapScreen> {
     _routes?.cancel();
     _map.dispose();
     super.dispose();
+  }
+
+  TileProviders? _providers;
+  String? _providersUrl;
+
+  /// Źródło kafelków tworzone raz na adres (mapa przebudowuje się co 10 sekund z nowymi danymi).
+  TileProviders _tileProviders(String url) {
+    if (_providers == null || _providersUrl != url) {
+      _providersUrl = url;
+      _providers = TileProviders({mapTileSource: NetworkVectorTileProvider(urlTemplate: url, maximumZoom: 14)});
+    }
+    return _providers!;
   }
 
   /// Nowe dane: brakujące współrzędne adresów i (za pierwszym razem) widok na wszystko oraz trasy.
@@ -261,7 +274,7 @@ class _CourierMapScreenState extends ConsumerState<CourierMapScreen> {
                 initialZoom: 13,
                 minZoom: 5,
                 maxZoom: 19,
-                backgroundColor: AppColors.surfaceRaised,
+                backgroundColor: mapBackground(dark: dark),
                 interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
                 onMapReady: () {
                   _mapReady = true;
@@ -281,9 +294,11 @@ class _CourierMapScreenState extends ConsumerState<CourierMapScreen> {
                   VectorTileLayer(
                     key: ValueKey((tilesUrl, dark)),
                     theme: _mapTheme(dark),
-                    tileProviders: TileProviders({
-                      mapTileSource: NetworkVectorTileProvider(urlTemplate: tilesUrl, maximumZoom: 14),
-                    }),
+                    tileProviders: _tileProviders(tilesUrl),
+                    // Rysowanie wektorowe: kafelek danych z poziomu 14 rysuje się raz, przeskalowany. W trybie
+                    // rastrowym każdy fragment ekranu był osobno wycinany i zamieniany w obrazek, co przy
+                    // przybliżeniu trwało bardzo długo.
+                    layerMode: VectorTileLayerMode.vector,
                     maximumZoom: 19,
                   ),
                 PolylineLayer(
