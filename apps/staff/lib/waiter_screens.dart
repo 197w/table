@@ -7,9 +7,9 @@ import 'package:table_core/table_core.dart';
 
 import 'data.dart';
 import 'orders_data.dart';
+import 'ui.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
-const _amber = Color(0xFFD99A15);
 
 /// Przyciski w motywie Table mają pełną szerokość. W rzędach dajemy im zwykły rozmiar.
 final _compact = FilledButton.styleFrom(minimumSize: const Size(0, 48));
@@ -29,8 +29,8 @@ int _byLabel(WTable a, WTable b) {
 // Stoliki
 // ---------------------------------------------------------------
 
-/// Kelner wybiera stolik. Kafel pokazuje kwotę otwartego rachunku, dania do wydania (zielone)
-/// i niewysłane na kuchnię (żółte).
+/// Kelner wybiera stolik. Kafel pokazuje kwotę otwartego rachunku, dania do wydania i niewysłane na kuchnię
+/// (liczba z ikoną, nie sam kolor). Na górze podsumowanie lokalu.
 class WaiterTablesScreen extends ConsumerWidget {
   const WaiterTablesScreen({super.key, required this.job});
 
@@ -42,11 +42,15 @@ class WaiterTablesScreen extends ConsumerWidget {
     final tables = ref.watch(tablesProvider(job.restaurantId));
     final orders = ref.watch(openOrdersProvider(job.restaurantId)).value ?? const <WOrder>[];
     final byTable = {for (final o in orders) ?o.tableId: o};
+    final ready = orders.fold(0, (sum, o) => sum + o.ready);
+    final unsent = orders.fold(0, (sum, o) => sum + o.unsent);
+    // Kafel rośnie z czcionką telefonu, żeby numer, kwota i liczby się mieściły.
+    final tileHeight = 70 + MediaQuery.textScalerOf(context).scale(48);
 
     return Scaffold(
-      appBar: AppBar(title: Text('Zamówienia · ${job.restaurantName}')),
+      appBar: AppBar(title: const Text('Zamówienia')),
       body: tables.when(
-        loading: () => const LoadingView(),
+        loading: () => const _TablesSkeleton(),
         error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(tablesProvider(job.restaurantId))),
         data: (list) {
           if (list.isEmpty) {
@@ -60,43 +64,73 @@ class WaiterTablesScreen extends ConsumerWidget {
           for (final t in list) {
             if (!zones.contains(t.zone)) zones.add(t.zone);
           }
+          final open = list.where((t) => byTable.containsKey(t.id)).length;
           return RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(openOrdersProvider(job.restaurantId));
               await ref.read(openOrdersProvider(job.restaurantId).future);
             },
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-              children: [
-                for (final zone in zones) ...[
+            child: ContentWidth(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: Text(
-                      zone.toUpperCase(),
-                      style: text.labelMedium?.copyWith(color: AppColors.textMuted, letterSpacing: 1.1),
+                      job.restaurantName,
+                      style: text.bodyLarge?.copyWith(color: AppColors.textMuted),
                     ),
                   ),
-                  GridView.count(
-                    crossAxisCount: 3,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
-                    childAspectRatio: 1.05,
+                  const SizedBox(height: 10),
+                  // Co jest do zrobienia na sali: słowo, liczba i ikona.
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      for (final t in list.where((t) => t.zone == zone).toList()..sort(_byLabel))
-                        _TableTile(
-                          table: t,
-                          order: byTable[t.id],
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute<void>(builder: (_) => TableOrderScreen(job: job, table: t)),
-                          ),
-                        ),
+                      StatusChip(
+                        label: 'Otwarte rachunki: $open',
+                        icon: AppIcons.receipt,
+                        color: open > 0 ? AppColors.text : AppColors.textMuted,
+                      ),
+                      if (ready > 0)
+                        StatusChip(label: 'Do wydania: $ready', icon: AppIcons.callBell, color: AppColors.accent),
+                      if (unsent > 0)
+                        StatusChip(label: 'Do wysłania: $unsent', icon: AppIcons.send, color: StaffColors.pending),
                     ],
                   ),
+                  for (final zone in zones) ...[
+                    SectionHeader(
+                      zone.isEmpty ? 'Sala' : zone,
+                      top: 20,
+                      trailing: Text(
+                        _openLabel(list.where((t) => t.zone == zone && byTable.containsKey(t.id)).length),
+                        style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                      ),
+                    ),
+                    GridView(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 132,
+                        mainAxisSpacing: 10,
+                        crossAxisSpacing: 10,
+                        mainAxisExtent: tileHeight,
+                      ),
+                      children: [
+                        for (final t in list.where((t) => t.zone == zone).toList()..sort(_byLabel))
+                          _TableTile(
+                            table: t,
+                            order: byTable[t.id],
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute<void>(builder: (_) => TableOrderScreen(job: job, table: t)),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           );
         },
@@ -104,6 +138,9 @@ class WaiterTablesScreen extends ConsumerWidget {
     );
   }
 }
+
+/// „2 otwarte” przy nazwie strefy.
+String _openLabel(int n) => n == 0 ? 'wszystkie wolne' : (n == 1 ? '1 otwarty' : '$n otwarte');
 
 class _TableTile extends StatelessWidget {
   const _TableTile({required this.table, required this.order, required this.onTap});
@@ -115,48 +152,76 @@ class _TableTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final open = order != null;
-    return PressScale(
-      child: Material(
-        color: open ? AppColors.accentTint : AppColors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: open ? AppColors.accent : AppColors.ring),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        table.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: text.headlineSmall?.copyWith(color: open ? AppColors.accent : null),
-                      ),
+    final o = order;
+    final open = o != null;
+    final ready = o?.ready ?? 0;
+    final unsent = o?.unsent ?? 0;
+    final label = [
+      table.title,
+      if (o == null) 'wolny, ${table.seats} ${table.seats == 1 ? 'miejsce' : 'miejsca'}' else 'rachunek ${Fmt.price(o.total)}',
+      if (ready > 0) 'do wydania: $ready',
+      if (unsent > 0) 'do wysłania: $unsent',
+    ].join(', ');
+    return Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: true,
+      child: PressScale(
+        child: Material(
+          color: open ? AppColors.accentTint : AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: open ? AppColors.accent.withValues(alpha: 0.6) : AppColors.ring),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    table.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.headlineSmall?.copyWith(
+                      color: open ? AppColors.accent : AppColors.text,
+                      fontFeatures: _tabular,
                     ),
-                    if ((order?.ready ?? 0) > 0) _Badge('${order!.ready}', AppColors.accentFill, AppColors.onAccent),
-                    if ((order?.unsent ?? 0) > 0) ...[
-                      const SizedBox(width: 4),
-                      _Badge('${order!.unsent}', _amber, Colors.black),
-                    ],
-                  ],
-                ),
-                const Spacer(),
-                Text(
-                  open ? Fmt.price(order!.total) : '${table.seats} os.',
-                  style: text.bodyMedium?.copyWith(
-                    color: open ? AppColors.text : AppColors.textMuted,
-                    fontFeatures: _tabular,
                   ),
-                ),
-              ],
+                  const Spacer(),
+                  if (ready > 0 || unsent > 0) ...[
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: [
+                        if (ready > 0) _CountBadge(icon: AppIcons.callBell, count: ready, color: AppColors.accent),
+                        if (unsent > 0) _CountBadge(icon: AppIcons.send, count: unsent, color: StaffColors.pending),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                  // Kwota zmniejsza się, zamiast gubić „zł” przy dużej czcionce.
+                  if (open)
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(Fmt.price(o.total), style: text.titleSmall?.copyWith(fontFeatures: _tabular)),
+                    )
+                  else
+                    Row(
+                      children: [
+                        Glyph(AppIcons.users, size: 14, color: AppColors.textMuted),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${table.seats}',
+                          style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -165,22 +230,76 @@ class _TableTile extends StatelessWidget {
   }
 }
 
-class _Badge extends StatelessWidget {
-  const _Badge(this.label, this.color, this.textColor);
+/// Liczba z ikoną na kafelku stolika: dzwonek = do wydania, samolocik = do wysłania na kuchnię.
+class _CountBadge extends StatelessWidget {
+  const _CountBadge({required this.icon, required this.count, required this.color});
 
-  final String label;
+  final AppIconData icon;
+  final int count;
   final Color color;
-  final Color textColor;
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-    decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
-    child: Text(
-      label,
-      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: textColor, fontWeight: FontWeight.w600),
+    padding: const EdgeInsets.fromLTRB(5, 2, 7, 2),
+    decoration: BoxDecoration(color: color.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(8)),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Glyph(icon, size: 12, color: color),
+        const SizedBox(width: 3),
+        Text(
+          '$count',
+          style: TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: color,
+            fontFeatures: _tabular,
+          ),
+        ),
+      ],
     ),
   );
+}
+
+/// Szkielet siatki stolików, zanim dane dojdą.
+class _TablesSkeleton extends StatelessWidget {
+  const _TablesSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: ContentWidth(
+        child: ListView(
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          children: [
+            const SkeletonBox(width: 140, height: 14),
+            const SizedBox(height: 14),
+            const SkeletonBox(width: 180, height: 26, radius: 8),
+            const SizedBox(height: 28),
+            GridView.count(
+              crossAxisCount: 3,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              children: [
+                for (var i = 0; i < 6; i++)
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.ring),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------
@@ -273,11 +392,12 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
     }
     final lines = [...?order?.lines.where((l) => !_removed.contains(l.id))];
     final repo = ref.read(waiterRepositoryProvider);
+    // Grupy pozycji: nazwa, ikona i kolor (słowo z ikoną, nie sam kolor).
     final groups = [
-      (LineStatus.ready, 'DO WYDANIA'),
-      (LineStatus.fresh, 'DO WYSŁANIA'),
-      (LineStatus.sent, 'NA KUCHNI'),
-      (LineStatus.served, 'WYDANE'),
+      (LineStatus.ready, 'Do wydania', AppIcons.callBell, AppColors.accent),
+      (LineStatus.fresh, 'Do wysłania', AppIcons.send, StaffColors.pending),
+      (LineStatus.sent, 'Na kuchni', AppIcons.cookingPot, StaffColors.info),
+      (LineStatus.served, 'Wydane', AppIcons.checkCircle, AppColors.textMuted),
     ];
 
     return Scaffold(
@@ -285,7 +405,15 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
         title: Text(widget.table.title),
         actions: [
           if (order != null && order.total > 0)
-            TextButton(onPressed: _busy ? null : () => _close(order!), child: const Text('Rachunek')),
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: TextButton.icon(
+                style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
+                onPressed: _busy ? null : () => _close(order!),
+                icon: const Glyph(AppIcons.cashRegister, size: 18),
+                label: const Text('Rachunek'),
+              ),
+            ),
         ],
       ),
       body: order == null || lines.isEmpty
@@ -296,26 +424,37 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
               actionLabel: 'Dodaj z menu',
               onAction: _addFromMenu,
             )
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          : ContentWidth(
+              child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               children: [
-                for (final (status, title) in groups)
+                for (final (status, title, icon, color) in groups)
                   if (lines.any((l) => l.status == status)) ...[
+                    // Nazwa grupy z liczbą pozycji (jak na kafelku stolika). Przy dużej czcionce
+                    // „Wydaj wszystko” przechodzi pod nazwę zamiast ją łamać.
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
-                      child: Row(
+                      padding: const EdgeInsets.fromLTRB(4, 18, 0, 8),
+                      child: Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          Expanded(
-                            child: Text(
-                              title,
-                              style: text.labelMedium?.copyWith(
-                                letterSpacing: 1.1,
-                                color: status == LineStatus.ready ? AppColors.accent : AppColors.textMuted,
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Glyph(icon.duotone, size: 20, color: color),
+                              const SizedBox(width: 8),
+                              Semantics(
+                                header: true,
+                                child: Text(
+                                  '$title · ${lines.where((l) => l.status == status).length}',
+                                  style: text.titleMedium?.copyWith(fontFeatures: _tabular),
+                                ),
                               ),
-                            ),
+                            ],
                           ),
                           if (status == LineStatus.ready)
                             TextButton(
+                              style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
                               onPressed: _busy
                                   ? null
                                   : () => _run(() async {
@@ -328,6 +467,15 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
                         ],
                       ),
                     ),
+                    // Gest przesunięcia nie jest widoczny, więc mówimy o nim wprost.
+                    if (status == LineStatus.fresh)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                        child: Text(
+                          'Przesuń pozycję w lewo, żeby ją usunąć.',
+                          style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                        ),
+                      ),
                     for (final line in lines.where((l) => l.status == status))
                       if (line.status == LineStatus.fresh)
                         // Niewysłaną pozycję usuwa się przesunięciem w lewo.
@@ -352,53 +500,42 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
                         ),
                   ],
               ],
+              ),
             ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            border: Border(top: BorderSide(color: AppColors.ring)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Text('Razem', style: text.titleMedium),
-                  const Spacer(),
-                  Text(Fmt.price(order?.total ?? 0), style: text.titleLarge?.copyWith(fontFeatures: _tabular)),
-                ],
+      bottomNavigationBar: BottomActionBar(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Text('Razem', style: text.titleMedium),
+                const Spacer(),
+                Text(Fmt.price(order?.total ?? 0), style: text.titleLarge?.copyWith(fontFeatures: _tabular)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            // Przy dużej czcionce przyciski stają jeden pod drugim.
+            ButtonPair(
+              first: OutlinedButton.icon(
+                style: _compactOutlined,
+                onPressed: _busy ? null : _addFromMenu,
+                icon: const Glyph(AppIcons.plus, size: 18),
+                label: const Text('Dodaj z menu'),
               ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      style: _compactOutlined,
-                      onPressed: _busy ? null : _addFromMenu,
-                      icon: const Glyph(AppIcons.plus, size: 18),
-                      label: const Text('Dodaj z menu'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      style: _compact,
-                      onPressed: _busy || (order?.unsent ?? 0) == 0
-                          ? null
-                          : () => _run(() async {
-                              final n = await repo.send(_order()!.id);
-                              if (mounted) HapticFeedback.mediumImpact();
-                              if (n == 0) return;
-                            }, 'Wysłano na kuchnię.'),
-                      child: Text((order?.unsent ?? 0) > 0 ? 'Wyślij (${order!.unsent})' : 'Wyślij'),
-                    ),
-                  ),
-                ],
+              second: FilledButton.icon(
+                style: _compact,
+                onPressed: _busy || (order?.unsent ?? 0) == 0
+                    ? null
+                    : () => _run(() async {
+                        final n = await repo.send(_order()!.id);
+                        if (mounted) HapticFeedback.mediumImpact();
+                        if (n == 0) return;
+                      }, 'Wysłano na kuchnię.'),
+                icon: const Glyph(AppIcons.send, size: 18),
+                label: Text((order?.unsent ?? 0) > 0 ? 'Wyślij (${order!.unsent})' : 'Wyślij'),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -418,27 +555,62 @@ class _LineTile extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final fresh = line.status == LineStatus.fresh;
     final ready = line.status == LineStatus.ready;
+    final served = line.status == LineStatus.served;
     return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(10, 10, 6, 10),
       decoration: BoxDecoration(
-        color: ready ? AppColors.accentTint : (fresh ? AppColors.surfaceRaised : AppColors.surface),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: ready ? AppColors.accent : AppColors.ring),
+        color: ready ? AppColors.accentTint : AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: ready ? AppColors.accent.withValues(alpha: 0.6) : AppColors.ring),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          // Ilość w kwadracie po lewej, jak na bileciku kuchni.
+          Container(
+            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: AppColors.surfaceRaised, borderRadius: BorderRadius.circular(10)),
+            child: Text(
+              '${line.quantity}×',
+              style: text.titleSmall?.copyWith(fontFeatures: _tabular),
+            ),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('${line.quantity}× ${line.name}', style: text.titleSmall),
+                Text(
+                  line.name,
+                  style: text.titleSmall?.copyWith(color: served ? AppColors.textMuted : AppColors.text),
+                ),
                 if (line.details != null)
                   Text(line.details!, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
                 if (line.note != null)
-                  Text(line.note!, style: text.bodySmall?.copyWith(color: _amber, fontStyle: FontStyle.italic)),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Glyph(AppIcons.chatText, size: 13, color: StaffColors.pending),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(line.note!, style: text.bodySmall?.copyWith(color: StaffColors.pending)),
+                        ),
+                      ],
+                    ),
+                  ),
                 const SizedBox(height: 2),
-                Text(Fmt.price(line.total), style: text.bodyMedium?.copyWith(fontFeatures: _tabular)),
+                Text(
+                  Fmt.price(line.total),
+                  style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                ),
               ],
             ),
           ),
@@ -449,7 +621,6 @@ class _LineTile extends StatelessWidget {
               onPressed: busy || line.quantity <= 1 ? null : () => onQuantity(line.quantity - 1),
               icon: const Glyph(AppIcons.minus, size: 18),
             ),
-            Text('${line.quantity}', style: text.titleMedium?.copyWith(fontFeatures: _tabular)),
             IconButton(
               tooltip: 'Więcej',
               onPressed: busy || line.quantity >= 99 ? null : () => onQuantity(line.quantity + 1),
@@ -457,10 +628,18 @@ class _LineTile extends StatelessWidget {
             ),
           ],
           if (ready)
-            IconButton(
-              tooltip: 'Wydane',
-              onPressed: busy ? null : onServed,
-              icon: Glyph(AppIcons.check, size: 22, color: AppColors.accent),
+            Padding(
+              padding: const EdgeInsets.only(left: 4, right: 2),
+              child: IconButton.filled(
+                tooltip: 'Wydane',
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.accentFill,
+                  foregroundColor: AppColors.onAccent,
+                  minimumSize: const Size(48, 48),
+                ),
+                onPressed: busy ? null : onServed,
+                icon: Glyph(AppIcons.check, size: 22, color: AppColors.onAccent),
+              ),
             ),
         ],
       ),
@@ -474,23 +653,25 @@ class _RemoveBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Na czerwieni ciemnego motywu biały napis ma za mały kontrast, więc kolor bierzemy z motywu.
+    final onError = Theme.of(context).colorScheme.onError;
     return Container(
-      margin: const EdgeInsets.only(bottom: 6),
+      margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 20),
       alignment: Alignment.centerRight,
       decoration: BoxDecoration(
         color: AppColors.error,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             'Usuń',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.white),
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(color: onError),
           ),
           const SizedBox(width: 8),
-          const Glyph(AppIcons.trash, size: 20, color: Colors.white),
+          Glyph(AppIcons.trash, size: 20, color: onError),
         ],
       ),
     );
@@ -682,7 +863,7 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
         const SizedBox(width: 6),
         OutlinedButton(
           onPressed: base <= 0 ? null : () => setState(() => _tip.text = _text((base * pct / 100).round())),
-          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 10)),
+          style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48), padding: const EdgeInsets.symmetric(horizontal: 10)),
           child: Text('$pct%'),
         ),
       ],
@@ -746,7 +927,7 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
                   children: [
                     Expanded(child: Text([l.name, ?l.details].join(' · '), style: text.bodyMedium)),
                     IconButton(
-                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Mniej',
                       onPressed: (_picked[l.id] ?? 0) == 0 ? null : () => setState(() => _picked[l.id] = _picked[l.id]! - 1),
                       icon: const Glyph(AppIcons.minus, size: 18),
                     ),
@@ -762,7 +943,7 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
                       ),
                     ),
                     IconButton(
-                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Więcej',
                       onPressed: (_picked[l.id] ?? 0) >= l.quantity
                           ? null
                           : () => setState(() => _picked[l.id] = (_picked[l.id] ?? 0) + 1),
@@ -783,6 +964,7 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
                     const SizedBox(width: 10),
                     Expanded(child: Text('Kod ${due?.label ?? code}', style: text.bodyMedium)),
                     TextButton(
+                      style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
                       onPressed: _busy ? null : () => _discount(remove: true),
                       child: const Text('Usuń'),
                     ),
@@ -793,6 +975,7 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
                   onPressed: _busy ? null : () => _discount(remove: false),
                   icon: const Glyph(AppIcons.sealPercent, size: 18),
                   label: Text(due?.reservationCode != null ? 'Inny kod rabatowy' : 'Kod rabatowy'),
@@ -815,6 +998,7 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
                   Text('Osób', style: text.titleSmall),
                   const Spacer(),
                   IconButton(
+                    tooltip: 'Mniej osób',
                     onPressed: _people <= 2 ? null : () => setState(() => _people--),
                     icon: const Glyph(AppIcons.minus, size: 18),
                   ),
@@ -823,6 +1007,7 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
                     child: Text('$_people', textAlign: TextAlign.center, style: text.titleMedium?.copyWith(fontFeatures: _tabular)),
                   ),
                   IconButton(
+                    tooltip: 'Więcej osób',
                     onPressed: _people >= 20 ? null : () => setState(() => _people++),
                     icon: const Glyph(AppIcons.plus, size: 18),
                   ),
@@ -875,6 +1060,12 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
+                      Glyph(
+                        change >= 0 ? AppIcons.handCoins : AppIcons.warning,
+                        size: 18,
+                        color: change >= 0 ? AppColors.accent : AppColors.error,
+                      ),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           change >= 0 ? 'Reszta ${Fmt.price(change)}' : 'Brakuje ${Fmt.price(-change)}',
@@ -887,7 +1078,7 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
                       // Gość zostawia resztę: idzie do Twojego napiwku.
                       if (change > 0)
                         OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
+                          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
                           onPressed: () => setState(() => _tip.text = _text(received - payDue)),
                           icon: const Glyph(AppIcons.handCoins, size: 16),
                           label: const Text('Bez reszty'),
@@ -898,9 +1089,11 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
               ],
             ],
             const SizedBox(height: 16),
-            FilledButton(
+            FilledButton.icon(
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
               onPressed: _busy || due == null || (_mode == _SettleMode.items && part == 0) ? null : () => _pay(order!, due),
-              child: Text(_mode == _SettleMode.items ? 'Zapłać za wybrane' : 'Zamknij rachunek'),
+              icon: const Glyph(AppIcons.checkCircle, size: 20),
+              label: Text(_mode == _SettleMode.items ? 'Zapłać za wybrane' : 'Zamknij rachunek'),
             ),
           ],
         ),
@@ -1021,16 +1214,21 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
     final menu = ref.watch(menuProvider(widget.job.restaurantId));
     return Scaffold(
       appBar: AppBar(
         title: Text('Menu · ${widget.table.title}'),
         actions: [
+          // Ile dań dodano z tego ekranu: słowo z ikoną, czytnik ekranu ogłasza zmianę.
           if (_added > 0)
             Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: Center(child: Text('+$_added', style: text.titleMedium?.copyWith(color: AppColors.accent))),
+              child: Center(
+                child: Semantics(
+                  liveRegion: true,
+                  child: StatusChip(label: 'Dodano: $_added', icon: AppIcons.check, color: AppColors.accent),
+                ),
+              ),
             ),
         ],
       ),
@@ -1054,7 +1252,8 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
                     for (final i in s.items)
                       if (i.name.toLowerCase().contains(_query)) i,
                 ];
-          return Column(
+          return ContentWidth(
+            child: Column(
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -1094,64 +1293,15 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                   itemCount: items.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, i) {
-                    final item = items[i];
-                    return Opacity(
-                      opacity: item.available ? 1 : 0.45,
-                      child: Material(
-                        color: AppColors.surface,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          side: BorderSide(color: AppColors.ring),
-                        ),
-                        child: InkWell(
-                          onTap: () => _add(item),
-                          borderRadius: BorderRadius.circular(14),
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(item.name, style: text.titleSmall),
-                                      Text(
-                                        !item.available
-                                            ? 'Niedostępne'
-                                            : item.priceVaries
-                                            ? 'od ${Fmt.price(item.fromPrice)}'
-                                            : Fmt.price(item.fromPrice),
-                                        style: text.bodyMedium?.copyWith(
-                                          color: item.available ? AppColors.textMuted : AppColors.error,
-                                          fontFeatures: _tabular,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                // Zmiana składników („bez cebuli”, „więcej sera”) i uwaga dla kuchni.
-                                if (item.available)
-                                  IconButton(
-                                    tooltip: 'Zmień składniki',
-                                    onPressed: () => _add(item, withOptions: true),
-                                    icon: Glyph(AppIcons.notePencil, size: 20, color: AppColors.textMuted),
-                                  ),
-                                Glyph(
-                                  item.hasOptions ? AppIcons.sliders : AppIcons.plus,
-                                  size: 20,
-                                  color: AppColors.accent,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
+                  itemBuilder: (context, i) => _MenuRow(
+                    item: items[i],
+                    onAdd: () => _add(items[i]),
+                    onOptions: () => _add(items[i], withOptions: true),
+                  ),
                 ),
               ),
             ],
+            ),
           );
         },
       ),
@@ -1167,6 +1317,79 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
                 Text('Przejdź dalej'),
                 SizedBox(width: 8),
                 Glyph(AppIcons.caretRight, size: 18),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Danie w menu do nabijania: nazwa, cena albo „Niedostępne” z ikoną, zmiana składników i dodanie.
+class _MenuRow extends StatelessWidget {
+  const _MenuRow({required this.item, required this.onAdd, required this.onOptions});
+
+  final WMenuItem item;
+  final VoidCallback onAdd;
+  final VoidCallback onOptions;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final price = item.priceVaries ? 'od ${Fmt.price(item.fromPrice)}' : Fmt.price(item.fromPrice);
+    return Material(
+      color: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: AppColors.ring)),
+      child: InkWell(
+        onTap: onAdd,
+        borderRadius: BorderRadius.circular(16),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 64),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Semantics(
+                    button: true,
+                    label: item.available ? '${item.name}, $price. Dodaj do rachunku' : '${item.name}, niedostępne',
+                    excludeSemantics: true,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.name,
+                          style: text.titleSmall?.copyWith(color: item.available ? AppColors.text : AppColors.textMuted),
+                        ),
+                        const SizedBox(height: 2),
+                        // Niedostępne: słowo z ikoną zamiast przygaszenia całego wiersza (kontrast zostaje czytelny).
+                        if (item.available)
+                          Text(price, style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular))
+                        else
+                          StatusChip(label: 'Niedostępne', icon: AppIcons.prohibit, color: AppColors.error),
+                      ],
+                    ),
+                  ),
+                ),
+                // Zmiana składników („bez cebuli”, „więcej sera”) i uwaga dla kuchni.
+                if (item.available) ...[
+                  IconButton(
+                    tooltip: 'Zmień składniki: ${item.name}',
+                    onPressed: onOptions,
+                    icon: Glyph(AppIcons.notePencil, size: 20, color: AppColors.textMuted),
+                  ),
+                  ExcludeSemantics(
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(color: AppColors.accentTint, shape: BoxShape.circle),
+                      child: Glyph(item.hasOptions ? AppIcons.sliders : AppIcons.plus, size: 18, color: AppColors.accent),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                ],
               ],
             ),
           ),
@@ -1437,6 +1660,7 @@ class _GuestsSheet extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           TextButton(
+            style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
             onPressed: () => Navigator.pop<({int? guests})>(context, (guests: null)),
             child: const Text('Pomiń'),
           ),

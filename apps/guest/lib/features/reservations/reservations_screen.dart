@@ -240,7 +240,7 @@ class _NextCard extends ConsumerWidget {
               if (r.canCancel) ...[
                 const SizedBox(height: 16),
                 // Przy dużej czcionce przyciski stają jeden pod drugim, żeby napisy nie łamały się w środku słowa.
-                _ButtonPair(
+                ButtonPair(
                   first: OutlinedButton.icon(
                     onPressed: () => _cancel(context, ref, r),
                     style: OutlinedButton.styleFrom(
@@ -450,31 +450,6 @@ class _WaitlistCard extends ConsumerWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Dwa przyciski obok siebie, a przy dużej czcionce systemu jeden pod drugim.
-class _ButtonPair extends StatelessWidget {
-  const _ButtonPair({required this.first, required this.second});
-
-  final Widget first;
-  final Widget second;
-
-  @override
-  Widget build(BuildContext context) {
-    if (MediaQuery.textScalerOf(context).scale(16) > 20) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [first, const SizedBox(height: 8), second],
-      );
-    }
-    return Row(
-      children: [
-        Expanded(child: first),
-        const SizedBox(width: 10),
-        Expanded(child: second),
-      ],
     );
   }
 }

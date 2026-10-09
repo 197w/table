@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
 import 'data.dart';
+import 'ui.dart';
 
 /// Logowanie numerem telefonu i kodem SMS. Numer musi być tym samym, który kierownik
 /// wpisał w panelu przy pracowniku: po nim lokal rozpoznaje, kto zaczyna zmianę.
@@ -69,7 +70,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final sent = _sentTo != null;
     return Scaffold(
       body: SafeArea(
-        child: ListView(
+        child: ContentWidth(
+          child: ListView(
           padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
           children: [
             Container(
@@ -80,10 +82,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 color: AppColors.accentTint,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: Glyph(AppIcons.userCheck, size: 28, color: AppColors.accent),
+              child: Glyph(AppIcons.userCheck.duotone, size: 28, color: AppColors.accent),
             ),
             const SizedBox(height: 24),
-            Text('Table for employees', style: text.headlineMedium),
+            Semantics(header: true, child: Text('Table for employees', style: text.headlineMedium)),
             const SizedBox(height: 8),
             Text(
               sent
@@ -137,6 +139,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             if (sent) ...[
               const SizedBox(height: 12),
               TextButton(
+                style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
                 onPressed: _busy
                     ? null
                     : () => setState(() {
@@ -147,6 +150,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
             ],
           ],
+          ),
         ),
       ),
     );

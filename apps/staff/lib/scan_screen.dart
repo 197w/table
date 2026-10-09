@@ -81,12 +81,14 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           ),
           // Ramka pokazuje, gdzie ustawić kod.
           Center(
-            child: Container(
+            child: ExcludeSemantics(
+              child: Container(
               width: 260,
               height: 260,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(color: AppPalette.dark.accent, width: 4),
+              ),
               ),
             ),
           ),
@@ -94,19 +96,41 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             left: 24,
             right: 24,
             bottom: 40,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.7),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Text(
-                _busy
-                    ? 'Zaczynam zmianę…'
-                    : _problem ?? 'Skieruj aparat na kod QR na ekranie „Zaloguj się do pracy” w lokalu.',
-                textAlign: TextAlign.center,
-                style: text.titleMedium?.copyWith(
-                  color: _problem == null || _busy ? Colors.white : const Color(0xFFFF8A8A),
+            // Komunikat z ikoną (problem to nie tylko czerwony kolor). Czytnik ekranu ogłasza każdą zmianę.
+            child: Semantics(
+              liveRegion: true,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.75),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    if (_busy)
+                      const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                      )
+                    else
+                      Glyph(
+                        _problem == null ? AppIcons.qrCode : AppIcons.warning,
+                        size: 22,
+                        color: _problem == null ? Colors.white : const Color(0xFFFF8A8A),
+                      ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _busy
+                            ? 'Zaczynam zmianę…'
+                            : _problem ?? 'Skieruj aparat na kod QR na ekranie „Zaloguj się do pracy” w lokalu.',
+                        style: text.titleMedium?.copyWith(
+                          color: _problem == null || _busy ? Colors.white : const Color(0xFFFF8A8A),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

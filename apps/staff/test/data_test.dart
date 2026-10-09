@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:table_staff/data.dart';
 import 'package:table_staff/orders_data.dart';
 import 'package:table_staff/schedule_screen.dart';
+import 'package:table_staff/ui.dart';
 
 void main() {
   test('numer telefonu w postaci +48XXXXXXXXX', () {
@@ -194,5 +195,15 @@ void main() {
     });
     expect(no.unavailable, isTrue);
     expect(no.starts, '');
+  });
+
+  test('czas zmiany dla czytnika ekranu po polsku', () {
+    expect(hoursText(const Duration(hours: 7, minutes: 45)), '7:45');
+    expect(hoursSpoken(const Duration(hours: 7, minutes: 45)), '7 godzin 45 minut');
+    expect(hoursSpoken(const Duration(hours: 1, minutes: 1)), '1 godzina 1 minuta');
+    expect(hoursSpoken(const Duration(hours: 2, minutes: 22)), '2 godziny 22 minuty');
+    expect(hoursSpoken(const Duration(hours: 12)), '12 godzin');
+    expect(hoursSpoken(const Duration(minutes: 14)), '14 minut');
+    expect(hoursSpoken(Duration.zero), '0 minut');
   });
 }

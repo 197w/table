@@ -14,6 +14,19 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   zamknięcie rachunku; niewysłaną pozycję usuwa się przesunięciem w lewo, minus tylko zmniejsza ilość; w wyborze dań
   „Przejdź dalej” na dole wraca do rachunku stolika; zamknięcie z rabatem, zadatkiem, napiwkiem i podziałem), mój grafik
   (zgłaszanie godzin), mój kod do panelu. Każda aktualizacja na S23 i iPhone'a, tak jak aplikacja dla gości.
+  Wygląd (10.2026) jak w aplikacji dla gości, z tymi samymi zasadami dostępności (skill ui-ux-pro-max); wspólne
+  elementy w `apps/staff/lib/ui.dart`: `StaffColors` (niebieski, fioletowy i pomarańczowy stanów z kontrastem
+  co najmniej 4,5:1 w obu motywach, zamiast stałych kolorów), `IconTile`, `StatTile`, `SectionHeader`,
+  `CardsSkeleton`, `BottomActionBar`, `ContentWidth` (720 px na tablecie), `hm`, `hoursText`, `hoursSpoken`.
+  „Zeskanuj”: powitanie ze stanem, karta lokalu (stan „W pracy” z ikoną, kafle „Ta zmiana” i „Ten tydzień”, kod do
+  panelu), „Zeskanuj kod” na stałe na dole. Zamówienia: podsumowanie sali (otwarte rachunki, do wydania, do wysłania),
+  kafle stolików z liczbami i ikonami (dzwonek = do wydania, samolocik = do wysłania), rachunek z grupami „Do wydania /
+  Do wysłania / Na kuchni / Wydane” i podpowiedzią o przesuwaniu w lewo, niedostępne dania z chipem zamiast
+  przezroczystości. Dostawy: etap kursu i „na 19:30” jako chipy, „Nawiguj” z obrysem (pełny kolor ma tylko
+  „Odebrałem” albo „Dostarczone”), kolejka z „Wolny / W kursie”, kafle „Kursy” i „Gotówka”, pulsowanie stoi przy
+  „Ogranicz ruch”. Grafik: pigułka okresu (stuknięcie w napis wraca do teraz), dni z kafelkiem i chipem stanu
+  (`_dayStatus`), bez przygaszania przezroczystością, uwaga na tydzień pod nazwą tygodnia, „Moje godziny” na karcie.
+  Ustawienia jak u gościa. Podgląd ekranów: test golden poza repozytorium, jak przy panelu.
 - `packages/table_core`: wspólny motyw, czcionka Geist, ikony Phosphor, formatery, widżety i konfiguracja.
 - `packages/table_car`: wtyczka Flutter tylko dla Table for employees: kurs dostawcy w Android Auto (Kotlin, Car App
   Library, szablon Pane, kategoria POI) i CarPlay (Swift, CPInformationTemplate, scena `TableCarSceneDelegate`
@@ -92,7 +105,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `toasts.dart` (powiadomienia w stylu Table: `showMessage` z `tone`, `showError`, `Toasts`, `ToastHost` w
   `MaterialApp.builder` każdej aplikacji; komputer: prawy dolny róg, telefon: góra ekranu),
   `formatters.dart` (`Fmt`), `units.dart`, `env.dart`, `failure.dart` (`AppFailure`), `widgets.dart`
-  (`PressScale`, `LoadingView`, `MessageView`, `ErrorView`, `Tag`, `DropdownPill`...), `app_icons.dart`
+  (`PressScale`, `LoadingView`, `MessageView`, `ErrorView`, `Tag`, `DropdownPill`, `StatusChip` (stan: ikona i słowo),
+  `ButtonPair` (dwa przyciski, przy dużej czcionce jeden pod drugim)...), `app_icons.dart`
   (`Glyph` zamiast `Icon`, stałe `AppIcons`, SVG w `assets/icons`, nowe: `npx better-icons get ph:<nazwa>`;
   każda ikona ma też wersję duotone w `assets/icons/duotone` (`ph:<nazwa>-duotone`, `AppIcons.x.duotone`):
   wybrane zakładki i dolne menu, powiadomienia, puste ekrany, kafle `IconBadge`).
@@ -123,7 +137,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Pozostałe zakładki w tym samym stylu (te same zasady dostępności): „Moje” → Rezerwacje ma sekcje Najbliższa
   (duża karta: kafelek z datą `DateTile`, „Jutro, 19:00” z `relativeVisit`, stan z ikoną `StatusChip`
   i `reservationStatus`, okazja, Odwołaj / Zadzwoń), Lista oczekujących, Nadchodzące i Archiwum („Oceń wizytę”);
-  wspólne widżety w `features/reservations/booking_widgets.dart`. „Moje” → Zamówienia: „W trakcie” i „Zakończone”,
+  `DateTile`, `relativeVisit` i `reservationStatus` w `features/reservations/booking_widgets.dart`, `StatusChip`
+  i `ButtonPair` w `table_core`. „Moje” → Zamówienia: „W trakcie” i „Zakończone”,
   wiersz z kafelkiem rodzaju (dostawa / odbiór), numerem, kwotą i etapem z ikoną; szkielety zamiast kółka ładowania.
   Szczegóły rezerwacji: kafelek z datą i stan na górze. Ustawienia: przy „Ogólne” i „Motyw” widać bieżący wybór,
   wiersze co najmniej 56 px, nazwy w dwóch liniach zamiast ucinania. Pary przycisków przy dużej czcionce
@@ -131,7 +146,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   tekst i ikony z informacją w `textMuted`.
 - `apps/staff/lib`: `data.dart` (repozytorium i providery), `orders_data.dart`, `login_screen.dart`, `home_screen.dart`,
   `scan_screen.dart`, `schedule_screen.dart`, `settings_screen.dart`, `shell.dart`, `waiter_screens.dart`,
-  `deliveries_data.dart`, `deliveries_screen.dart`
+  `deliveries_data.dart`, `deliveries_screen.dart`, `ui.dart` (kolory stanów i wspólne elementy wyglądu)
   (mobile_scanner). Podpis iOS: `DEVELOPMENT_TEAM` w `ios/Flutter/*.xcconfig`, nie w pbxproj.
 - `apps/panel/lib`: `app` (router, `shell.dart` z górnym i bocznym paskiem, `sections.dart` z grupami zakładek,
   motyw na komputer), `data` (modele, `PanelRepository`, providery), `features` (auth, onboarding, kiosk,

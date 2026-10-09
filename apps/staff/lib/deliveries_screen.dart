@@ -8,14 +8,19 @@ import 'package:url_launcher/url_launcher.dart';
 import 'data.dart';
 import 'deliveries_data.dart';
 import 'courier_location.dart';
+import 'ui.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
-/// Kolor gotówki do pobrania: ciepły, żeby dostawca nie przeoczył kwoty.
-const _cash = Color(0xFFE08A1E);
+/// Kolor gotówki do pobrania: ciepły, żeby dostawca nie przeoczył kwoty (czytelny w obu motywach).
+Color get _cash => StaffColors.pending;
 
-String _two(int n) => n.toString().padLeft(2, '0');
-String _hm(DateTime t) => '${_two(t.hour)}:${_two(t.minute)}';
+/// Etap kursu: słowo, ikona i kolor.
+({String label, AppIconData icon, Color color}) _stage(CourseStage stage) => switch (stage) {
+  CourseStage.preparing => (label: 'W przygotowaniu', icon: AppIcons.cookingPot, color: StaffColors.pending),
+  CourseStage.ready => (label: 'Gotowe do odbioru', icon: AppIcons.shoppingBag, color: AppColors.accent),
+  CourseStage.onTheWay => (label: 'W drodze', icon: AppIcons.moped, color: StaffColors.info),
+};
 
 /// Zakładka „Dostawy” dla stanowiska Dostawca: moje kursy, kolejka i dzisiejsze podsumowanie.
 /// Kurs przydziela baza: kto pierwszy zaczął zmianę (albo najdawniej skończył kurs), ten dostaje pierwszy.
@@ -187,7 +192,7 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
       ),
       body: async.when(
         skipLoadingOnReload: true,
-        loading: () => const LoadingView(),
+        loading: () => const CardsSkeleton(count: 2),
         error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(deliveryBoardProvider(_key))),
         data: (board) {
           if (!board.isCourier) {
@@ -199,7 +204,8 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
           }
           return RefreshIndicator(
             onRefresh: () async => ref.invalidate(deliveryBoardProvider(_key)),
-            child: ListView(
+            child: ContentWidth(
+              child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
               children: [
                 if (board.courses.isEmpty)
@@ -237,6 +243,7 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
                 const SizedBox(height: 14),
                 _TodayCard(board: board),
               ],
+              ),
             ),
           );
         },
@@ -263,9 +270,9 @@ class _WaitingCard extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
         child: Column(
           children: [
-            const _Pulse(),
+            const ExcludeSemantics(child: _Pulse()),
             const SizedBox(height: 16),
-            Text('Czekasz na kurs', style: text.headlineSmall),
+            Semantics(header: true, child: Text('Czekasz na kurs', style: text.headlineSmall)),
             const SizedBox(height: 6),
             Text(
               position == null
@@ -301,13 +308,17 @@ class _PulseState extends State<_Pulse> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    // „Ogranicz ruch” w telefonie: kropka bez pulsowania.
+    final still = MediaQuery.disableAnimationsOf(context);
+    if (still && _controller.isAnimating) _controller.stop();
+    if (!still && !_controller.isAnimating) _controller.repeat();
     return SizedBox(
       width: 64,
       height: 64,
       child: AnimatedBuilder(
         animation: _controller,
         builder: (context, _) {
-          final t = Curves.easeOut.transform(_controller.value);
+          final t = still ? 0.0 : Curves.easeOut.transform(_controller.value);
           return Stack(
             alignment: Alignment.center,
             children: [
@@ -324,7 +335,7 @@ class _PulseState extends State<_Pulse> with SingleTickerProviderStateMixin {
                 height: 44,
                 decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.accent.withValues(alpha: 0.16)),
                 alignment: Alignment.center,
-                child: Glyph(AppIcons.moped, size: 24, color: AppColors.accent),
+                child: Glyph(AppIcons.moped.duotone, size: 24, color: AppColors.accent),
               ),
             ],
           );
@@ -363,11 +374,7 @@ class _CourseCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final c = course;
-    final stageColor = switch (c.stage) {
-      CourseStage.preparing => AppColors.textMuted,
-      CourseStage.ready => AppColors.accent,
-      CourseStage.onTheWay => const Color(0xFF3B82F6),
-    };
+    final stage = _stage(c.stage);
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -375,17 +382,16 @@ class _CourseCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
+            // Numer, etap (słowo z ikoną) i godzina obiecana gościowi. Przy dużej czcionce schodzą niżej.
+            Wrap(
+              spacing: 10,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Text('#${c.number}', style: text.headlineSmall?.copyWith(fontFeatures: _tabular)),
-                const SizedBox(width: 10),
-                Tag(c.stage.label, color: stageColor),
-                const Spacer(),
+                StatusChip(label: stage.label, icon: stage.icon, color: stage.color),
                 if (c.promisedAt != null)
-                  Text(
-                    'na ${_hm(c.promisedAt!)}',
-                    style: text.titleSmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-                  ),
+                  StatusChip(label: 'na ${hm(c.promisedAt!)}', icon: AppIcons.clock, color: AppColors.textMuted),
               ],
             ),
             if (mates.isNotEmpty) ...[
@@ -393,12 +399,12 @@ class _CourseCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF3B82F6).withValues(alpha: 0.12),
+                  color: StaffColors.info.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   children: [
-                    const Glyph(AppIcons.arrowsMerge, size: 18, color: Color(0xFF3B82F6)),
+                    Glyph(AppIcons.arrowsMerge, size: 18, color: StaffColors.info),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -413,8 +419,19 @@ class _CourseCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text(c.address, style: text.titleLarge),
             if (c.note != null) ...[
-              const SizedBox(height: 4),
-              Text(c.note!, style: text.bodyMedium?.copyWith(color: _cash, fontStyle: FontStyle.italic)),
+              const SizedBox(height: 6),
+              // Uwaga gościa: ikona dymku i ciepły kolor, żeby nie zginęła pod adresem.
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Glyph(AppIcons.chatText, size: 15, color: _cash),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(c.note!, style: text.bodyMedium?.copyWith(color: _cash))),
+                ],
+              ),
             ],
             if (c.staffNote != null) ...[
               const SizedBox(height: 4),
@@ -436,26 +453,25 @@ class _CourseCard extends StatelessWidget {
               style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
             ),
             const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
-                    onPressed: onNavigate,
-                    icon: const Glyph(AppIcons.navigation, size: 18),
-                    label: const Text('Nawiguj'),
-                  ),
+            // Przy dużej czcionce przyciski stają jeden pod drugim. Pełny kolor ma tylko główne działanie
+            // na dole karty („Odebrałem” albo „Dostarczone”), nawigacja ma obrys w kolorze akcentu.
+            ButtonPair(
+              first: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 48),
+                  foregroundColor: AppColors.accent,
+                  side: BorderSide(color: AppColors.accent.withValues(alpha: 0.6)),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
-                    onPressed: onCall,
-                    icon: const Glyph(AppIcons.phone, size: 18),
-                    label: const Text('Zadzwoń'),
-                  ),
-                ),
-              ],
+                onPressed: onNavigate,
+                icon: const Glyph(AppIcons.navigation, size: 18),
+                label: const Text('Nawiguj'),
+              ),
+              second: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                onPressed: onCall,
+                icon: const Glyph(AppIcons.phone, size: 18),
+                label: const Text('Zadzwoń'),
+              ),
             ),
             const SizedBox(height: 14),
             _PaymentBox(course: c),
@@ -480,8 +496,7 @@ class _CourseCard extends StatelessWidget {
                           Text(i.name, style: text.bodyMedium),
                           if (i.details != null)
                             Text(i.details!, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
-                          if (i.note != null)
-                            Text(i.note!, style: text.bodySmall?.copyWith(color: _cash, fontStyle: FontStyle.italic)),
+                          if (i.note != null) Text(i.note!, style: text.bodySmall?.copyWith(color: _cash)),
                         ],
                       ),
                     ),
@@ -518,7 +533,12 @@ class _CourseCard extends StatelessWidget {
             ],
             if (onHandOver != null) ...[
               const SizedBox(height: 4),
-              TextButton(onPressed: busy ? null : onHandOver, child: const Text('Oddaj kurs')),
+              TextButton.icon(
+                style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                onPressed: busy ? null : onHandOver,
+                icon: const Glyph(AppIcons.arrowsClockwise, size: 18),
+                label: const Text('Oddaj kurs'),
+              ),
             ],
           ],
         ),
@@ -607,7 +627,7 @@ class _QueueCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Kolejka dostawców', style: text.titleMedium),
+            Semantics(header: true, child: Text('Kolejka dostawców', style: text.titleMedium)),
             const SizedBox(height: 2),
             Text(
               'Kto dłużej czeka, dostaje następny kurs.',
@@ -634,7 +654,9 @@ class _QueueCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    Tag(q.busy ? 'W KURSIE' : 'WOLNY', color: q.busy ? const Color(0xFF3B82F6) : AppColors.accent),
+                    q.busy
+                        ? StatusChip(label: 'W kursie', icon: AppIcons.moped, color: StaffColors.info)
+                        : StatusChip(label: 'Wolny', icon: AppIcons.checkCircle, color: AppColors.accent),
                   ],
                 ),
               ),
@@ -652,26 +674,24 @@ class _TodayCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    Widget stat(String label, String value) => Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(label, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
-          Text(value, style: text.titleLarge?.copyWith(fontFeatures: _tabular)),
+          Expanded(
+            child: StatTile(label: 'Kursy', value: '${board.todayCount}', caption: 'dzisiaj', icon: AppIcons.moped),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: StatTile(
+              label: 'Gotówka',
+              value: Fmt.price(board.todayCashGrosze),
+              caption: 'do rozliczenia',
+              icon: AppIcons.money,
+              color: board.todayCashGrosze > 0 ? _cash : null,
+            ),
+          ),
         ],
-      ),
-    );
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Row(
-          children: [
-            stat('Dziś kursów', '${board.todayCount}'),
-            stat('Gotówka do rozliczenia', Fmt.price(board.todayCashGrosze)),
-          ],
-        ),
       ),
     );
   }
@@ -765,7 +785,7 @@ void showOnCar(DeliveryBoard board, String memberId) {
               final n => '$n pozycji',
             },
             note: course.note,
-            promised: course.promisedAt == null ? null : 'na ${_hm(course.promisedAt!)}',
+            promised: course.promisedAt == null ? null : 'na ${hm(course.promisedAt!)}',
           ),
   );
 }

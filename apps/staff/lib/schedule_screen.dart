@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
 import 'data.dart';
+import 'ui.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 const _weekdays = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'];
@@ -12,14 +13,32 @@ const _months = [
 ];
 const _monthsShort = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
 
-/// Kolor zgłoszenia, które czeka na decyzję przełożonego.
-const _pending = Color(0xFFE08A1E);
+/// Kolor zgłoszenia, które czeka na decyzję przełożonego (czytelny w obu motywach).
+Color get _pending => StaffColors.pending;
 
 /// Kolor wolnego dnia (daje go przełożony w panelu).
-const _off = Color(0xFF3B82F6);
+Color get _off => StaffColors.info;
 
 /// Kolor propozycji przełożonego, na którą czeka moja odpowiedź.
-const _proposed = Color(0xFF8B5CF6);
+Color get _proposed => StaffColors.proposal;
+
+/// Stan dnia w grafiku: słowo, ikona i kolor (nie sam kolor).
+({String label, AppIconData icon, Color color}) _dayStatus(PlannedShift? e, {required bool past, required bool closed}) =>
+    switch (e) {
+      null when past => (label: 'Brak godzin', icon: AppIcons.minus, color: AppColors.textMuted),
+      null when closed => (label: 'Niedostępny', icon: AppIcons.lock, color: AppColors.textMuted),
+      null => (label: 'Nie zgłoszono', icon: AppIcons.calendarPlus, color: AppColors.textMuted),
+      final e when e.accepted => (
+        label: e.changed ? 'Przyjęte ze zmianą' : 'Przyjęte',
+        icon: AppIcons.checkCircle,
+        color: AppColors.accent,
+      ),
+      final e when e.rejected => (label: 'Odrzucone', icon: AppIcons.prohibit, color: AppColors.error),
+      final e when e.off => (label: 'Wolne', icon: AppIcons.sun, color: _off),
+      final e when e.proposed => (label: 'Propozycja: odpowiedz', icon: AppIcons.send, color: _proposed),
+      final e when e.unavailable => (label: 'Nie mogę', icon: AppIcons.userMinus, color: AppColors.textMuted),
+      _ => (label: 'Czeka na decyzję', icon: AppIcons.hourglass, color: _pending),
+    };
 
 const _weekdaysLong = ['pon.', 'wt.', 'śr.', 'czw.', 'pt.', 'sob.', 'niedz.'];
 
@@ -283,68 +302,69 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
           ..invalidate(jobsProvider)
           ..invalidate(schedulePeriodProvider)
           ..invalidate(shiftsProvider),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+        child: ContentWidth(
+          child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
           children: [
-            Row(
-              children: [
-                IconButton(
-                  tooltip: 'Poprzedni okres',
-                  onPressed: () => setState(() => _offset--),
-                  icon: const Glyph(AppIcons.caretLeft, size: 20),
-                ),
-                Expanded(
-                  child: Column(
-                    children: [
-                      Text(_periodLabel(kind, period), style: text.titleLarge?.copyWith(fontFeatures: _tabular)),
-                      Text(
-                        _offset == 0 ? 'Grafik na $unit · teraz' : 'Grafik na $unit',
-                        style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Następny okres',
-                  onPressed: () => setState(() => _offset++),
-                  icon: const Glyph(AppIcons.caretRight, size: 20),
-                ),
-              ],
+            // Okres w pigułce ze strzałkami. Stuknięcie w napis wraca do bieżącego okresu.
+            _PeriodSwitcher(
+              label: _periodLabel(kind, period),
+              caption: _offset == 0 ? 'Grafik na $unit · teraz' : 'Grafik na $unit',
+              onPrevious: () => setState(() => _offset--),
+              onNext: () => setState(() => _offset++),
+              onToday: _offset == 0 ? null : () => setState(() => _offset = 0),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              alignment: WrapAlignment.center,
               children: [
-                _Count(color: AppColors.accent, label: 'Przyjęte', count: accepted),
-                _Count(color: _pending, label: 'Czeka', count: waiting),
-                _Count(color: AppColors.error, label: 'Odrzucone', count: rejected),
-                if (free > 0) _Count(color: _off, label: 'Wolne', count: free),
-                if (proposals > 0) _Count(color: _proposed, label: 'Propozycje', count: proposals),
+                StatusChip(label: 'Przyjęte: $accepted', icon: AppIcons.checkCircle, color: AppColors.accent),
+                StatusChip(label: 'Czeka: $waiting', icon: AppIcons.hourglass, color: _pending),
+                if (rejected > 0)
+                  StatusChip(label: 'Odrzucone: $rejected', icon: AppIcons.prohibit, color: AppColors.error),
+                if (free > 0) StatusChip(label: 'Wolne: $free', icon: AppIcons.sun, color: _off),
+                if (proposals > 0)
+                  StatusChip(label: 'Propozycje: $proposals', icon: AppIcons.send, color: _proposed),
               ],
             ),
             if (deadline != null) ...[
-              const SizedBox(height: 10),
-              Text(
-                closed
-                    ? 'Termin zgłaszania minął (${_deadlineText(deadline)}). Dni bez zgłoszenia: niedostępny.'
-                    : 'Zgłoś dyspozycyjność do ${_deadlineText(deadline)}.',
-                textAlign: TextAlign.center,
-                style: text.bodySmall?.copyWith(color: closed ? AppColors.textMuted : _pending),
+              const SizedBox(height: 12),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Glyph(
+                      closed ? AppIcons.lock : AppIcons.alarm,
+                      size: 16,
+                      color: closed ? AppColors.textMuted : _pending,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      closed
+                          ? 'Termin zgłaszania minął (${_deadlineText(deadline)}). Dni bez zgłoszenia: niedostępny.'
+                          : 'Zgłoś dyspozycyjność do ${_deadlineText(deadline)}.',
+                      style: text.bodyMedium?.copyWith(color: closed ? AppColors.textMuted : _pending),
+                    ),
+                  ),
+                ],
               ),
             ],
             if (open.isNotEmpty && jobs.isNotEmpty) ...[
               const SizedBox(height: 14),
               FilledButton.icon(
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
                 onPressed: () => _whole(jobs, open, byDay),
                 icon: const Glyph(AppIcons.calendarPlus, size: 20),
                 label: Text(submitLabel),
               ),
             ],
-            const SizedBox(height: 14),
+            const SizedBox(height: 8),
             if (async.isLoading && !async.hasValue)
-              const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
+              const _DaysSkeleton()
             else
               for (final d in days) ...[
                 // Na początku tygodnia: moja uwaga na ten tydzień dla przełożonego.
@@ -364,40 +384,89 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                   onTap: () => _open(jobs, d, byDay[d], closed: closed),
                 ),
               ],
-            const SizedBox(height: 28),
+            const SizedBox(height: 12),
             HoursHistory(shifts: shifts),
           ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _Count extends StatelessWidget {
-  const _Count({required this.color, required this.label, required this.count});
+/// Okres grafiku w pigułce: strzałki po bokach (48 dp), napis w środku wraca do bieżącego okresu.
+class _PeriodSwitcher extends StatelessWidget {
+  const _PeriodSwitcher({
+    required this.label,
+    required this.caption,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onToday,
+  });
 
-  final Color color;
   final String label;
-  final int count;
+  final String caption;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+
+  /// Null: już bieżący okres.
+  final VoidCallback? onToday;
 
   @override
   Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.ring),
       ),
-      child: Text(
-        '$label: $count',
-        style: Theme.of(context).textTheme.labelLarge?.copyWith(color: color, fontFeatures: _tabular),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Poprzedni okres',
+            onPressed: onPrevious,
+            icon: const Glyph(AppIcons.caretLeft, size: 20),
+          ),
+          Expanded(
+            child: Semantics(
+              button: onToday != null,
+              hint: onToday == null ? null : 'Wróć do bieżącego okresu',
+              child: InkWell(
+                onTap: onToday,
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    children: [
+                      Text(
+                        label,
+                        textAlign: TextAlign.center,
+                        style: text.titleLarge?.copyWith(fontFeatures: _tabular),
+                      ),
+                      Text(
+                        onToday == null ? caption : '$caption · wróć do teraz',
+                        textAlign: TextAlign.center,
+                        style: text.bodySmall?.copyWith(color: onToday == null ? AppColors.textMuted : AppColors.accent),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Następny okres',
+            onPressed: onNext,
+            icon: const Glyph(AppIcons.caretRight, size: 20),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// Jeden dzień okresu: dzień tygodnia i data, godziny i stan zgłoszenia.
-/// Uwaga na tydzień: dotknięcie dodaje albo zmienia.
+/// Uwaga na tydzień: dotknięcie dodaje albo zmienia. Cały wiersz ma co najmniej 48 dp.
 class _WeekNoteRow extends StatelessWidget {
   const _WeekNoteRow({required this.week, required this.note, required this.onTap});
 
@@ -409,32 +478,58 @@ class _WeekNoteRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final end = week.add(const Duration(days: 6));
+    final range = '${week.day}.${_two(week.month)}–${end.day}.${_two(end.month)}';
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            children: [
-              Text(
-                'Tydzień ${week.day}.${_two(week.month)}–${end.day}.${_two(end.month)}',
-                style: text.labelLarge?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+      padding: const EdgeInsets.only(top: 14, bottom: 6),
+      child: Semantics(
+        button: onTap != null,
+        label: 'Tydzień $range. ${note == null ? 'Dodaj uwagę dla przełożonego' : 'Twoja uwaga: $note. Zmień'}',
+        excludeSemantics: true,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+              // Uwaga pod nazwą tygodnia, żeby przy dużej czcionce nie ucinała się obok daty.
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('Tydzień $range', style: text.titleSmall?.copyWith(fontFeatures: _tabular)),
+                      ),
+                      Glyph(note == null ? AppIcons.plus : AppIcons.pencil, size: 15, color: AppColors.accent),
+                      const SizedBox(width: 6),
+                      Text(note == null ? 'Dodaj uwagę' : 'Zmień', style: text.bodyMedium?.copyWith(color: AppColors.accent)),
+                    ],
+                  ),
+                  if (note != null) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Glyph(AppIcons.chatText, size: 15, color: _pending),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            note!,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.bodyMedium?.copyWith(color: _pending),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  note ?? 'Dodaj uwagę na tydzień',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.end,
-                  style: text.bodySmall?.copyWith(color: note == null ? AppColors.accent : _pending),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Glyph(note == null ? AppIcons.plus : AppIcons.chatText, size: 14, color: AppColors.textMuted),
-            ],
+            ),
           ),
         ),
       ),
@@ -442,6 +537,8 @@ class _WeekNoteRow extends StatelessWidget {
   }
 }
 
+/// Jeden dzień okresu: kafelek z dniem, godziny i stan zgłoszenia słowem z ikoną.
+/// Minione dni są przygaszone kolorem tekstu, nie przezroczystością (kontrast zostaje czytelny).
 class _DayRow extends StatelessWidget {
   const _DayRow({
     required this.day,
@@ -465,35 +562,46 @@ class _DayRow extends StatelessWidget {
     final e = entry;
     final past = day.isBefore(today);
     final isToday = day == today;
-    final (Color color, String status) = switch (e) {
-      null => (AppColors.textMuted, past ? 'Brak godzin' : (closed ? 'Niedostępny' : 'Nie zgłoszono')),
-      final e when e.accepted => (AppColors.accent, e.changed ? 'Przyjęte ze zmianą' : 'Przyjęte'),
-      final e when e.rejected => (AppColors.error, 'Odrzucone'),
-      final e when e.off => (_off, 'Wolne'),
-      final e when e.proposed => (_proposed, 'Propozycja przełożonego: odpowiedz'),
-      final e when e.unavailable => (AppColors.textMuted, 'Nie mogę'),
-      _ => (_pending, 'Czeka na decyzję'),
-    };
-    return Opacity(
-      opacity: past ? 0.55 : 1,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 8),
+    final status = _dayStatus(e, past: past, closed: closed);
+    final hours = e != null && !e.off && !e.unavailable
+        ? '${e.starts}–${e.ends}${e.positionName == null ? '' : ' · ${e.positionName}'}'
+        : null;
+    final tappable = !past || e != null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Semantics(
+        button: tappable,
+        label: [
+          Fmt.capitalize(Fmt.dayLong(day)),
+          if (isToday) 'dziś',
+          ?hours,
+          status.label,
+          if (e?.answer != null) 'przełożony: ${e!.answer}',
+        ].join(', '),
+        excludeSemantics: true,
         child: Material(
           color: AppColors.surface,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           child: InkWell(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
             onTap: onTap,
             child: Container(
-              padding: const EdgeInsets.fromLTRB(10, 8, 14, 8),
+              constraints: const BoxConstraints(minHeight: 64),
+              padding: const EdgeInsets.fromLTRB(10, 10, 12, 10),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: isToday ? AppColors.accent : AppColors.ring, width: isToday ? 1.5 : 1),
               ),
               child: Row(
                 children: [
-                  SizedBox(
-                    width: 44,
+                  // Kafelek dnia: dzień tygodnia i numer, dziś w kolorze akcentu.
+                  Container(
+                    width: 48,
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isToday ? AppColors.accentTint : AppColors.surfaceRaised,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     child: Column(
                       children: [
                         Text(
@@ -502,49 +610,87 @@ class _DayRow extends StatelessWidget {
                         ),
                         Text(
                           '${day.day}',
-                          style: text.titleLarge?.copyWith(fontFeatures: _tabular, fontWeight: FontWeight.w600),
+                          style: text.titleLarge?.copyWith(
+                            fontFeatures: _tabular,
+                            fontWeight: FontWeight.w600,
+                            color: past ? AppColors.textMuted : AppColors.text,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  Container(
-                    width: 4,
-                    height: 34,
-                    margin: const EdgeInsets.symmetric(horizontal: 10),
-                    decoration: BoxDecoration(
-                      color: e == null ? AppColors.ring : color,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (e != null && !e.off && !e.unavailable)
+                        if (hours != null) ...[
                           Text(
-                            '${e.starts}–${e.ends}${e.positionName == null ? '' : ' · ${e.positionName}'}',
+                            hours,
                             style: text.titleMedium?.copyWith(
                               fontFeatures: _tabular,
-                              decoration: e.rejected ? TextDecoration.lineThrough : null,
+                              color: past || e!.rejected ? AppColors.textMuted : AppColors.text,
+                              decoration: e!.rejected ? TextDecoration.lineThrough : null,
                             ),
                           ),
-                        Text(status, style: text.bodySmall?.copyWith(color: color)),
-                        if (e?.answer != null)
+                          const SizedBox(height: 4),
+                        ],
+                        StatusChip(label: status.label, icon: status.icon, color: status.color),
+                        if (e?.answer != null) ...[
+                          const SizedBox(height: 4),
                           Text(
                             'Przełożony: ${e!.answer}',
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: text.bodySmall?.copyWith(color: AppColors.textMuted),
                           ),
+                        ],
                       ],
                     ),
                   ),
-                  if (!past) Glyph(AppIcons.caretRight, size: 16, color: AppColors.textDisabled),
+                  if (tappable) Glyph(AppIcons.caretRight, size: 16, color: AppColors.textMuted),
                 ],
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Szkielet listy dni, zanim grafik dojdzie.
+class _DaysSkeleton extends StatelessWidget {
+  const _DaysSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: Column(
+        children: [
+          for (var i = 0; i < 5; i++)
+            Container(
+              height: 64,
+              margin: const EdgeInsets.only(top: 8),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.ring),
+              ),
+              child: const Row(
+                children: [
+                  SkeletonBox(width: 48, height: 44, radius: 12),
+                  SizedBox(width: 12),
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [SkeletonBox(width: 110, height: 14), SizedBox(height: 8), SkeletonBox(width: 80, height: 12)],
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -755,8 +901,21 @@ class _HoursHistoryState extends State<HoursHistory> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Moje godziny', style: text.titleMedium),
-        const SizedBox(height: 4),
+        SectionHeader(
+          'Moje godziny',
+          trailing: Semantics(
+            label: 'Razem ${hoursSpoken(total)}',
+            excludeSemantics: true,
+            child: Text('${_hoursText(total)} h', style: text.titleLarge?.copyWith(fontFeatures: _tabular)),
+          ),
+        ),
+        Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
         Row(
           children: [
             IconButton(
@@ -776,21 +935,18 @@ class _HoursHistoryState extends State<HoursHistory> {
               onPressed: _back > 0 ? () => setState(() => _back--) : null,
               icon: const Glyph(AppIcons.caretRight, size: 18),
             ),
-            const SizedBox(width: 8),
-            Text(
-              '${_hoursText(total)} h',
-              style: text.titleSmall?.copyWith(fontFeatures: _tabular),
-            ),
           ],
         ),
-        const SizedBox(height: 4),
         if (shifts.isEmpty)
-          Text('Brak zmian w tym miesiącu.', style: text.bodyMedium?.copyWith(color: AppColors.textMuted))
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+            child: Text('Brak zmian w tym miesiącu.', style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
+          )
         else
           for (final s in shifts)
             Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.ring))),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+              decoration: BoxDecoration(border: Border(top: BorderSide(color: AppColors.ring))),
               child: Row(
                 children: [
                   Expanded(
@@ -809,6 +965,10 @@ class _HoursHistoryState extends State<HoursHistory> {
                 ],
               ),
             ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -845,7 +1005,7 @@ class _EntryCard extends StatelessWidget {
         ? (_proposed, AppIcons.send, 'Propozycja przełożonego')
         : e.unavailable
         ? (AppColors.textMuted, AppIcons.userMinus, 'Nie mogę pracować')
-        : (_pending, AppIcons.clock, 'Czeka na decyzję przełożonego');
+        : (_pending, AppIcons.hourglass, 'Czeka na decyzję przełożonego');
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -886,46 +1046,31 @@ class _EntryCard extends StatelessWidget {
             ],
             if (onAccept != null || onDecline != null) ...[
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48), foregroundColor: AppColors.error),
-                      onPressed: onDecline,
-                      child: const Text('Nie mogę'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
-                      onPressed: onAccept,
-                      child: const Text('Przyjmuję'),
-                    ),
-                  ),
-                ],
+              ButtonPair(
+                first: OutlinedButton(
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48), foregroundColor: AppColors.error),
+                  onPressed: onDecline,
+                  child: const Text('Nie mogę'),
+                ),
+                second: FilledButton(
+                  style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
+                  onPressed: onAccept,
+                  child: const Text('Przyjmuję'),
+                ),
               ),
             ] else if (onEdit != null || onDelete != null) ...[
               const SizedBox(height: 12),
-              // Przyciski w motywie Table zajmują całą szerokość, więc w wierszu dostają Expanded.
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
-                      onPressed: onEdit,
-                      child: Text(e.unavailable ? 'Mogę jednak' : 'Zmień'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44), foregroundColor: AppColors.error),
-                      onPressed: onDelete,
-                      child: const Text('Wycofaj'),
-                    ),
-                  ),
-                ],
+              ButtonPair(
+                first: OutlinedButton(
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                  onPressed: onEdit,
+                  child: Text(e.unavailable ? 'Mogę jednak' : 'Zmień'),
+                ),
+                second: OutlinedButton(
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48), foregroundColor: AppColors.error),
+                  onPressed: onDelete,
+                  child: const Text('Wycofaj'),
+                ),
               ),
             ] else if (e.pending) ...[
               const SizedBox(height: 6),
@@ -1076,7 +1221,11 @@ class _HoursSheetState extends ConsumerState<HoursSheet> {
             const SizedBox(height: 8),
             FilledButton(onPressed: _busy ? null : _send, child: const Text('Zgłoś')),
             const SizedBox(height: 4),
-            TextButton(onPressed: _busy ? null : _unavailable, child: const Text('Nie mogę w tym dniu')),
+            TextButton(
+              style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+              onPressed: _busy ? null : _unavailable,
+              child: const Text('Nie mogę w tym dniu'),
+            ),
           ],
         ),
       ),

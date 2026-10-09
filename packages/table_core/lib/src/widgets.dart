@@ -286,6 +286,70 @@ class ArrowBadge extends StatelessWidget {
   }
 }
 
+/// Stan (rezerwacji, zamówienia, kursu, dnia w grafiku): ikona i słowo, nie sam kolor.
+class StatusChip extends StatelessWidget {
+  const StatusChip({super.key, required this.label, required this.icon, required this.color});
+
+  final String label;
+  final AppIconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(7, 4, 9, 4),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Glyph(icon, size: 13, color: color),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Dwa przyciski obok siebie, a przy dużej czcionce systemu jeden pod drugim,
+/// żeby napisy nie łamały się w środku słowa.
+class ButtonPair extends StatelessWidget {
+  const ButtonPair({super.key, required this.first, required this.second});
+
+  final Widget first;
+  final Widget second;
+
+  /// Czcionka systemu na tyle duża, że dwa przyciski w rzędzie się nie mieszczą.
+  static bool stacked(BuildContext context) => MediaQuery.textScalerOf(context).scale(16) > 20;
+
+  @override
+  Widget build(BuildContext context) {
+    if (stacked(context)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [first, const SizedBox(height: 8), second],
+      );
+    }
+    return Row(
+      children: [
+        Expanded(child: first),
+        const SizedBox(width: 10),
+        Expanded(child: second),
+      ],
+    );
+  }
+}
+
 class SectionTitle extends StatelessWidget {
   const SectionTitle(this.title, {super.key, this.trailing});
 

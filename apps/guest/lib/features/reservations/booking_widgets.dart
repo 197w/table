@@ -79,41 +79,6 @@ class DateTile extends StatelessWidget {
   }
 }
 
-/// Stan rezerwacji albo zamówienia: ikona i słowo, nie sam kolor.
-class StatusChip extends StatelessWidget {
-  const StatusChip({super.key, required this.label, required this.icon, required this.color});
-
-  final String label;
-  final AppIconData icon;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(7, 4, 9, 4),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Glyph(icon, size: 13, color: color),
-          const SizedBox(width: 5),
-          Flexible(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontFamily: AppTheme.fontFamily,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: color,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Ikona, kolor i napis stanu rezerwacji (nadchodząca, przy stoliku, minęła, odwołana, nieobecność).
 ({String label, AppIconData icon, Color color}) reservationStatus(ReservationStatus status, {required bool upcoming}) =>
     switch (status) {
