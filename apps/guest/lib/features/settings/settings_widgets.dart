@@ -124,7 +124,8 @@ class SettingsRow extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 56),
         child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
-        child: Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) => Row(
           children: [
             _IconBadge(icon: icon, destructive: destructive),
             const SizedBox(width: 12),
@@ -140,8 +141,10 @@ class SettingsRow extends StatelessWidget {
                 ),
               ),
             ),
+            // Wartość zajmuje tyle, ile potrzebuje (najwyżej 45% wiersza), więc strzałki stoją w jednej linii.
             if (value != null) ...[
-              Flexible(
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.45),
                 child: Text(
                   value!,
                   maxLines: 1,
@@ -169,6 +172,7 @@ class SettingsRow extends StatelessWidget {
                 color: AppColors.textMuted,
               ),
           ],
+          ),
         ),
         ),
       ),
