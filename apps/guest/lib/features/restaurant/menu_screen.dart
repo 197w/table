@@ -7,8 +7,8 @@ import '../../data/providers.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
-/// Całe menu lokalu na osobnym ekranie. U góry przypięte nazwy działów:
-/// stuknięcie przewija do działu, żeby na telefonie nie przewijać wszystkiego ręcznie.
+/// Całe menu lokalu na osobnym ekranie. U góry przypięte nazwy działów: stuknięcie przewija do działu,
+/// a przy przewijaniu podświetla się dział, który właśnie widać.
 class RestaurantMenuScreen extends ConsumerStatefulWidget {
   const RestaurantMenuScreen({super.key, required this.restaurantId});
 
@@ -20,6 +20,14 @@ class RestaurantMenuScreen extends ConsumerStatefulWidget {
 
 class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
   final _keys = <String, GlobalKey>{};
+  final _chipKeys = <String, GlobalKey>{};
+  final _scrollKey = GlobalKey();
+
+  /// Dział widoczny u góry listy (podświetlony w pasku działów).
+  String? _current;
+
+  /// Po stuknięciu działu przewijanie samo ustawia podświetlenie, bez przeskakiwania po drodze.
+  bool _jumping = false;
 
   @override
   void initState() {
@@ -31,10 +39,39 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
     });
   }
 
-  void _jump(String sectionId) {
+  Duration get _duration => MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 300);
+
+  Future<void> _jump(String sectionId) async {
     final target = _keys[sectionId]?.currentContext;
     if (target == null) return;
-    Scrollable.ensureVisible(target, duration: const Duration(milliseconds: 300), curve: AppMotion.easeOut);
+    setState(() => _current = sectionId);
+    _showChip(sectionId);
+    _jumping = true;
+    await Scrollable.ensureVisible(target, duration: _duration, curve: AppMotion.easeOut);
+    _jumping = false;
+  }
+
+  void _showChip(String sectionId) {
+    final chip = _chipKeys[sectionId]?.currentContext;
+    if (chip != null) Scrollable.ensureVisible(chip, duration: _duration, alignment: 0.3);
+  }
+
+  /// Który dział jest teraz u góry listy: ostatni, którego nagłówek minął górną krawędź.
+  void _spy(List<MenuSection> sections) {
+    if (_jumping) return;
+    final list = _scrollKey.currentContext?.findRenderObject() as RenderBox?;
+    if (list == null) return;
+    final top = list.localToGlobal(Offset.zero).dy + 24;
+    String? current = sections.firstOrNull?.id;
+    for (final s in sections) {
+      final box = _keys[s.id]?.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null) continue;
+      if (box.localToGlobal(Offset.zero).dy <= top) current = s.id;
+    }
+    if (current != _current) {
+      setState(() => _current = current);
+      if (current != null) _showChip(current);
+    }
   }
 
   @override
@@ -61,16 +98,22 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (sections.length > 1)
+                // Pasek działów: pole dotyku 48 dp, rośnie z czcionką systemu.
                 SizedBox(
-                  height: 56,
+                  height: (MediaQuery.textScalerOf(context).scale(14) * 1.3 + 22).clamp(48.0, 120.0) + 14,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
                     children: [
                       for (final s in sections)
                         Padding(
+                          key: _chipKeys.putIfAbsent(s.id, GlobalKey.new),
                           padding: const EdgeInsets.only(right: 8),
-                          child: ActionChip(label: Text(s.name), onPressed: () => _jump(s.id)),
+                          child: _SectionChip(
+                            label: s.name,
+                            selected: (_current ?? sections.first.id) == s.id,
+                            onTap: () => _jump(s.id),
+                          ),
                         ),
                     ],
                   ),
@@ -78,21 +121,28 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: () => ref.refresh(restaurantProvider(widget.restaurantId).future),
-                  child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
-                    child: SafeArea(
-                      top: false,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          for (final s in sections)
-                            Padding(
-                              key: _keys.putIfAbsent(s.id, GlobalKey.new),
-                              padding: const EdgeInsets.only(bottom: 16),
-                              child: MenuSectionCard(section: s),
-                            ),
-                        ],
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (_) {
+                      _spy(sections);
+                      return false;
+                    },
+                    child: SingleChildScrollView(
+                      key: _scrollKey,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+                      child: SafeArea(
+                        top: false,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final s in sections)
+                              Padding(
+                                key: _keys.putIfAbsent(s.id, GlobalKey.new),
+                                padding: const EdgeInsets.only(bottom: 16),
+                                child: MenuSectionCard(section: s),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -101,6 +151,52 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Dział menu w pasku u góry: wybrany w kolorze akcentu (i z grubszym obrysem, nie tylko kolorem).
+class _SectionChip extends StatelessWidget {
+  const _SectionChip({required this.label, required this.selected, required this.onTap});
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: 'Dział menu: $label',
+      excludeSemantics: true,
+      child: PressScale(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 160),
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.accentTint : AppColors.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: selected ? AppColors.accent : AppColors.ring, width: selected ? 1.5 : 1),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontFamily: AppTheme.fontFamily,
+                  fontSize: 14,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: selected ? AppColors.accent : AppColors.text,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -230,9 +326,10 @@ class MenuItemTile extends StatelessWidget {
           if (item.allergens.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 4),
+              // Przygaszony, ale z kontrastem co najmniej 4,5:1: alergeny to ważna informacja.
               child: Text(
                 'Alergeny: ${item.allergens.join(', ')}',
-                style: text.bodySmall?.copyWith(color: AppColors.textDisabled),
+                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
               ),
             ),
         ],
@@ -247,34 +344,39 @@ class MenuItemTile extends StatelessWidget {
         Expanded(child: details),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 14, 0, 12),
-          child: GestureDetector(
-            onTap: () => showDialog<void>(
-              context: context,
-              builder: (_) => Dialog(
-                clipBehavior: Clip.antiAlias,
-                insetPadding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    InteractiveViewer(child: Image.network(photo, fit: BoxFit.contain)),
-                    Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Text(item.name, style: text.titleMedium),
-                    ),
-                  ],
+          child: Semantics(
+            button: true,
+            label: 'Powiększ zdjęcie: ${item.name}',
+            excludeSemantics: true,
+            child: GestureDetector(
+              onTap: () => showDialog<void>(
+                context: context,
+                builder: (_) => Dialog(
+                  clipBehavior: Clip.antiAlias,
+                  insetPadding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      InteractiveViewer(child: Image.network(photo, fit: BoxFit.contain)),
+                      Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Text(item.name, style: text.titleMedium),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                photo,
-                width: 88,
-                height: 88,
-                fit: BoxFit.cover,
-                cacheWidth: 264,
-                errorBuilder: (_, _, _) => const SizedBox(width: 88, height: 88),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  photo,
+                  width: 88,
+                  height: 88,
+                  fit: BoxFit.cover,
+                  cacheWidth: 264,
+                  errorBuilder: (_, _, _) => const SizedBox(width: 88, height: 88),
+                ),
               ),
             ),
           ),

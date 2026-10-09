@@ -428,6 +428,36 @@ class RestaurantDetail {
     return slots;
   }
 
+  /// Czy lokal jest teraz otwarty, z napisem dla gościa: „Otwarte do 22:00”, „Zamknięte · otwiera jutro o 12:00”.
+  /// Null: lokal nie podał godzin.
+  ({bool open, String label})? openStatusAt(DateTime now) {
+    if (hours.isEmpty) return null;
+    int minutes(String hm) {
+      final p = hm.split(':');
+      return int.parse(p[0]) * 60 + int.parse(p[1]);
+    }
+
+    String closes(String hm) => hm == '24:00' ? 'północy' : hm;
+    final today = hoursFor(now);
+    final nowMin = now.hour * 60 + now.minute;
+    if (today != null) {
+      if (nowMin >= minutes(today.opens) && nowMin < minutes(today.closes)) {
+        return (open: true, label: 'Otwarte do ${closes(today.closes)}');
+      }
+      if (nowMin < minutes(today.opens)) return (open: false, label: 'Zamknięte · otwiera o ${today.opens}');
+    }
+    const days = ['w poniedziałek', 'we wtorek', 'w środę', 'w czwartek', 'w piątek', 'w sobotę', 'w niedzielę'];
+    for (var d = 1; d <= 7; d++) {
+      final day = DateTime(now.year, now.month, now.day + d);
+      final h = hoursFor(day);
+      if (h != null) {
+        final when = d == 1 ? 'jutro' : days[day.weekday - 1];
+        return (open: false, label: 'Zamknięte · otwiera $when o ${h.opens}');
+      }
+    }
+    return (open: false, label: 'Zamknięte');
+  }
+
   OpeningHours? hoursFor(DateTime day) {
     for (final h in hours) {
       if (h.weekday == day.weekday) return h;

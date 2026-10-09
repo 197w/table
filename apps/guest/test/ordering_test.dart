@@ -146,6 +146,27 @@ void main() {
     });
   });
 
+  test('strona lokalu: czy teraz otwarte i kiedy otwiera', () {
+    RestaurantDetail r(List<Map<String, Object>> hours) => RestaurantDetail.fromJson({
+      'id': 'r1', 'name': 'REVE', 'cuisine': 'wloska', 'price_level': 2, 'address': 'a', 'city': 'b', 'phone': '1',
+      'plan': 'pro', 'opening_hours': hours,
+    }, Rating.empty);
+    // Wtorek–niedziela 12–22, w piątek do północy; poniedziałek zamknięte.
+    final restaurant = r([
+      for (var d = 2; d <= 7; d++) {'weekday': d, 'opens': '12:00:00', 'closes': d == 5 ? '24:00:00' : '22:00:00'},
+    ]);
+    // 8.10.2026 to czwartek.
+    expect(restaurant.openStatusAt(DateTime(2026, 10, 8, 13))!.label, 'Otwarte do 22:00');
+    expect(restaurant.openStatusAt(DateTime(2026, 10, 8, 10))!.label, 'Zamknięte · otwiera o 12:00');
+    expect(restaurant.openStatusAt(DateTime(2026, 10, 8, 23))!.label, 'Zamknięte · otwiera jutro o 12:00');
+    expect(restaurant.openStatusAt(DateTime(2026, 10, 9, 23, 30))!.label, 'Otwarte do północy');
+    // Niedziela wieczorem: w poniedziałek zamknięte, więc otwiera we wtorek.
+    final sunday = restaurant.openStatusAt(DateTime(2026, 10, 11, 22, 30))!;
+    expect(sunday.open, isFalse);
+    expect(sunday.label, 'Zamknięte · otwiera we wtorek o 12:00');
+    expect(r(const []).openStatusAt(DateTime(2026, 10, 8, 13)), isNull);
+  });
+
   test('lista oczekujących: godziny co pół godziny i propozycja lokalu', () {
     expect(halfHours('12:15', '14:00'), ['12:30', '13:00', '13:30', '14:00']);
     expect(halfHours('22:00', '00:00'), ['22:00', '22:30', '23:00', '23:30', '24:00']);

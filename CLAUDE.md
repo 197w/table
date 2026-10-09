@@ -113,6 +113,13 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   w rzędzie 48), karta czytana jako jedno zdanie (`restaurantSemantics`), bez rezerwacji w aplikacji ikona telefonu
   (nie tylko szary kolor), rzędy rosną z czcionką systemu, nazwy kuchni bez ucinania, „Ogranicz ruch” wyłącza
   animacje, szkielety kart przy ładowaniu, zdjęcia dekodowane w rozmiarze karty (`cacheWidth`), tablet: dwie kolumny.
+  Strona lokalu (`features/restaurant/restaurant_screen.dart`, w tym samym stylu): zdjęcie na całą szerokość chowa się
+  przy przewijaniu w pasek z nazwą (`SliverAppBar`, przyciemnienie u góry pod przycisk „Wróć”), pod nim logo, nazwa,
+  ocena, „Otwarte do 22:00” / „Zamknięte · otwiera jutro o 12:00” (`RestaurantDetail.openStatusAt`), adres do mapy,
+  szybkie akcje Menu / Zadzwoń / Mapa / Opinie, cechy (rezerwacja, dostawa z opłatą, na wynos, zadatek), opis z „Pokaż
+  więcej” tylko gdy się nie mieści, pasek dań (najpierw ze zdjęciem), oceny z dużą liczbą, godziny z „DZIŚ”, trzy
+  opinie i „Pokaż wszystkie”. Na dole jedno główne działanie „Zarezerwuj stolik” (Free: „Zadzwoń”), obok „Zamów”;
+  przy dużej czcionce jeden pod drugim. Menu: pasek działów podświetla dział widoczny u góry listy.
 - `apps/staff/lib`: `data.dart` (repozytorium i providery), `orders_data.dart`, `login_screen.dart`, `home_screen.dart`,
   `scan_screen.dart`, `schedule_screen.dart`, `settings_screen.dart`, `shell.dart`, `waiter_screens.dart`,
   `deliveries_data.dart`, `deliveries_screen.dart`
