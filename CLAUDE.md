@@ -410,15 +410,20 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   lokalizacji”. Bez wymogu pozycja tylko w trakcie kursu (jak dotąd, ale też na mapie panelu). Panel: `panel_courier_map`
   (dostawcy z pozycją, kolorem i pojazdem, dostawy w toku z celem, świeże trasy) odświeżany co 10 s; cele dostaw to
   współrzędne adresu (`orders.delivery_lat/lng`, `delivery_geo`: google, osm, none; zmiana adresu je kasuje), trasy co minutę.
+  Mapa w stylu Table (`features/deliveries/map_style.dart`, `tableMapStyle`): kafelki wektorowe OpenFreeMap
+  (schemat OpenMapTiles, bez kluczy i limitów, adres z TileJSON `tiles.openfreemap.org/planet`), `vector_map_tiles`
+  9.0.0-beta.13 i `vector_tile_renderer`. Rysujemy tylko to, czego potrzebuje dostawca: drogi dla aut i skuterów
+  (bez ścieżek, dróg rowerowych, chodników, torów i promów; dojazdowe dopiero z bliska), budynki, wodę, zieleń,
+  nazwy ulic, numery domów i osiedla. Bez punktów usług, placów zabaw (landuse), przystanków i granic; pilnuje
+  tego test `courier_map_test.dart`. Kolory jak panel (ciemny i jasny), napisy czcionką Geist. W rogu
+  „© OpenFreeMap © OpenMapTiles © OpenStreetMap” i „Trasy: Google Maps” (albo OSRM).
   Funkcja Edge `maps` (`supabase/functions/maps`, z tokenem konta panelu; uprawnienia sprawdza `panel_geocode_input`,
-  `panel_route_input`, kafelki tylko z `orders`): `tiles` (sesja Google Map Tiles, ciemny styl w ciemnym motywie),
-  `geocode` (Geocoding API, raz na zamówienie), `route` (Routes API z korkami, tylko linia, czas i odległość, bez opisu
-  krok po kroku, bo w EOG nie wolno go pokazywać przy mapie; pamięć `courier_routes` 4 min albo 400 m ruchu).
-  Klucze Google w sekretach funkcji: `GOOGLE_MAPS_TILES_KEY` (ograniczony do Map Tiles API, trafia do panelu)
-  i `GOOGLE_MAPS_SERVER_KEY` (Routes i Geocoding, tylko w Supabase). Bez kluczy tymczasowo OpenStreetMap,
-  Nominatim i OSRM (podpis „© OpenStreetMap · trasy: OSRM”). Z Google w rogu mapy „Google Maps” i podpis danych
-  z `tile/v1/viewport`. Darmowe limity Google są na całe konto Table: kafelki 100 000, trasy z korkami 5 000,
-  adresy 10 000 miesięcznie.
+  `panel_route_input`): `geocode` (Google Geocoding API, bez klucza Nominatim, a przy odmowie Photon; błąd usługi
+  nie zapisuje „nie znaleziono”, panel ponawia po 2 minutach) i `route` (Routes API z korkami, tylko linia, czas
+  i odległość, bez opisu krok po kroku, bo w EOG nie wolno go pokazywać przy mapie; pamięć `courier_routes`
+  4 min albo 400 m ruchu; bez klucza OSRM). Klucz Google w sekrecie funkcji `GOOGLE_MAPS_SERVER_KEY` (Routes
+  i Geocoding, tylko w Supabase). Kafelki Google (Map Tiles API) nie są potrzebne. Darmowe limity Google są na
+  całe konto Table: trasy z korkami 5 000, adresy 10 000 miesięcznie.
   Dostawca na mapie (0053): gdy kurs jest w drodze,
   Table for employees wysyła pozycję (`courier_location.dart`, co ~25 m, najwyżej co 15 s, w tle z powiadomieniem
   „Kurs w drodze”, `staff_courier_position`), gość widzi mapę w szczegółach zamówienia (`courier_map.dart`,

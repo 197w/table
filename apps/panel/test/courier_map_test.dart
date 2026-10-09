@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:table_panel/data/courier_map.dart';
+import 'package:table_panel/features/deliveries/map_style.dart';
+import 'package:vector_tile_renderer/vector_tile_renderer.dart' as vtr;
 
 void main() {
   test('linia trasy z zapisu Google i OSRM', () {
@@ -51,13 +53,28 @@ void main() {
     expect(map.ordersOf('m1').single.number, 12);
   });
 
-  test('kafelki: Google z sesją albo OpenStreetMap', () {
-    expect(const MapTiles.osm().google, isFalse);
-    expect(const MapTiles.osm().urlTemplate, contains('openstreetmap'));
-    final g = MapTiles.fromJson({'provider': 'google', 'session': 's', 'key': 'k', 'expiry': '4102444800'});
-    expect(g.google, isTrue);
-    expect(g.urlTemplate, 'https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=s&key=k');
-    expect(g.expired(DateTime(2026, 10, 9)), isFalse);
-    expect(g.expired(DateTime(2101, 1, 1)), isTrue);
+  test('mapa Table: tylko to, czego potrzebuje dostawca', () {
+    for (final dark in [true, false]) {
+      final style = tableMapStyle(dark: dark);
+      final layers = (style['layers'] as List).cast<Map<String, dynamic>>();
+      final sourceLayers = {for (final l in layers) l['source-layer']};
+      // Bez punktów usług, placów zabaw (landuse), przystanków, granic i lotnisk.
+      for (final hidden in ['poi', 'landuse', 'boundary', 'aeroway', 'aerodrome_label', 'mountain_peak']) {
+        expect(sourceLayers.contains(hidden), isFalse, reason: hidden);
+      }
+      // Drogi tylko dla aut i skuterów: bez ścieżek (w tym rowerowych), torów i promów.
+      final roads = layers.where((l) => l['source-layer'] == 'transportation').toList();
+      expect(roads, isNotEmpty);
+      for (final r in roads) {
+        final text = r['filter'].toString();
+        for (final hidden in ['path', 'track', 'rail', 'ferry', 'cycleway']) {
+          expect(text.contains(hidden), isFalse, reason: '${r['id']}: $hidden');
+        }
+      }
+      expect(sourceLayers, containsAll(['housenumber', 'transportation_name', 'building', 'water']));
+      // Styl czyta się bez błędów i używa jednego źródła kafelków.
+      final theme = vtr.ThemeReader().read(style);
+      expect(theme.tileSources, {mapTileSource});
+    }
   });
 }

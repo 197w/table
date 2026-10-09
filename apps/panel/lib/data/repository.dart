@@ -724,10 +724,6 @@ class PanelRepository {
     ),
   );
 
-  /// Sesja kafelków mapy: Google (z kluczem tylko do Map Tiles) albo OpenStreetMap, gdy kluczy jeszcze nie ma.
-  Future<MapTiles> mapTiles(String restaurantId, {required bool dark}) async =>
-      MapTiles.fromJson(await _maps({'action': 'tiles', 'restaurant_id': restaurantId, 'dark': dark}));
-
   /// Szuka współrzędnych adresu dostawy (raz na zamówienie, wynik zostaje w bazie).
   Future<void> geocodeOrder(String orderId) => _maps({'action': 'geocode', 'order_id': orderId});
 

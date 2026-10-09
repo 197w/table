@@ -9,12 +9,15 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
+import 'package:vector_map_tiles/vector_map_tiles.dart';
+import 'package:vector_tile_renderer/vector_tile_renderer.dart' as vtr;
 
 import '../../app/app.dart';
 import '../../data/courier_map.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
 import '../staff/staff_screen.dart' show staffColors;
+import 'map_style.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -51,6 +54,18 @@ String _ago(DateTime? t, DateTime now) {
 String _distance(int meters) =>
     meters < 1000 ? '$meters m' : '${(meters / 1000).toStringAsFixed(1).replaceAll('.', ',')} km';
 
+/// Adres kafelków wektorowych OpenFreeMap. Ścieżka zmienia się przy każdej nowej wersji danych,
+/// więc czytamy ją z TileJSON raz na uruchomienie panelu.
+final _vectorTilesUrlProvider = FutureProvider<String>((ref) async {
+  final res = await http.get(Uri.parse('https://tiles.openfreemap.org/planet'));
+  final tiles = (jsonDecode(res.body) as Map<String, dynamic>)['tiles'] as List;
+  return tiles.first as String;
+});
+
+/// Styl mapy Table (ciemny i jasny) gotowy dla warstwy wektorowej.
+final _mapThemes = <bool, vtr.Theme>{};
+vtr.Theme _mapTheme(bool dark) => _mapThemes[dark] ??= vtr.ThemeReader().read(tableMapStyle(dark: dark));
+
 /// Mapa dostawców (Dostawy → Mapa): pozycje dostawców na zmianie, cele dostaw w toku i trasy
 /// z czasem dojazdu. Dane odświeżają się co 10 sekund, trasy co minutę (funkcja Edge „maps” liczy
 /// je najwyżej co kilka minut na kurs, resztę oddaje z pamięci).
@@ -65,12 +80,8 @@ class _CourierMapScreenState extends ConsumerState<CourierMapScreen> {
   final _map = MapController();
   Timer? _poll;
   Timer? _routes;
-  Timer? _attributionTimer;
-  MapTiles? _tiles;
-  bool? _tilesDark;
-  bool _tilesLoading = false;
-  String? _copyright;
-  final _geocoding = <String>{};
+  /// Kiedy ostatnio szukaliśmy adresu zamówienia: przy chwilowym błędzie usługi próbujemy znów po 2 minutach.
+  final _geocoded = <String, DateTime>{};
 
   /// Wybrany dostawca albo dostawa (identyfikator), podświetlony na mapie i na liście.
   String? _selected;
@@ -96,42 +107,19 @@ class _CourierMapScreenState extends ConsumerState<CourierMapScreen> {
   void dispose() {
     _poll?.cancel();
     _routes?.cancel();
-    _attributionTimer?.cancel();
     _map.dispose();
     super.dispose();
-  }
-
-  Future<void> _ensureTiles(String restaurantId, bool dark) async {
-    if (_tilesLoading) return;
-    if (_tiles != null && _tilesDark == dark && !_tiles!.expired(DateTime.now())) return;
-    _tilesLoading = true;
-    try {
-      final tiles = await ref.read(repositoryProvider).mapTiles(restaurantId, dark: dark);
-      if (mounted) {
-        setState(() {
-          _tiles = tiles;
-          _tilesDark = dark;
-        });
-      }
-    } catch (_) {
-      // Bez sesji Google mapa i tak działa na OpenStreetMap.
-      if (mounted) {
-        setState(() {
-          _tiles = const MapTiles.osm();
-          _tilesDark = dark;
-        });
-      }
-    } finally {
-      _tilesLoading = false;
-    }
   }
 
   /// Nowe dane: brakujące współrzędne adresów i (za pierwszym razem) widok na wszystko oraz trasy.
   void _onData(CourierMap map) {
     final repo = ref.read(repositoryProvider);
     final id = _restaurantId;
+    final now = DateTime.now();
     for (final o in map.orders.where((o) => o.needsGeocode)) {
-      if (!_geocoding.add(o.id)) continue;
+      final last = _geocoded[o.id];
+      if (last != null && now.difference(last) < const Duration(minutes: 2)) continue;
+      _geocoded[o.id] = now;
       repo.geocodeOrder(o.id).then((_) {
         if (mounted && id != null) ref.invalidate(courierMapProvider(id));
       }, onError: (_) {});
@@ -193,40 +181,11 @@ class _CourierMapScreenState extends ConsumerState<CourierMapScreen> {
     _map.move(_map.camera.center, (_map.camera.zoom + by).clamp(5, 19).toDouble());
   }
 
-  /// Podpis danych mapy Google zależy od widoku: pobieramy go po każdym przesunięciu (z opóźnieniem).
-  void _scheduleAttribution(MapCamera camera) {
-    final tiles = _tiles;
-    if (tiles == null || !tiles.google) return;
-    _attributionTimer?.cancel();
-    _attributionTimer = Timer(const Duration(milliseconds: 700), () async {
-      final b = camera.visibleBounds;
-      final uri = Uri.https('tile.googleapis.com', '/tile/v1/viewport', {
-        'session': tiles.session!,
-        'key': tiles.key!,
-        'zoom': camera.zoom.round().toString(),
-        'north': b.north.toString(),
-        'south': b.south.toString(),
-        'east': b.east.toString(),
-        'west': b.west.toString(),
-      });
-      try {
-        final res = await http.get(uri);
-        final copyright = (jsonDecode(res.body) as Map<String, dynamic>)['copyright'] as String?;
-        if (mounted && copyright != null) setState(() => _copyright = copyright);
-      } catch (_) {
-        // Zostaje poprzedni podpis.
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final restaurant = ref.watch(currentRestaurantProvider);
     if (restaurant == null) return const LoadingView();
     final dark = Theme.of(context).brightness == Brightness.dark;
-    if (_tiles == null || _tilesDark != dark) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _ensureTiles(restaurant.id, dark));
-    }
     final async = ref.watch(courierMapProvider(restaurant.id));
     ref.listen(courierMapProvider(restaurant.id), (_, next) {
       if (next.value case final map?) _onData(map);
@@ -280,8 +239,7 @@ class _CourierMapScreenState extends ConsumerState<CourierMapScreen> {
   }
 
   Widget _mapCard(CourierMap map, bool dark) {
-    final tiles = _tiles;
-    final google = tiles?.google ?? false;
+    final tilesUrl = ref.watch(_vectorTilesUrlProvider).value;
     final selectedCourier = map.courier(_selected);
     final routes = [
       for (final o in map.orders)
@@ -314,18 +272,19 @@ class _CourierMapScreenState extends ConsumerState<CourierMapScreen> {
                     _onData(map);
                   }
                 },
-                onPositionChanged: (camera, _) => _scheduleAttribution(camera),
                 onTap: (_, _) => setState(() => _selected = null),
               ),
               children: [
-                if (tiles != null)
-                  TileLayer(
-                    key: ValueKey(tiles.urlTemplate),
-                    urlTemplate: tiles.urlTemplate,
-                    userAgentPackageName: 'pl.table.panel',
-                    maxNativeZoom: google ? 20 : 19,
-                    // OpenStreetMap nie ma ciemnej wersji: w ciemnym motywie odwracamy kolory kafelków.
-                    tileBuilder: dark && !google ? darkModeTileBuilder : null,
+                // Mapa w stylu Table: kafelki wektorowe OpenFreeMap (bez kluczy i limitów), tylko to,
+                // czego potrzebuje dostawca (map_style.dart).
+                if (tilesUrl != null)
+                  VectorTileLayer(
+                    key: ValueKey((tilesUrl, dark)),
+                    theme: _mapTheme(dark),
+                    tileProviders: TileProviders({
+                      mapTileSource: NetworkVectorTileProvider(urlTemplate: tilesUrl, maximumZoom: 14),
+                    }),
+                    maximumZoom: 19,
                   ),
                 PolylineLayer(
                   polylines: [
@@ -407,9 +366,8 @@ class _CourierMapScreenState extends ConsumerState<CourierMapScreen> {
               right: 8,
               bottom: 8,
               child: _Attribution(
-                google: google,
-                copyright: _copyright,
-                osrm: routes.any((x) => x.$2.provider == 'osm'),
+                googleRoutes: routes.any((x) => x.$2.provider == 'google'),
+                osrmRoutes: routes.any((x) => x.$2.provider == 'osm'),
               ),
             ),
           ],
@@ -479,13 +437,13 @@ class _MapButton extends StatelessWidget {
   }
 }
 
-/// Oznaczenie danych mapy: „Google Maps” z podpisem danych dla widoku albo OpenStreetMap.
+/// Oznaczenie danych mapy (OpenFreeMap, OpenMapTiles, OpenStreetMap) i tras. Trasy od Google na mapie
+/// innej niż Google wymagają podpisu „Google Maps” (dokładnie tak, bez tłumaczenia i łamania).
 class _Attribution extends StatelessWidget {
-  const _Attribution({required this.google, required this.copyright, required this.osrm});
+  const _Attribution({required this.googleRoutes, required this.osrmRoutes});
 
-  final bool google;
-  final String? copyright;
-  final bool osrm;
+  final bool googleRoutes;
+  final bool osrmRoutes;
 
   @override
   Widget build(BuildContext context) {
@@ -499,17 +457,20 @@ class _Attribution extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (google) ...[
+          if (googleRoutes) ...[
+            Text('Trasy: ', style: style),
             Semantics(
               label: 'Google Maps',
               child: Text(
                 'Google Maps',
+                softWrap: false,
                 style: style.copyWith(fontWeight: FontWeight.w600, color: AppColors.text),
               ),
             ),
-            if (copyright != null) ...[const SizedBox(width: 8), Text(copyright!, style: style)],
-          ] else
-            Text('© OpenStreetMap${osrm ? ' · trasy: OSRM' : ''}', style: style),
+            Text('  ·  ', style: style),
+          ] else if (osrmRoutes)
+            Text('Trasy: OSRM  ·  ', style: style),
+          Text('© OpenFreeMap © OpenMapTiles © OpenStreetMap', style: style),
         ],
       ),
     );

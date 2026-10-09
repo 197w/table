@@ -205,38 +205,6 @@ class CourierMap {
   }
 }
 
-/// Kafelki mapy: Google Map Tiles (sesja i klucz z funkcji Edge) albo, bez klucza, OpenStreetMap.
-class MapTiles {
-  const MapTiles({required this.provider, this.session, this.key, this.expiry});
-
-  const MapTiles.osm() : provider = 'osm', session = null, key = null, expiry = null;
-
-  final String provider;
-  final String? session;
-  final String? key;
-  final DateTime? expiry;
-
-  bool get google => provider == 'google' && session != null && key != null;
-
-  String get urlTemplate => google
-      ? 'https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=$session&key=$key'
-      : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-
-  /// Sesja Google wygasa po około dwóch tygodniach: przed końcem bierzemy nową.
-  bool expired(DateTime now) => google && expiry != null && now.isAfter(expiry!.subtract(const Duration(hours: 1)));
-
-  factory MapTiles.fromJson(Map<String, dynamic> j) {
-    final exp = j['expiry'];
-    return MapTiles(
-      provider: j['provider'] as String? ?? 'osm',
-      session: j['session'] as String?,
-      key: j['key'] as String?,
-      // Google podaje koniec sesji w sekundach od 1970 roku (tekst albo liczba).
-      expiry: exp == null ? null : DateTime.fromMillisecondsSinceEpoch((int.tryParse('$exp') ?? 0) * 1000),
-    );
-  }
-}
-
 /// Linia trasy z zapisu „encoded polyline” (dokładność 5 miejsc), tego samego u Google i w OSRM.
 List<LatLng> decodePolyline(String encoded) {
   final points = <LatLng>[];

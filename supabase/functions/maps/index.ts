@@ -1,13 +1,12 @@
-// Mapa dostawców w panelu: kafelki mapy, współrzędne adresów dostaw i trasy dostawców.
-// Z kluczami Google (sekrety GOOGLE_MAPS_TILES_KEY i GOOGLE_MAPS_SERVER_KEY) używa Map Tiles API,
-// Geocoding API i Routes API. Bez nich tymczasowo OpenStreetMap: kafelki, Nominatim i OSRM.
+// Mapa dostawców w panelu: współrzędne adresów dostaw i trasy dostawców. Samą mapę (kafelki OpenFreeMap
+// w stylu Table) panel pobiera bezpośrednio. Z kluczem Google (sekret GOOGLE_MAPS_SERVER_KEY) używa
+// Geocoding API i Routes API, bez niego tymczasowo Nominatim i OSRM (OpenStreetMap).
 //
 // Wywołuje ją panel z tokenem zalogowanego konta. Uprawnienia sprawdzają funkcje bazy
 // (panel_geocode_input, panel_route_input), a zapis robi ta funkcja kluczem serwisowym.
 
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 
-const TILES_KEY = Deno.env.get("GOOGLE_MAPS_TILES_KEY") ?? "";
 const SERVER_KEY = Deno.env.get("GOOGLE_MAPS_SERVER_KEY") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -16,27 +15,6 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 // Trasa z pamięci wystarcza, dopóki ma mniej niż 4 minuty, a dostawca nie odjechał dalej niż 400 m od jej początku.
 const ROUTE_TTL_MS = 4 * 60 * 1000;
 const ROUTE_MOVE_M = 400;
-
-// Ciemna mapa w ciemnym motywie panelu (kolory jak PanelPalette.dark), bez punktów usług i komunikacji.
-const DARK_STYLES = [
-  { elementType: "geometry", stylers: [{ color: "#141416" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#8b8b94" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#09090b" }] },
-  { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-  { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#2a2a30" }] },
-  { featureType: "poi", stylers: [{ visibility: "off" }] },
-  { featureType: "transit", stylers: [{ visibility: "off" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#26262b" }] },
-  { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#2e2e34" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#3a3a42" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#a1a1aa" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0c1820" }] },
-  { featureType: "landscape.man_made", elementType: "geometry", stylers: [{ color: "#18181b" }] },
-];
-const LIGHT_STYLES = [
-  { featureType: "poi.business", stylers: [{ visibility: "off" }] },
-  { featureType: "transit", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-];
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -53,39 +31,6 @@ function distance(aLat: number, aLng: number, bLat: number, bLng: number): numbe
   const dLng = (bLng - aLng) * rad;
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * rad) * Math.cos(bLat * rad) * Math.sin(dLng / 2) ** 2;
   return 2 * r * Math.asin(Math.sqrt(h));
-}
-
-// ---------------------------------------------------------------
-// Kafelki
-// ---------------------------------------------------------------
-
-async function tiles(dark: boolean) {
-  if (!TILES_KEY) return { provider: "osm" };
-  const res = await fetch(`https://tile.googleapis.com/v1/createSession?key=${TILES_KEY}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      mapType: "roadmap",
-      language: "pl-PL",
-      region: "PL",
-      scale: "scaleFactor2x",
-      highDpi: true,
-      styles: dark ? DARK_STYLES : LIGHT_STYLES,
-    }),
-  });
-  if (!res.ok) {
-    console.error("createSession", res.status, await res.text());
-    return { provider: "osm" };
-  }
-  const s = await res.json();
-  // Klucz do kafelków trafia do panelu: w Google Cloud jest ograniczony tylko do Map Tiles API.
-  return {
-    provider: "google",
-    session: s.session,
-    expiry: s.expiry,
-    key: TILES_KEY,
-    tile_width: s.tileWidth,
-  };
 }
 
 // ---------------------------------------------------------------
@@ -129,23 +74,64 @@ async function geocodeGoogle(g: GeoInput): Promise<{ lat: number; lng: number } 
   }
   const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?${params}`);
   const body = await res.json();
+  if (body.status === "ZERO_RESULTS") return null;
   if (body.status !== "OK" || !body.results?.length) {
-    if (body.status !== "ZERO_RESULTS") console.error("geocode", body.status, body.error_message);
-    return null;
+    console.error("geocode", body.status, body.error_message);
+    throw new GeoUnavailable(`google ${body.status}`);
   }
   const loc = body.results[0].geometry.location;
   return { lat: loc.lat, lng: loc.lng };
 }
 
-async function geocodeOsm(g: GeoInput): Promise<{ lat: number; lng: number } | null> {
-  const params = new URLSearchParams({ q: query(g), format: "jsonv2", limit: "1", countrycodes: "pl" });
+/** Błąd usługi (np. odmowa albo limit): wyniku nie zapisujemy, panel spróbuje ponownie później. */
+class GeoUnavailable extends Error {}
+
+async function nominatim(q: string): Promise<{ lat: number; lng: number } | null> {
+  const params = new URLSearchParams({ q, format: "jsonv2", limit: "1", countrycodes: "pl" });
   const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
     headers: { "User-Agent": "TablePanel/1.0 (mapa dostawcow)" },
   });
-  if (!res.ok) return null;
+  if (!res.ok) throw new GeoUnavailable(`nominatim ${res.status}`);
   const rows = await res.json();
   if (!rows.length) return null;
   return { lat: Number(rows[0].lat), lng: Number(rows[0].lon) };
+}
+
+async function photon(q: string, g: GeoInput): Promise<{ lat: number; lng: number } | null> {
+  const params = new URLSearchParams({ q, limit: "1" });
+  if (g.restaurant_lat != null && g.restaurant_lng != null) {
+    // Najpierw wyniki w okolicy lokalu.
+    params.set("lat", String(g.restaurant_lat));
+    params.set("lon", String(g.restaurant_lng));
+  }
+  const res = await fetch(`https://photon.komoot.io/api/?${params}`, {
+    headers: { "User-Agent": "TablePanel/1.0 (mapa dostawcow)" },
+  });
+  if (!res.ok) throw new GeoUnavailable(`photon ${res.status}`);
+  const body = await res.json();
+  const f = body.features?.find((x: { properties?: { countrycode?: string } }) => x.properties?.countrycode === "PL");
+  if (!f) return null;
+  return { lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] };
+}
+
+/** Bez klucza Google: Nominatim, a gdy odmówi albo nie znajdzie, Photon (oba z danych OpenStreetMap). */
+async function geocodeOsm(g: GeoInput): Promise<{ lat: number; lng: number } | null> {
+  const q = query(g);
+  let failed = false;
+  try {
+    const found = await nominatim(q);
+    if (found) return found;
+  } catch (e) {
+    console.error(String(e));
+    failed = true;
+  }
+  try {
+    return await photon(q, g);
+  } catch (e) {
+    console.error(String(e));
+    if (failed) throw e;
+    return null;
+  }
 }
 
 async function geocode(user: ReturnType<typeof createClient>, admin: ReturnType<typeof createClient>, orderId: string) {
@@ -155,7 +141,13 @@ async function geocode(user: ReturnType<typeof createClient>, admin: ReturnType<
   if (g.lat != null && g.lng != null) return json({ lat: g.lat, lng: g.lng, geo: g.geo });
   if (g.geo === "none") return json({ lat: null, lng: null, geo: "none" });
   const provider = SERVER_KEY ? "google" : "osm";
-  const found = SERVER_KEY ? await geocodeGoogle(g) : await geocodeOsm(g);
+  let found: { lat: number; lng: number } | null;
+  try {
+    found = SERVER_KEY ? await geocodeGoogle(g) : await geocodeOsm(g);
+  } catch (e) {
+    if (e instanceof GeoUnavailable) return json({ error: "Wyszukiwanie adresów chwilowo nie działa." }, 503);
+    throw e;
+  }
   const geo = found ? provider : "none";
   await admin
     .from("orders")
@@ -295,12 +287,6 @@ Deno.serve(async (req) => {
   }
   try {
     switch (body.action) {
-      case "tiles": {
-        // Klucz do kafelków dostaje tylko obsługa lokalu z uprawnieniem do zamówień, nie każdy zalogowany gość.
-        const { error } = await user.rpc("panel_couriers", { p_restaurant_id: String(body.restaurant_id) });
-        if (error) return json({ error: error.message }, 403);
-        return json(await tiles(body.dark === true));
-      }
       case "geocode":
         return await geocode(user, admin, String(body.order_id));
       case "route":
