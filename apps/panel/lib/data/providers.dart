@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../app/reservation_alerts.dart';
+import 'courier_map.dart';
 import 'models.dart';
 import 'repository.dart';
 
@@ -673,6 +674,12 @@ typedef LookupQuery = ({String restaurantId, String phone});
 final customerLookupProvider = FutureProvider.autoDispose.family<CustomerLookup, LookupQuery>((ref, q) {
   ref.cacheFor(const Duration(minutes: 2));
   return ref.watch(repositoryProvider).customerLookup(q.restaurantId, q.phone);
+});
+
+/// Mapa dostawców. Ekran mapy odświeża ją co 10 sekund, a zmiany zamówień od razu.
+final courierMapProvider = FutureProvider.autoDispose.family<CourierMap, String>((ref, id) {
+  ref.watch(ordersLiveProvider(id).select((s) => s.version));
+  return ref.watch(repositoryProvider).courierMap(id);
 });
 
 final couriersProvider = FutureProvider.autoDispose.family<List<Courier>, String>(

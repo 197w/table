@@ -93,7 +93,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość: flutter_map + latlong2 (mapa dostawcy, kafelki OpenStreetMap; przed wydaniem w sklepach przejść na płatnego dostawcę kafelków).
   Pracownik: geolocator (pozycja dostawcy w drodze).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0060, wszystkie wdrożone). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0061, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -162,6 +162,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Rezerwacje (Rezerwacje), Zamówienia (Zamówienia, Historia zamówień `/historia`, Kompletowanie `/wydanie`,
   Odbiór `/odbior`), Kuchnia (Kuchnia), Dostawy (Dostawy, Flota),
   Pracownicy (Pracownicy: Zespół i Grafik, Statystyki zespołu `/zespol`), Baza klientów (Klienci `/klienci`, Opinie),
+  (grupa Dostawy: Dostawy, Mapa `/mapa`, Flota),
   Management (Podsumowanie dnia `/podsumowanie`, Godziny pracy `/godziny`, Menu, Inwentaryzacja, Statystyki,
   Kody rabatowe `/rabaty`, Eksport `/eksport`);
   Kropki nowości (`tabNewsProvider`, `TabNews`, `_NewsDot`): nowa rezerwacja z aplikacji, nowe zamówienie na dostawę
@@ -398,6 +399,26 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   w panelu „Połącz z inną dostawą” łączy przyjęte dostawy (jeszcze w lokalu) w jeden kurs jednego dostawcy
   (`panel_takeaway_merge`, wybór dostawcy albo bez zmiany), „Wyjmij” oddaje dostawę kolejce (`panel_takeaway_split`);
   kolejka, zmiana dostawcy, oddanie kursu i „Odebrałem” działają na cały kurs, „Dostarczone” na każdy adres osobno.
+  Mapa dostawców (0061, Dostawy → Mapa `/mapa`, uprawnienie `orders`, `CourierMapScreen`, `data/courier_map.dart`):
+  lokal włącza w „Ustawienia lokalu” → „Dostawa i odbiór” → „Lokalizacja dostawców” (`restaurants.courier_tracking`,
+  `panel_set_courier_tracking`). Wtedy Table for employees wysyła pozycję dostawcy przez całą zmianę
+  (`staff_share_location` co ~15 s i co minutę bez ruchu, `staff_locations`, jedna na pracownika; koniec zmiany ją kasuje),
+  a dostawca bez pozycji z ostatnich 3 minut (`private.located`) nie dostaje kursów (`courier_queue.located`,
+  `dispatch_deliveries`); brak zgody albo wyłączony GPS zgłasza od razu `staff_stop_location`, odzyskana pozycja
+  od razu przydziela czekające kursy. Telefon: `CourierTracker.shift` (uruchamia `StaffShell` z `Job.sharesLocation`),
+  karta „Zezwól na lokalizację” w Dostawach, wiersz „Udostępniasz lokalizację” na karcie lokalu, kolejka z „Bez
+  lokalizacji”. Bez wymogu pozycja tylko w trakcie kursu (jak dotąd, ale też na mapie panelu). Panel: `panel_courier_map`
+  (dostawcy z pozycją, kolorem i pojazdem, dostawy w toku z celem, świeże trasy) odświeżany co 10 s; cele dostaw to
+  współrzędne adresu (`orders.delivery_lat/lng`, `delivery_geo`: google, osm, none; zmiana adresu je kasuje), trasy co minutę.
+  Funkcja Edge `maps` (`supabase/functions/maps`, z tokenem konta panelu; uprawnienia sprawdza `panel_geocode_input`,
+  `panel_route_input`, kafelki tylko z `orders`): `tiles` (sesja Google Map Tiles, ciemny styl w ciemnym motywie),
+  `geocode` (Geocoding API, raz na zamówienie), `route` (Routes API z korkami, tylko linia, czas i odległość, bez opisu
+  krok po kroku, bo w EOG nie wolno go pokazywać przy mapie; pamięć `courier_routes` 4 min albo 400 m ruchu).
+  Klucze Google w sekretach funkcji: `GOOGLE_MAPS_TILES_KEY` (ograniczony do Map Tiles API, trafia do panelu)
+  i `GOOGLE_MAPS_SERVER_KEY` (Routes i Geocoding, tylko w Supabase). Bez kluczy tymczasowo OpenStreetMap,
+  Nominatim i OSRM (podpis „© OpenStreetMap · trasy: OSRM”). Z Google w rogu mapy „Google Maps” i podpis danych
+  z `tile/v1/viewport`. Darmowe limity Google są na całe konto Table: kafelki 100 000, trasy z korkami 5 000,
+  adresy 10 000 miesięcznie.
   Dostawca na mapie (0053): gdy kurs jest w drodze,
   Table for employees wysyła pozycję (`courier_location.dart`, co ~25 m, najwyżej co 15 s, w tle z powiadomieniem
   „Kurs w drodze”, `staff_courier_position`), gość widzi mapę w szczegółach zamówienia (`courier_map.dart`,

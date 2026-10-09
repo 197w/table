@@ -27,6 +27,9 @@ dependencies:
   crypto: ^3.0.7
   qr_flutter: any
   image: any
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
+  http: any
 
 dev_dependencies:
   flutter_test:

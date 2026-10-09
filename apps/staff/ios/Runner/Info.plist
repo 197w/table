@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>W czasie kursu gość widzi na mapie, gdzie jest jego zamówienie.</string>
+	<string>Na zmianie dostawcy lokal widzi Cię na mapie (gdy tego wymaga), a w czasie kursu gość widzi, gdzie jest jego zamówienie.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

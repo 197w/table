@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_car/table_car.dart';
 import 'package:table_core/table_core.dart';
@@ -76,7 +77,7 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
       if (board == null) return;
       final onTheWay = [for (final c in board.courses) if (c.stage == CourseStage.onTheWay) c.id];
       final ok = await ref.read(courierTrackerProvider).update(widget.job.memberId, onTheWay);
-      if (!ok && !_askedLocation && mounted) {
+      if (!ok && !_askedLocation && !widget.job.courierTracking && mounted) {
         _askedLocation = true;
         showMessage(
           context,
@@ -208,6 +209,9 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
               child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
               children: [
+                // Lokal wymaga lokalizacji: bez niej dostawca nie dostaje kursów, więc mówimy, co zrobić.
+                if (board.tracking || widget.job.courierTracking)
+                  _LocationGate(restaurantName: board.restaurantName, serverSeesMe: board.located),
                 if (board.courses.isEmpty)
                   _WaitingCard(board: board, memberId: widget.job.memberId)
                 else
@@ -252,6 +256,112 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
   }
 }
 
+/// Lokalizacja na zmianie (gdy lokal jej wymaga): co się dzieje i jak to naprawić.
+/// Gdy wszystko działa, tylko cienki wiersz „Udostępniasz lokalizację”.
+class _LocationGate extends ConsumerWidget {
+  const _LocationGate({required this.restaurantName, required this.serverSeesMe});
+
+  final String restaurantName;
+
+  /// Serwer ma moją świeżą pozycję.
+  final bool serverSeesMe;
+
+  Future<void> _fix(WidgetRef ref, ShareState state) async {
+    final tracker = ref.read(courierTrackerProvider);
+    if (state == ShareState.serviceOff) {
+      await Geolocator.openLocationSettings();
+      return;
+    }
+    if (await tracker.deniedForever()) {
+      await Geolocator.openAppSettings();
+      return;
+    }
+    await tracker.retry();
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    return ValueListenableBuilder<ShareState>(
+      valueListenable: ref.watch(courierTrackerProvider).state,
+      builder: (context, state, _) {
+        if (state == ShareState.on || state == ShareState.starting) {
+          final ok = state == ShareState.on && serverSeesMe;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Semantics(
+              liveRegion: true,
+              child: Row(
+                children: [
+                  Glyph(
+                    ok ? AppIcons.navigation : AppIcons.hourglass,
+                    size: 16,
+                    color: ok ? AppColors.accent : StaffColors.pending,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      ok
+                          ? 'Udostępniasz lokalizację do końca zmiany.'
+                          : 'Wysyłam pozycję. Za chwilę wrócisz do kolejki.',
+                      style: text.bodyMedium?.copyWith(color: ok ? AppColors.textMuted : StaffColors.pending),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        final serviceOff = state == ShareState.serviceOff;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: Semantics(
+            liveRegion: true,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: StaffColors.pending.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: StaffColors.pending.withValues(alpha: 0.45)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Glyph(AppIcons.gpsSlash.duotone, size: 26, color: StaffColors.pending),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          serviceOff ? 'Włącz lokalizację w telefonie' : 'Zezwól na lokalizację',
+                          style: text.titleMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '$restaurantName wymaga lokalizacji dostawców na zmianie. Bez niej nie dostajesz kursów. '
+                    'Lokal widzi Cię na mapie tylko do końca zmiany.',
+                    style: text.bodyMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                    onPressed: () => _fix(ref, state),
+                    icon: const Glyph(AppIcons.navigation, size: 18),
+                    label: Text(serviceOff ? 'Otwórz ustawienia lokalizacji' : 'Zezwól na lokalizację'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// Bez kursu: miejsce w kolejce i spokojnie pulsująca kropka „na zmianie”.
 class _WaitingCard extends StatelessWidget {
   const _WaitingCard({required this.board, required this.memberId});
@@ -275,7 +385,9 @@ class _WaitingCard extends StatelessWidget {
             Semantics(header: true, child: Text('Czekasz na kurs', style: text.headlineSmall)),
             const SizedBox(height: 6),
             Text(
-              position == null
+              board.tracking && !board.located
+                  ? 'Kursy dostaniesz, gdy lokal zobaczy Cię na mapie.'
+                  : position == null
                   ? 'Jesteś na zmianie w ${board.restaurantName}.'
                   : position == 1
                   ? 'Jesteś pierwszy w kolejce: następne zamówienie z dostawą jest Twoje.'
@@ -642,7 +754,7 @@ class _QueueCard extends StatelessWidget {
                     SizedBox(
                       width: 28,
                       child: Text(
-                        q.busy ? '–' : '${++place}.',
+                        q.busy || !q.located ? '–' : '${++place}.',
                         style: text.titleSmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
                       ),
                     ),
@@ -656,6 +768,8 @@ class _QueueCard extends StatelessWidget {
                     ),
                     q.busy
                         ? StatusChip(label: 'W kursie', icon: AppIcons.moped, color: StaffColors.info)
+                        : !q.located
+                        ? StatusChip(label: 'Bez lokalizacji', icon: AppIcons.gpsSlash, color: StaffColors.pending)
                         : StatusChip(label: 'Wolny', icon: AppIcons.checkCircle, color: AppColors.accent),
                   ],
                 ),

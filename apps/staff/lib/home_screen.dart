@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+import 'courier_location.dart';
 import 'data.dart';
 import 'scan_screen.dart';
 import 'ui.dart';
@@ -298,6 +299,8 @@ class _JobCard extends StatelessWidget {
               ),
             ),
             if (code != null) ...[const SizedBox(height: 10), _CodeRow(code: code!)],
+            // Dostawca w lokalu z wymogiem lokalizacji: zawsze widać, że lokal go widzi na mapie.
+            if (job.sharesLocation) ...[const SizedBox(height: 10), const _ShareRow()],
             // Kelner nabija zamówienia z telefonu, ale tylko w trakcie zmiany. Przyciski jeden pod drugim:
             // „Zakończ zmianę” w połowie szerokości łamie się już przy czcionce telefonu powiększonej o 15%.
             if (job.working) ...[
@@ -384,6 +387,44 @@ class _CodeRow extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Wiersz „Udostępniasz lokalizację” (albo co jest nie tak) na karcie lokalu.
+class _ShareRow extends ConsumerWidget {
+  const _ShareRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    return ValueListenableBuilder<ShareState>(
+      valueListenable: ref.watch(courierTrackerProvider).state,
+      builder: (context, state, _) {
+        final ok = state == ShareState.on || state == ShareState.starting;
+        final color = ok ? AppColors.accent : StaffColors.pending;
+        return Semantics(
+          liveRegion: true,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Glyph(ok ? AppIcons.navigation : AppIcons.gpsSlash, size: 16, color: color),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  ok
+                      ? 'Udostępniasz lokalizację do końca zmiany.'
+                      : 'Lokalizacja wyłączona: nie dostajesz kursów. Włącz ją w zakładce Dostawy.',
+                  style: text.bodyMedium?.copyWith(color: ok ? AppColors.textMuted : color),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

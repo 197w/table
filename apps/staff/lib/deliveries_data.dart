@@ -151,14 +151,21 @@ class Course {
 
 /// Dostawca na zmianie w kolejce lokalu.
 class QueuedCourier {
-  const QueuedCourier({required this.memberId, required this.name, required this.busy});
+  const QueuedCourier({required this.memberId, required this.name, required this.busy, this.located = true});
 
   final String memberId;
   final String name;
   final bool busy;
 
-  factory QueuedCourier.fromJson(Map<String, dynamic> j) =>
-      QueuedCourier(memberId: j['member_id'] as String, name: j['name'] as String, busy: j['busy'] == true);
+  /// Widać go na mapie albo lokal nie wymaga lokalizacji: może dostać kurs.
+  final bool located;
+
+  factory QueuedCourier.fromJson(Map<String, dynamic> j) => QueuedCourier(
+    memberId: j['member_id'] as String,
+    name: j['name'] as String,
+    busy: j['busy'] == true,
+    located: j['located'] != false,
+  );
 }
 
 /// Wszystko dla zakładki „Dostawy”.
@@ -173,6 +180,8 @@ class DeliveryBoard {
     required this.courses,
     required this.todayCount,
     required this.todayCashGrosze,
+    this.tracking = false,
+    this.located = true,
   });
 
   final String restaurantName;
@@ -189,9 +198,16 @@ class DeliveryBoard {
   final int todayCount;
   final int todayCashGrosze;
 
-  /// Moje miejsce w kolejce wolnych (1 = dostanę następny kurs). Null: jestem zajęty albo poza kolejką.
+  /// Lokal wymaga lokalizacji dostawców przez całą zmianę.
+  final bool tracking;
+
+  /// Serwer ma moją świeżą pozycję (przy wymogu lokalizacji bez niej nie dostaję kursów).
+  final bool located;
+
+  /// Moje miejsce w kolejce wolnych (1 = dostanę następny kurs). Null: jestem zajęty albo poza kolejką
+  /// (także bez lokalizacji, gdy lokal jej wymaga).
   int? positionOf(String memberId) {
-    final free = queue.where((q) => !q.busy).toList();
+    final free = queue.where((q) => !q.busy && q.located).toList();
     final i = free.indexWhere((q) => q.memberId == memberId);
     return i < 0 ? null : i + 1;
   }
@@ -206,6 +222,8 @@ class DeliveryBoard {
     courses: [for (final c in j['courses'] as List? ?? const []) Course.fromJson(c as Map<String, dynamic>)],
     todayCount: _toInt(j['today_count']),
     todayCashGrosze: _toInt(j['today_cash_grosze']),
+    tracking: j['tracking'] == true,
+    located: j['located'] != false,
   );
 }
 

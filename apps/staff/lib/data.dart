@@ -25,6 +25,8 @@ class Job {
     required this.weekSeconds,
     this.schedulePeriod = 'week',
     this.permissions = const {},
+    this.courierTracking = false,
+    this.isCourier = false,
     this.position,
     this.shiftStartedAt,
   });
@@ -51,6 +53,15 @@ class Job {
 
   bool get working => shiftStartedAt != null;
 
+  /// Lokal wymaga lokalizacji dostawców przez całą zmianę (ustawia „Ustawienia lokalu” w panelu).
+  final bool courierTracking;
+
+  /// Stanowisko rozwozi zamówienia (Dostawca), więc dostaje kursy z kolejki.
+  final bool isCourier;
+
+  /// Ta zmiana wymaga udostępniania lokalizacji: dostawca w pracy w lokalu z wymogiem.
+  bool get sharesLocation => working && isCourier && courierTracking;
+
   factory Job.fromJson(Map<String, dynamic> j) => Job(
     memberId: j['member_id'] as String,
     restaurantId: j['restaurant_id'] as String,
@@ -61,6 +72,8 @@ class Job {
     shiftStartedAt: _date(j['shift_started_at']),
     weekSeconds: _toInt(j['week_seconds']),
     schedulePeriod: j['schedule_period'] as String? ?? 'week',
+    courierTracking: j['courier_tracking'] == true,
+    isCourier: j['is_courier'] == true,
   );
 }
 

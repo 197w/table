@@ -668,6 +668,7 @@ class DeliverySettings {
     this.feeGrosze = 0,
     this.minGrosze = 0,
     this.area,
+    this.courierTracking = false,
   });
 
   final bool deliveryEnabled;
@@ -683,6 +684,9 @@ class DeliverySettings {
   /// Opis obszaru dostawy dla gości, np. „Białystok, do 5 km”.
   final String? area;
 
+  /// Dostawcy udostępniają lokalizację przez całą zmianę; bez niej nie dostają kursów (mapa w Dostawach).
+  final bool courierTracking;
+
   bool get any => deliveryEnabled || pickupEnabled;
 
   factory DeliverySettings.fromJson(Map<String, dynamic> json) => DeliverySettings(
@@ -692,6 +696,7 @@ class DeliverySettings {
     feeGrosze: _toInt(json['delivery_fee_grosze']),
     minGrosze: _toInt(json['delivery_min_grosze']),
     area: json['delivery_area'] as String?,
+    courierTracking: json['courier_tracking'] == true,
   );
 }
 

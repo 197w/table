@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:table_core/table_core.dart';
 
+import 'courier_map.dart';
 import 'models.dart';
 
 /// Jedyne miejsce panelu, które rozmawia z Supabase.
@@ -305,7 +306,7 @@ class PanelRepository {
             'cover_url, '
             'deposit_min_party, deposit_per_person_grosze, '
             'schedule_period, schedule_deadline_dow, schedule_deadline_time, inventory_period, delivery_enabled, '
-            'pickup_enabled, takeaway_cash, '
+            'pickup_enabled, takeaway_cash, courier_tracking, '
             'delivery_fee_grosze, delivery_min_grosze, delivery_area, opening_hours(weekday, opens, closes)',
           )
           .eq('id', restaurantId)
@@ -697,6 +698,54 @@ class PanelRepository {
     return _guard(() async {
       final rows = await _db.rpc<List<dynamic>>('panel_couriers', params: {'p_restaurant_id': restaurantId});
       return [for (final r in rows) Courier.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
+  // -------------------------------------------------------------
+  // Mapa dostawców
+  // -------------------------------------------------------------
+
+  /// Dostawcy na zmianie z pozycją, dostawy w toku z celami i świeże trasy.
+  Future<CourierMap> courierMap(String restaurantId) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>(
+        'panel_courier_map',
+        params: {'p_restaurant_id': restaurantId},
+      );
+      return CourierMap.fromJson(json);
+    });
+  }
+
+  /// Wymóg lokalizacji dostawców przez całą zmianę („Ustawienia lokalu” → „Dostawa i odbiór”).
+  Future<void> setCourierTracking(String restaurantId, bool enabled) => _guard(
+    () => _db.rpc<void>(
+      'panel_set_courier_tracking',
+      params: {'p_restaurant_id': restaurantId, 'p_enabled': enabled},
+    ),
+  );
+
+  /// Sesja kafelków mapy: Google (z kluczem tylko do Map Tiles) albo OpenStreetMap, gdy kluczy jeszcze nie ma.
+  Future<MapTiles> mapTiles(String restaurantId, {required bool dark}) async =>
+      MapTiles.fromJson(await _maps({'action': 'tiles', 'restaurant_id': restaurantId, 'dark': dark}));
+
+  /// Szuka współrzędnych adresu dostawy (raz na zamówienie, wynik zostaje w bazie).
+  Future<void> geocodeOrder(String orderId) => _maps({'action': 'geocode', 'order_id': orderId});
+
+  /// Liczy trasę dostawcy do celu; funkcja Edge oddaje trasę z pamięci, jeśli jest świeża.
+  Future<void> courierRoute(String memberId, String orderId) =>
+      _maps({'action': 'route', 'member_id': memberId, 'order_id': orderId});
+
+  Future<Map<String, dynamic>> _maps(Map<String, dynamic> body) {
+    return _guard(() async {
+      try {
+        final res = await _db.functions.invoke('maps', body: body);
+        return Map<String, dynamic>.from(res.data as Map);
+      } on FunctionException catch (e) {
+        final details = e.details;
+        throw AppFailure(
+          details is Map && details['error'] is String ? details['error'] as String : 'Mapa nie odpowiada. Spróbuj za chwilę.',
+        );
+      }
     });
   }
 

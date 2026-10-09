@@ -6,6 +6,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:table_car/table_car.dart';
 import 'package:table_core/table_core.dart';
 
+import 'courier_location.dart';
 import 'data.dart';
 import 'deliveries_screen.dart';
 import 'home_screen.dart';
@@ -21,7 +22,7 @@ class StaffShell extends ConsumerStatefulWidget {
   ConsumerState<StaffShell> createState() => _StaffShellState();
 }
 
-class _StaffShellState extends ConsumerState<StaffShell> {
+class _StaffShellState extends ConsumerState<StaffShell> with WidgetsBindingObserver {
   /// Na start „Zeskanuj”: tu zaczyna się zmianę.
   int _tab = 2;
 
@@ -30,9 +31,37 @@ class _StaffShellState extends ConsumerState<StaffShell> {
   StreamSubscription<CarConnection>? _car;
   CarConnection _connection = CarConnection.none;
 
+  /// Dostawca na zmianie: co 2 minuty sprawdzamy, czy zmiana trwa i czy lokal nadal wymaga lokalizacji.
+  Timer? _jobsCheck;
+
+  /// Zapamiętany przy starcie, bo po wylogowaniu (zamknięcie tego ekranu) wysyłanie ma się skończyć.
+  late final CourierTracker _tracker = ref.read(courierTrackerProvider);
+
+  /// Lokalizacja przez całą zmianę: dostawca w pracy w lokalu, który jej wymaga.
+  void _syncLocation(List<Job> jobs) {
+    final job = jobs.where((j) => j.sharesLocation).firstOrNull;
+    _tracker.shift(job?.memberId);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Powrót z ustawień telefonu: może jest już zgoda albo włączona lokalizacja.
+    if (state != AppLifecycleState.resumed) return;
+    final share = _tracker.state.value;
+    if (share == ShareState.noPermission || share == ShareState.serviceOff) _tracker.retry();
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    ref.listenManual(jobsProvider, (_, next) {
+      if (next.value case final jobs?) _syncLocation(jobs);
+    }, fireImmediately: true);
+    _jobsCheck = Timer.periodic(const Duration(minutes: 2), (_) {
+      final jobs = ref.read(jobsProvider).value ?? const <Job>[];
+      if (jobs.any((j) => j.working && j.isCourier)) ref.invalidate(jobsProvider);
+    });
     // Automatyczne rozpoznanie samochodu: po podłączeniu do Android Auto albo CarPlay
     // dostawca od razu widzi zakładkę „Dostawy”, a kurs jest na ekranie auta.
     _car = TableCar.connection.listen((connection) {
@@ -59,6 +88,9 @@ class _StaffShellState extends ConsumerState<StaffShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _jobsCheck?.cancel();
+    _tracker.stop();
     _car?.cancel();
     super.dispose();
   }

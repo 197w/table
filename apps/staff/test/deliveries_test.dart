@@ -91,4 +91,24 @@ void main() {
     expect(c.cash, isFalse);
     expect(c.items.single.details, 'bez: cebula, więcej: ser');
   });
+
+  test('lokal wymaga lokalizacji: dostawca bez niej nie jest w kolejce wolnych', () {
+    final board = DeliveryBoard.fromJson({
+      'tracking': true,
+      'located': false,
+      'is_courier': true,
+      'queue': [
+        {'member_id': 'a', 'name': 'Adam', 'busy': false, 'located': true},
+        {'member_id': 'b', 'name': 'Bartek', 'busy': false, 'located': false},
+        {'member_id': 'c', 'name': 'Cezary', 'busy': false, 'located': true},
+      ],
+    });
+    expect(board.tracking, isTrue);
+    expect(board.located, isFalse);
+    expect(board.positionOf('a'), 1);
+    expect(board.positionOf('b'), isNull);
+    expect(board.positionOf('c'), 2);
+    // Starszy serwer bez pola „located”: wszyscy widoczni.
+    expect(QueuedCourier.fromJson({'member_id': 'x', 'name': 'X'}).located, isTrue);
+  });
 }
