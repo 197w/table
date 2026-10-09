@@ -289,10 +289,11 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     final rejected = byDay.values.where((e) => e.rejected).length;
     final free = byDay.values.where((e) => e.off).length;
     final shifts = ref.watch(shiftsProvider).value ?? const <Shift>[];
+    // Krótki napis: okres widać w pigułce nad przyciskiem, a przy czcionce telefonu +15% dłuższy się łamał.
     final (unit, submitLabel) = switch (kind) {
-      'month' => ('miesiąc', 'Zgłoś godziny na ten miesiąc'),
-      'two_weeks' => ('2 tygodnie', 'Zgłoś godziny na te 2 tygodnie'),
-      _ => ('tydzień', 'Zgłoś godziny na ten tydzień'),
+      'month' => ('miesiąc', 'Zgłoś godziny na miesiąc'),
+      'two_weeks' => ('2 tygodnie', 'Zgłoś godziny na 2 tygodnie'),
+      _ => ('tydzień', 'Zgłoś godziny na tydzień'),
     };
 
     return Scaffold(
