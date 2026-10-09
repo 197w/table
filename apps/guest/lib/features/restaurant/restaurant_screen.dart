@@ -989,10 +989,8 @@ class _ReviewTile extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Tag(
-                    review.verificationLabel.toUpperCase(),
-                    color: review.isVerified ? AppColors.accent : AppColors.textMuted,
-                  ),
+                  const SizedBox(width: 8),
+                  _VerificationTag(review: review),
                 ],
               ),
               const SizedBox(height: 10),
@@ -1012,6 +1010,53 @@ class _ReviewTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Oznaczenie weryfikacji opinii. Mieści się w jednej linii, gdy zajmuje najwyżej 40% szerokości karty;
+/// dłuższe („Zweryfikowana paragonem”) przechodzi do drugiej linii między słowami, nigdy w środku słowa,
+/// a imię autora dostaje resztę miejsca.
+class _VerificationTag extends StatelessWidget {
+  const _VerificationTag({required this.review});
+
+  final Review review;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = review.verificationLabel.toUpperCase();
+    // Ten sam styl co w Tag z table_core, żeby zmierzyć napis tak, jak zostanie narysowany.
+    const style = TextStyle(
+      fontFamily: AppTheme.fontFamily,
+      fontSize: 11,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.3,
+    );
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    double width(String value) {
+      final painter = TextPainter(
+        text: TextSpan(text: value, style: style),
+        textDirection: direction,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      final w = painter.width;
+      painter.dispose();
+      return w;
+    }
+
+    const padding = 16.0 + 2; // Tag ma 8 px z każdej strony; zapas na zaokrąglenia.
+    final full = width(label) + padding;
+    final longestWord = label.split(' ').map(width).fold<double>(0, (a, b) => a > b ? a : b) + padding;
+    final card = MediaQuery.sizeOf(context).width.clamp(0.0, 960.0) - 32 - 28;
+    final tagWidth = full <= card * 0.4 ? full : longestWord.clamp(0.0, card * 0.55);
+    return SizedBox(
+      width: tagWidth,
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: Tag(label, color: review.isVerified ? AppColors.accent : AppColors.textMuted),
       ),
     );
   }
