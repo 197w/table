@@ -119,16 +119,20 @@ class SettingsRow extends StatelessWidget {
       onTap: onTap,
       splashColor: Colors.transparent,
       highlightColor: AppColors.ring,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      // Wiersz co najmniej 56 px: wygodne pole dotyku (powyżej 48 dp).
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 56),
+        child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
         child: Row(
           children: [
             _IconBadge(icon: icon, destructive: destructive),
             const SizedBox(width: 12),
+            // Przy dużej czcionce nazwa przechodzi do drugiej linii zamiast się ucinać.
             Expanded(
               child: Text(
                 title,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: text.bodyLarge?.copyWith(
                   fontWeight: FontWeight.w500,
@@ -148,11 +152,12 @@ class SettingsRow extends StatelessWidget {
               ),
               const SizedBox(width: 4),
             ],
+            // Kłódka niesie informację, więc ma kontrast co najmniej 3:1 (nie przygaszony szary).
             if (locked) ...[
               Glyph(
                 AppIcons.lock,
                 size: 14,
-                color: AppColors.textDisabled,
+                color: AppColors.textMuted,
                 semanticLabel: 'Wymaga logowania',
               ),
               const SizedBox(width: 2),
@@ -161,9 +166,10 @@ class SettingsRow extends StatelessWidget {
               Glyph(
                 AppIcons.caretRight,
                 size: 18,
-                color: AppColors.textDisabled,
+                color: AppColors.textMuted,
               ),
           ],
+        ),
         ),
       ),
     );

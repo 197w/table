@@ -1,10 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:table/data/models.dart';
 import 'package:table/data/providers.dart';
 import 'package:table/features/ordering/courier_map.dart';
+import 'package:table/features/reservations/booking_widgets.dart';
 
 void main() {
+  setUpAll(() => initializeDateFormatting('pl_PL'));
+
   test('koszyk łączy to samo danie z tymi samymi opcjami', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
@@ -187,5 +191,17 @@ void main() {
     expect(p.restaurant!.longitude, 23.1);
     expect(CourierPosition.fromJson({'restaurant_lat': 53.1, 'restaurant_lng': 23.1})!.courier, isNull);
     expect(CourierPosition.fromJson(null), isNull);
+  });
+
+  test('rezerwacje: kiedy wizyta i stan słowem', () {
+    final now = DateTime(2026, 10, 9, 12); // piątek
+    expect(relativeVisit(DateTime(2026, 10, 9, 19), now), 'Dziś, 19:00');
+    expect(relativeVisit(DateTime(2026, 10, 10, 19, 30), now), 'Jutro, 19:30');
+    expect(relativeVisit(DateTime(2026, 10, 13, 13), now), 'We wtorek, 13:00');
+    expect(relativeVisit(DateTime(2026, 10, 20, 13), now), isNot(startsWith('W')));
+    expect(reservationStatus(ReservationStatus.confirmed, upcoming: true).label, 'Potwierdzona');
+    expect(reservationStatus(ReservationStatus.confirmed, upcoming: false).label, 'Minęła');
+    expect(reservationStatus(ReservationStatus.cancelled, upcoming: true).label, 'Odwołana');
+    expect(reservationStatus(ReservationStatus.noShow, upcoming: false).label, 'Nieobecność');
   });
 }

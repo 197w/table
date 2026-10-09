@@ -17,6 +17,9 @@ class SettingsScreen extends ConsumerWidget {
     final loggedIn = ref.watch(userIdProvider) != null;
     final profile = loggedIn ? ref.watch(profileProvider).value : null;
     final version = ref.watch(appVersionProvider).value;
+    final theme = ref.watch(themeSettingProvider);
+    final language = ref.watch(languageProvider);
+    final unit = ref.watch(distanceUnitProvider);
 
     void open(String route, {bool needsAccount = false}) {
       if (needsAccount && !loggedIn) {
@@ -39,14 +42,17 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 20),
           SettingsGroup(
             children: [
+              // Bieżące wybory widać od razu, bez wchodzenia w podstronę.
               SettingsRow(
                 icon: AppIcons.sliders,
                 title: 'Ogólne',
+                value: '${language.label} · ${unit.short}',
                 onTap: () => open(AppRoutes.settingsGeneral),
               ),
               SettingsRow(
-                icon: AppIcons.circleHalf,
+                icon: theme.icon,
                 title: 'Motyw',
+                value: theme.label,
                 onTap: () => open(AppRoutes.settingsTheme),
               ),
               SettingsRow(
@@ -88,9 +94,8 @@ class SettingsScreen extends ConsumerWidget {
                 ? 'Table · wersja testowa'
                 : 'Table $version · wersja testowa',
             textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: AppColors.textDisabled),
+            // Przygaszony, ale czytelny (kontrast co najmniej 4,5:1).
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
           ),
         ],
       ),
@@ -120,6 +125,17 @@ class _AccountHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(color: AppColors.accentTint, shape: BoxShape.circle),
+                  child: Glyph(AppIcons.signIn.duotone, size: 24, color: AppColors.accent),
+                ),
+              ),
+              const SizedBox(height: 12),
               Text('Nie jesteś zalogowany', style: text.titleMedium),
               const SizedBox(height: 4),
               Text(
@@ -153,10 +169,7 @@ class _AccountHeader extends StatelessWidget {
                 width: 52,
                 height: 52,
                 alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceRaised,
-                  borderRadius: BorderRadius.circular(8),
-                ),
+                decoration: BoxDecoration(color: AppColors.accentTint, shape: BoxShape.circle),
                 child: Text(
                   initial,
                   style: text.titleLarge?.copyWith(color: AppColors.accent),
@@ -179,14 +192,11 @@ class _AccountHeader extends StatelessWidget {
                         fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
+                    Text('Dane konta', style: text.bodySmall?.copyWith(color: AppColors.accent)),
                   ],
                 ),
               ),
-              Glyph(
-                AppIcons.caretRight,
-                size: 18,
-                color: AppColors.textDisabled,
-              ),
+              Glyph(AppIcons.caretRight, size: 18, color: AppColors.textMuted),
             ],
           ),
         ),

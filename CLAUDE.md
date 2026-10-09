@@ -120,6 +120,15 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   więcej” tylko gdy się nie mieści, pasek dań (najpierw ze zdjęciem), oceny z dużą liczbą, godziny z „DZIŚ”, trzy
   opinie i „Pokaż wszystkie”. Na dole jedno główne działanie „Zarezerwuj stolik” (Free: „Zadzwoń”), obok „Zamów”;
   przy dużej czcionce jeden pod drugim. Menu: pasek działów podświetla dział widoczny u góry listy.
+  Pozostałe zakładki w tym samym stylu (te same zasady dostępności): „Moje” → Rezerwacje ma sekcje Najbliższa
+  (duża karta: kafelek z datą `DateTile`, „Jutro, 19:00” z `relativeVisit`, stan z ikoną `StatusChip`
+  i `reservationStatus`, okazja, Odwołaj / Zadzwoń), Lista oczekujących, Nadchodzące i Archiwum („Oceń wizytę”);
+  wspólne widżety w `features/reservations/booking_widgets.dart`. „Moje” → Zamówienia: „W trakcie” i „Zakończone”,
+  wiersz z kafelkiem rodzaju (dostawa / odbiór), numerem, kwotą i etapem z ikoną; szkielety zamiast kółka ładowania.
+  Szczegóły rezerwacji: kafelek z datą i stan na górze. Ustawienia: przy „Ogólne” i „Motyw” widać bieżący wybór,
+  wiersze co najmniej 56 px, nazwy w dwóch liniach zamiast ucinania. Pary przycisków przy dużej czcionce
+  (`textScaler.scale(16) > 20`) stają jeden pod drugim. `textDisabled` (kontrast ok. 3:1) tylko na ozdoby,
+  tekst i ikony z informacją w `textMuted`.
 - `apps/staff/lib`: `data.dart` (repozytorium i providery), `orders_data.dart`, `login_screen.dart`, `home_screen.dart`,
   `scan_screen.dart`, `schedule_screen.dart`, `settings_screen.dart`, `shell.dart`, `waiter_screens.dart`,
   `deliveries_data.dart`, `deliveries_screen.dart`

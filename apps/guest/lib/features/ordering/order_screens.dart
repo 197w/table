@@ -1184,16 +1184,16 @@ class _StageCard extends StatelessWidget {
   }
 }
 
-/// Lista moich zamówień w zakładce Rezerwacje.
+/// Lista moich zamówień w zakładce „Moje”: najpierw te w trakcie, potem zakończone.
 class MyOrdersList extends ConsumerWidget {
   const MyOrdersList({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final text = Theme.of(context).textTheme;
     final async = ref.watch(myOrdersProvider);
     return async.when(
-      loading: () => const LoadingView(),
+      skipLoadingOnReload: true,
+      loading: () => const _OrdersSkeleton(),
       error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(myOrdersProvider)),
       data: (orders) {
         final visible = orders.where((o) => o.stage != OrderStage.awaitingPayment).toList();
@@ -1201,65 +1201,190 @@ class MyOrdersList extends ConsumerWidget {
           return MessageView(
             icon: AppIcons.shoppingBag,
             title: 'Nie masz jeszcze zamówień',
-            message: 'Zamów z dostawą albo na wynos w lokalu z przyciskiem „Zamów”.',
+            message: 'Zamów z dostawą albo na wynos w lokalu z oznaczeniem „Dostawa” albo „Na wynos”.',
             actionLabel: 'Odkrywaj lokale',
             onAction: () => context.go(AppRoutes.discover),
           );
         }
+        final active = visible.where((o) => !o.stage.finished).toList();
+        final done = visible.where((o) => o.stage.finished).toList();
         return RefreshIndicator(
           onRefresh: () async {
             ref.invalidate(myOrdersProvider);
             await ref.read(myOrdersProvider.future);
           },
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-            children: [
-              for (final o in visible)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: PressScale(
-                    onTap: () => context.push(AppRoutes.orderDetail(o.id)),
-                    child: Card(
-                      margin: EdgeInsets.zero,
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          children: [
-                            Glyph(
-                              o.kind == OrderKind.delivery ? AppIcons.moped : AppIcons.shoppingBag,
-                              size: 24,
-                              color: o.stage.finished ? AppColors.textMuted : AppColors.accent,
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('${o.restaurantName} · #${o.number}', style: text.titleSmall),
-                                  Text(
-                                    '${o.scheduledFor != null ? 'na ${Fmt.dateTime(o.scheduledFor!)}' : Fmt.dateTime(o.openedAt)}'
-                                    ' · ${Fmt.price(o.totalGrosze)}',
-                                    style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Tag(
-                              o.stage.label.toUpperCase(),
-                              color: o.stage.finished
-                                  ? (o.stage == OrderStage.delivered ? AppColors.textMuted : AppColors.error)
-                                  : AppColors.accent,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: ListView(
+                padding: EdgeInsets.only(bottom: 24 + MediaQuery.paddingOf(context).bottom),
+                children: [
+                  if (active.isNotEmpty) ...[
+                    const SectionTitle('W trakcie'),
+                    for (final o in active) _OrderRow(order: o),
+                  ],
+                  if (done.isNotEmpty) ...[
+                    const SectionTitle('Zakończone'),
+                    for (final o in done) _OrderRow(order: o),
+                  ],
+                ],
+              ),
+            ),
           ),
         );
       },
+    );
+  }
+}
+
+/// Zamówienie na liście: ikona rodzaju (dostawa albo na wynos), lokal, kiedy, kwota i stan z ikoną.
+class _OrderRow extends StatelessWidget {
+  const _OrderRow({required this.order});
+
+  final GuestOrder order;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final o = order;
+    final delivery = o.kind == OrderKind.delivery;
+    final (AppIconData icon, Color color) = switch (o.stage) {
+      OrderStage.delivered => (AppIcons.checkCircle, AppColors.textMuted),
+      OrderStage.rejected || OrderStage.cancelled => (AppIcons.prohibit, AppColors.error),
+      OrderStage.placed || OrderStage.awaitingPayment => (AppIcons.hourglass, AppColors.warning),
+      OrderStage.onTheWay => (AppIcons.moped, AppColors.accent),
+      _ => (AppIcons.cookingPot, AppColors.accent),
+    };
+    final when = o.scheduledFor != null ? 'na ${Fmt.dateTime(o.scheduledFor!)}' : Fmt.dateTime(o.openedAt);
+    final stage = o.stage.label;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Semantics(
+        button: true,
+        label: '${delivery ? 'Dostawa' : 'Na wynos'} z ${o.restaurantName}, zamówienie ${o.number}, $when, '
+            '${Fmt.price(o.totalGrosze)}, $stage',
+        excludeSemantics: true,
+        child: PressScale(
+          onTap: () => context.push(AppRoutes.orderDetail(o.id)),
+          child: Card(
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: o.stage.finished ? AppColors.surfaceRaised : AppColors.accentTint,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Glyph(
+                      (delivery ? AppIcons.moped : AppIcons.shoppingBag).duotone,
+                      size: 24,
+                      color: o.stage.finished ? AppColors.textMuted : AppColors.accent,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${o.restaurantName} · #${o.number}', style: text.titleSmall),
+                        const SizedBox(height: 2),
+                        Text(
+                          '$when · ${Fmt.price(o.totalGrosze)}',
+                          style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                        ),
+                        const SizedBox(height: 6),
+                        _StageChip(label: stage, icon: icon, color: color),
+                      ],
+                    ),
+                  ),
+                  Glyph(AppIcons.caretRight, size: 18, color: AppColors.textMuted),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Szkielet listy zamówień, zanim dane dojdą (bez animacji).
+class _OrdersSkeleton extends StatelessWidget {
+  const _OrdersSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget bar(double width, double height) => Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(color: AppColors.surfaceRaised, borderRadius: BorderRadius.circular(6)),
+    );
+    return ExcludeSemantics(
+      child: ListView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 52, 16, 0),
+        children: [
+          for (var i = 0; i < 3; i++)
+            Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: AppColors.ring),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(color: AppColors.surfaceRaised, borderRadius: BorderRadius.circular(14)),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [bar(160, 14), const SizedBox(height: 8), bar(110, 12)],
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Stan zamówienia: ikona i słowo, nie sam kolor.
+class _StageChip extends StatelessWidget {
+  const _StageChip({required this.label, required this.icon, required this.color});
+
+  final String label;
+  final AppIconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(7, 4, 9, 4),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Glyph(icon, size: 13, color: color),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(fontFamily: AppTheme.fontFamily, fontSize: 12, fontWeight: FontWeight.w600, color: color),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -10,6 +10,7 @@ import '../../core/maps.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../booking/deposit_sheet.dart';
+import 'booking_widgets.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -155,21 +156,16 @@ class _BodyState extends ConsumerState<_Body> {
     final text = Theme.of(context).textTheme;
     final cancelled = d.status == ReservationStatus.cancelled;
     final timeRange = '${Fmt.time(d.startsAt)}–${Fmt.time(d.endsAt)}';
-    final statusLabel = d.isUpcoming
-        ? d.status.label
-        : cancelled
-        ? 'Odwołana'
-        : 'Minęła';
+    final status = reservationStatus(d.status, upcoming: d.isUpcoming);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
+        // Kiedy i gdzie na górze: kafelek z datą jak w liście rezerwacji, lokal i stan z ikoną.
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ImageOutline(
-              radius: 14,
-              child: RestaurantMark(name: d.restaurantName, size: 56, radius: 14),
-            ),
+            DateTile(date: d.startsAt, active: d.isUpcoming && !cancelled, size: 68),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -177,23 +173,19 @@ class _BodyState extends ConsumerState<_Body> {
                 children: [
                   Text(d.restaurantName, style: text.titleLarge),
                   const SizedBox(height: 6),
-                  Tag(
-                    statusLabel.toUpperCase(),
-                    color: d.isUpcoming
-                        ? AppColors.accent
-                        : AppColors.textMuted,
-                  ),
+                  StatusChip(label: status.label, icon: status.icon, color: status.color),
                 ],
               ),
             ),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
         Text(
-          Fmt.capitalize(Fmt.dayLong(d.startsAt)),
+          d.isUpcoming ? relativeVisit(d.startsAt, DateTime.now()) : Fmt.capitalize(Fmt.dayLong(d.startsAt)),
           style: text.headlineMedium?.copyWith(
             color: cancelled ? AppColors.textMuted : AppColors.text,
             decoration: cancelled ? TextDecoration.lineThrough : null,
+            fontFeatures: _tabular,
           ),
         ),
         const SizedBox(height: 4),
@@ -212,7 +204,7 @@ class _BodyState extends ConsumerState<_Body> {
             child: OutlinedButton.icon(
               onPressed: _addToCalendar,
               style: OutlinedButton.styleFrom(
-                minimumSize: const Size(0, 42),
+                minimumSize: const Size(0, 48),
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 side: BorderSide(color: AppColors.ringStrong),
               ),
@@ -309,7 +301,7 @@ class _BodyState extends ConsumerState<_Body> {
           const SizedBox(height: 10),
           TextButton(
             onPressed: _cancelling ? null : _cancel,
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error, minimumSize: const Size.fromHeight(48)),
             child: const Text('Odwołaj rezerwację'),
           ),
         ],
@@ -391,34 +383,43 @@ class _LocationCard extends StatelessWidget {
               padding: EdgeInsets.symmetric(vertical: 14),
               child: Divider(height: 1),
             ),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: onNavigate,
-                    // Mniejszy odstęp, żeby etykiety mieściły się w jednej linii w połowie szerokości karty.
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(46),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                    ),
-                    icon: const Glyph(AppIcons.navigation, size: 18),
-                    label: const Text('Nawiguj'),
+            // Przy dużej czcionce przyciski stają jeden pod drugim, żeby napisy nie łamały się w środku słowa.
+            Builder(
+              builder: (context) {
+                final navigate = FilledButton.icon(
+                  onPressed: onNavigate,
+                  // Mniejszy odstęp, żeby etykiety mieściły się w jednej linii w połowie szerokości karty.
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onCall,
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(46),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      side: BorderSide(color: AppColors.ringStrong),
-                    ),
-                    icon: const Glyph(AppIcons.phone, size: 18),
-                    label: const Text('Zadzwoń'),
+                  icon: const Glyph(AppIcons.navigation, size: 18),
+                  label: const Text('Nawiguj'),
+                );
+                final call = OutlinedButton.icon(
+                  onPressed: onCall,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    side: BorderSide(color: AppColors.ringStrong),
                   ),
-                ),
-              ],
+                  icon: const Glyph(AppIcons.phone, size: 18),
+                  label: const Text('Zadzwoń'),
+                );
+                if (MediaQuery.textScalerOf(context).scale(16) > 20) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [navigate, const SizedBox(height: 8), call],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: navigate),
+                    const SizedBox(width: 10),
+                    Expanded(child: call),
+                  ],
+                );
+              },
             ),
           ],
         ),
