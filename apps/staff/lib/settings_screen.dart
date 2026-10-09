@@ -213,7 +213,8 @@ class _JobRow extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text('Kod do panelu', style: text.labelSmall?.copyWith(color: AppColors.textMuted)),
+                  // Krótki podpis, żeby nazwa lokalu się mieściła; co to za kod, mówi opis pod kartą.
+                  Text('Kod', style: text.labelSmall?.copyWith(color: AppColors.textMuted)),
                   Text(code ?? '—', style: text.titleLarge?.copyWith(letterSpacing: 4, fontFeatures: _tabular)),
                 ],
               ),
