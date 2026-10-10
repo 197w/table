@@ -28,6 +28,7 @@ dependencies:
   qr_flutter: any
   image: any
   flutter_map: ^8.3.2
+  pdf: ^3.11.1
   vector_map_tiles: 9.0.0-beta.13
   vector_tile_renderer: ^6.1.0
   latlong2: ^0.10.1

@@ -34,6 +34,7 @@ enum PanelSection {
   staff('Pracownicy', AppIcons.usersThree, [
     PanelTab(PanelRoutes.staff, 'Pracownicy', AppIcons.usersThree),
     PanelTab(PanelRoutes.teamStats, 'Statystyki', AppIcons.chartBarHorizontal),
+    PanelTab(PanelRoutes.announcements, 'Informacje dla pracowników', AppIcons.megaphone),
   ]),
   customers('Baza klientów', AppIcons.addressBook, [
     PanelTab(PanelRoutes.customers, 'Klienci', AppIcons.userList),
@@ -42,6 +43,7 @@ enum PanelSection {
   // Prowadzenie lokalu: koniec dnia, godziny pracowników, menu, inwentaryzacja i wyniki.
   management('Management', AppIcons.briefcase, [
     PanelTab(PanelRoutes.daySummary, 'Podsumowanie dnia', AppIcons.cashRegister),
+    PanelTab(PanelRoutes.unclosed, 'Niezamknięte zamówienia', AppIcons.hourglass),
     PanelTab(PanelRoutes.hours, 'Godziny pracy', AppIcons.clockUser),
     PanelTab(PanelRoutes.menu, 'Menu', AppIcons.bookOpen),
     PanelTab(PanelRoutes.inventory, 'Inwentaryzacja', AppIcons.package),

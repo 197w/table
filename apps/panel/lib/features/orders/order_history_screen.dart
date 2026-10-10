@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
@@ -42,7 +44,8 @@ enum HistoryKind {
   };
 }
 
-/// Historia zamówień: zamknięte rachunki z wybranego dnia, z podziałem na restaurację, dostawy i odbiór osobisty. Podsumowanie obrotu widzi tylko osoba
+/// Historia zamówień: zamknięte rachunki z wybranego dnia, z podziałem na restaurację, dostawy i odbiór osobisty,
+/// albo wyniki wyszukiwania po imieniu, telefonie i adresie ze wszystkich dni. Podsumowanie obrotu widzi tylko osoba
 /// z uprawnieniem „Przychody” (kierownik, właściciel); kelner widzi same rachunki.
 class OrderHistoryScreen extends ConsumerStatefulWidget {
   const OrderHistoryScreen({super.key, this.embedded = false});
@@ -59,6 +62,80 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
   _Filter _filter = _Filter.all;
   HistoryKind _kind = HistoryKind.all;
   String? _selectedId;
+
+  /// Wpisany tekst wyszukiwania; od 2 znaków lista pokazuje wyniki ze wszystkich dni zamiast wybranego dnia.
+  final _search = TextEditingController();
+  Timer? _debounce;
+  String _query = '';
+
+  bool get _searching => _query.length >= 2;
+
+  /// Pole wyszukiwania rozwinięte z lupy (w miejscu wyboru dnia, żeby rząd filtrów się mieścił).
+  bool _searchOpen = false;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _onSearch(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      setState(() {
+        _query = value.trim();
+        _selectedId = null;
+      });
+    });
+  }
+
+  void _clearSearch() {
+    _debounce?.cancel();
+    _search.clear();
+    setState(() {
+      _query = '';
+      _selectedId = null;
+      _searchOpen = false;
+    });
+  }
+
+  /// Lupa i wybór dnia, a po kliknięciu lupy pole wyszukiwania w ich miejscu.
+  List<Widget> _searchOrDay(DateTime today) => _searchOpen || _searching
+      ? [_searchField()]
+      : [
+          IconButton(
+            tooltip: 'Szukaj po imieniu, telefonie albo adresie',
+            onPressed: () => setState(() => _searchOpen = true),
+            icon: Glyph(AppIcons.search, size: 20, color: AppColors.textMuted),
+          ),
+          const SizedBox(width: 4),
+          _daySwitcher(today),
+        ];
+
+  Widget _searchField() => SizedBox(
+    width: 320,
+    child: TextField(
+      controller: _search,
+      autofocus: true,
+      onChanged: _onSearch,
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: 'Szukaj: imię, telefon albo adres',
+        prefixIcon: Padding(
+          padding: const EdgeInsets.only(left: 12, right: 8),
+          child: Glyph(AppIcons.search, size: 18, color: AppColors.textMuted),
+        ),
+        prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+        suffixIcon: IconButton(
+          tooltip: _search.text.isEmpty ? 'Zamknij wyszukiwanie' : 'Wyczyść',
+          onPressed: _clearSearch,
+          icon: Glyph(AppIcons.close, size: 16, color: AppColors.textMuted),
+        ),
+      ),
+    ),
+  );
 
   void _shift(int days) => setState(() {
     _day = DateTime(_day.year, _day.month, _day.day + days);
@@ -109,7 +186,12 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     final today = dateOnly(DateTime.now());
     final canRevenue = ref.watch(memberPermissionsProvider).contains('revenue');
     final query = (restaurantId: restaurant.id, day: _day);
-    final async = ref.watch(orderHistoryProvider(query));
+    final searchQuery = (restaurantId: restaurant.id, query: _query);
+    // Wyszukiwanie przeszukuje wszystkie dni; bez niego lista wybranego dnia.
+    final async = _searching ? ref.watch(orderSearchProvider(searchQuery)) : ref.watch(orderHistoryProvider(query));
+    void retry() => _searching
+        ? ref.invalidate(orderSearchProvider(searchQuery))
+        : ref.invalidate(orderHistoryProvider(query));
     final tables = ref.watch(tablesProvider(restaurant.id)).value ?? const <DiningTable>[];
     final labels = {for (final t in tables) ?t.id: '${t.isSeat ? 'Miejsce' : 'Stolik'} ${t.label}'};
     String labelOf(PanelOrder o) => o.takeawayLabel ?? labels[o.tableId] ?? 'Bez stolika';
@@ -148,15 +230,13 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
               children: [
                 filters(),
                 const Spacer(),
-                _daySwitcher(today),
+                ..._searchOrDay(today),
               ],
             ),
           )
         else
         PageHeader(
-          actions: [
-            _daySwitcher(today),
-          ],
+          actions: _searchOrDay(today),
           below: Align(alignment: Alignment.centerLeft, child: filters()),
         ),
         Expanded(
@@ -165,10 +245,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
             child: async.when(
               skipLoadingOnReload: true,
               loading: () => const LoadingView(),
-              error: (e, _) => ErrorView(
-                error: e,
-                onRetry: () => ref.invalidate(orderHistoryProvider(query)),
-              ),
+              error: (e, _) => ErrorView(error: e, onRetry: retry),
               data: (everything) {
                 final orders = everything.where(_kind.matches).toList();
                 final visible = orders.where(_filter.matches).toList();
@@ -179,7 +256,17 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (canRevenue) ...[
+                    if (_searching) ...[
+                      Text(
+                        everything.isEmpty
+                            ? 'Nic nie znaleziono dla „$_query”.'
+                            : everything.length >= 100
+                            ? 'Pierwsze 100 wyników dla „$_query” (najnowsze). Wpisz więcej, żeby zawęzić.'
+                            : 'Wyniki dla „$_query”: ${everything.length}, ze wszystkich dni.',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
+                      ),
+                      const SizedBox(height: 12),
+                    ] else if (canRevenue) ...[
                       _Summary(orders: orders),
                       const SizedBox(height: 16),
                     ],
@@ -191,8 +278,10 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
                             child: Card(
                               child: visible.isEmpty
                                   ? MessageView(
-                                      icon: AppIcons.receipt,
-                                      title: orders.isEmpty
+                                      icon: _searching ? AppIcons.search : AppIcons.receipt,
+                                      title: _searching
+                                          ? (orders.isEmpty ? 'Brak wyników' : 'Nic w tym filtrze')
+                                          : orders.isEmpty
                                           ? switch (_kind) {
                                               HistoryKind.dineIn => 'Brak rachunków w restauracji',
                                               HistoryKind.delivery => 'Brak dostaw',
@@ -200,7 +289,9 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
                                               HistoryKind.all => 'Brak zamkniętych rachunków',
                                             }
                                           : 'Nic w tym filtrze',
-                                      message: orders.isEmpty
+                                      message: _searching
+                                          ? 'Szukamy w imieniu, nazwie firmy, telefonie i adresie dostawy.'
+                                          : orders.isEmpty
                                           ? 'Tego dnia nic tu nie zamknięto ani nie anulowano.'
                                           : 'Wybierz inny filtr, żeby zobaczyć pozostałe rachunki.',
                                     )
@@ -211,6 +302,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
                                       itemBuilder: (context, i) => _OrderRow(
                                         order: visible[i],
                                         label: labelOf(visible[i]),
+                                        showDate: _searching,
                                         selected: visible[i].id == _selectedId,
                                         onTap: () => setState(() => _selectedId = visible[i].id),
                                       ),
@@ -321,12 +413,16 @@ class _OrderRow extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.showDate = false,
   });
 
   final PanelOrder order;
   final String label;
   final bool selected;
   final VoidCallback onTap;
+
+  /// Wyniki wyszukiwania są z różnych dni: nad godziną dzień.
+  final bool showDate;
 
   @override
   Widget build(BuildContext context) {
@@ -350,10 +446,20 @@ class _OrderRow extends StatelessWidget {
           child: Row(
             children: [
               SizedBox(
-                width: 64,
-                child: Text(
-                  order.closedAt == null ? '—' : Fmt.time(order.closedAt!),
-                  style: text.titleMedium?.copyWith(fontFeatures: _tabular),
+                width: showDate ? 84 : 64,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (showDate && order.closedAt != null)
+                      Text(
+                        Fmt.dayShort(order.closedAt!),
+                        style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                      ),
+                    Text(
+                      order.closedAt == null ? '—' : Fmt.time(order.closedAt!),
+                      style: text.titleMedium?.copyWith(fontFeatures: _tabular),
+                    ),
+                  ],
                 ),
               ),
               Expanded(
@@ -361,7 +467,12 @@ class _OrderRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      customer == null || order.kind == OrderKind.dineIn ? label : '$label · $customer',
+                      [
+                        if (customer == null || order.kind == OrderKind.dineIn) label else '$label · $customer',
+                        // Przy wyszukiwaniu widać, co pasuje: telefon i adres.
+                        if (showDate && order.customerPhone != null) order.customerPhone!,
+                        if (showDate && order.deliveryAddress != null) order.deliveryAddress!,
+                      ].join(' · '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: text.labelLarge,

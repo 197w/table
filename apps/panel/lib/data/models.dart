@@ -1099,6 +1099,12 @@ enum StaffPermission {
   schedule('schedule', 'Grafik', 'Przyjmowanie, zmiana i odrzucanie godzin pracowników', 'Zespół'),
   timesheet('timesheet', 'Czas pracy', 'Podgląd i poprawianie zmian pracowników', 'Zespół'),
   positions('positions', 'Stanowiska', 'Tworzenie stanowisk i nadawanie uprawnień', 'Zespół'),
+  announcements(
+    'announcements',
+    'Informacje dla pracowników',
+    'Pisanie, zmiana i planowanie informacji dla pracowników',
+    'Zespół',
+  ),
   profile('profile', 'Dane lokalu', 'Adres, godziny otwarcia i logo', 'Lokal'),
   menu('menu', 'Menu', 'Podgląd menu lokalu', 'Lokal'),
   menuEdit('menu_edit', 'Edycja menu', 'Dodawanie i zmiana dań, cen, sekcji i zdjęć', 'Lokal'),
@@ -1406,6 +1412,7 @@ class OrderItem {
     this.sentAt,
     this.readyAt,
     this.recalledAt,
+    this.servedAt,
     this.changes = const [],
     this.guestNo,
   });
@@ -1441,6 +1448,9 @@ class OrderItem {
   /// Kuchnia cofnęła zbitą pozycję i robi ją jeszcze raz.
   final DateTime? recalledAt;
 
+  /// Kiedy pozycję wydano gościom (Kompletowanie albo kelner). Null, dopóki nie jest wydana.
+  final DateTime? servedAt;
+
   int get totalGrosze => unitPriceGrosze * quantity;
 
   /// Wariant, dodatki i zmiany składników w jednym wierszu, np. „Duża, + skwarki, bez: cebula”.
@@ -1471,6 +1481,7 @@ class OrderItem {
       sentAt: _toDateOrNull(json['sent_at']),
       readyAt: _toDateOrNull(json['ready_at']),
       recalledAt: _toDateOrNull(json['recalled_at']),
+      servedAt: _toDateOrNull(json['served_at']),
       changes: ItemChange.listFrom(json['changes']),
       guestNo: json['guest_no'] == null ? null : _toInt(json['guest_no']),
     );
@@ -1646,6 +1657,109 @@ enum OrderKind {
 
   static OrderKind from(Object? value) =>
       values.firstWhere((k) => k.db == value, orElse: () => OrderKind.dineIn);
+}
+
+/// Do kogo idzie informacja dla pracowników.
+enum AnnouncementAudience {
+  all('all', 'Wszyscy'),
+  working('working', 'Pracujący tego dnia'),
+  positions('positions', 'Stanowiska'),
+  members('members', 'Osoby');
+
+  const AnnouncementAudience(this.db, this.label);
+  final String db;
+  final String label;
+
+  static AnnouncementAudience from(Object? value) =>
+      values.firstWhere((a) => a.db == value, orElse: () => AnnouncementAudience.all);
+}
+
+/// Informacja dla pracowników (Pracownicy → Informacje dla pracowników, Table for employees).
+/// Pisze ją osoba z uprawnieniem „Informacje dla pracowników”, reszta tylko czyta. [publishAt] w przyszłości:
+/// zaplanowana, odbiorcy zobaczą ją dopiero wtedy.
+class Announcement {
+  const Announcement({
+    required this.id,
+    required this.title,
+    required this.body,
+    required this.audience,
+    required this.publishAt,
+    this.positionIds = const [],
+    this.memberIds = const [],
+    this.authorMember,
+    this.authorName,
+    this.read = false,
+    this.forMe = false,
+    this.recipients = 0,
+    this.reads = 0,
+  });
+
+  final String id;
+  final String title;
+  final String body;
+  final AnnouncementAudience audience;
+  final List<String> positionIds;
+  final List<String> memberIds;
+  final DateTime publishAt;
+  final String? authorMember;
+  final String? authorName;
+
+  /// Zalogowany pracownik już ją przeczytał.
+  final bool read;
+
+  /// Jest do zalogowanego pracownika.
+  final bool forMe;
+
+  /// Ilu pracowników ją dostanie (albo dostało) i ilu przeczytało.
+  final int recipients;
+  final int reads;
+
+  bool isPublished([DateTime? now]) => !publishAt.isAfter(now ?? DateTime.now());
+
+  factory Announcement.fromJson(Map<String, dynamic> json) => Announcement(
+    id: json['id'] as String,
+    title: json['title'] as String? ?? '',
+    body: json['body'] as String? ?? '',
+    audience: AnnouncementAudience.from(json['audience']),
+    positionIds: [for (final p in json['position_ids'] as List? ?? const []) '$p'],
+    memberIds: [for (final m in json['member_ids'] as List? ?? const []) '$m'],
+    publishAt: _toDate(json['publish_at']),
+    authorMember: json['author_member'] as String?,
+    authorName: json['author_name'] as String?,
+    read: json['read'] == true,
+    forMe: json['for_me'] == true,
+    recipients: _toInt(json['recipients']),
+    reads: _toInt(json['reads']),
+  );
+}
+
+/// Niezamknięte zamówienie (Management → Niezamknięte zamówienia): rachunek albo zamówienie na wynos,
+/// z etapem i osobą, która je otworzyła.
+class UnclosedOrder {
+  const UnclosedOrder({required this.order, this.stage, this.openedBy});
+
+  final PanelOrder order;
+
+  /// Etap zamówienia na wynos. Null: rachunek na sali.
+  final TakeawayStage? stage;
+
+  /// Kto otworzył rachunek albo przyjął zamówienie w panelu.
+  final String? openedBy;
+
+  /// Zamówienie z wcześniejszego dnia niż [now].
+  bool fromEarlierDay(DateTime now) {
+    final o = order.openedAt.toLocal();
+    return DateTime(o.year, o.month, o.day).isBefore(DateTime(now.year, now.month, now.day));
+  }
+
+  factory UnclosedOrder.fromJson(Map<String, dynamic> json) {
+    final order = PanelOrder.fromJson(json);
+    return UnclosedOrder(
+      order: order,
+      stage: order.kind == OrderKind.dineIn ? null : TakeawayStage.from(json['fulfillment']),
+      openedBy: (json['opener'] as Map<String, dynamic>?)?['name'] as String?,
+    );
+  }
 }
 
 /// Etap zamówienia na wynos.
@@ -2466,7 +2580,8 @@ class ServingTicket {
   /// Na wynos: na którą lokal obiecał zamówienie.
   final DateTime? promisedAt;
 
-  /// Na sali: gotowe pozycje do zaniesienia. Na wynos: wszystkie pozycje, także te jeszcze na kuchni.
+  /// Na sali: gotowe pozycje do zaniesienia i te wydane w międzyczasie (wykreślone). Na wynos: wszystkie pozycje,
+  /// także te jeszcze na kuchni.
   final List<OrderItem> items;
 
   /// Od kiedy czeka najstarsza gotowa pozycja.
@@ -2489,6 +2604,8 @@ class ServingTicket {
 
   /// Wiersze pozycji (z `orders` i `member`) zebrane w karty, najdłużej czekające pierwsze.
   /// Pokazują się rachunki, w których jest coś gotowego. Na wynos tylko zamówienia w przygotowaniu.
+  /// Pozycje wydane, odkąd czeka najstarsza gotowa, zostają na karcie wykreślone (jak zbite na kuchni);
+  /// wcześniejsze wydania (np. przystawki) nie.
   static List<ServingTicket> fromRows(List<Map<String, dynamic>> rows) {
     final groups = <String, List<Map<String, dynamic>>>{};
     for (final row in rows) {
@@ -2500,16 +2617,26 @@ class ServingTicket {
       final kind = OrderKind.from(order['kind']);
       final takeaway = kind != OrderKind.dineIn;
       if (takeaway && order['fulfillment'] != 'accepted') continue;
-      final all = list.map(OrderItem.fromJson).toList()
+      final items = list.map(OrderItem.fromJson).toList()
         ..sort((a, b) {
           final byCourse = a.course.compareTo(b.course);
           return byCourse != 0 ? byCourse : a.createdAt.compareTo(b.createdAt);
         });
+      final all = [
+        for (final i in items)
+          if (i.status != OrderItemStatus.served) i,
+      ];
       final ready = all.where((i) => i.status == OrderItemStatus.ready).toList();
       if (ready.isEmpty) continue;
       final since = ready
           .map((i) => i.readyAt ?? i.sentAt ?? i.createdAt)
           .reduce((a, b) => a.isBefore(b) ? a : b);
+      final shown = [
+        for (final i in items)
+          if (i.status == OrderItemStatus.ready ||
+              (i.status == OrderItemStatus.served && i.servedAt != null && !i.servedAt!.isBefore(since)))
+            i,
+      ];
       final waiter = {
         for (final r in list)
           if ((r['member'] as Map<String, dynamic>?)?['name'] case final String name) name,
@@ -2521,7 +2648,7 @@ class ServingTicket {
           takeawayKind: takeaway ? kind : null,
           takeawayNumber: takeaway ? _toInt(order['number']) : null,
           promisedAt: _toDateOrNull(order['promised_at']),
-          items: takeaway ? all : ready,
+          items: takeaway ? all : shown,
           readySince: since,
           waiter: waiter.isNotEmpty
               ? waiter
@@ -2962,11 +3089,16 @@ class StaffShift {
 
 /// Punkt wykresu sprzedaży: dzień, godzina albo dzień tygodnia.
 class SalesPoint {
-  const SalesPoint(this.key, this.revenue, this.orders);
+  const SalesPoint(this.key, this.revenue, this.orders, {this.dineIn = 0, this.delivery = 0, this.pickup = 0});
 
   final int key;
   final int revenue;
   final int orders;
+
+  /// Godziny: ile zamówień na sali, z dostawą i z odbiorem osobistym.
+  final int dineIn;
+  final int delivery;
+  final int pickup;
 }
 
 /// Sprzedaż w wybranym okresie z porównaniem do okresu wcześniej.
@@ -3034,7 +3166,17 @@ class SalesStats {
         for (final d in list('daily'))
           (DateTime.parse(d['day'] as String), _toInt(d['revenue']), _toInt(d['orders'])),
       ],
-      hourly: [for (final h in list('hourly')) SalesPoint(_toInt(h['hour']), _toInt(h['revenue']), _toInt(h['orders']))],
+      hourly: [
+        for (final h in list('hourly'))
+          SalesPoint(
+            _toInt(h['hour']),
+            _toInt(h['revenue']),
+            _toInt(h['orders']),
+            dineIn: _toInt(h['dine_in']),
+            delivery: _toInt(h['delivery']),
+            pickup: _toInt(h['pickup']),
+          ),
+      ],
       weekdays: [
         for (final w in list('weekdays')) SalesPoint(_toInt(w['weekday']), _toInt(w['revenue']), _toInt(w['orders'])),
       ],

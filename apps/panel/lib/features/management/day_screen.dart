@@ -1,8 +1,10 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
@@ -15,7 +17,8 @@ String? _money(int? grosze) => grosze == null ? null : groszeToText(grosze);
 
 /// Management → Podsumowanie dnia: sprzedaż według płatności, raporty z kasy fiskalnej i terminali,
 /// policzona gotówka i petty cash (drobne wydatki i wpłaty z kasy). Różnice są od razu widoczne.
-/// Uprawnienie „Podsumowanie dnia”.
+/// Różnica między kartami z terminali a kartami w panelu przechodzi na gotówkę, która powinna być w kasie.
+/// Niezamknięte zamówienia z tego dnia albo wcześniejszych widać na górze. Uprawnienie „Podsumowanie dnia”.
 class DaySummaryScreen extends ConsumerStatefulWidget {
   const DaySummaryScreen({super.key});
 
@@ -43,6 +46,11 @@ class _DaySummaryScreenState extends ConsumerState<DaySummaryScreen> {
     final today = dateOnly(DateTime.now());
     final query = (restaurantId: restaurant.id, day: _day);
     final async = ref.watch(daySummaryProvider(query));
+    // Rachunki otwarte w wybranym dniu albo wcześniej: do zamknięcia przed rozliczeniem.
+    final unclosed = [
+      for (final o in ref.watch(unclosedOrdersProvider(restaurant.id)).value ?? const <UnclosedOrder>[])
+        if (dateOnly(o.order.openedAt.toLocal()).compareTo(_day) <= 0) o,
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -72,6 +80,10 @@ class _DaySummaryScreenState extends ConsumerState<DaySummaryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (unclosed.isNotEmpty) ...[
+                    _UnclosedBanner(orders: unclosed),
+                    const SizedBox(height: 16),
+                  ],
                   Row(
                     children: [
                       Expanded(
@@ -146,6 +158,48 @@ class _DaySummaryScreenState extends ConsumerState<DaySummaryScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Niezamknięte zamówienia z wybranego dnia albo wcześniejszych: nie ma ich w obrocie, dopóki są otwarte.
+class _UnclosedBanner extends ConsumerWidget {
+  const _UnclosedBanner({required this.orders});
+
+  final List<UnclosedOrder> orders;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final sum = orders.fold(0, (s, o) => s + o.order.billGrosze);
+    final canOpen = canOpenRoute(PanelRoutes.unclosed, ref.watch(memberPermissionsProvider));
+    final n = orders.length;
+    final word = n == 1
+        ? 'niezamknięte zamówienie'
+        : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14))
+        ? 'niezamknięte zamówienia'
+        : 'niezamkniętych zamówień';
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      decoration: BoxDecoration(
+        color: _warn.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _warn.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          const Glyph(AppIcons.warning, size: 22, color: _warn),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '$n $word na ${Fmt.price(sum)}. Nie ma ich w obrocie, dopóki ktoś ich nie zamknie.',
+              style: text.titleSmall?.copyWith(fontFeatures: _tabular),
+            ),
+          ),
+          if (canOpen)
+            TextButton(onPressed: () => context.go(PanelRoutes.unclosed), child: const Text('Sprawdź')),
+        ],
+      ),
     );
   }
 }
@@ -301,6 +355,11 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
     final s = widget.summary;
     final saved = _report?.updatedAt;
     void refresh() => setState(() {});
+    // Karty z terminali inne niż w panelu: różnica przechodzi na gotówkę. Mniej na terminalu = ktoś zapłacił
+    // gotówką, choć w panelu jest karta, więc gotówki ma być więcej (i odwrotnie).
+    final terminals = _terminalsSum;
+    final cardDiff = terminals == null ? 0 : s.expectedCardGrosze - terminals;
+    final expectedCash = s.expectedCashGrosze + cardDiff;
 
     return PanelCard(
       title: 'Raporty na koniec dnia',
@@ -378,7 +437,7 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
               SizedBox(width: 240, child: _MoneyField(controller: _cash, label: 'Policzona gotówka', onChanged: refresh)),
               const SizedBox(width: 16),
               Expanded(
-                child: _Check(label: 'Powinno być', expected: s.expectedCashGrosze, actual: _parse(_cash)),
+                child: _Check(label: 'Powinno być', expected: expectedCash, actual: _parse(_cash)),
               ),
             ],
           ),
@@ -386,7 +445,9 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
           Text(
             'Gotówka z rachunków ${Fmt.price(s.cashGrosze + s.tipsCashGrosze)}'
             '${s.pettyOutGrosze > 0 ? ' − wydatki ${Fmt.price(s.pettyOutGrosze)}' : ''}'
-            '${s.pettyInGrosze > 0 ? ' + wpłaty ${Fmt.price(s.pettyInGrosze)}' : ''}',
+            '${s.pettyInGrosze > 0 ? ' + wpłaty ${Fmt.price(s.pettyInGrosze)}' : ''}'
+            '${cardDiff > 0 ? ' + ${Fmt.price(cardDiff)} (na terminalach mniej niż kart w panelu)' : ''}'
+            '${cardDiff < 0 ? ' − ${Fmt.price(-cardDiff)} (na terminalach więcej niż kart w panelu)' : ''}',
             style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
           ),
           const SizedBox(height: 20),

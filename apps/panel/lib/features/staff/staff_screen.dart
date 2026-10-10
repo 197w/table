@@ -479,7 +479,8 @@ AppIconData _statusIcon(PlannedShiftStatus s) => switch (s) {
   PlannedShiftStatus.unavailable => AppIcons.userMinus,
 };
 
-/// Minuty między „HH:MM” a „HH:MM” (koniec może być 24:00).
+/// Minuty między „HH:MM” a „HH:MM” (koniec może być 24:00). Koniec wcześniej niż początek: następnego dnia
+/// (np. 18:00–02:00 to 8 godzin).
 int _minutesBetween(String starts, String ends) {
   int m(String hm) {
     final p = hm.split(':');
@@ -488,7 +489,8 @@ int _minutesBetween(String starts, String ends) {
 
   if (starts.isEmpty || ends.isEmpty) return 0;
   final d = m(ends) - m(starts);
-  return d > 0 ? d : 0;
+  if (d == 0) return 0;
+  return d > 0 ? d : d + 24 * 60;
 }
 
 /// Czas jako „37:30 h”.
@@ -1852,7 +1854,10 @@ class _HoursDialogState extends State<_HoursDialog> {
     undo: false,
   ));
 
-  bool get _validTimes => _ends.hour * 60 + _ends.minute > _starts.hour * 60 + _starts.minute;
+  /// Koniec wcześniej niż początek to godziny przez północ (do następnego dnia); równe nie mają sensu.
+  bool get _validTimes => _ends.hour * 60 + _ends.minute != _starts.hour * 60 + _starts.minute;
+
+  bool get _overnight => _ends.hour * 60 + _ends.minute < _starts.hour * 60 + _starts.minute;
 
   @override
   void dispose() {
@@ -1872,7 +1877,7 @@ class _HoursDialogState extends State<_HoursDialog> {
 
   void _accept() {
     if (!_validTimes) {
-      showMessage(context, 'Koniec musi być później niż początek.');
+      showMessage(context, 'Początek i koniec nie mogą być takie same.');
       return;
     }
     _done(
@@ -1982,6 +1987,10 @@ class _HoursDialogState extends State<_HoursDialog> {
                   child: Text('–', style: text.titleMedium),
                 ),
                 timeButton(_ends, false),
+                if (_overnight) ...[
+                  const SizedBox(width: 10),
+                  Text('następnego dnia', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+                ],
                 if (changedHours) ...[
                   const SizedBox(width: 12),
                   const Flexible(child: Tag('ZMIENIONE', color: _pending)),

@@ -18,6 +18,7 @@ import '../features/management/day_screen.dart';
 import '../features/management/discounts_screen.dart';
 import '../features/management/export_screen.dart';
 import '../features/management/hours_screen.dart';
+import '../features/management/unclosed_screen.dart';
 import '../features/menu/menu_screen.dart';
 import '../features/orders/order_history_screen.dart';
 import '../features/orders/orders_screen.dart';
@@ -25,6 +26,7 @@ import '../features/profile/profile_screen.dart';
 import '../features/reservations/reservations_screen.dart';
 import '../features/reviews/reviews_screen.dart';
 import '../features/serving/serving_screen.dart';
+import '../features/staff/announcements_screen.dart';
 import '../features/staff/staff_screen.dart';
 import '../features/staff/team_stats_screen.dart';
 import '../features/stats/stats_screen.dart';
@@ -189,7 +191,9 @@ GoRouter _buildRouter(
           _page(PanelRoutes.profile, const ProfileScreen()),
           _page(PanelRoutes.reviews, const ReviewsScreen()),
           _page(PanelRoutes.stats, const StatsScreen()),
+          _page(PanelRoutes.announcements, const AnnouncementsScreen()),
           _page(PanelRoutes.daySummary, const DaySummaryScreen()),
+          _page(PanelRoutes.unclosed, const UnclosedOrdersScreen()),
           _page(PanelRoutes.hours, const HoursScreen()),
           _page(PanelRoutes.discounts, const DiscountsScreen()),
           _page(PanelRoutes.export, const ExportScreen()),
@@ -231,6 +235,7 @@ abstract final class PanelRoutes {
   static const pickup = '/odbior';
   static const staff = '/pracownicy';
   static const teamStats = '/zespol';
+  static const announcements = '/informacje';
   static const customers = '/klienci';
   static const settings = '/ustawienia';
   static const menu = '/menu';
@@ -239,6 +244,7 @@ abstract final class PanelRoutes {
   static const reviews = '/opinie';
   static const stats = '/statystyki';
   static const daySummary = '/podsumowanie';
+  static const unclosed = '/niezamkniete';
   static const hours = '/godziny';
   static const discounts = '/rabaty';
   static const export = '/eksport';
@@ -259,6 +265,8 @@ const _routePermissions = {
   // W Pracownikach każda część ma własne uprawnienie: zespół, loginy, grafik, stanowiska.
   PanelRoutes.staff: {'staff', 'staff_logins', 'schedule', 'positions'},
   PanelRoutes.teamStats: {'stats'},
+  // Informacje czyta każdy pracownik (tylko te do siebie); pisze osoba z uprawnieniem „announcements”.
+  PanelRoutes.announcements: <String>{},
   PanelRoutes.customers: {'customers'},
   PanelRoutes.settings: {'profile'},
   PanelRoutes.profile: {'profile'},
@@ -267,6 +275,7 @@ const _routePermissions = {
   PanelRoutes.reviews: {'reviews'},
   PanelRoutes.stats: {'stats'},
   PanelRoutes.daySummary: {'day_close'},
+  PanelRoutes.unclosed: {'day_close'},
   PanelRoutes.hours: {'timesheet'},
   PanelRoutes.discounts: {'discounts'},
   PanelRoutes.export: {'export'},
@@ -286,6 +295,7 @@ const panelTabLabels = {
   PanelRoutes.floor: 'Edycja sali',
   PanelRoutes.staff: 'Pracownicy',
   PanelRoutes.teamStats: 'Statystyki zespołu',
+  PanelRoutes.announcements: 'Informacje dla pracowników',
   PanelRoutes.customers: 'Klienci',
   PanelRoutes.settings: 'Ustawienia lokalu',
   PanelRoutes.profile: 'Dane lokalu',
@@ -294,6 +304,7 @@ const panelTabLabels = {
   PanelRoutes.reviews: 'Opinie',
   PanelRoutes.stats: 'Statystyki',
   PanelRoutes.daySummary: 'Podsumowanie dnia',
+  PanelRoutes.unclosed: 'Niezamknięte zamówienia',
   PanelRoutes.hours: 'Godziny pracy',
   PanelRoutes.discounts: 'Kody rabatowe',
   PanelRoutes.export: 'Eksport',
@@ -307,13 +318,14 @@ String? tabForRoute(String location) {
   return null;
 }
 
-/// Uprawnienia, z których wystarczy jedno, żeby otworzyć zakładkę. Null: zakładka dla każdego.
+/// Uprawnienia, z których wystarczy jedno, żeby otworzyć zakładkę. Null: adres poza zakładkami,
+/// pusty zbiór: zakładka dla każdego pracownika.
 Set<String>? permissionsForRoute(String location) => _routePermissions[tabForRoute(location)];
 
 /// Czy osoba z [permissions] może otworzyć zakładkę. Bez uprawnienia zakładki nie widać w menu.
 bool canOpenRoute(String location, Set<String> permissions) {
   final need = permissionsForRoute(location);
-  return need == null || need.any(permissions.contains);
+  return need == null || need.isEmpty || need.any(permissions.contains);
 }
 
 class _AuthRefresh extends ChangeNotifier {

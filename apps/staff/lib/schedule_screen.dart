@@ -52,6 +52,12 @@ DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
 /// Czas trwania jako „7:45”.
 String _hoursText(Duration d) => '${d.inMinutes ~/ 60}:${_two(d.inMinutes % 60)}';
 
+/// Godziny przez północ: koniec wcześniej niż początek oznacza następny dzień (np. 18:00–02:00).
+bool overnightHours(TimeOfDay starts, TimeOfDay ends) => ends.hour * 60 + ends.minute < starts.hour * 60 + starts.minute;
+
+/// Początek i koniec w tej samej minucie: takich godzin nie da się zgłosić.
+bool sameTime(TimeOfDay a, TimeOfDay b) => a.hour * 60 + a.minute == b.hour * 60 + b.minute;
+
 /// Okres grafiku lokalu (tydzień, 2 tygodnie, miesiąc), przesunięty o [offset] okresów od dziś.
 ({DateTime from, DateTime to}) periodFor(String kind, int offset) {
   final today = _day(DateTime.now());
@@ -749,8 +755,8 @@ class _PeriodSheetState extends ConsumerState<_PeriodSheet> {
     for (final d in chosen) {
       final s = _starts[d]!;
       final e = _ends[d]!;
-      if (e.hour * 60 + e.minute <= s.hour * 60 + s.minute) {
-        showMessage(context, '${Fmt.capitalize(Fmt.dayShort(d))}: koniec musi być później niż początek.');
+      if (sameTime(s, e)) {
+        showMessage(context, '${Fmt.capitalize(Fmt.dayShort(d))}: początek i koniec nie mogą być takie same.');
         return;
       }
     }
@@ -854,7 +860,14 @@ class _PeriodSheetState extends ConsumerState<_PeriodSheet> {
                         Text('–', style: text.titleMedium),
                         TextButton(
                           onPressed: () => _pick(d, false),
-                          child: Text(_fmt(_ends[d]!), style: const TextStyle(fontFeatures: _tabular, fontSize: 16)),
+                          child: Text(
+                            // Koniec po północy: „02:00+1”, czyli następnego dnia.
+                            '${_fmt(_ends[d]!)}${overnightHours(_starts[d]!, _ends[d]!) ? '+1' : ''}',
+                            semanticsLabel: overnightHours(_starts[d]!, _ends[d]!)
+                                ? 'do ${_fmt(_ends[d]!)} następnego dnia'
+                                : null,
+                            style: const TextStyle(fontFeatures: _tabular, fontSize: 16),
+                          ),
                         ),
                       ],
                     ),
@@ -1128,8 +1141,8 @@ class _HoursSheetState extends ConsumerState<HoursSheet> {
   }
 
   Future<void> _send() async {
-    if (_ends.hour * 60 + _ends.minute <= _starts.hour * 60 + _starts.minute) {
-      showMessage(context, 'Koniec musi być później niż początek.');
+    if (sameTime(_starts, _ends)) {
+      showMessage(context, 'Początek i koniec nie mogą być takie same.');
       return;
     }
     setState(() => _busy = true);
@@ -1213,6 +1226,13 @@ class _HoursSheetState extends ConsumerState<HoursSheet> {
                 time(_ends, false),
               ],
             ),
+            if (overnightHours(_starts, _ends)) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Do ${_fmt(_ends)} następnego dnia (${_hoursText(Duration(minutes: (_ends.hour - _starts.hour) * 60 + _ends.minute - _starts.minute + 24 * 60))} h).',
+                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+              ),
+            ],
             const SizedBox(height: 14),
             TextField(
               controller: _note,

@@ -85,6 +85,7 @@ abstract final class AppIcons {
   static const clockUser = AppIconData('assets/icons/clock-user.svg');
   static const coins = AppIconData('assets/icons/coins.svg');
   static const fileArrowDown = AppIconData('assets/icons/file-arrow-down.svg');
+  static const fileCsv = AppIconData('assets/icons/file-csv.svg');
   static const handCoins = AppIconData('assets/icons/hand-coins.svg');
   static const hourglass = AppIconData('assets/icons/hourglass-medium.svg');
   static const mapTrifold = AppIconData('assets/icons/map-trifold.svg');

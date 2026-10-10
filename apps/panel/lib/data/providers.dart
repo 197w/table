@@ -120,6 +120,9 @@ final selectedDayProvider = NotifierProvider<SelectedDayNotifier, DateTime>(
 
 typedef DayQuery = ({String restaurantId, DateTime day});
 
+/// Wyszukiwanie w historii zamówień: lokal i wpisany tekst (imię, telefon albo adres).
+typedef OrderSearchQuery = ({String restaurantId, String query});
+
 /// Stan na żywo: numer kolejnej zmiany rezerwacji i stan połączenia.
 typedef LiveState = ({int version, LiveStatus status});
 
@@ -448,6 +451,21 @@ final openOrdersProvider = FutureProvider.autoDispose.family<List<PanelOrder>, S
   },
 );
 
+typedef AnnouncementsQuery = ({String restaurantId, String? memberId});
+
+/// Informacje dla pracowników. Co minutę od nowa, żeby zaplanowane pojawiały się o swojej porze.
+final announcementsProvider = FutureProvider.autoDispose.family<List<Announcement>, AnnouncementsQuery>((ref, q) {
+  final timer = Timer(const Duration(minutes: 1), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
+  return ref.watch(repositoryProvider).announcements(q.restaurantId, memberId: q.memberId);
+});
+
+/// Niezamknięte zamówienia ze wszystkich dni. Odświeżają się na żywo razem z rachunkami.
+final unclosedOrdersProvider = FutureProvider.autoDispose.family<List<UnclosedOrder>, String>((ref, id) {
+  ref.watch(ordersLiveProvider(id).select((s) => s.version));
+  return ref.watch(repositoryProvider).unclosedOrders(id);
+});
+
 /// Czy zalogowane konto widzi ekran kuchni.
 final canUseKitchenProvider = Provider.autoDispose.family<bool, String>(
   (ref, id) => ref.watch(effectivePermissionsProvider(id))?.contains('kitchen') ?? false,
@@ -705,6 +723,11 @@ final daySummaryProvider = FutureProvider.autoDispose.family<DaySummary, DayQuer
   ref.watch(ordersLiveProvider(q.restaurantId).select((s) => s.version));
   return ref.watch(repositoryProvider).daySummary(q.restaurantId, q.day);
 });
+
+/// Wyniki wyszukiwania w historii zamówień (wszystkie dni).
+final orderSearchProvider = FutureProvider.autoDispose.family<List<PanelOrder>, OrderSearchQuery>(
+  (ref, q) => ref.watch(repositoryProvider).searchOrders(q.restaurantId, q.query),
+);
 
 final orderHistoryProvider = FutureProvider.autoDispose.family<List<PanelOrder>, DayQuery>(
   (ref, q) {

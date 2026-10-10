@@ -123,6 +123,42 @@ class ScanResult {
   final DateTime? endedAt;
 }
 
+/// Informacja od kierownika dla mnie (panel → Pracownicy → Informacje dla pracowników).
+class StaffAnnouncement {
+  const StaffAnnouncement({
+    required this.id,
+    required this.memberId,
+    required this.restaurantName,
+    required this.title,
+    required this.body,
+    required this.publishAt,
+    this.authorName,
+    this.read = false,
+  });
+
+  final String id;
+
+  /// Ja w lokalu, z którego jest informacja (do oznaczenia jako przeczytanej).
+  final String memberId;
+  final String restaurantName;
+  final String title;
+  final String body;
+  final DateTime publishAt;
+  final String? authorName;
+  final bool read;
+
+  factory StaffAnnouncement.fromJson(Map<String, dynamic> json, Job job) => StaffAnnouncement(
+    id: json['id'] as String,
+    memberId: job.memberId,
+    restaurantName: job.restaurantName,
+    title: json['title'] as String? ?? '',
+    body: json['body'] as String? ?? '',
+    publishAt: _date(json['publish_at']) ?? DateTime.now(),
+    authorName: json['author_name'] as String?,
+    read: json['read'] == true,
+  );
+}
+
 /// Moje godziny w grafiku. Zgłaszam, od której do której mogę pracować, przełożony przyjmuje
 /// (czasem ze zmienionymi godzinami), odrzuca albo daje wolne. Po decyzji nie mogę już zmienić tego dnia.
 class PlannedShift {
@@ -312,6 +348,21 @@ class StaffRepository {
     };
   });
 
+  /// Informacje od kierownika z ostatnich 60 dni we wszystkich moich lokalach, najnowsze pierwsze.
+  Future<List<StaffAnnouncement>> announcements(List<Job> jobs) => _guard(() async {
+    final lists = await Future.wait([
+      for (final job in jobs)
+        _db
+            .rpc<List<dynamic>>('staff_announcements', params: {'p_member_id': job.memberId})
+            .then((rows) => [for (final r in rows) StaffAnnouncement.fromJson(r as Map<String, dynamic>, job)]),
+    ]);
+    return [for (final l in lists) ...l]..sort((a, b) => b.publishAt.compareTo(a.publishAt));
+  });
+
+  Future<void> readAnnouncement(StaffAnnouncement a) => _guard(
+    () => _db.rpc<void>('staff_read_announcement', params: {'p_member_id': a.memberId, 'p_id': a.id}),
+  );
+
   Future<void> endShift(String memberId) =>
       _guard(() => _db.rpc<void>('staff_end_shift', params: {'p_member_id': memberId}));
 
@@ -376,6 +427,16 @@ final scheduleDeadlineProvider = FutureProvider.autoDispose.family<DateTime?, ({
 final weekNotesProvider = FutureProvider.autoDispose.family<Map<DateTime, String>, ({DateTime from, DateTime to})>((ref, q) {
   if (ref.watch(sessionProvider) == null) return Future.value(const {});
   return ref.watch(staffRepositoryProvider).weekNotes(q.from, q.to);
+});
+
+/// Informacje od kierownika. Co 2 minuty od nowa, żeby zaplanowane pojawiały się o swojej porze.
+final announcementsProvider = FutureProvider.autoDispose<List<StaffAnnouncement>>((ref) async {
+  if (ref.watch(sessionProvider) == null) return const [];
+  final timer = Timer(const Duration(minutes: 2), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
+  final jobs = await ref.watch(jobsProvider.future);
+  if (jobs.isEmpty) return const [];
+  return ref.watch(staffRepositoryProvider).announcements(jobs);
 });
 
 final codesProvider = FutureProvider.autoDispose<Map<String, String>>((ref) {

@@ -27,6 +27,11 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   „Ogranicz ruch”. Grafik: pigułka okresu (stuknięcie w napis wraca do teraz), dni z kafelkiem i chipem stanu
   (`_dayStatus`), bez przygaszania przezroczystością, uwaga na tydzień pod nazwą tygodnia, „Moje godziny” na karcie.
   Ustawienia jak u gościa. Podgląd ekranów: test golden poza repozytorium, jak przy panelu.
+  Informacje od kierownika (0062, `announcements_screen.dart`): karta na „Zeskanuj” (nowe wyróżnione, najnowsza),
+  lista z ostatnich 60 dni ze wszystkich lokali pracownika (`staff_announcements`, `announcementsProvider` co 2 min)
+  i cała informacja; otwarcie oznacza ją jako przeczytaną (`staff_read_announcement`). Dyspozycyjność może trwać przez
+  północ: koniec wcześniej niż początek to następny dzień („02:00+1”, „Do 02:00 następnego dnia”), odrzucane są tylko
+  równe godziny.
 - `packages/table_core`: wspólny motyw, czcionka Geist, ikony Phosphor, formatery, widżety i konfiguracja.
 - `packages/table_car`: wtyczka Flutter tylko dla Table for employees: kurs dostawcy w Android Auto (Kotlin, Car App
   Library, szablon Pane, kategoria POI) i CarPlay (Swift, CPInformationTemplate, scena `TableCarSceneDelegate`
@@ -89,11 +94,11 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Flutter 3.47.4 / Dart 3.13, pub workspace. Importuj `package:material_ui/material_ui.dart`, nie `flutter/material`.
 - go_router 18, flutter_riverpod 3 (Notifier), supabase_flutter 2 (`publishableKey`), shared_preferences
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
-  Panel: window_manager (minimalny rozmiar okna 1100×720), file_selector (logo, zdjęcia, zapis CSV).
+  Panel: window_manager (minimalny rozmiar okna 1100×720), file_selector (logo, zdjęcia, zapis plików eksportu), pdf (eksport do PDF).
   Gość: flutter_map + latlong2 (mapa dostawcy, kafelki OpenStreetMap; przed wydaniem w sklepach przejść na płatnego dostawcę kafelków).
   Pracownik: geolocator (pozycja dostawcy w drodze).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0061, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0062, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -161,15 +166,18 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   na żywo, plan; strzałka i lista tylko przy kilku lokalach konta), grupy zakładek (`PanelSection`, `_SectionTab`: same ikony bez ramek, wybrana w kolorze akcentu z nazwą):
   Rezerwacje (Rezerwacje), Zamówienia (Zamówienia, Historia zamówień `/historia`, Kompletowanie `/wydanie`,
   Odbiór `/odbior`), Kuchnia (Kuchnia), Dostawy (Dostawy, Flota),
-  Pracownicy (Pracownicy: Zespół i Grafik, Statystyki zespołu `/zespol`), Baza klientów (Klienci `/klienci`, Opinie),
+  Pracownicy (Pracownicy: Zespół i Grafik, Statystyki zespołu `/zespol`, Informacje dla pracowników `/informacje`),
+  Baza klientów (Klienci `/klienci`, Opinie),
   (grupa Dostawy: Dostawy, Mapa `/mapa`, Flota),
-  Management (Podsumowanie dnia `/podsumowanie`, Godziny pracy `/godziny`, Menu, Inwentaryzacja, Statystyki,
+  Management (Podsumowanie dnia `/podsumowanie`, Niezamknięte zamówienia `/niezamkniete`, Godziny pracy `/godziny`,
+  Menu, Inwentaryzacja, Statystyki,
   Kody rabatowe `/rabaty`, Eksport `/eksport`);
   Kropki nowości (`tabNewsProvider`, `TabNews`, `_NewsDot`): nowa rezerwacja z aplikacji, nowe zamówienie na dostawę
   albo odbiór, nowe danie do wydania; kropka na zakładce i jej grupie znika po wejściu do zakładki.
-  „Table” na środku; po prawej nowa wersja, odliczanie do wylogowania, motyw (systemowy: ikona monitora `AppIcons.monitor`)
-  i kółko pracownika (inicjały; menu:
-  kod pracownika, „Zakończ zmianę”, „Wyloguj”, „Wejdź na zmianę”, e-mail i wersja, wylogowanie konta restauracji).
+  „Table” na środku; po prawej nowa wersja, odliczanie do wylogowania, motyw (systemowy: ikona monitora `AppIcons.monitor`),
+  obok niego ikona „Wyloguj” (gdy ktoś jest zalogowany, od 0.21.0) i kółko pracownika (inicjały; menu:
+  kod pracownika, „Zakończ zmianę”, „Wejdź na zmianę”, e-mail i wersja, wylogowanie konta restauracji).
+  Kropka na „Informacje dla pracowników”, dopóki zalogowany pracownik ma nieprzeczytane informacje.
   Wąski pasek boczny: zakładki wybranej grupy (same ikony bez ramek, 30 px, nazwy w podpowiedziach po prawej, `tooltipOnRight`), na dole Ustawienia lokalu
   (`/ustawienia`), Dane lokalu i Edycja sali. Grupa i zakładki według uprawnień zalogowanego pracownika;
   ostatnia grupa zostaje wybrana na stronach lokalu (`panelSectionProvider`). Bez hamburgera i bez paska nad zakładką.
@@ -177,7 +185,10 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   okres inwentaryzacji, dostawa i odbiór.
 - Management (0048–0050): Podsumowanie dnia (`panel_day_summary`, uprawnienie `day_close`): sprzedaż według płatności
   (gotówka, karta z terminala, karta online z aplikacji i zadatki, inne), rabaty, raport dobowy z kasy fiskalnej
-  (napiwków tu nie pokazujemy, są w statystykach zespołu; „Obrót w panelu”, „Karty w panelu” i „Powinno być” to duże kafle),
+  (napiwków tu nie pokazujemy, są w statystykach zespołu; „Obrót w panelu”, „Karty w panelu” i „Powinno być” to duże kafle;
+  różnica między kartami z terminali a kartami w panelu przechodzi na gotówkę: mniej na terminalach = „Powinno być”
+  więcej o tę kwotę i odwrotnie, z wyjaśnieniem pod kaflem; na górze baner z niezamkniętymi zamówieniami z tego dnia
+  albo wcześniejszych i „Sprawdź”),
   terminale (kilka, nazwa i kwota), policzona gotówka i notatka (`day_reports`, `panel_save_day_report`), petty cash
   (wydatki i wpłaty z kasy, `petty_cash`, `panel_add_petty`, `panel_delete_petty`); zgodność kwot zielona albo żółta różnica.
   Godziny pracy (uprawnienie `timesheet`; wcześniej „Czas pracy” w Pracownikach): miesiąc z sumą godzin każdego pracownika
@@ -189,9 +200,27 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Kody rabatowe (uprawnienie `discounts`, `discount_codes`): procent albo kwota, ważność od–do, limit użyć, włączanie;
   gość wpisuje kod przy rezerwacji w aplikacji (`guest_check_discount`, `book_table(p_discount_code)`), rabat odejmuje się
   od rachunku stolika (procent od każdej części, kwota raz; odwołanie rezerwacji oddaje użycie). Eksport (uprawnienie
-  `export`, `panel_export_month`): CSV dla Excela (średnik, przecinek, UTF-8 z BOM) za miesiąc: rachunki z VAT (rabat
-  rozłożony proporcjonalnie na stawki), zestawienie dzienne, czas pracy z wynagrodzeniem brutto i netto, petty cash
-  (`features/management/export_csv.dart`). Historia zamówień pokazuje obrót tylko z uprawnieniem `revenue`.
+  `export`, `panel_export_month`): za miesiąc rachunki z VAT (rabat rozłożony proporcjonalnie na stawki), zestawienie
+  dzienne, czas pracy z wynagrodzeniem brutto i netto, petty cash. Od 0.21.0 „Zapisz PDF” (`export_pdf.dart`: A4,
+  szerokie tabele poziomo, Geist z `table_core`, nagłówek tabeli na każdej stronie, suma pogrubiona, numery stron),
+  obok mała ikona CSV dla Excela (średnik, przecinek, UTF-8 z BOM). Obie postaci z tej samej `ExportTable`
+  (`export_csv.dart`: `salesTable`, `dailyTable`, `hoursTable`, `pettyTable`; CSV bez wiersza sumy jak dotąd poza
+  rachunkami). Historia zamówień pokazuje obrót tylko z uprawnieniem `revenue`; lupa w rzędzie filtrów rozwija
+  wyszukiwanie po imieniu, firmie, telefonie (ostatnie 9 cyfr) i adresie ze wszystkich dni (`panel_order_search`,
+  najwyżej 100 zamkniętych i anulowanych, wiersz z dniem, telefonem i adresem).
+  Niezamknięte zamówienia (`/niezamkniete`, uprawnienie `day_close`, `unclosed_screen.dart`, `unclosedOrdersProvider`
+  na żywo): otwarte rachunki i niezakończone zamówienia na wynos ze wszystkich dni, z poprzednich dni osobno na górze
+  (czerwone), filtr Wszystkie / Na sali / Na wynos, kto otworzył, pozycje (niewysłane, na kuchni, do wydania), kwota;
+  „Otwórz rachunek” (`/zamowienia?stolik=`), „Otwórz” (Dostawy, Odbiór albo szkic w Zamówieniach), „Zamknij”
+  (`SettleDialog`, z `orders_close`).
+- Informacje dla pracowników (0062, Pracownicy → `/informacje`, `features/staff/announcements_screen.dart`):
+  osoba z uprawnieniem `announcements` (w 0062 dostały je stanowiska z `staff`, ALL ma zawsze, właściciel hasłem konta)
+  pisze tytuł i treść, wybiera odbiorców (Wszyscy / Pracujący tego dnia: przyjęte godziny w grafiku albo zmiana w dniu
+  wysłania / Stanowiska / Osoby) i „Teraz” albo „Zaplanuj” (dzień i godzina); zmienia, usuwa, widzi „Przeczytało 3 z 8”
+  i filtr Wszystkie / Wysłane / Zaplanowane. Reszta widzi tylko wysłane do siebie i „Przeczytane”. Tabele
+  `staff_announcements`, `staff_announcement_reads` (RLS bez zasad, tylko funkcje): `panel_announcements`,
+  `panel_save_announcement`, `panel_delete_announcement`, `panel_read_announcement`, `staff_announcements`,
+  `staff_read_announcement`; odbiorcy liczone w `private.announcement_for`.
   Nowe uprawnienia `revenue`, `day_close`, `discounts`, `export` dostały w 0048 stanowiska z `staff` albo `stats`.
 - Dane lokalu: logo, dane, poziom cen, dane właściciela, godziny, dni wyjątkowe.
 - Flota (`/flota`, uprawnienie `fleet`, 0045): `vehicles` (auto, skuter, rower, inny; nazwa, rejestracja unikalna
@@ -257,8 +286,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Logowanie pracownika w panelu jest jedno dla wszystkich zakładek (`panelMemberProvider`): kod QR z aplikacji
   Table for employees (`staff_scan`) albo czterocyfrowy kod na klawiaturze (`panel_member_login`). Bez zalogowanego
   pracownika każda zakładka pokazuje logowanie (`TabLoginGate`, bez opisu; „Właściciel: otwórz hasłem konta” pod kodem QR). Zalogować się może każdy pracownik w dowolnej zakładce: bez uprawnienia do niej `_RouteGuard` od razu przenosi go do pierwszej jego zakładki (kolejność `allPanelTabs`, zwykle Rezerwacje), z uprawnieniem zostaje. Nie loguje się tylko ktoś bez żadnej zakładki.
-  Pasek boczny pokazuje zakładki zalogowanego pracownika, a menu pod jego kółkiem w górnym pasku „Wyloguj”
-  i „Zakończ zmianę”. Właściciel otwiera panel hasłem konta restauracji (`ActingMember.account()`).
+  Pasek boczny pokazuje zakładki zalogowanego pracownika; „Wyloguj” jest ikoną obok motywu, a „Zakończ zmianę”
+  w menu pod jego kółkiem. Zakładka z pustym zbiorem w `_routePermissions` jest dla każdego (`canOpenRoute`):
+  tak jest z „Informacje dla pracowników”. Właściciel otwiera panel hasłem konta restauracji (`ActingMember.account()`).
   „Wejdź na zmianę” (menu boczne, `ShiftScreen`) zaczyna zmianę i loguje pracownika. „Zakończ zmianę” jest w menu
   pracownika w górnym pasku (`EndShiftDialog`): pracownik potwierdza swoim kodem (`panel_member_end_shift` z `p_member_id`,
   kod innej osoby nie działa) albo kodem QR, który może zeskanować tylko on (`panel_login_tokens.purpose = 'end_shift'`,
@@ -293,14 +323,17 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   wysłać propozycję (`panel_propose_hours`, stan `proposed`, fioletowy), którą pracownik przyjmuje albo odrzuca w aplikacji
   (`staff_answer_proposal`; odrzucenie = niedostępny). Termin zgłaszania: „Ustawienia lokalu” → „Grafik pracowników”
   (`schedule_deadline_dow`, `schedule_deadline_time`: ostatni wybrany dzień tygodnia przed początkiem okresu o godzinie,
-  `private.schedule_deadline`); po nim aplikacja nie przyjmuje zgłoszeń (`check_schedule_deadline`). Uwaga pracownika
+  `private.schedule_deadline`); po nim aplikacja nie przyjmuje zgłoszeń (`check_schedule_deadline`). Od 0062 godziny
+  mogą iść przez północ (koniec wcześniej niż początek = następny dzień, np. 18:00–02:00 to 8 h; w bazie
+  `ends <> starts`), w panelu „następnego dnia” przy godzinach i suma godzin z doliczoną dobą. Uwaga pracownika
   na tydzień (`staff_week_notes`, `staff_set_week_note`; w panelu ikona przy nazwisku). Pracownik może mieć kilka
   stanowisk (`staff_member_positions`, `panel_set_member_positions`, okno pracownika „Dodatkowe stanowiska”; uprawnienia
   to suma, `private.member_permissions`, dostawca: `private.is_courier`), w grafiku stanowisko na dzień
   (`staff_schedule.position_id`, wybór w oknie dnia, widać w aplikacji). Pod siatką: przyjętych osób, godziny pracy dnia
   i ile osób na jakim stanowisku; kolumna „Tydzień” z godzinami pracownika.
 - Statystyki (Management) mają zakładki: Sprzedaż (`panel_sales_stats`) i Rezerwacje i goście; okres 7/30/90 dni
-  w rzędzie zakładek. Historia zamówień jest osobną zakładką w grupie Rezerwacje.
+  w rzędzie zakładek. W Sprzedaży tabela „Sprzedaż w godzinach” (godziny z zamówieniami: liczba, kwota, na miejscu,
+  dostawa, odbiór osobisty, wiersz „Razem”; `hourly` z `dine_in`, `delivery`, `pickup` od 0062). Historia zamówień jest osobną zakładką w grupie Rezerwacje.
 - Role w `restaurant_staff`: owner, manager, staff. Kierownik i właściciel zmieniają salę, menu, dane lokalu
   i odpowiadają na opinie. Obsługa prowadzi rezerwacje. Uprawnień pilnuje baza (RLS i funkcje `panel_*`).
 - Rezerwacje i plan sali tylko w planie Pro. Plan Free widzi opinie, menu, lokal i statystyki wyświetleń.
@@ -447,7 +480,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Kompletowanie (dawniej Wydanie; `/wydanie`, `features/serving`, uprawnienie `serving`, grupa Zamówienia; w 0042 dostały je stanowiska
   z `orders`): karty stolików z daniami gotowymi z kuchni (najdłużej czekające pierwsze, żółte po 2 min, czerwone
   po 4 min), stuknięcie pozycji albo „Wydane” wywołuje `panel_serve_items` (ready → served, `p_undo` cofa),
-  pod kartą „Jeszcze na kuchni”. Zamówienia na wynos w przygotowaniu: „Spakowane” (`panel_takeaway_ready`),
+  pod kartą „Jeszcze na kuchni”. Od 0.21.0 wydana pozycja zostaje na karcie przekreślona i przygaszona jak zbita
+  na kuchni (`order_items.served_at` z triggera, 0062; na karcie wydane od chwili, gdy czeka najstarsza gotowa),
+  stuknięcie przekreślonej cofa wydanie; karta znika, gdy nic na niej nie czeka. Zamówienia na wynos w przygotowaniu: „Spakowane” (`panel_takeaway_ready`),
   gdy kuchnia zrobi wszystko. Nowe gotowe danie dzwoni (wyciszenie `servingMutedProvider`).
 - Menu: zdjęcia dań (`menu_items.photo_url`, bucket `menu-photos`, panel zmniejsza zdjęcie do 1200 px JPG,
   goście widzą je w aplikacji Table: miniatura po prawej przy daniu, stuknięcie powiększa; menu gościa pobiera dane

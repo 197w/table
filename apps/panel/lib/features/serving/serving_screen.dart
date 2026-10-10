@@ -38,7 +38,8 @@ String _plural(int n, String one, String few, String many) {
 
 /// Ekran „Kompletowanie”: dania gotowe z kuchni czekają, aż ktoś zaniesie je gościom albo spakuje na wynos.
 /// Karta to stolik (albo zamówienie na wynos do spakowania), najdłużej czekające pierwsze.
-/// Stuknięcie pozycji wydaje ją, „Wydane” wydaje całą kartę. Nowe gotowe danie dzwoni.
+/// Stuknięcie pozycji wydaje ją i wykreśla (jak zbita pozycja na kuchni; drugie stuknięcie cofa),
+/// „Wydane” wydaje całą kartę. Karta znika, gdy nic na niej nie czeka. Nowe gotowe danie dzwoni.
 class ServingScreen extends ConsumerStatefulWidget {
   const ServingScreen({super.key});
 
@@ -47,8 +48,12 @@ class ServingScreen extends ConsumerStatefulWidget {
 }
 
 class _ServingScreenState extends ConsumerState<ServingScreen> {
-  /// Pozycje i zamówienia wydawane właśnie teraz: znikają od razu, zanim baza potwierdzi.
+  /// Pozycje i zamówienia wydawane właśnie teraz: pozycje od razu są wykreślone, zamówienia znikają,
+  /// zanim baza potwierdzi.
   final _pending = <String>{};
+
+  /// Wydane pozycje, których wydanie właśnie cofamy: od razu wracają do „do wydania”.
+  final _restoring = <String>{};
 
   /// Ostatnio wydana karta, do cofnięcia pomyłki.
   ({String label, List<String> ids})? _lastServed;
@@ -89,11 +94,7 @@ class _ServingScreenState extends ConsumerState<ServingScreen> {
     };
     _fresh.addAll(orders);
     if (!ref.read(servingMutedProvider)) {
-      unawaited(
-        (_player ??= AudioPlayer())
-            .play(AssetSource('sounds/nowa_rezerwacja.wav'))
-            .catchError((_) {}),
-      );
+      unawaited((_player ??= AudioPlayer()).play(AssetSource('sounds/nowa_rezerwacja.wav')).catchError((_) {}));
     }
     Timer(const Duration(seconds: 8), () {
       if (mounted) setState(() => _fresh.removeAll(orders));
@@ -129,6 +130,22 @@ class _ServingScreenState extends ConsumerState<ServingScreen> {
     }
   }
 
+  /// Cofnięcie wydania jednej wykreślonej pozycji (stuknięcie w nią).
+  Future<void> _unserve(String restaurantId, OrderItem item) async {
+    setState(() => _restoring.add(item.id));
+    // Przywrócone danie nie jest nowym daniem z kuchni, więc nie dzwoni.
+    _known?.add(item.id);
+    try {
+      await ref.read(repositoryProvider).serveItems([item.id], undo: true);
+      ref.invalidate(servingTicketsProvider(restaurantId));
+      await ref.read(servingTicketsProvider(restaurantId).future);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _restoring.remove(item.id));
+    }
+  }
+
   /// Zamówienie na wynos spakowane: w „Dostawach” czeka na gościa albo dostawcę.
   Future<void> _packed(String restaurantId, ServingTicket ticket, String label) async {
     setState(() => _pending.add(ticket.orderId));
@@ -137,9 +154,7 @@ class _ServingScreenState extends ConsumerState<ServingScreen> {
       if (mounted) {
         showMessage(
           context,
-          ticket.takeawayKind == OrderKind.delivery
-              ? '$label czeka na dostawcę.'
-              : '$label czeka na odbiór gościa.',
+          ticket.takeawayKind == OrderKind.delivery ? '$label czeka na dostawcę.' : '$label czeka na odbiór gościa.',
           tone: ToastTone.success,
         );
       }
@@ -160,9 +175,7 @@ class _ServingScreenState extends ConsumerState<ServingScreen> {
     if (!restaurant.isPro) {
       return const Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(child: ProGate(feature: 'Kompletowanie')),
-        ],
+        children: [Expanded(child: ProGate(feature: 'Kompletowanie'))],
       );
     }
 
@@ -183,7 +196,8 @@ class _ServingScreenState extends ConsumerState<ServingScreen> {
     ];
     final dishes = tickets.fold<int>(
       0,
-      (sum, t) => sum +
+      (sum, t) =>
+          sum +
           t.items
               .where((i) => i.status == OrderItemStatus.ready && !_pending.contains(i.id))
               .fold<int>(0, (s, i) => s + i.quantity),
@@ -206,23 +220,22 @@ class _ServingScreenState extends ConsumerState<ServingScreen> {
             child: async.when(
               skipLoadingOnReload: true,
               loading: () => const LoadingView(),
-              error: (e, _) => ErrorView(
-                error: e,
-                onRetry: () => ref.invalidate(servingTicketsProvider(restaurant.id)),
-              ),
+              error: (e, _) =>
+                  ErrorView(error: e, onRetry: () => ref.invalidate(servingTicketsProvider(restaurant.id))),
               data: (_) => tickets.isEmpty
                   ? const _Empty()
                   : _Board(
                       tickets: tickets,
                       labelOf: labelOf,
                       pending: _pending,
+                      restoring: _restoring,
                       fresh: _fresh,
                       onServeItem: (t, item) => _serve(restaurant.id, [item.id], labelOf(t)),
-                      onServeAll: (t) => _serve(
-                        restaurant.id,
-                        [for (final id in t.readyIds) if (!_pending.contains(id)) id],
-                        labelOf(t),
-                      ),
+                      onUnserveItem: (item) => _unserve(restaurant.id, item),
+                      onServeAll: (t) => _serve(restaurant.id, [
+                        for (final id in t.readyIds)
+                          if (!_pending.contains(id)) id,
+                      ], labelOf(t)),
                       onPacked: (t) => _packed(restaurant.id, t, labelOf(t)),
                     ),
             ),
@@ -267,11 +280,7 @@ class _ServingBar extends ConsumerWidget {
                         '${_plural(tickets, 'zamówienie', 'zamówienia', 'zamówień')}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: text.titleLarge?.copyWith(
-                fontSize: 22,
-                color: AppColors.textMuted,
-                fontFeatures: _tabular,
-              ),
+              style: text.titleLarge?.copyWith(fontSize: 22, color: AppColors.textMuted, fontFeatures: _tabular),
             ),
           ),
           const SizedBox(width: 16),
@@ -334,8 +343,10 @@ class _Board extends StatelessWidget {
     required this.tickets,
     required this.labelOf,
     required this.pending,
+    required this.restoring,
     required this.fresh,
     required this.onServeItem,
+    required this.onUnserveItem,
     required this.onServeAll,
     required this.onPacked,
   });
@@ -343,8 +354,10 @@ class _Board extends StatelessWidget {
   final List<ServingTicket> tickets;
   final String Function(ServingTicket) labelOf;
   final Set<String> pending;
+  final Set<String> restoring;
   final Set<String> fresh;
   final void Function(ServingTicket, OrderItem) onServeItem;
+  final ValueChanged<OrderItem> onUnserveItem;
   final ValueChanged<ServingTicket> onServeAll;
   final ValueChanged<ServingTicket> onPacked;
 
@@ -379,8 +392,10 @@ class _Board extends StatelessWidget {
                             ticket: t,
                             label: labelOf(t),
                             pending: pending,
+                            restoring: restoring,
                             fresh: fresh.contains(t.orderId),
                             onServeItem: (item) => onServeItem(t, item),
+                            onUnserveItem: onUnserveItem,
                             onServeAll: () => onServeAll(t),
                             onPacked: () => onPacked(t),
                           ),
@@ -403,8 +418,10 @@ class _Card extends StatelessWidget {
     required this.ticket,
     required this.label,
     required this.pending,
+    required this.restoring,
     required this.fresh,
     required this.onServeItem,
+    required this.onUnserveItem,
     required this.onServeAll,
     required this.onPacked,
   });
@@ -412,8 +429,10 @@ class _Card extends StatelessWidget {
   final ServingTicket ticket;
   final String label;
   final Set<String> pending;
+  final Set<String> restoring;
   final bool fresh;
   final ValueChanged<OrderItem> onServeItem;
+  final ValueChanged<OrderItem> onUnserveItem;
   final VoidCallback onServeAll;
   final VoidCallback onPacked;
 
@@ -426,10 +445,10 @@ class _Card extends StatelessWidget {
         : waiting >= _warnAfter
         ? (_amber, Colors.black)
         : (null, AppColors.text);
-    final items = [
-      for (final i in ticket.items)
-        if (!pending.contains(i.id)) i,
-    ];
+    // Wydane (także właśnie wydawane) pozycje zostają na karcie wykreślone.
+    bool struck(OrderItem i) =>
+        pending.contains(i.id) || (i.status == OrderItemStatus.served && !restoring.contains(i.id));
+    final items = ticket.items;
     final cooking = ticket.items.where((i) => i.status == OrderItemStatus.sent).fold(0, (s, i) => s + i.quantity);
     final promised = ticket.promisedAt;
 
@@ -439,10 +458,7 @@ class _Card extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: fresh ? AppColors.accent : AppColors.ringStrong,
-          width: fresh ? 3 : 1,
-        ),
+        border: Border.all(color: fresh ? AppColors.accent : AppColors.ringStrong, width: fresh ? 3 : 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -470,11 +486,7 @@ class _Card extends StatelessWidget {
                         label,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: text.headlineSmall?.copyWith(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w600,
-                          color: headerFg,
-                        ),
+                        style: text.headlineSmall?.copyWith(fontSize: 28, fontWeight: FontWeight.w600, color: headerFg),
                       ),
                       Text(
                         ticket.waiter ?? (ticket.isTakeaway ? 'Spakuj zamówienie' : 'Zanieś do stolika'),
@@ -500,10 +512,7 @@ class _Card extends StatelessWidget {
                     // Na wynos ważniejsze jest, na którą lokal obiecał zamówienie.
                     Text(
                       promised != null ? 'na ${_hm(promised)}' : 'gotowe od ${_hm(ticket.readySince)}',
-                      style: text.bodyMedium?.copyWith(
-                        color: headerFg.withValues(alpha: 0.75),
-                        fontFeatures: _tabular,
-                      ),
+                      style: text.bodyMedium?.copyWith(color: headerFg.withValues(alpha: 0.75), fontFeatures: _tabular),
                     ),
                   ],
                 ),
@@ -519,7 +528,14 @@ class _Card extends StatelessWidget {
                   _Line(
                     item: item,
                     takeaway: ticket.isTakeaway,
-                    onTap: !ticket.isTakeaway && item.status == OrderItemStatus.ready ? () => onServeItem(item) : null,
+                    struck: struck(item),
+                    onTap: ticket.isTakeaway || pending.contains(item.id)
+                        ? null
+                        : struck(item)
+                        ? () => onUnserveItem(item)
+                        : item.status == OrderItemStatus.ready || restoring.contains(item.id)
+                        ? () => onServeItem(item)
+                        : null,
                   ),
               ],
             ),
@@ -571,13 +587,17 @@ class _Card extends StatelessWidget {
 }
 
 /// Jedna pozycja: ilość i nazwa, pod spodem wariant, dodatki i uwaga.
-/// Na sali stuknięcie wydaje pozycję. Na wynos ikona mówi, czy kuchnia już ją zrobiła.
+/// Na sali stuknięcie wydaje pozycję i ją wykreśla, stuknięcie wykreślonej cofa wydanie.
+/// Na wynos ikona mówi, czy kuchnia już ją zrobiła.
 class _Line extends StatelessWidget {
-  const _Line({required this.item, required this.takeaway, required this.onTap});
+  const _Line({required this.item, required this.takeaway, required this.onTap, this.struck = false});
 
   final OrderItem item;
   final bool takeaway;
   final VoidCallback? onTap;
+
+  /// Pozycja wydana: przekreślona i przygaszona, jak zbita pozycja na kuchni.
+  final bool struck;
 
   @override
   Widget build(BuildContext context) {
@@ -585,71 +605,81 @@ class _Line extends StatelessWidget {
     final details = item.details;
     final cooking = item.status == OrderItemStatus.sent;
     final color = cooking ? AppColors.textMuted : AppColors.text;
+    final decoration = struck ? TextDecoration.lineThrough : null;
 
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 9, 20, 9),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (takeaway) ...[
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Glyph(
-                  cooking ? AppIcons.chefHat : AppIcons.checkCircle.duotone,
-                  size: 22,
-                  color: cooking ? AppColors.textDisabled : AppColors.accent,
-                ),
-              ),
-              const SizedBox(width: 10),
-            ],
-            SizedBox(
-              width: 50,
-              child: Text(
-                '${item.quantity}×',
-                style: text.headlineSmall?.copyWith(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w600,
-                  color: item.quantity > 1 && !cooking ? AppColors.accent : color,
-                  fontFeatures: _tabular,
-                ),
-              ),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.name,
-                    style: text.headlineSmall?.copyWith(
-                      fontSize: 24,
-                      height: 1.2,
-                      fontWeight: FontWeight.w600,
-                      color: color,
+    return Semantics(
+      button: onTap != null,
+      label: struck ? 'Wydane: ${item.quantity} × ${item.name}' : null,
+      hint: onTap == null ? null : (struck ? 'Stuknij, żeby cofnąć wydanie' : 'Stuknij, żeby wydać'),
+      child: InkWell(
+        onTap: onTap,
+        child: AnimatedOpacity(
+          opacity: struck ? 0.35 : 1,
+          duration: const Duration(milliseconds: 160),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 9, 20, 9),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (takeaway) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Glyph(
+                      cooking ? AppIcons.chefHat : AppIcons.checkCircle.duotone,
+                      size: 22,
+                      color: cooking ? AppColors.textDisabled : AppColors.accent,
                     ),
                   ),
-                  if (details != null)
-                    Text(details, style: text.titleMedium?.copyWith(color: AppColors.textMuted)),
-                  if (item.note != null)
-                    Container(
-                      margin: const EdgeInsets.only(top: 4),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: _amber.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '! ${item.note}',
-                        style: text.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: _amber),
-                      ),
-                    ),
-                  if (cooking)
-                    Text('na kuchni', style: text.bodyMedium?.copyWith(color: AppColors.textDisabled)),
+                  const SizedBox(width: 10),
                 ],
-              ),
+                SizedBox(
+                  width: 50,
+                  child: Text(
+                    '${item.quantity}×',
+                    style: text.headlineSmall?.copyWith(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w600,
+                      color: item.quantity > 1 && !cooking && !struck ? AppColors.accent : color,
+                      fontFeatures: _tabular,
+                      decoration: decoration,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.name,
+                        style: text.headlineSmall?.copyWith(
+                          fontSize: 24,
+                          height: 1.2,
+                          fontWeight: FontWeight.w600,
+                          color: color,
+                          decoration: decoration,
+                        ),
+                      ),
+                      if (details != null) Text(details, style: text.titleMedium?.copyWith(color: AppColors.textMuted)),
+                      if (item.note != null)
+                        Container(
+                          margin: const EdgeInsets.only(top: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: _amber.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '! ${item.note}',
+                            style: text.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: _amber),
+                          ),
+                        ),
+                      if (cooking) Text('na kuchni', style: text.bodyMedium?.copyWith(color: AppColors.textDisabled)),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

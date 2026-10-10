@@ -72,8 +72,16 @@ class PanelShell extends ConsumerWidget {
     if (open != null && unseen.contains(open)) {
       WidgetsBinding.instance.addPostFrameCallback((_) => news.seen(open));
     }
+    // Nieprzeczytane informacje dla zalogowanego pracownika: kropka, dopóki ich nie przeczyta.
+    final memberId = ref.watch(panelMemberProvider)?.dbMemberId;
+    final unreadInfo = current != null &&
+        memberId != null &&
+        (ref.watch(announcementsProvider((restaurantId: current.id, memberId: memberId))).value ?? const [])
+            .any((a) => a.forMe && !a.read && a.isPublished());
     bool dot(PanelTab t) =>
-        allowed(t.route) && !location.startsWith(t.route) && unseen.contains(_newsOf(t.route));
+        allowed(t.route) &&
+        !location.startsWith(t.route) &&
+        (unseen.contains(_newsOf(t.route)) || (t.route == PanelRoutes.announcements && unreadInfo));
 
     // Ekran kuchni na cały ekran: bez pasków, same bileciki.
     if (ref.watch(kitchenFullscreenProvider) && location.startsWith(PanelRoutes.kitchen)) {
@@ -221,6 +229,7 @@ class _TopBar extends ConsumerWidget {
     final list = ref.watch(restaurantsProvider).value ?? const <PanelRestaurant>[];
     final theme = ref.watch(themeSettingProvider);
     final release = ref.watch(availableUpdateProvider);
+    final member = ref.watch(panelMemberProvider);
     // Ostatnie 10 sekund przed automatycznym wylogowaniem.
     final idle = ref.watch(idleSecondsProvider.select((s) => s >= kIdleLogoutSeconds - 10 ? s : 0));
 
@@ -294,6 +303,16 @@ class _TopBar extends ConsumerWidget {
                     );
                   },
                 ),
+                // Wylogowanie zalogowanego pracownika (albo pełnego dostępu właściciela) jednym kliknięciem, obok motywu.
+                if (member != null) ...[
+                  const SizedBox(width: 2),
+                  _BareIcon(
+                    icon: AppIcons.signOut,
+                    tooltip: 'Wyloguj (${member.name.split(' ').first})',
+                    size: 24,
+                    onTap: () => ref.read(panelMemberProvider.notifier).signOut(),
+                  ),
+                ],
                 const SizedBox(width: 10),
                 if (current != null) _MemberMenu(restaurant: current),
               ],
@@ -408,10 +427,10 @@ class _RestaurantSwitcher extends ConsumerWidget {
   }
 }
 
-enum _MemberAction { endShift, signOut, startShift, accountSignOut }
+enum _MemberAction { endShift, startShift, accountSignOut }
 
-/// Zalogowany pracownik w prawym rogu: kółko z inicjałami. Po kliknięciu jego kod, „Zakończ zmianę”
-/// i „Wyloguj”, a niżej „Wejdź na zmianę” i konto restauracji.
+/// Zalogowany pracownik w prawym rogu: kółko z inicjałami. Po kliknięciu jego kod i „Zakończ zmianę”, a niżej
+/// „Wejdź na zmianę” i konto restauracji. „Wyloguj” jest osobną ikoną obok motywu.
 class _MemberMenu extends ConsumerWidget {
   const _MemberMenu({required this.restaurant});
 
@@ -455,7 +474,6 @@ class _MemberMenu extends ConsumerWidget {
       ),
       onSelected: (value) => switch (value) {
         _MemberAction.endShift => EndShiftDialog.open(context, person!),
-        _MemberAction.signOut => ref.read(panelMemberProvider.notifier).signOut(),
         _MemberAction.startShift => ShiftScreen.open(context),
         _MemberAction.accountSignOut => signOutRestaurantAccount(context, ref),
       },
@@ -497,7 +515,6 @@ class _MemberMenu extends ConsumerWidget {
         ),
         const PopupMenuDivider(),
         if (person != null && since != null) action(_MemberAction.endShift, AppIcons.doorOpen, 'Zakończ zmianę'),
-        if (member != null) action(_MemberAction.signOut, AppIcons.signOut, 'Wyloguj (${member.name.split(' ').first})'),
         action(_MemberAction.startShift, AppIcons.signIn, 'Wejdź na zmianę'),
         const PopupMenuDivider(),
         PopupMenuItem(

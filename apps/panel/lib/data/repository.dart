@@ -910,7 +910,8 @@ class PanelRepository {
             'opener:staff_members!opened_by_member(name))',
           )
           .eq('restaurant_id', restaurantId)
-          .inFilter('status', ['sent', 'ready'])
+          // Wydane też: karta pokazuje je wykreślone, dopóki reszta czeka.
+          .inFilter('status', ['sent', 'ready', 'served'])
           .eq('orders.status', 'open')
           .gte('sent_at', DateTime.now().subtract(const Duration(hours: 12)).toUtc().toIso8601String())
           // Zamówienia na godzinę dopiero, gdy weszły do kuchni.
@@ -1405,6 +1406,97 @@ class PanelRepository {
           .inFilter('status', ['paid', 'cancelled'])
           .gte('closed_at', day.toUtc().toIso8601String())
           .lt('closed_at', DateTime(day.year, day.month, day.day + 1).toUtc().toIso8601String())
+          .order('closed_at', ascending: false);
+      return rows.map(PanelOrder.fromJson).toList();
+    });
+  }
+
+  /// Informacje dla pracowników lokalu, najnowsze pierwsze. [memberId]: zalogowany pracownik (czy do niego,
+  /// czy przeczytał).
+  Future<List<Announcement>> announcements(String restaurantId, {String? memberId}) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>(
+        'panel_announcements',
+        params: {'p_restaurant_id': restaurantId, 'p_member_id': memberId},
+      );
+      return [for (final r in rows) Announcement.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
+  /// Nowa informacja ([id] null) albo zmiana. [publishAt] null: od razu (przy zmianie: bez zmiany daty).
+  Future<String> saveAnnouncement(
+    String restaurantId, {
+    String? id,
+    required String title,
+    required String body,
+    required AnnouncementAudience audience,
+    List<String> positionIds = const [],
+    List<String> memberIds = const [],
+    DateTime? publishAt,
+    String? memberId,
+  }) {
+    return _guard(
+      () => _db.rpc<String>(
+        'panel_save_announcement',
+        params: {
+          'p_restaurant_id': restaurantId,
+          'p_id': id,
+          'p_title': title,
+          'p_body': body,
+          'p_audience': audience.db,
+          'p_position_ids': positionIds,
+          'p_member_ids': memberIds,
+          'p_publish_at': publishAt?.toUtc().toIso8601String(),
+          'p_member_id': memberId,
+        },
+      ),
+    );
+  }
+
+  Future<void> deleteAnnouncement(String id, {String? memberId}) {
+    return _guard(() => _db.rpc<void>('panel_delete_announcement', params: {'p_id': id, 'p_member_id': memberId}));
+  }
+
+  /// Zalogowany pracownik przeczytał informację.
+  Future<void> readAnnouncement(String id, String memberId) {
+    return _guard(() => _db.rpc<void>('panel_read_announcement', params: {'p_id': id, 'p_member_id': memberId}));
+  }
+
+  /// Wszystkie niezamknięte zamówienia lokalu: rachunki na sali i zamówienia na wynos ze wszystkich dni,
+  /// najstarsze pierwsze (Management → Niezamknięte zamówienia).
+  Future<List<UnclosedOrder>> unclosedOrders(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db
+          .from('orders')
+          .select(
+            'id, table_id, reservation_id, note, status, opened_at, kind, number, fulfillment, guests, guests_skipped, '
+            'discount_grosze, deposit_grosze, delivery_fee_grosze, customer_name, customer_company, customer_phone, '
+            'delivery_address, opener:staff_members!opened_by_member(name), order_items(*)',
+          )
+          .eq('restaurant_id', restaurantId)
+          .eq('status', 'open')
+          .order('opened_at');
+      return rows.map(UnclosedOrder.fromJson).toList();
+    });
+  }
+
+  /// Zamknięte i anulowane zamówienia ze wszystkich dni pasujące do imienia, telefonu albo adresu (najwyżej 100).
+  Future<List<PanelOrder>> searchOrders(String restaurantId, String query) {
+    return _guard(() async {
+      final ids = await _db.rpc<List<dynamic>>(
+        'panel_order_search',
+        params: {'p_restaurant_id': restaurantId, 'p_query': query},
+      );
+      if (ids.isEmpty) return const <PanelOrder>[];
+      final rows = await _db
+          .from('orders')
+          .select(
+            'id, table_id, reservation_id, note, status, opened_at, closed_at, '
+            'payment_method, gift_card_grosze, kind, number, discount_grosze, discount_label, deposit_grosze, tip_grosze, '
+            'delivery_fee_grosze, customer_name, customer_company, customer_phone, delivery_address, '
+            'order_items(*), order_payments(method, amount_grosze, tip_grosze)',
+          )
+          .inFilter('id', [for (final id in ids) '$id'])
           .order('closed_at', ascending: false);
       return rows.map(PanelOrder.fromJson).toList();
     });

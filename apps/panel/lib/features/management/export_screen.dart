@@ -8,6 +8,7 @@ import 'package:table_core/table_core.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
 import 'export_csv.dart';
+import 'export_pdf.dart';
 
 typedef ExportQuery = ({String restaurantId, DateTime month});
 
@@ -16,8 +17,8 @@ final exportMonthProvider = FutureProvider.autoDispose.family<MonthExport, Expor
   return MonthExport.fromJson(json);
 });
 
-/// Management → Eksport: pliki CSV dla księgowej za wybrany miesiąc (rachunki z VAT, zestawienie dzienne,
-/// czas pracy z wynagrodzeniami, petty cash). Otwierają się w Excelu. Uprawnienie „Eksport”.
+/// Management → Eksport: pliki PDF dla księgowej za wybrany miesiąc (rachunki z VAT, zestawienie dzienne,
+/// czas pracy z wynagrodzeniami, petty cash). Obok mały przycisk CSV do Excela. Uprawnienie „Eksport”.
 class ExportScreen extends ConsumerStatefulWidget {
   const ExportScreen({super.key});
 
@@ -30,16 +31,27 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
 
   String get _suffix => '${_month.year}-${_month.month.toString().padLeft(2, '0')}';
 
-  Future<void> _save(String name, String content) async {
+  /// Zapis pliku w miejscu wybranym przez użytkownika: PDF (domyślnie) albo CSV.
+  Future<void> _save(String name, ExportTable table, {bool csv = false}) async {
+    final ext = csv ? 'csv' : 'pdf';
     final location = await getSaveLocation(
-      suggestedName: '$name-$_suffix.csv',
-      acceptedTypeGroups: const [XTypeGroup(label: 'CSV', extensions: ['csv'])],
+      suggestedName: '$name-$_suffix.$ext',
+      acceptedTypeGroups: [
+        XTypeGroup(label: ext.toUpperCase(), extensions: [ext]),
+      ],
     );
     if (location == null) return;
     try {
-      final path = location.path.toLowerCase().endsWith('.csv') ? location.path : '${location.path}.csv';
-      await File(path).writeAsString(content, flush: true);
-      if (mounted) showMessage(context, 'Zapisano: ${path.split(Platform.pathSeparator).last}.', tone: ToastTone.success);
+      final path = location.path.toLowerCase().endsWith('.$ext') ? location.path : '${location.path}.$ext';
+      if (csv) {
+        await File(path).writeAsString(table.csvText, flush: true);
+      } else {
+        final restaurant = ref.read(currentRestaurantProvider)?.name ?? '';
+        final bytes = await exportPdf(table, restaurant: restaurant, period: exportPeriod(_month));
+        await File(path).writeAsBytes(bytes, flush: true);
+      }
+      if (!mounted) return;
+      showMessage(context, 'Zapisano: ${path.split(Platform.pathSeparator).last}.', tone: ToastTone.success);
     } catch (e) {
       if (mounted) showError(context, const AppFailure('Nie udało się zapisać pliku. Wybierz inny folder.'));
     }
@@ -85,7 +97,9 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                             color: TileColors.green,
                             value: Fmt.price(e.revenueGrosze),
                             detail: '${e.orders.length} rachunków · stawki VAT, płatności, rabaty i napiwki',
-                            onSave: e.orders.isEmpty ? null : () => _save('sprzedaz-rachunki', salesCsv(e)),
+                            onSave: e.orders.isEmpty
+                                ? null
+                                : ({bool csv = false}) => _save('sprzedaz-rachunki', salesTable(e), csv: csv),
                           ),
                         ),
                         SizedBox(
@@ -96,7 +110,9 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                             color: TileColors.blue,
                             value: '$days dni',
                             detail: 'Zestawienie dzienne z VAT i formami płatności',
-                            onSave: e.orders.isEmpty ? null : () => _save('sprzedaz-dzienna', dailyCsv(e)),
+                            onSave: e.orders.isEmpty
+                                ? null
+                                : ({bool csv = false}) => _save('sprzedaz-dzienna', dailyTable(e), csv: csv),
                           ),
                         ),
                         SizedBox(
@@ -107,7 +123,9 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                             color: TileColors.violet,
                             value: '${(hours / 3600).toStringAsFixed(1).replaceAll('.', ',')} h',
                             detail: '${e.hours.length} pracowników · brutto ${Fmt.price(payroll)}',
-                            onSave: e.hours.isEmpty ? null : () => _save('czas-pracy', hoursCsv(e)),
+                            onSave: e.hours.isEmpty
+                                ? null
+                                : ({bool csv = false}) => _save('czas-pracy', hoursTable(e), csv: csv),
                           ),
                         ),
                         SizedBox(
@@ -118,7 +136,9 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                             color: TileColors.amber,
                             value: '${petty < 0 ? '−' : '+'}${Fmt.price(petty.abs())}',
                             detail: '${e.petty.length} wpisów',
-                            onSave: e.petty.isEmpty ? null : () => _save('petty-cash', pettyCsv(e)),
+                            onSave: e.petty.isEmpty
+                                ? null
+                                : ({bool csv = false}) => _save('petty-cash', pettyTable(e), csv: csv),
                           ),
                         ),
                       ],
@@ -149,7 +169,9 @@ class _ExportCard extends StatelessWidget {
   final Color color;
   final String value;
   final String detail;
-  final VoidCallback? onSave;
+
+  /// Zapis pliku: bez argumentu PDF, `csv: true` plik CSV.
+  final void Function({bool csv})? onSave;
 
   @override
   Widget build(BuildContext context) {
@@ -175,10 +197,20 @@ class _ExportCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
+            IconButton(
+              tooltip: 'Zapisz CSV (Excel)',
+              onPressed: onSave == null ? null : () => onSave!(csv: true),
+              icon: Glyph(
+                AppIcons.fileCsv,
+                size: 18,
+                color: onSave == null ? AppColors.textDisabled : AppColors.textMuted,
+              ),
+            ),
+            const SizedBox(width: 4),
             FilledButton.icon(
-              onPressed: onSave,
+              onPressed: onSave == null ? null : () => onSave!(),
               icon: const Glyph(AppIcons.fileArrowDown, size: 18),
-              label: const Text('Zapisz CSV'),
+              label: const Text('Zapisz PDF'),
             ),
           ],
         ),

@@ -188,12 +188,28 @@ List<String> _vatCells(Map<int, int> gross, List<int> rates) => [
 const _methods = ['cash', 'card', 'card_online', 'other'];
 const _methodHeader = ['Gotówka', 'Karta (terminal)', 'Karta online', 'Inne'];
 
+/// Tabela do eksportu: ta sama dla PDF i CSV. Ostatni wiersz [footer] to suma (pogrubiona w PDF).
+class ExportTable {
+  const ExportTable({required this.title, required this.header, required this.rows, this.footer, this.numeric = const {}});
+
+  final String title;
+  final List<String> header;
+  final List<List<String>> rows;
+  final List<String>? footer;
+
+  /// Kolumny z liczbami i kwotami (w PDF wyrównane do prawej).
+  final Set<int> numeric;
+
+  String get csvText => csv([header, ...rows, ?footer]);
+}
+
+Set<int> _from(int first, int count) => {for (var i = first; i < first + count; i++) i};
+
 /// Każdy rachunek w osobnym wierszu, z sumą na końcu.
-String salesCsv(MonthExport e) {
+ExportTable salesTable(MonthExport e) {
   final rates = e.rates;
-  final rows = <List<Object?>>[
-    ['Data', 'Godzina', 'Rodzaj', 'Stolik / numer', ..._vatHeader(rates), 'Dostawa', 'Rabat', 'Razem', ..._methodHeader, 'Napiwek'],
-  ];
+  final header = ['Data', 'Godzina', 'Rodzaj', 'Stolik / numer', ..._vatHeader(rates), 'Dostawa', 'Rabat', 'Razem', ..._methodHeader, 'Napiwek'];
+  final rows = <List<String>>[];
   final sumVat = <int, int>{};
   final sumPay = <String, int>{};
   var fee = 0, discount = 0, total = 0, tips = 0;
@@ -218,84 +234,130 @@ String salesCsv(MonthExport e) {
       csvMoney(o.tipGrosze),
     ]);
   }
-  rows.add([
-    'Razem', '', '${e.orders.length} rachunków', '',
-    ..._vatCells(sumVat, rates),
-    csvMoney(fee), csvMoney(discount), csvMoney(total),
-    for (final m in _methods) csvMoney(sumPay[m] ?? 0),
-    csvMoney(tips),
-  ]);
-  return csv(rows);
+  return ExportTable(
+    title: 'Sprzedaż: rachunki',
+    header: header,
+    rows: rows,
+    footer: [
+      'Razem', '', '${e.orders.length} rachunków', '',
+      ..._vatCells(sumVat, rates),
+      csvMoney(fee), csvMoney(discount), csvMoney(total),
+      for (final m in _methods) csvMoney(sumPay[m] ?? 0),
+      csvMoney(tips),
+    ],
+    numeric: _from(4, header.length - 4),
+  );
 }
 
-/// Zestawienie dzienne: jeden wiersz na dzień ze sprzedażą.
-String dailyCsv(MonthExport e) {
+String salesCsv(MonthExport e) => salesTable(e).csvText;
+
+/// Zestawienie dzienne: jeden wiersz na dzień ze sprzedażą, na końcu suma miesiąca.
+ExportTable dailyTable(MonthExport e) {
   final rates = e.rates;
   final byDay = <String, List<ExportOrder>>{};
   for (final o in e.orders) {
     byDay.putIfAbsent(csvDate(o.closedAt), () => []).add(o);
   }
-  final rows = <List<Object?>>[
-    ['Data', 'Rachunki', ..._vatHeader(rates), 'Dostawa', 'Rabaty', 'Razem', ..._methodHeader, 'Napiwki'],
-  ];
-  final days = byDay.keys.toList()..sort();
-  for (final day in days) {
-    final list = byDay[day]!;
+  final header = ['Data', 'Rachunki', ..._vatHeader(rates), 'Dostawa', 'Rabaty', 'Razem', ..._methodHeader, 'Napiwki'];
+  List<String> line(String label, List<ExportOrder> list) {
     final vat = <int, int>{};
     final pay = <String, int>{};
     for (final o in list) {
       o.vatAfterDiscount.forEach((r, g) => vat[r] = (vat[r] ?? 0) + g);
       o.payments.forEach((m, a) => pay[m] = (pay[m] ?? 0) + a);
     }
-    rows.add([
-      day,
-      list.length,
+    return [
+      label,
+      '${list.length}',
       ..._vatCells(vat, rates),
       csvMoney(list.fold(0, (s, o) => s + o.deliveryFeeGrosze)),
       csvMoney(list.fold(0, (s, o) => s + o.discountGrosze)),
       csvMoney(list.fold(0, (s, o) => s + o.totalGrosze)),
       for (final m in _methods) csvMoney(pay[m] ?? 0),
       csvMoney(list.fold(0, (s, o) => s + o.tipGrosze)),
-    ]);
+    ];
   }
-  return csv(rows);
+
+  final days = byDay.keys.toList()..sort();
+  return ExportTable(
+    title: 'Sprzedaż: dzień po dniu',
+    header: header,
+    rows: [for (final day in days) line(day, byDay[day]!)],
+    footer: e.orders.isEmpty ? null : line('Razem', e.orders),
+    numeric: _from(1, header.length - 1),
+  );
+}
+
+String dailyCsv(MonthExport e) {
+  // CSV bez wiersza sumy (jak dotąd: arkusz sam sumuje kolumny).
+  final t = dailyTable(e);
+  return csv([t.header, ...t.rows]);
 }
 
 /// Czas pracy i wynagrodzenia: godziny dziesiętne, stawka, zarobek brutto i szacowane netto z umowy.
-String hoursCsv(MonthExport e) {
-  final rows = <List<Object?>>[
-    ['Pracownik', 'Stanowisko', 'Umowa', 'Zmiany', 'Godziny', 'Stawka brutto za godzinę', 'Zarobek brutto', 'Zarobek netto (szacunek)'],
-  ];
+ExportTable hoursTable(MonthExport e) {
+  final header = ['Pracownik', 'Stanowisko', 'Umowa', 'Zmiany', 'Godziny', 'Stawka brutto za godzinę', 'Zarobek brutto', 'Zarobek netto (szacunek)'];
+  final rows = <List<String>>[];
+  var seconds = 0, shifts = 0, gross = 0, net = 0;
   for (final h in e.hours) {
     final earnings = h.earningsGrosze;
+    seconds += h.seconds;
+    shifts += h.shifts;
+    if (earnings != null) {
+      gross += earnings;
+      net += Payroll.monthlyNet(h.contract, earnings);
+    }
     rows.add([
       h.name,
       h.position ?? '',
       h.contract.label,
-      h.shifts,
+      '${h.shifts}',
       (h.seconds / 3600).toStringAsFixed(2).replaceAll('.', ','),
       h.rateGrosze == null ? '' : csvMoney(h.rateGrosze!),
       earnings == null ? '' : csvMoney(earnings),
       earnings == null ? '' : csvMoney(Payroll.monthlyNet(h.contract, earnings)),
     ]);
   }
-  return csv(rows);
+  return ExportTable(
+    title: 'Czas pracy i wynagrodzenia',
+    header: header,
+    rows: rows,
+    footer: e.hours.isEmpty
+        ? null
+        : ['Razem', '', '', '$shifts', (seconds / 3600).toStringAsFixed(2).replaceAll('.', ','), '', csvMoney(gross), csvMoney(net)],
+    numeric: {3, 4, 5, 6, 7},
+  );
+}
+
+String hoursCsv(MonthExport e) {
+  final t = hoursTable(e);
+  return csv([t.header, ...t.rows]);
 }
 
 /// Petty cash z miesiąca: wydatki z kasy na minus, wpłaty na plus.
-String pettyCsv(MonthExport e) {
-  final rows = <List<Object?>>[
-    ['Data', 'Rodzaj', 'Opis', 'Kwota', 'Wpisał', 'Godzina wpisu'],
+ExportTable pettyTable(MonthExport e) {
+  final rows = <List<String>>[
+    for (final p in e.petty)
+      [
+        csvDate(p.day),
+        p.out ? 'Wydatek' : 'Wpłata',
+        p.description,
+        csvMoney(p.out ? -p.amountGrosze : p.amountGrosze),
+        p.author ?? '',
+        csvTime(p.createdAt),
+      ],
   ];
-  for (final p in e.petty) {
-    rows.add([
-      csvDate(p.day),
-      p.out ? 'Wydatek' : 'Wpłata',
-      p.description,
-      csvMoney(p.out ? -p.amountGrosze : p.amountGrosze),
-      p.author ?? '',
-      csvTime(p.createdAt),
-    ]);
-  }
-  return csv(rows);
+  final sum = e.petty.fold(0, (s, p) => s + (p.out ? -p.amountGrosze : p.amountGrosze));
+  return ExportTable(
+    title: 'Petty cash',
+    header: const ['Data', 'Rodzaj', 'Opis', 'Kwota', 'Wpisał', 'Godzina wpisu'],
+    rows: rows,
+    footer: e.petty.isEmpty ? null : ['Razem', '', '${e.petty.length} wpisów', csvMoney(sum), '', ''],
+    numeric: const {3},
+  );
+}
+
+String pettyCsv(MonthExport e) {
+  final t = pettyTable(e);
+  return csv([t.header, ...t.rows]);
 }

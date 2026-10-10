@@ -15,6 +15,7 @@ Map<String, dynamic> _item(
   String status, {
   int quantity = 1,
   String? readyAt,
+  String? servedAt,
   String sentAt = '2026-10-01T17:00:00Z',
   Map<String, dynamic>? orders,
 }) => {
@@ -30,6 +31,7 @@ Map<String, dynamic> _item(
   'created_at': '2026-10-01T16:58:00Z',
   'sent_at': sentAt,
   'ready_at': readyAt,
+  'served_at': servedAt,
   'member': {'name': 'Kasia'},
   'orders': orders ?? {'table_id': 't1', 'status': 'open', 'kind': 'dine_in'},
 };
@@ -64,6 +66,22 @@ void main() {
     expect(takeaway.allReady, isFalse);
     expect(takeaway.readyIds, ['c1']);
     expect(tickets[1].readySince.isAtSameMomentAs(DateTime.parse('2026-10-01T17:04:00Z')), isTrue);
+  });
+
+  test('wydanie: pozycje wydane w międzyczasie zostają wykreślone, wcześniejsze wydania nie', () {
+    final tickets = ServingTicket.fromRows([
+      // Przystawka wydana, zanim główne dania były gotowe: bez niej.
+      _item('s1', 'o1', 'served', readyAt: '2026-10-01T16:50:00Z', servedAt: '2026-10-01T16:52:00Z'),
+      _item('m1', 'o1', 'ready', readyAt: '2026-10-01T17:06:00Z'),
+      // Wydana po tym, jak m1 była gotowa: wykreślona na karcie.
+      _item('m2', 'o1', 'served', readyAt: '2026-10-01T17:06:00Z', servedAt: '2026-10-01T17:07:00Z'),
+      // Stolik, w którym wszystko już wydano: bez karty.
+      _item('x1', 'o2', 'served', readyAt: '2026-10-01T17:00:00Z', servedAt: '2026-10-01T17:02:00Z'),
+    ]);
+    expect(tickets.map((t) => t.orderId), ['o1']);
+    expect(tickets.single.items.map((i) => i.id), ['m1', 'm2']);
+    expect(tickets.single.readyIds, ['m1']);
+    expect(tickets.single.items.last.servedAt!.toUtc(), DateTime.utc(2026, 10, 1, 17, 7));
   });
 
   test('Kompletowanie ma własne uprawnienie, a Odbiór jest w grupie Zamówienia', () {

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+import 'announcements_screen.dart';
 import 'courier_location.dart';
 import 'data.dart';
 import 'scan_screen.dart';
@@ -44,7 +45,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref
       ..invalidate(jobsProvider)
       ..invalidate(shiftsProvider)
-      ..invalidate(codesProvider);
+      ..invalidate(codesProvider)
+      ..invalidate(announcementsProvider);
   }
 
   Future<void> _scan() async {
@@ -132,6 +134,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final phone = ref.watch(staffRepositoryProvider).phone;
     final list = jobs.value ?? const <Job>[];
     final working = list.where((j) => j.working).firstOrNull;
+    final announcements = ref.watch(announcementsProvider).value ?? const <StaffAnnouncement>[];
 
     return Scaffold(
       appBar: AppBar(
@@ -180,6 +183,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 18),
+                      if (announcements.isNotEmpty) ...[
+                        AnnouncementsCard(
+                          announcements: announcements,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(builder: (_) => const AnnouncementsScreen()),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       for (final job in list) ...[
                         _JobCard(
                           job: job,

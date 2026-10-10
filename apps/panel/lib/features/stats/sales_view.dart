@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
 
@@ -189,6 +190,8 @@ class SalesView extends ConsumerWidget {
                   ),
                 ],
             ),
+            const SizedBox(height: 16),
+            _HourlyTable(hours: s.hourly),
             const SizedBox(height: 16),
             // Karty w rzędzie wyrównane do góry. Bez IntrinsicHeight, bo wykresy mierzą się same (LayoutBuilder).
             Row(
@@ -468,6 +471,80 @@ class _Bars extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Sprzedaż w godzinach (godzina złożenia zamówienia): ile zamówień, za ile i ile z nich na sali,
+/// z dostawą i z odbiorem osobistym. Tylko godziny, w których coś sprzedano, na dole suma.
+class _HourlyTable extends StatelessWidget {
+  const _HourlyTable({required this.hours});
+
+  final List<SalesPoint> hours;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final rows = hours.where((h) => h.orders > 0).toList();
+    final total = (
+      orders: rows.fold(0, (s, h) => s + h.orders),
+      revenue: rows.fold(0, (s, h) => s + h.revenue),
+      dineIn: rows.fold(0, (s, h) => s + h.dineIn),
+      delivery: rows.fold(0, (s, h) => s + h.delivery),
+      pickup: rows.fold(0, (s, h) => s + h.pickup),
+    );
+    final head = text.labelMedium?.copyWith(color: AppColors.textMuted);
+    final cell = text.bodyMedium?.copyWith(fontFeatures: _tabular);
+    final strong = text.titleSmall?.copyWith(fontFeatures: _tabular);
+    String two(int n) => n.toString().padLeft(2, '0');
+
+    Widget row(List<String> values, TextStyle? style, {bool header = false, bool shaded = false}) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: shaded ? AppColors.surfaceRaised : null,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          for (final (i, v) in values.indexed)
+            Expanded(
+              flex: i == 0 ? 3 : 2,
+              child: Text(v, textAlign: i == 0 ? TextAlign.left : TextAlign.right, style: style),
+            ),
+        ],
+      ),
+    );
+
+    return PanelCard(
+      title: 'Sprzedaż w godzinach',
+      icon: AppIcons.clock,
+      iconColor: TileColors.blue,
+      child: rows.isEmpty
+          ? SalesView._empty(text)
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                row(['Godzina', 'Zamówienia', 'Kwota', 'Na miejscu', 'Dostawa', 'Odbiór osobisty'], head, header: true),
+                for (final h in rows)
+                  row([
+                    '${two(h.key)}:00–${two((h.key + 1) % 24)}:00',
+                    '${h.orders}',
+                    Fmt.price(h.revenue),
+                    '${h.dineIn}',
+                    '${h.delivery}',
+                    '${h.pickup}',
+                  ], cell),
+                const SizedBox(height: 4),
+                row([
+                  'Razem',
+                  '${total.orders}',
+                  Fmt.price(total.revenue),
+                  '${total.dineIn}',
+                  '${total.delivery}',
+                  '${total.pickup}',
+                ], strong, shaded: true),
+              ],
+            ),
     );
   }
 }
