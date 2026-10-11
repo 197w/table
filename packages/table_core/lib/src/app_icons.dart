@@ -129,6 +129,8 @@ abstract final class AppIcons {
   static const close = AppIconData('assets/icons/x.svg');
   static const compass = AppIconData('assets/icons/compass.svg');
   static const compassFill = AppIconData('assets/icons/compass-fill.svg');
+  static const heart = AppIconData('assets/icons/heart.svg');
+  static const heartFill = AppIconData('assets/icons/heart-fill.svg');
   static const confetti = AppIconData('assets/icons/confetti.svg');
   static const cookingPot = AppIconData('assets/icons/cooking-pot.svg');
   static const copy = AppIconData('assets/icons/copy.svg');

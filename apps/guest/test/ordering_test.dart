@@ -63,6 +63,10 @@ void main() {
   test('kod rabatowy przy rezerwacji', () {
     expect(GuestDiscount.fromJson({'code': 'REVE10', 'kind': 'percent', 'value': 10}).label, '−10% od rachunku');
     expect(GuestDiscount.fromJson({'code': 'ZIMA', 'kind': 'amount', 'value': 2050}).label, '−20,50 zł od rachunku');
+    expect(
+      GuestDiscount.fromJson({'code': 'DUZY', 'kind': 'percent', 'value': 15, 'min_total': 15000}).label,
+      '−15% od rachunku od 150 zł',
+    );
   });
 
   test('zadatek: od ilu osób i ile za osobę', () {

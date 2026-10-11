@@ -13,7 +13,8 @@ enum _Metric {
   covers('Goście'),
   reservations('Rezerwacje'),
   views('Wyświetlenia profilu'),
-  calls('Kliknięcia „Zadzwoń”');
+  calls('Kliknięcia „Zadzwoń”'),
+  likes('Polubienia');
 
   const _Metric(this.label);
   final String label;
@@ -23,6 +24,7 @@ enum _Metric {
     reservations => s.reservations,
     views => s.views,
     calls => s.callClicks,
+    likes => s.likes,
   };
 
   /// Kolor slupkow, ten sam co na kaflu z ta liczba.
@@ -31,6 +33,7 @@ enum _Metric {
     reservations => TileColors.blue,
     views => TileColors.violet,
     calls => TileColors.amber,
+    likes => TileColors.rose,
   };
 }
 
@@ -57,7 +60,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     final async = ref.watch(statsProvider(query));
     final metrics = restaurant.isPro
         ? _Metric.values
-        : const [_Metric.views, _Metric.calls];
+        : const [_Metric.views, _Metric.calls, _Metric.likes];
     final metric = metrics.contains(_metric) ? _metric! : metrics.first;
 
     return Column(
@@ -110,13 +113,19 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
               }
 
               final reservations = sum((s) => s.reservations);
+              // Polubienia w aplikacji Table: wszystkie na dziś i nowe w okresie.
+              final likesTotal = stats.isEmpty ? 0 : stats.last.likesTotal;
+              final likesNew = sum((s) => s.likes);
               final noShows = sum((s) => s.noShows);
               final noShowRate = reservations == 0 ? 0.0 : noShows / reservations * 100;
 
               return ListView(
                 padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
                 children: [
-                  Row(
+                  // Kafle równej wysokości, także gdy dłuższa nazwa zawija się do drugiej linii.
+                  IntrinsicHeight(
+                    child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Expanded(
                         child: StatTile(
@@ -135,6 +144,17 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                           icon: AppIcons.phone,
                           color: TileColors.amber,
                           change: change((s) => s.callClicks),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: StatTile(
+                          label: 'Polubienia',
+                          value: '$likesTotal',
+                          icon: AppIcons.heart,
+                          color: TileColors.rose,
+                          hint: '+$likesNew w tym okresie',
+                          change: change((s) => s.likes),
                         ),
                       ),
                       if (restaurant.isPro) ...[
@@ -174,6 +194,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                         ),
                       ],
                     ],
+                  ),
                   ),
                   const SizedBox(height: 16),
                   PanelCard(

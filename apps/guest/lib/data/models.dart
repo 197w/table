@@ -620,7 +620,7 @@ List<String> halfHours(String opens, String closes) {
 
 /// Kod rabatowy lokalu sprawdzony przed rezerwacją: rabat odejmie się od rachunku stolika.
 class GuestDiscount {
-  const GuestDiscount({required this.code, required this.percent, required this.value});
+  const GuestDiscount({required this.code, required this.percent, required this.value, this.minTotal});
 
   final String code;
   final bool percent;
@@ -628,18 +628,26 @@ class GuestDiscount {
   /// Procent albo kwota w groszach.
   final int value;
 
-  /// Na przykład „−10% od rachunku” albo „−20 zł od rachunku”.
+  /// Rabat działa od tej kwoty rachunku (w groszach). Null: od każdej kwoty.
+  final int? minTotal;
+
+  static String _money(int grosze) {
+    final zl = grosze ~/ 100;
+    final gr = grosze % 100;
+    return gr == 0 ? '$zl zł' : '$zl,${gr.toString().padLeft(2, '0')} zł';
+  }
+
+  /// Na przykład „−10% od rachunku”, „−20 zł od rachunku” albo „−10% od rachunku od 100 zł”.
   String get label {
-    final zl = value ~/ 100;
-    final gr = value % 100;
-    final amount = gr == 0 ? '$zl zł' : '$zl,${gr.toString().padLeft(2, '0')} zł';
-    return '${percent ? '−$value%' : '−$amount'} od rachunku';
+    final base = '${percent ? '−$value%' : '−${_money(value)}'} od rachunku';
+    return minTotal == null ? base : '$base od ${_money(minTotal!)}';
   }
 
   factory GuestDiscount.fromJson(Map<String, dynamic> json) => GuestDiscount(
     code: json['code'] as String,
     percent: json['kind'] == 'percent',
     value: _toInt(json['value']),
+    minTotal: json['min_total'] == null ? null : _toInt(json['min_total']),
   );
 }
 

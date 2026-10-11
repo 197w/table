@@ -1748,6 +1748,8 @@ class PanelRepository {
     bool active = true,
     String? note,
     String? memberId,
+    int? minGrosze,
+    int? maxPerGuest,
   }) {
     return _guard(
       () => _db.rpc<String>('panel_save_discount_code', params: {
@@ -1762,6 +1764,8 @@ class PanelRepository {
         'p_active': active,
         'p_note': note,
         'p_member_id': memberId,
+        'p_min_total': minGrosze,
+        'p_max_per_guest': maxPerGuest,
       }),
     );
   }

@@ -945,9 +945,15 @@ class DayStat {
     required this.covers,
     required this.cancellations,
     required this.noShows,
+    this.likes = 0,
+    this.likesTotal = 0,
   });
 
   final DateTime day;
+
+  /// Nowe polubienia lokalu w aplikacji Table tego dnia i wszystkie polubienia na koniec dnia.
+  final int likes;
+  final int likesTotal;
   final int views;
   final int callClicks;
   final int reservations;
@@ -964,6 +970,8 @@ class DayStat {
       covers: _toInt(json['covers']),
       cancellations: _toInt(json['cancellations']),
       noShows: _toInt(json['no_shows']),
+      likes: _toInt(json['likes']),
+      likesTotal: _toInt(json['likes_total']),
     );
   }
 }
@@ -1251,10 +1259,18 @@ class OrderDue {
     this.percent,
     this.code,
     this.reservationCode,
+    this.minGrosze,
+    this.missingGrosze,
   });
 
   final int totalGrosze;
   final int discountGrosze;
+
+  /// Kod działa od tej kwoty rachunku. Null: kod bez progu albo bez kodu.
+  final int? minGrosze;
+
+  /// Ile brakuje do progu kodu; rabatu jeszcze nie ma. Null: próg osiągnięty albo go nie ma.
+  final int? missingGrosze;
 
   /// Kod rabatowy wpisany przy rachunku (zastępuje kod z rezerwacji). Null: brak.
   final String? code;
@@ -1286,12 +1302,25 @@ class OrderDue {
     percent: json['discount_percent'] == null ? null : _toInt(json['discount_percent']),
     code: json['discount_code'] as String?,
     reservationCode: json['reservation_code'] as String?,
+    minGrosze: json['discount_min'] == null ? null : _toInt(json['discount_min']),
+    missingGrosze: json['discount_missing'] == null ? null : _toInt(json['discount_missing']),
   );
 }
 
+/// Kwota w złotych do napisów o progach kodów: „100 zł” albo „99,50 zł”.
+String discountMoney(int grosze) =>
+    grosze % 100 == 0 ? '${grosze ~/ 100} zł' : '${(grosze / 100).toStringAsFixed(2).replaceAll('.', ',')} zł';
+
 /// Podpowiedź przy wpisywaniu kodu rabatowego do rachunku: kod lokalu, który działa dziś.
 class DiscountHint {
-  const DiscountHint({required this.code, required this.percent, required this.value, this.note, this.usesLeft});
+  const DiscountHint({
+    required this.code,
+    required this.percent,
+    required this.value,
+    this.note,
+    this.usesLeft,
+    this.minGrosze,
+  });
 
   final String code;
   final bool percent;
@@ -1301,6 +1330,9 @@ class DiscountHint {
   /// Ile użyć zostało. Null: bez limitu.
   final int? usesLeft;
 
+  /// Rabat od tej kwoty rachunku. Null: od każdej.
+  final int? minGrosze;
+
   String get valueText => percent ? '−$value%' : '−${(value / 100).toStringAsFixed(2).replaceAll('.', ',')} zł';
 
   factory DiscountHint.fromJson(Map<String, dynamic> json) => DiscountHint(
@@ -1309,6 +1341,7 @@ class DiscountHint {
     value: _toInt(json['value']),
     note: (json['note'] as String?)?.ifEmpty,
     usesLeft: json['uses_left'] == null ? null : _toInt(json['uses_left']),
+    minGrosze: json['min_total'] == null ? null : _toInt(json['min_total']),
   );
 }
 
@@ -1334,10 +1367,18 @@ class DiscountCode {
     this.maxUses,
     this.note,
     this.createdBy,
+    this.minGrosze,
+    this.maxPerGuest,
   });
 
   final String id;
   final String code;
+
+  /// Rabat działa od tej kwoty rachunku (przed rabatem). Null: od każdej kwoty.
+  final int? minGrosze;
+
+  /// Ile razy jeden gość z kontem w aplikacji może użyć kodu. Null: bez limitu. [maxUses] to limit łączny.
+  final int? maxPerGuest;
 
   /// Rabat procentowy (value = procent). False: kwotowy (value w groszach).
   final bool percent;
@@ -1371,6 +1412,8 @@ class DiscountCode {
     maxUses: json['max_uses'] == null ? null : _toInt(json['max_uses']),
     note: json['note'] as String?,
     createdBy: json['created_by_name'] as String?,
+    minGrosze: json['min_total_grosze'] == null ? null : _toInt(json['min_total_grosze']),
+    maxPerGuest: json['max_uses_per_guest'] == null ? null : _toInt(json['max_uses_per_guest']),
   );
 }
 

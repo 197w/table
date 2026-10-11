@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:table_panel/app/app.dart';
 import 'package:table_panel/app/sections.dart';
 import 'package:table_panel/data/models.dart';
+import 'package:table_panel/features/management/discounts_screen.dart';
 import 'package:table_panel/features/management/unclosed_screen.dart';
 import 'package:table_panel/features/staff/announcements_screen.dart';
 
@@ -92,5 +93,32 @@ void main() {
     expect(openFor(const Duration(minutes: 45)), '45 min');
     expect(openFor(const Duration(hours: 3, minutes: 10)), '3 h 10 min');
     expect(openFor(const Duration(days: 6, hours: 2)), '6 dni');
+  });
+
+  test('kody rabatowe: minimalna kwota, limit na gościa i próg przy rachunku', () {
+    final code = DiscountCode.fromJson({
+      'id': 'c1', 'code': 'DUZY', 'kind': 'percent', 'value': 15, 'active': true, 'uses': 3, 'max_uses': 50,
+      'min_total_grosze': 15000, 'max_uses_per_guest': 1,
+    });
+    expect(code.minGrosze, 15000);
+    expect(code.maxPerGuest, 1);
+    expect(discountConditions(code), 'od 150 zł · 1× na gościa');
+    expect(discountConditions(DiscountCode.fromJson({'id': 'c2', 'code': 'X10', 'kind': 'amount', 'value': 1000})), isNull);
+    expect(discountMoney(9950), '99,50 zł');
+
+    final due = OrderDue.fromJson({
+      'total': 8000, 'discount': 0, 'due': 8000, 'discount_code': 'DUZY', 'discount_min': 15000, 'discount_missing': 7000,
+    });
+    expect(due.missingGrosze, 7000);
+    expect(due.forPart(4000), (0, 4000));
+  });
+
+  test('statystyki: polubienia z dnia i wszystkie', () {
+    final day = DayStat.fromJson({
+      'day': '2026-10-11', 'views': 3, 'call_clicks': 0, 'reservations': 1, 'covers': 2, 'cancellations': 0,
+      'no_shows': 0, 'likes': 4, 'likes_total': 27,
+    });
+    expect(day.likes, 4);
+    expect(day.likesTotal, 27);
   });
 }

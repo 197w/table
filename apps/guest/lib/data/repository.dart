@@ -101,6 +101,34 @@ class Repository {
     });
   }
 
+  // -------------------------------------------------------------
+  // Polubione lokale
+  // -------------------------------------------------------------
+
+  /// Identyfikatory lokali polubionych przez zalogowanego gościa.
+  Future<Set<String>> likedIds() {
+    return _guard(() async {
+      if (_db.auth.currentUser == null) return const <String>{};
+      final rows = await _db.from('restaurant_likes').select('restaurant_id');
+      return {for (final r in rows) r['restaurant_id'] as String};
+    });
+  }
+
+  /// Polubienie albo cofnięcie polubienia lokalu.
+  Future<void> setLike(String restaurantId, bool liked) {
+    return _guard(
+      () => _db.rpc<dynamic>('guest_set_like', params: {'p_restaurant_id': restaurantId, 'p_liked': liked}),
+    );
+  }
+
+  /// Polubione lokale jako karty, ostatnio polubione pierwsze. Odległość liczy się od podanego punktu.
+  Future<List<RestaurantSummary>> likedRestaurants({double? lat, double? lng}) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>('guest_liked_restaurants', params: {'p_lat': lat, 'p_lng': lng});
+      return rows.map((e) => RestaurantSummary.fromJson(e as Map<String, dynamic>)).toList();
+    });
+  }
+
   Future<List<City>> cities() {
     return _guard(() async {
       final rows = await _db.rpc<List<dynamic>>('restaurant_cities');

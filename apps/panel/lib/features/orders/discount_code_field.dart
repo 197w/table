@@ -169,6 +169,7 @@ class _DiscountCodeFieldState extends ConsumerState<DiscountCodeField> {
                               child: Text(
                                 [
                                   ?o.note,
+                                  if (o.minGrosze != null) 'od ${discountMoney(o.minGrosze!)}',
                                   if (o.usesLeft != null) 'zostało ${o.usesLeft}',
                                 ].join(' · '),
                                 maxLines: 1,

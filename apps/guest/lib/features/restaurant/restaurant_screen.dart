@@ -9,6 +9,7 @@ import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../discover/restaurant_cards.dart';
+import '../likes/likes.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 const _weekdayNames = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota', 'Niedziela'];
@@ -289,6 +290,10 @@ class _Hero extends StatelessWidget {
           onTap: () => context.canPop() ? context.pop() : context.go(AppRoutes.discover),
         ),
       ),
+      actions: [
+        LikeButton(restaurantId: r.id, restaurantName: r.name),
+        const SizedBox(width: 8),
+      ],
       flexibleSpace: LayoutBuilder(
         builder: (context, box) {
           final top = MediaQuery.paddingOf(context).top;
@@ -296,7 +301,7 @@ class _Hero extends StatelessWidget {
           return FlexibleSpaceBar(
             collapseMode: reduceMotion ? CollapseMode.pin : CollapseMode.parallax,
             expandedTitleScale: 1,
-            titlePadding: const EdgeInsetsDirectional.only(start: 64, end: 16, bottom: 16),
+            titlePadding: const EdgeInsetsDirectional.only(start: 64, end: 64, bottom: 16),
             // Nazwa w pasku dopiero po schowaniu zdjęcia, wcześniej jest pod zdjęciem.
             title: AnimatedOpacity(
               opacity: collapsed ? 1 : 0,

@@ -981,6 +981,25 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
                   label: Text(due?.reservationCode != null ? 'Inny kod rabatowy' : 'Kod rabatowy'),
                 ),
               ),
+            // Kod z progiem, którego rachunek jeszcze nie osiąga: widać, ile brakuje do rabatu.
+            if (due?.missing case final missing?)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Glyph(AppIcons.warning, size: 18, color: AppColors.warning),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Kod ${due!.code ?? due.reservationCode ?? ''} działa od ${discountMoney(due.min ?? 0)}. '
+                        'Brakuje ${Fmt.price(missing)}, więc rabatu na razie nie ma.',
+                        style: text.bodyMedium?.copyWith(color: AppColors.warning),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             money('Suma', order.total, color: AppColors.textMuted),
             if (due != null && due.discount > 0) money('Rabat ${due.label ?? ''}', -due.discount, color: AppColors.accent),
             if (due != null && due.deposit > 0) money('Zadatek z rezerwacji', -due.deposit, color: AppColors.accent),
@@ -1779,7 +1798,13 @@ class _DiscountSheetState extends ConsumerState<_DiscountSheet> {
                       contentPadding: const EdgeInsets.symmetric(horizontal: 4),
                       leading: Glyph(AppIcons.sealPercent, size: 20, color: AppColors.accent),
                       title: Text(h.code, style: text.titleSmall),
-                      subtitle: h.note == null ? null : Text(h.note!, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: h.note == null && h.min == null
+                          ? null
+                          : Text(
+                              [?h.note, if (h.min != null) 'od ${discountMoney(h.min!)}'].join(' · '),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                       trailing: Text(h.valueText, style: text.titleSmall?.copyWith(color: AppColors.accent)),
                       onTap: () => Navigator.pop(context, h.code),
                     ),

@@ -4,6 +4,7 @@ import 'package:table_core/table_core.dart';
 
 import '../../app/app.dart';
 import '../../data/models.dart';
+import '../likes/likes.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -247,83 +248,98 @@ class RestaurantCard extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final r = restaurant;
     void open() => context.push(AppRoutes.restaurant(r.id));
-    return Semantics(
-      button: true,
-      label: restaurantSemantics(r, showDistance: showDistance, unit: unit, bestMatch: bestMatch),
-      excludeSemantics: true,
-      onTap: open,
-      child: PressScale(
-        onTap: open,
-        child: Card(
-          margin: EdgeInsets.zero,
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Stack(
+    // Serce leży nad kartą (poza jej opisem dla czytnika), żeby było osobnym przyciskiem.
+    return Stack(
+      children: [
+        Semantics(
+          button: true,
+          label: restaurantSemantics(r, showDistance: showDistance, unit: unit, bestMatch: bestMatch),
+          excludeSemantics: true,
+          onTap: open,
+          child: PressScale(
+            onTap: open,
+            child: Card(
+              margin: EdgeInsets.zero,
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  AspectRatio(
-                    aspectRatio: 16 / 9,
-                    child: RestaurantCover(url: r.coverUrl, cuisine: r.cuisine),
+                  Stack(
+                    children: [
+                      AspectRatio(
+                        aspectRatio: 16 / 9,
+                        child: RestaurantCover(url: r.coverUrl, cuisine: r.cuisine),
+                      ),
+                      if (bestMatch) const Positioned(top: 12, left: 12, child: BestMatchLabel()),
+                    ],
                   ),
-                  if (bestMatch) const Positioned(top: 12, left: 12, child: BestMatchLabel()),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            ImageOutline(
+                              radius: 8,
+                              child: RestaurantLogo(name: r.name, logoUrl: r.logoUrl, size: 30, radius: 8),
+                            ),
+                            const SizedBox(width: 10),
+                            // Dłuższa nazwa przechodzi do drugiej linii zamiast się ucinać.
+                            Expanded(
+                              child: Text(
+                                r.name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: text.titleMedium,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            RatingBadge(restaurant: r),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          restaurantMeta(r, showDistance: showDistance, unit: unit),
+                          style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                        ),
+                        if (r.matchedDish != null) ...[const SizedBox(height: 4), _MatchedDish(name: r.matchedDish!)],
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _Feature(
+                              icon: r.isPro ? AppIcons.calendarCheck : AppIcons.phone,
+                              label: r.isPro ? 'Rezerwacja online' : 'Rezerwacja telefoniczna',
+                              on: r.isPro,
+                            ),
+                            if (r.canOrder)
+                              _Feature(
+                                icon: r.deliveryEnabled ? AppIcons.moped : AppIcons.shoppingBag,
+                                label: r.deliveryEnabled && r.pickupEnabled
+                                    ? 'Dostawa i na wynos'
+                                    : r.deliveryEnabled
+                                    ? 'Dostawa'
+                                    : 'Na wynos',
+                                on: true,
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        ImageOutline(
-                          radius: 8,
-                          child: RestaurantLogo(name: r.name, logoUrl: r.logoUrl, size: 30, radius: 8),
-                        ),
-                        const SizedBox(width: 10),
-                        // Dłuższa nazwa przechodzi do drugiej linii zamiast się ucinać.
-                        Expanded(
-                          child: Text(r.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: text.titleMedium),
-                        ),
-                        const SizedBox(width: 8),
-                        RatingBadge(restaurant: r),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      restaurantMeta(r, showDistance: showDistance, unit: unit),
-                      style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-                    ),
-                    if (r.matchedDish != null) ...[const SizedBox(height: 4), _MatchedDish(name: r.matchedDish!)],
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        _Feature(
-                          icon: r.isPro ? AppIcons.calendarCheck : AppIcons.phone,
-                          label: r.isPro ? 'Rezerwacja online' : 'Rezerwacja telefoniczna',
-                          on: r.isPro,
-                        ),
-                        if (r.canOrder)
-                          _Feature(
-                            icon: r.deliveryEnabled ? AppIcons.moped : AppIcons.shoppingBag,
-                            label: r.deliveryEnabled && r.pickupEnabled
-                                ? 'Dostawa i na wynos'
-                                : r.deliveryEnabled
-                                ? 'Dostawa'
-                                : 'Na wynos',
-                            on: true,
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ),
-      ),
+        Positioned(
+          top: 4,
+          right: 4,
+          child: LikeButton(restaurantId: r.id, restaurantName: r.name),
+        ),
+      ],
     );
   }
 }
@@ -415,7 +431,13 @@ class RestaurantRow extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  RatingBadge(restaurant: r),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      LikedMark(restaurant: r),
+                      RatingBadge(restaurant: r),
+                    ],
+                  ),
                   if (showDistance) ...[
                     const SizedBox(height: 6),
                     Text(

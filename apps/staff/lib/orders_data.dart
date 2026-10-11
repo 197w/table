@@ -230,10 +230,16 @@ class WDue {
     this.percent,
     this.code,
     this.reservationCode,
+    this.min,
+    this.missing,
   });
 
   final int total;
   final int discount;
+
+  /// Kod działa od tej kwoty rachunku; [missing]: ile jeszcze brakuje (rabatu na razie nie ma).
+  final int? min;
+  final int? missing;
 
   /// Kod rabatowy wpisany przy rachunku (zastępuje kod z rezerwacji).
   final String? code;
@@ -265,17 +271,26 @@ class WDue {
     percent: j['discount_percent'] == null ? null : _toInt(j['discount_percent']),
     code: j['discount_code'] as String?,
     reservationCode: j['reservation_code'] as String?,
+    min: j['discount_min'] == null ? null : _toInt(j['discount_min']),
+    missing: j['discount_missing'] == null ? null : _toInt(j['discount_missing']),
   );
 }
 
+/// Kwota do napisów o progu kodu: „100 zł” albo „99,50 zł”.
+String discountMoney(int grosze) =>
+    grosze % 100 == 0 ? '${grosze ~/ 100} zł' : '${(grosze / 100).toStringAsFixed(2).replaceAll('.', ',')} zł';
+
 /// Podpowiedź kodu rabatowego: kod lokalu działający dziś.
 class WDiscountHint {
-  const WDiscountHint({required this.code, required this.percent, required this.value, this.note});
+  const WDiscountHint({required this.code, required this.percent, required this.value, this.note, this.min});
 
   final String code;
   final bool percent;
   final int value;
   final String? note;
+
+  /// Rabat od tej kwoty rachunku. Null: od każdej.
+  final int? min;
 
   String get valueText => percent ? '−$value%' : '−${(value / 100).toStringAsFixed(2).replaceAll('.', ',')} zł';
 
@@ -284,6 +299,7 @@ class WDiscountHint {
     percent: j['kind'] == 'percent',
     value: _toInt(j['value']),
     note: (j['note'] as String?)?.trim().isEmpty ?? true ? null : j['note'] as String,
+    min: j['min_total'] == null ? null : _toInt(j['min_total']),
   );
 }
 

@@ -40,6 +40,39 @@ final locationProvider = FutureProvider<GuestLocation?>(
   (ref) => LocationService.current(),
 );
 
+/// Lokale polubione przez gościa (serce na karcie i stronie lokalu). Zmiana od razu na ekranie, potem w bazie.
+class LikedIdsNotifier extends AsyncNotifier<Set<String>> {
+  @override
+  Future<Set<String>> build() {
+    if (ref.watch(userIdProvider) == null) return Future.value(const <String>{});
+    return ref.watch(repositoryProvider).likedIds();
+  }
+
+  /// Polubienie albo cofnięcie. Zwraca nowy stan; przy błędzie wraca poprzedni i błąd idzie dalej.
+  Future<bool> toggle(String restaurantId) async {
+    final before = state.value ?? const <String>{};
+    final like = !before.contains(restaurantId);
+    state = AsyncData(like ? {...before, restaurantId} : ({...before}..remove(restaurantId)));
+    try {
+      await ref.read(repositoryProvider).setLike(restaurantId, like);
+      ref.invalidate(likedRestaurantsProvider);
+      return like;
+    } catch (_) {
+      state = AsyncData(before);
+      rethrow;
+    }
+  }
+}
+
+final likedIdsProvider = AsyncNotifierProvider<LikedIdsNotifier, Set<String>>(LikedIdsNotifier.new);
+
+/// „Moje” → Polubione: karty polubionych lokali, ostatnio polubione pierwsze.
+final likedRestaurantsProvider = FutureProvider.autoDispose<List<RestaurantSummary>>((ref) async {
+  if (ref.watch(userIdProvider) == null) return const [];
+  final location = await ref.watch(locationProvider.future);
+  return ref.watch(repositoryProvider).likedRestaurants(lat: location?.lat, lng: location?.lng);
+});
+
 final citiesProvider = FutureProvider<List<City>>(
   (ref) => ref.watch(repositoryProvider).cities(),
 );

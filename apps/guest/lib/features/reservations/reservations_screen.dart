@@ -7,13 +7,14 @@ import 'package:table_core/table_core.dart';
 import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../likes/likes.dart';
 import '../ordering/order_screens.dart';
 import 'booking_widgets.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
-/// Zakładka „Moje”: rezerwacje (najbliższa na dużej karcie, dalej nadchodzące, lista oczekujących i archiwum)
-/// i zamówienia z dostawą albo na wynos.
+/// Zakładka „Moje”: rezerwacje (najbliższa na dużej karcie, dalej nadchodzące, lista oczekujących i archiwum),
+/// zamówienia z dostawą albo na wynos i polubione lokale.
 class ReservationsScreen extends ConsumerWidget {
   const ReservationsScreen({super.key});
 
@@ -26,7 +27,7 @@ class ReservationsScreen extends ConsumerWidget {
         body: MessageView(
           icon: AppIcons.lock,
           title: 'Zaloguj się, żeby zobaczyć rezerwacje',
-          message: 'Po zalogowaniu znajdziesz tu nadchodzące i minione wizyty oraz zamówienia.',
+          message: 'Po zalogowaniu znajdziesz tu nadchodzące i minione wizyty, zamówienia i polubione lokale.',
           actionLabel: 'Zaloguj się',
           onAction: () => context.push(AppRoutes.withNext(AppRoutes.login, AppRoutes.reservations)),
         ),
@@ -40,7 +41,7 @@ class ReservationsScreen extends ConsumerWidget {
 
     // Rezerwacje i zamówienia z dostawą albo na wynos w jednej zakładce.
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Moje'),
@@ -48,6 +49,7 @@ class ReservationsScreen extends ConsumerWidget {
             tabs: [
               Tab(text: 'Rezerwacje'),
               Tab(text: 'Zamówienia'),
+              Tab(text: 'Polubione'),
             ],
           ),
         ),
@@ -115,6 +117,7 @@ class ReservationsScreen extends ConsumerWidget {
               },
             ),
             const MyOrdersList(),
+            const LikedRestaurantsList(),
           ],
         ),
       ),

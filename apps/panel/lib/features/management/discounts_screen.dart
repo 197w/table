@@ -21,8 +21,18 @@ String _validity(DiscountCode c) => switch ((c.validFrom, c.validUntil)) {
   (final from?, final until?) => '${_date(from)} – ${_date(until)}',
 };
 
+/// Warunki kodu w jednym napisie: „od 100 zł · 1× na gościa”. Null: bez warunków.
+String? discountConditions(DiscountCode c) {
+  final parts = [
+    if (c.minGrosze != null) 'od ${discountMoney(c.minGrosze!)}',
+    if (c.maxPerGuest != null) '${c.maxPerGuest}× na gościa',
+  ];
+  return parts.isEmpty ? null : parts.join(' · ');
+}
+
 /// Management → Kody rabatowe: kierownik tworzy kod, gość wpisuje go przy rezerwacji w aplikacji Table,
-/// a rabat odejmuje się od rachunku stolika przy zamknięciu. Uprawnienie „Kody rabatowe”.
+/// a rabat odejmuje się od rachunku stolika przy zamknięciu. Kod może działać od minimalnej kwoty rachunku
+/// i mieć limit użyć łącznie oraz na jednego gościa. Uprawnienie „Kody rabatowe”.
 class DiscountsScreen extends ConsumerWidget {
   const DiscountsScreen({super.key});
 
@@ -47,6 +57,8 @@ class DiscountsScreen extends ConsumerWidget {
         maxUses: c.maxUses,
         active: active,
         note: c.note,
+        minGrosze: c.minGrosze,
+        maxPerGuest: c.maxPerGuest,
       );
       ref.invalidate(discountCodesProvider(restaurantId));
     } catch (e) {
@@ -150,7 +162,20 @@ class DiscountsScreen extends ConsumerWidget {
                                     ),
                                     Expanded(
                                       flex: 2,
-                                      child: Text(c.valueText, style: text.titleSmall?.copyWith(color: AppColors.accent)),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(c.valueText, style: text.titleSmall?.copyWith(color: AppColors.accent)),
+                                          if (discountConditions(c) case final conditions?)
+                                            Text(
+                                              conditions,
+                                              style: text.bodySmall?.copyWith(
+                                                color: AppColors.textMuted,
+                                                fontFeatures: _tabular,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
                                     ),
                                     Expanded(flex: 3, child: Text(_validity(c), style: text.bodyMedium)),
                                     Expanded(
@@ -218,6 +243,10 @@ class _CodeDialogState extends ConsumerState<_CodeDialog> {
     text: widget.code == null ? '' : (widget.code!.percent ? '${widget.code!.value}' : groszeToText(widget.code!.value)),
   );
   late final _limit = TextEditingController(text: widget.code?.maxUses?.toString() ?? '');
+  late final _perGuest = TextEditingController(text: widget.code?.maxPerGuest?.toString() ?? '');
+  late final _min = TextEditingController(
+    text: widget.code?.minGrosze == null ? '' : groszeToText(widget.code!.minGrosze!),
+  );
   late final _note = TextEditingController(text: widget.code?.note ?? '');
   late bool _percent = widget.code?.percent ?? true;
   late DateTime? _from = widget.code?.validFrom;
@@ -230,6 +259,8 @@ class _CodeDialogState extends ConsumerState<_CodeDialog> {
     _code.dispose();
     _value.dispose();
     _limit.dispose();
+    _perGuest.dispose();
+    _min.dispose();
     _note.dispose();
     super.dispose();
   }
@@ -251,6 +282,8 @@ class _CodeDialogState extends ConsumerState<_CodeDialog> {
     final code = _code.text.trim().toUpperCase();
     final value = _percent ? int.tryParse(_value.text.trim()) : parseGrosze(_value.text);
     final limit = _limit.text.trim().isEmpty ? null : int.tryParse(_limit.text.trim());
+    final perGuest = _perGuest.text.trim().isEmpty ? null : int.tryParse(_perGuest.text.trim());
+    final min = _min.text.trim().isEmpty ? null : parseGrosze(_min.text);
     String? problem;
     if (!RegExp(r'^[A-Z0-9-]{3,20}$').hasMatch(code)) {
       problem = 'Kod ma od 3 do 20 znaków: litery bez polskich znaków, cyfry i myślnik.';
@@ -258,6 +291,14 @@ class _CodeDialogState extends ConsumerState<_CodeDialog> {
       problem = _percent ? 'Wpisz procent od 1 do 100.' : 'Wpisz kwotę rabatu, na przykład 20.';
     } else if (_limit.text.trim().isNotEmpty && (limit == null || limit < 1)) {
       problem = 'Limit użyć to liczba od 1.';
+    } else if (_perGuest.text.trim().isNotEmpty && (perGuest == null || perGuest < 1)) {
+      problem = 'Limit na gościa to liczba od 1.';
+    } else if (perGuest != null && limit != null && perGuest > limit) {
+      problem = 'Limit na gościa nie może być większy niż limit użyć łącznie.';
+    } else if (_min.text.trim().isNotEmpty && (min == null || min <= 0)) {
+      problem = 'Wpisz minimalną kwotę rachunku, na przykład 100.';
+    } else if (min != null && !_percent && min < value) {
+      problem = 'Minimalna kwota rachunku nie może być mniejsza niż rabat.';
     }
     if (problem != null) {
       showMessage(context, problem, tone: ToastTone.warning);
@@ -277,6 +318,8 @@ class _CodeDialogState extends ConsumerState<_CodeDialog> {
         active: _active,
         note: _note.text,
         memberId: ref.read(panelMemberProvider)?.dbMemberId,
+        minGrosze: min,
+        maxPerGuest: perGuest,
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -376,10 +419,45 @@ class _CodeDialogState extends ConsumerState<_CodeDialog> {
               ),
             const SizedBox(height: 10),
             TextField(
-              controller: _limit,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(labelText: 'Limit użyć', hintText: 'Puste: bez limitu'),
+              controller: _min,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontFeatures: _tabular),
+              decoration: const InputDecoration(
+                labelText: 'Minimalna kwota rachunku',
+                hintText: 'Puste: od każdej kwoty',
+                helperText: 'Rabat działa dopiero od tej kwoty rachunku (przed rabatem).',
+                suffixText: 'zł',
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _limit,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: const InputDecoration(labelText: 'Limit użyć łącznie', hintText: 'Puste: bez limitu'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _perGuest,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: const InputDecoration(
+                      labelText: 'Limit na jednego gościa',
+                      hintText: 'Puste: bez limitu',
+                      helperText: 'Liczy rezerwacje z kontem w aplikacji.',
+                      helperMaxLines: 2,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 14),
             TextField(

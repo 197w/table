@@ -98,7 +98,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość: flutter_map + latlong2 (mapa dostawcy, kafelki OpenStreetMap; przed wydaniem w sklepach przejść na płatnego dostawcę kafelków).
   Pracownik: geolocator (pozycja dostawcy w drodze).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0062, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0063, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -145,6 +145,12 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `DateTile`, `relativeVisit` i `reservationStatus` w `features/reservations/booking_widgets.dart`, `StatusChip`
   i `ButtonPair` w `table_core`. „Moje” → Zamówienia: „W trakcie” i „Zakończone”,
   wiersz z kafelkiem rodzaju (dostawa / odbiór), numerem, kwotą i etapem z ikoną; szkielety zamiast kółka ładowania.
+  „Moje” → Polubione (0063, `features/likes/likes.dart`): serce na karcie lokalu w Odkrywaj (osobny przycisk nad
+  kartą, poza jej opisem dla czytnika) i w pasku strony lokalu (`LikeButton`), w zwartych wierszach tylko znak
+  polubienia (`LikedMark`); lista polubionych jako karty, ostatnio polubione pierwsze (`guest_liked_restaurants`,
+  `likedRestaurantsProvider`). Polubienie od razu na ekranie (`LikedIdsNotifier`, przy błędzie wraca), w bazie
+  `guest_set_like`; bez konta toast z „Zaloguj się”. Tabela `restaurant_likes` (gość czyta tylko swoje, lokal widzi
+  same liczby w statystykach).
   Szczegóły rezerwacji: kafelek z datą i stan na górze. Ustawienia: przy „Ogólne” i „Motyw” widać bieżący wybór,
   wiersze co najmniej 56 px, nazwy w dwóch liniach zamiast ucinania. Pary przycisków przy dużej czcionce
   (`textScaler.scale(16) > 20`) stają jeden pod drugim. `textDisabled` (kontrast ok. 3:1) tylko na ozdoby,
@@ -197,7 +203,12 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Okno poprawki ma osobny dzień początku i końca (zmiana może trwać przez północ albo dłużej niż dobę; koniec innego
   dnia na liście jako „18:09 (2.10)”). Zmiany i grafik odświeżają się na żywo (`TableLive`: kanał zakłada się od nowa
   po zerwaniu połączenia, a dane i tak co minutę), czas trwającej zmiany rośnie co 30 s (`clockProvider`).
-  Kody rabatowe (uprawnienie `discounts`, `discount_codes`): procent albo kwota, ważność od–do, limit użyć, włączanie;
+  Kody rabatowe (uprawnienie `discounts`, `discount_codes`): procent albo kwota, ważność od–do, limit użyć łącznie,
+  włączanie; od 0063 minimalna kwota rachunku (`min_total_grosze`; rabat dopiero od niej, liczona od całego rachunku
+  przed rabatem, także przy płatności za część; kopiowana do `reservations`/`orders.discount_min_grosze` przy użyciu
+  kodu; poniżej progu `panel_order_due` zwraca `discount_missing`, a zamknięcie pokazuje „Brakuje …” i nie liczy
+  użycia) i limit na jednego gościa (`max_uses_per_guest`, liczy rezerwacje konta w aplikacji bez odwołanych,
+  trigger `reservations_discount_guard` i `guest_check_discount`);
   gość wpisuje kod przy rezerwacji w aplikacji (`guest_check_discount`, `book_table(p_discount_code)`), rabat odejmuje się
   od rachunku stolika (procent od każdej części, kwota raz; odwołanie rezerwacji oddaje użycie). Eksport (uprawnienie
   `export`, `panel_export_month`): za miesiąc rachunki z VAT (rabat rozłożony proporcjonalnie na stawki), zestawienie
@@ -332,7 +343,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`staff_schedule.position_id`, wybór w oknie dnia, widać w aplikacji). Pod siatką: przyjętych osób, godziny pracy dnia
   i ile osób na jakim stanowisku; kolumna „Tydzień” z godzinami pracownika.
 - Statystyki (Management) mają zakładki: Sprzedaż (`panel_sales_stats`) i Rezerwacje i goście; okres 7/30/90 dni
-  w rzędzie zakładek. W Sprzedaży tabela „Sprzedaż w godzinach” (godziny z zamówieniami: liczba, kwota, na miejscu,
+  w rzędzie zakładek. W „Rezerwacje i goście” kafel „Polubienia” (wszystkie i „+N w tym okresie”, także plan Free)
+  i wykres nowych polubień dzień po dniu (`panel_stats` od 0063: `likes`, `likes_total`); kafle mają równą wysokość. W Sprzedaży tabela „Sprzedaż w godzinach” (godziny z zamówieniami: liczba, kwota, na miejscu,
   dostawa, odbiór osobisty, wiersz „Razem”; `hourly` z `dine_in`, `delivery`, `pickup` od 0062). Historia zamówień jest osobną zakładką w grupie Rezerwacje.
 - Role w `restaurant_staff`: owner, manager, staff. Kierownik i właściciel zmieniają salę, menu, dane lokalu
   i odpowiadają na opinie. Obsługa prowadzi rezerwacje. Uprawnień pilnuje baza (RLS i funkcje `panel_*`).

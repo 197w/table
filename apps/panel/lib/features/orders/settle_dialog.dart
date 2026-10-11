@@ -348,6 +348,23 @@ class _SettleDialogState extends ConsumerState<SettleDialog> {
               Divider(height: 1, color: AppColors.ring),
               const SizedBox(height: 12),
               DiscountCodeField(restaurantId: widget.restaurantId, orderId: widget.orderId, due: due),
+              // Kod z progiem, którego rachunek jeszcze nie osiąga: rabatu nie ma, widać ile brakuje.
+              if (due?.missingGrosze case final missing?) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Glyph(AppIcons.warning, size: 16, color: AppColors.warning),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Kod ${due!.code ?? due.reservationCode ?? ''} działa od ${discountMoney(due.minGrosze ?? 0)}. '
+                        'Brakuje ${Fmt.price(missing)}, więc rabatu na razie nie ma.',
+                        style: text.bodySmall?.copyWith(color: AppColors.warning),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 12),
               money('Suma', order.totalGrosze, color: AppColors.textMuted),
               if (due != null && due.discountGrosze > 0)
