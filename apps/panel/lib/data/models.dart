@@ -669,6 +669,7 @@ class DeliverySettings {
     this.minGrosze = 0,
     this.area,
     this.courierTracking = false,
+    this.deliveryPlatforms = const [],
   });
 
   final bool deliveryEnabled;
@@ -687,6 +688,9 @@ class DeliverySettings {
   /// Dostawcy udostępniają lokalizację przez całą zmianę; bez niej nie dostają kursów (mapa w Dostawach).
   final bool courierTracking;
 
+  /// Platformy dostaw (np. Glovo, Uber Eats, Wolt) z kwotami w podsumowaniu dnia.
+  final List<String> deliveryPlatforms;
+
   bool get any => deliveryEnabled || pickupEnabled;
 
   factory DeliverySettings.fromJson(Map<String, dynamic> json) => DeliverySettings(
@@ -697,6 +701,7 @@ class DeliverySettings {
     minGrosze: _toInt(json['delivery_min_grosze']),
     area: json['delivery_area'] as String?,
     courierTracking: json['courier_tracking'] == true,
+    deliveryPlatforms: [for (final n in json['delivery_platforms'] as List? ?? const []) '$n'],
   );
 }
 
@@ -3685,10 +3690,14 @@ class DayReport {
     this.note,
     this.updatedAt,
     this.updatedBy,
+    this.platforms = const [],
   });
 
   final int? fiscalGrosze;
   final List<TerminalReport> terminals;
+
+  /// Sprzedaż z platform dostaw (nazwa i kwota), osobno od kasy fiskalnej.
+  final List<TerminalReport> platforms;
   final int? cashCountedGrosze;
   final String? note;
   final DateTime? updatedAt;
@@ -3703,6 +3712,7 @@ class DayReport {
     note: json['note'] as String?,
     updatedAt: _toDateOrNull(json['updated_at']),
     updatedBy: json['updated_by_name'] as String?,
+    platforms: TerminalReport.listFrom(json['platforms']),
   );
 }
 

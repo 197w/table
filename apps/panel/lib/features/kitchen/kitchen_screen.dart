@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+import '../../app/reservation_alerts.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
@@ -92,6 +93,7 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
     _tick.cancel();
     _player?.dispose();
     _focus.dispose();
+    ReservationAlerts.instance.kitchenSilent = false;
     super.dispose();
   }
 
@@ -337,6 +339,8 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Na ekranie kuchni nowe rezerwacje nie dzwonią, jeśli tak ustawiono na tym komputerze.
+    ReservationAlerts.instance.kitchenSilent = !ref.watch(kitchenReservationAlertsProvider);
     final restaurant = ref.watch(currentRestaurantProvider);
     if (restaurant == null) return const LoadingView();
 
@@ -1392,7 +1396,21 @@ class _KitchenSettingsDialogState extends ConsumerState<_KitchenSettingsDialog> 
               _lateMin,
               (v) => setState(() => _lateMin = v),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
+            // Ustawienie tego komputera: działa od razu, bez „Zapisz”.
+            Consumer(
+              builder: (context, ref, _) => SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: ref.watch(kitchenReservationAlertsProvider),
+                onChanged: (v) => ref.read(kitchenReservationAlertsProvider.notifier).set(v),
+                title: Text('Powiadomienia o rezerwacjach', style: text.titleSmall),
+                subtitle: Text(
+                  'Dźwięk i okienko nowej rezerwacji z aplikacji, gdy na tym komputerze jest otwarta kuchnia.',
+                  style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
             Divider(height: 1, color: AppColors.ring),
             const SizedBox(height: 14),
             Text('Zamówienia na godzinę', style: text.titleSmall),

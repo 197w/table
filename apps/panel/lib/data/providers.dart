@@ -697,6 +697,36 @@ final kitchenMutedProvider = NotifierProvider<KitchenMutedNotifier, bool>(
   KitchenMutedNotifier.new,
 );
 
+/// Powiadomienia o nowych rezerwacjach (dźwięk i okienko), gdy na tym komputerze otwarty jest ekran kuchni.
+/// Domyślnie włączone; wyłącza się w ustawieniach kuchni. Pamiętane na komputerze.
+class KitchenReservationAlertsNotifier extends Notifier<bool> {
+  static const _key = 'panel_kuchnia_powiadomienia_rezerwacji';
+
+  @override
+  bool build() {
+    _load();
+    return true;
+  }
+
+  Future<void> _load() async {
+    try {
+      final saved = await SharedPreferencesAsync().getBool(_key);
+      if (saved != null) state = saved;
+    } catch (_) {}
+  }
+
+  Future<void> set(bool value) async {
+    state = value;
+    try {
+      await SharedPreferencesAsync().setBool(_key, value);
+    } catch (_) {}
+  }
+}
+
+final kitchenReservationAlertsProvider = NotifierProvider<KitchenReservationAlertsNotifier, bool>(
+  KitchenReservationAlertsNotifier.new,
+);
+
 /// Progi czasu na ekranie kuchni.
 final kitchenConfigProvider = FutureProvider.autoDispose.family<KitchenConfig, String>(
   (ref, id) => (ref..cacheFor()).watch(repositoryProvider).kitchenConfig(id),

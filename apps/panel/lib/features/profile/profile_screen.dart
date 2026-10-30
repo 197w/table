@@ -161,6 +161,8 @@ class SettingsScreen extends ConsumerWidget {
                           pro: restaurant.isPro,
                         ),
                         const SizedBox(height: 20),
+                        _PlatformsCard(profile: profile, editable: restaurant.canManage),
+                        const SizedBox(height: 20),
                         const _ThisComputerCard(),
                       ],
                     ),
@@ -171,6 +173,128 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Platformy dostaw (Glovo, Uber Eats, Wolt…): w podsumowaniu dnia przy każdej wpisuje się kwotę sprzedaży.
+/// Liczone osobno, poza kasą fiskalną i obrotem w panelu.
+class _PlatformsCard extends ConsumerStatefulWidget {
+  const _PlatformsCard({required this.profile, required this.editable});
+
+  final RestaurantProfile profile;
+  final bool editable;
+
+  @override
+  ConsumerState<_PlatformsCard> createState() => _PlatformsCardState();
+}
+
+class _PlatformsCardState extends ConsumerState<_PlatformsCard> {
+  static const _suggestions = ['Glovo', 'Uber Eats', 'Wolt', 'Pyszne.pl', 'Bolt Food'];
+  final _name = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save(List<String> names) async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(repositoryProvider).setDeliveryPlatforms(widget.profile.id, names);
+      ref.invalidate(profileProvider(widget.profile.id));
+      _name.clear();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _add(String name) {
+    final clean = name.trim();
+    if (clean.isEmpty) return;
+    final names = widget.profile.delivery.deliveryPlatforms;
+    if (names.any((n) => n.toLowerCase() == clean.toLowerCase())) {
+      _name.clear();
+      return;
+    }
+    _save([...names, clean]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final names = widget.profile.delivery.deliveryPlatforms;
+    final missing = [
+      for (final s in _suggestions)
+        if (!names.any((n) => n.toLowerCase() == s.toLowerCase())) s,
+    ];
+    return PanelCard(
+      title: 'Platformy dostaw',
+      icon: AppIcons.moped,
+      iconColor: TileColors.amber,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'W podsumowaniu dnia przy każdej platformie wpiszesz kwotę sprzedaży. Liczy się osobno, '
+            'poza kasą fiskalną i obrotem w panelu.',
+            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 12),
+          if (names.isEmpty)
+            Text('Brak platform.', style: text.bodyMedium?.copyWith(color: AppColors.textMuted))
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final n in names)
+                  InputChip(
+                    label: Text(n),
+                    onDeleted: widget.editable && !_busy ? () => _save([...names]..remove(n)) : null,
+                    deleteButtonTooltipMessage: 'Usuń $n',
+                  ),
+              ],
+            ),
+          if (widget.editable) ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _name,
+                    enabled: !_busy,
+                    maxLength: 40,
+                    onSubmitted: _add,
+                    decoration: const InputDecoration(labelText: 'Dodaj platformę', isDense: true, counterText: ''),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(onPressed: _busy ? null : () => _add(_name.text), child: const Text('Dodaj')),
+              ],
+            ),
+            if (missing.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final s in missing)
+                    ActionChip(
+                      avatar: const Glyph(AppIcons.plus, size: 14),
+                      label: Text(s),
+                      onPressed: _busy ? null : () => _add(s),
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ],
+      ),
     );
   }
 }

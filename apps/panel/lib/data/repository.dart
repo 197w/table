@@ -306,7 +306,7 @@ class PanelRepository {
             'cover_url, '
             'deposit_min_party, deposit_per_person_grosze, '
             'schedule_period, schedule_deadline_dow, schedule_deadline_time, inventory_period, delivery_enabled, '
-            'pickup_enabled, takeaway_cash, courier_tracking, '
+            'pickup_enabled, takeaway_cash, courier_tracking, delivery_platforms, '
             'delivery_fee_grosze, delivery_min_grosze, delivery_area, opening_hours(weekday, opens, closes)',
           )
           .eq('id', restaurantId)
@@ -1264,6 +1264,7 @@ class PanelRepository {
     int? cashCountedGrosze,
     String? note,
     String? memberId,
+    List<TerminalReport> platforms = const [],
   }) {
     return _guard(
       () => _db.rpc<void>('panel_save_day_report', params: {
@@ -1274,7 +1275,15 @@ class PanelRepository {
         'p_cash_counted': cashCountedGrosze,
         'p_note': note,
         'p_member_id': memberId,
+        'p_platforms': [for (final p in platforms) p.toJson()],
       }),
+    );
+  }
+
+  /// Platformy dostaw lokalu (nazwy w kolejności), do kwot w podsumowaniu dnia.
+  Future<void> setDeliveryPlatforms(String restaurantId, List<String> names) {
+    return _guard(
+      () => _db.rpc<void>('panel_set_delivery_platforms', params: {'p_restaurant_id': restaurantId, 'p_names': names}),
     );
   }
 

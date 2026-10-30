@@ -292,6 +292,11 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
   late final _fiscal = TextEditingController(text: _money(_report?.fiscalGrosze) ?? '');
   late final _cash = TextEditingController(text: _money(_report?.cashCountedGrosze) ?? '');
   late final _note = TextEditingController(text: _report?.note ?? '');
+  /// Kwoty z platform dostaw według nazwy (lista platform z „Ustawienia lokalu” i te zapisane w raporcie).
+  late final Map<String, TextEditingController> _platforms = {
+    for (final p in _report?.platforms ?? const <TerminalReport>[]) p.name: TextEditingController(text: groszeToText(p.grosze)),
+  };
+
   late final List<(TextEditingController, TextEditingController)> _terminals = [
     for (final t in _report?.terminals ?? const <TerminalReport>[])
       (TextEditingController(text: t.name), TextEditingController(text: groszeToText(t.grosze))),
@@ -308,6 +313,9 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
       a.dispose();
       b.dispose();
     }
+    for (final c in _platforms.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -320,7 +328,7 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
   }
 
   Future<void> _save() async {
-    for (final c in [_fiscal, _cash, for (final (_, amount) in _terminals) amount]) {
+    for (final c in [_fiscal, _cash, for (final (_, amount) in _terminals) amount, ..._platforms.values]) {
       if (c.text.trim().isNotEmpty && parseGrosze(c.text) == null) {
         showMessage(context, 'Wpisz kwotę, na przykład 1250 albo 1250,50.', tone: ToastTone.warning);
         return;
@@ -339,6 +347,10 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
         cashCountedGrosze: _parse(_cash),
         note: _note.text,
         memberId: ref.read(panelMemberProvider)?.dbMemberId,
+        platforms: [
+          for (final e in _platforms.entries)
+            if (_parse(e.value) != null) TerminalReport(e.key, _parse(e.value)!),
+        ],
       );
       ref.invalidate(daySummaryProvider((restaurantId: widget.restaurantId, day: widget.day)));
       if (mounted) showMessage(context, 'Podsumowanie dnia zapisane.', tone: ToastTone.success);
@@ -359,6 +371,12 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
     // gotówką, choć w panelu jest karta, więc gotówki ma być więcej (i odwrotnie).
     final terminals = _terminalsSum;
     final cardDiff = terminals == null ? 0 : s.expectedCardGrosze - terminals;
+    // Platformy z ustawień lokalu: pole na kwotę dla każdej (zapisane wcześniej zostają, nawet po usunięciu z listy).
+    final platformNames = ref.watch(profileProvider(widget.restaurantId)).value?.delivery.deliveryPlatforms ?? const <String>[];
+    for (final n in platformNames) {
+      _platforms.putIfAbsent(n, TextEditingController.new);
+    }
+    final platformsSum = _platforms.values.fold<int>(0, (sum, c) => sum + (_parse(c) ?? 0));
     final expectedCash = s.expectedCashGrosze + cardDiff;
 
     return PanelCard(
@@ -450,6 +468,24 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
             '${cardDiff < 0 ? ' − ${Fmt.price(-cardDiff)} (na terminalach więcej niż kart w panelu)' : ''}',
             style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
           ),
+          if (_platforms.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            Text('Platformy dostaw', style: text.titleSmall),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                for (final e in _platforms.entries)
+                  SizedBox(width: 200, child: _MoneyField(controller: e.value, label: e.key, onChanged: refresh)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Razem z platform ${Fmt.price(platformsSum)} · osobno, poza kasą fiskalną i obrotem w panelu',
+              style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+            ),
+          ],
           const SizedBox(height: 20),
           TextField(
             controller: _note,

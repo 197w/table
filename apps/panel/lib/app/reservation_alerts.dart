@@ -21,6 +21,9 @@ class ReservationAlerts {
   /// Otwiera zakładkę Rezerwacje. Ustawia ją aplikacja panelu (router).
   VoidCallback? onOpen;
 
+  /// Ekran kuchni jest otwarty i ma wyłączone powiadomienia o rezerwacjach (ustawienia kuchni, na tym komputerze).
+  bool kitchenSilent = false;
+
   /// Otwiera zakładkę Dostawy albo Odbiór (według rodzaju zamówienia).
   void Function(OrderKind kind)? onOpenTakeaway;
 
@@ -75,7 +78,7 @@ class ReservationAlerts {
 
   /// Nowy wiersz z tabeli rezerwacji, tak jak przysłała go baza.
   Future<void> onInserted(Map<String, dynamic> row, {required bool muted}) async {
-    if (row['source'] != 'app' || muted) return;
+    if (row['source'] != 'app' || muted || kitchenSilent) return;
 
     try {
       await _player.play(AssetSource('sounds/nowa_rezerwacja.wav'));
