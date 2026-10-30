@@ -3,6 +3,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:table_core/email_auth.dart';
 import 'package:table_core/table_core.dart';
 
 import 'data.dart';
@@ -22,6 +23,8 @@ Future<void> main() async {
   }
 
   await Supabase.initialize(url: Env.supabaseUrl, publishableKey: Env.supabasePublishableKey);
+  // Logowanie przerwane między kodem z e-maila a hasłem wylogowuje.
+  await AuthPending.restore();
   runApp(const ProviderScope(child: StaffApp()));
 }
 
@@ -33,7 +36,7 @@ class StaffApp extends ConsumerWidget {
     final brightness = MediaQuery.platformBrightnessOf(context);
     final palette = brightness == Brightness.dark ? AppPalette.dark : AppPalette.light;
     AppColors.use(palette);
-    final signedIn = ref.watch(sessionProvider) != null;
+    final session = ref.watch(sessionProvider);
 
     return MaterialApp(
       key: ValueKey(brightness),
@@ -45,7 +48,11 @@ class StaffApp extends ConsumerWidget {
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       // Powiadomienia w stylu Table nad całą aplikacją.
       builder: (context, child) => ToastHost(child: child ?? const SizedBox.shrink()),
-      home: signedIn ? const StaffShell() : const LoginScreen(),
+      // Sesja z kodu z e-maila liczy się dopiero po haśle.
+      home: ValueListenableBuilder<bool>(
+        valueListenable: AuthPending.instance,
+        builder: (context, pending, _) => session != null && !pending ? const StaffShell() : const LoginScreen(),
+      ),
     );
   }
 }

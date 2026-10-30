@@ -6,7 +6,7 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
 - `apps/panel`: panel restauracji na komputery (Windows i macOS), identyfikator macOS `pl.table.panel`.
   Na tablety przejdziemy, gdy panel na komputerach będzie ustalony. Nigdy na telefony.
 - `apps/staff`: Table for employees, aplikacja dla pracowników lokalu na telefony (Android `pl.table.table_staff`,
-  iOS `pl.table.tableStaff`). Logowanie numerem telefonu (SMS), skan wspólnego kodu QR z panelu
+  iOS `pl.table.tableStaff`). Logowanie e-mailem jak w Table (0069; numer konta = numer u pracownika w panelu), skan wspólnego kodu QR z panelu
   zaczyna zmianę i loguje w panelu. Dolne menu: Zamówienia, Dostawy, Zeskanuj, Grafik, Ustawienia. Grafik to lista dni z okresu lokalu
   (tydzień, 2 tygodnie albo miesiąc, `restaurants.schedule_period`, ustawia „Ustawienia lokalu”) ze zgłaszaniem godzin
   na cały okres naraz i „Moje godziny” na dole (miesiąc kalendarzowy ze strzałkami, do 3 miesięcy wstecz).
@@ -98,11 +98,25 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
   Map i śledzenia dostawców nie ma od 0068 (usunięte na prośbę użytkownika, także mapa u gościa).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0068, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0069, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
   Gdy użytkownik napisze „kod”, podaj najnowszy `otp` z tej tabeli (jego numer kończy się na 098).
+- Logowanie w Table i Table for employees (0069, `package:table_core/email_auth.dart`: `EmailAuthFlow`, `EmailAuth`,
+  `AuthPending`, `AddEmailFlow`): rejestracja numer telefonu → e-mail → kod z e-maila → hasło, logowanie e-mail →
+  kod z e-maila → (numer, gdy konto go nie ma) → hasło („Nie pamiętasz hasła?” ustawia nowe, bo e-mail jest już
+  potwierdzony kodem). Kod to `signInWithOtp(email)` + `verifyOTP(type: email)`; sesja z kodu liczy się dopiero po
+  haśle (`AuthPending`, router gościa i `main.dart` pracownika; wyjście z ekranu albo zamknięcie aplikacji przed hasłem
+  wylogowuje, `AuthPending.restore` przy starcie). Numer konta w `profiles.phone` (48 i 9 cyfr, trigger
+  `profiles_phone_check`, unikalny `profiles_phone_unique`; stare konta przepisane z `auth.users.phone`), czyta go
+  `private.account_phone` (pracownik po numerze `private.my_members`, baza klientów `customer_key`, rezerwacje).
+  `auth_signup_check` (bez logowania: `phone_taken` / `email_taken`), `account_status`, `account_set_phone`.
+  Stare konta bez e-maila: „Konto bez e-maila? Zaloguj się kodem SMS” (bez zakładania nowych kont SMS-em),
+  potem „Dodaj e-mail” w ustawieniach (`updateUser(email)` + `verifyOTP(type: emailChange)`). Zmiana numeru
+  w Table: hasło i `account_set_phone`, bez SMS-a. E-maile wysyła na razie poczta Supabase (tylko adresy osób
+  z zespołu projektu, kilka na godzinę); szablony „Confirm signup”, „Magic Link” i „Change Email Address” muszą
+  mieć `{{ .Token }}` (ustawia użytkownik w Supabase → Authentication → Emails).
 
 ## Struktura
 

@@ -17,16 +17,6 @@ class Repository {
 
   Session? get session => _db.auth.currentSession;
 
-  Future<void> signUp({required String phone, required String password}) {
-    return _guard(
-      () => _db.auth.signUp(
-        phone: phone,
-        password: password,
-        channel: OtpChannel.sms,
-      ),
-    );
-  }
-
   Future<void> verifySmsCode({required String phone, required String code}) {
     return _guard(
       () => _db.auth.verifyOTP(type: OtpType.sms, token: code, phone: phone),
@@ -50,10 +40,6 @@ class Repository {
         if (!unknownNumber) rethrow;
       }
     });
-  }
-
-  Future<void> resendSignupCode(String phone) {
-    return _guard(() => _db.auth.resend(type: OtpType.sms, phone: phone));
   }
 
   Future<void> signInWithPassword({
@@ -382,7 +368,7 @@ class Repository {
       final row = await _db
           .from('profiles')
           .select(
-            'id, first_name, full_name, address_street, address_house, address_postcode, address_city, '
+            'id, first_name, full_name, phone, address_street, address_house, address_postcode, address_city, '
             'address_entry_code, address_building',
           )
           .eq('id', user.id)
@@ -391,7 +377,9 @@ class Repository {
         id: user.id,
         firstName: row?['first_name'] as String?,
         fullName: row?['full_name'] as String?,
-        phone: user.phone,
+        // Numer konta z profilu (logowanie e-mailem), u starych kont z logowania SMS.
+        phone: row?['phone'] as String? ?? user.phone,
+        email: user.email == null || user.email!.isEmpty ? null : user.email,
         addressStreet: row?['address_street'] as String?,
         addressHouse: row?['address_house'] as String?,
         addressPostcode: row?['address_postcode'] as String?,
@@ -456,12 +444,18 @@ class Repository {
 
   /// Sprawdza obecne hasło, żeby odblokowany telefon nie wystarczył do przejęcia konta.
   Future<void> _confirmPassword(String password) async {
-    final phone = _db.auth.currentUser?.phone;
-    if (phone == null || phone.isEmpty) {
+    final user = _db.auth.currentUser;
+    final email = user?.email ?? '';
+    final phone = user?.phone ?? '';
+    if (email.isEmpty && phone.isEmpty) {
       throw const AppFailure('Zaloguj się ponownie i spróbuj jeszcze raz.');
     }
     try {
-      await _db.auth.signInWithPassword(phone: '+$phone', password: password);
+      if (email.isNotEmpty) {
+        await _db.auth.signInWithPassword(email: email, password: password);
+      } else {
+        await _db.auth.signInWithPassword(phone: '+$phone', password: password);
+      }
     } on AuthException catch (e) {
       if (e.code == 'invalid_credentials' ||
           e.message.toLowerCase().contains('invalid login')) {
@@ -471,48 +465,15 @@ class Repository {
     }
   }
 
-  /// Wysyła kod SMS na nowy numer. Numer zmienia się dopiero po wpisaniu kodu.
-  Future<void> requestPhoneChange({
+  /// Nowy numer telefonu konta (w profilu, bez SMS-a). Jeden numer to jedno konto.
+  Future<void> changePhone({
     required String newPhone,
     required String currentPassword,
   }) {
     return _guard(() async {
-      final current = _db.auth.currentUser?.phone ?? '';
-      if ('+$current' == newPhone) {
-        throw const AppFailure('To jest twój obecny numer.');
-      }
       await _confirmPassword(currentPassword);
-      try {
-        await _db.auth.updateUser(UserAttributes(phone: newPhone));
-      } on AuthException catch (e) {
-        if (e.code == 'phone_exists' ||
-            e.message.toLowerCase().contains('already')) {
-          throw const AppFailure(
-            'Ten numer jest już przypisany do innego konta.',
-          );
-        }
-        rethrow;
-      }
+      await _db.rpc<String>('account_set_phone', params: {'p_phone': newPhone});
     });
-  }
-
-  Future<void> verifyPhoneChange({
-    required String phone,
-    required String code,
-  }) {
-    return _guard(
-      () => _db.auth.verifyOTP(
-        type: OtpType.phoneChange,
-        token: code,
-        phone: phone,
-      ),
-    );
-  }
-
-  Future<void> resendPhoneChangeCode(String phone) {
-    return _guard(
-      () => _db.auth.resend(type: OtpType.phoneChange, phone: phone),
-    );
   }
 
   Future<void> changePassword({

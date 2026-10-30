@@ -167,7 +167,9 @@ class LoginInfoScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final text = Theme.of(context).textTheme;
-    final phone = ref.watch(profileProvider).value?.phone;
+    final profile = ref.watch(profileProvider).value;
+    final phone = profile?.phone;
+    final email = profile?.email;
 
     return SignedInOnly(
       title: 'Informacje o logowaniu',
@@ -176,8 +178,46 @@ class LoginInfoScreen extends ConsumerWidget {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
           SettingsGroup(
+            title: 'E-mail',
+            footer: email == null
+                ? 'Konto założone numerem telefonu. Dodaj e-mail: odtąd zalogujesz się e-mailem, kodem z e-maila i hasłem.'
+                : 'Logujesz się e-mailem, kodem z e-maila i hasłem.',
+            children: [
+              if (email != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                  child: Row(
+                    children: [
+                      Glyph(
+                        AppIcons.envelope,
+                        size: 18,
+                        color: AppColors.accent,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          email,
+                          style: text.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                SettingsRow(
+                  icon: AppIcons.envelope,
+                  title: 'Dodaj e-mail',
+                  onTap: () => context.push(AppRoutes.addEmail),
+                ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          SettingsGroup(
             title: 'Numer telefonu',
-            footer: 'Numer służy do logowania kodem SMS.',
+            footer:
+                'Jeden numer to jedno konto Table. Lokale widzą go przy rezerwacjach i zamówieniach.',
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),

@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
 import 'data.dart';
+import 'login_screen.dart';
 import 'ui.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
@@ -16,7 +17,7 @@ class SettingsScreen extends ConsumerWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Wylogować się?'),
-        content: const Text('Żeby wrócić, zalogujesz się ponownie numerem telefonu.'),
+        content: const Text('Żeby wrócić, zalogujesz się ponownie e-mailem, kodem z e-maila i hasłem.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Anuluj')),
           FilledButton(
@@ -33,7 +34,9 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final text = Theme.of(context).textTheme;
-    final phone = ref.watch(staffRepositoryProvider).phone;
+    final account = ref.watch(accountProvider).value;
+    final phone = account?.phone;
+    final email = account?.email;
     final jobs = ref.watch(jobsProvider).value ?? const <Job>[];
     final codes = ref.watch(codesProvider).value ?? const <String, String>{};
     final name = jobs.firstOrNull?.memberName;
@@ -46,7 +49,11 @@ class SettingsScreen extends ConsumerWidget {
           children: [
             // Konto: okrągły znak z inicjałem, imię i numer, którym się logujesz.
             Semantics(
-              label: [?name, 'numer telefonu ${phone == null ? 'nieznany' : Fmt.phone(phone)}'].join(', '),
+              label: [
+                ?name,
+                'numer telefonu ${phone == null ? 'nieznany' : Fmt.phone(phone)}',
+                if (email != null && email.isNotEmpty) 'e-mail $email',
+              ].join(', '),
               excludeSemantics: true,
               child: Card(
                 margin: EdgeInsets.zero,
@@ -76,6 +83,8 @@ class SettingsScreen extends ConsumerWidget {
                               phone == null ? 'Brak numeru' : Fmt.phone(phone),
                               style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
                             ),
+                            if (email != null && email.isNotEmpty)
+                              Text(email, style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
                           ],
                         ),
                       ),
@@ -84,6 +93,24 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ),
             ),
+            // Stare konto z logowania SMS: e-mail do logowania.
+            if (account != null && (email == null || email.isEmpty)) ...[
+              const SizedBox(height: 24),
+              _Group(
+                title: 'Logowanie',
+                footer:
+                    'Konto założone numerem telefonu. Dodaj e-mail: odtąd zalogujesz się e-mailem, '
+                    'kodem z e-maila i hasłem.',
+                children: [
+                  _Row(
+                    icon: AppIcons.envelope,
+                    title: 'Dodaj e-mail',
+                    onTap: () =>
+                        Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const AddEmailScreen())),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 24),
             _Group(
               title: 'Moje lokale',

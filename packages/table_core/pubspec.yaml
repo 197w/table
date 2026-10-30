@@ -15,6 +15,7 @@ dependencies:
   flutter_svg: any
   flutter_riverpod: ^3.4.3
   shared_preferences: ^2.5.5
+  supabase_flutter: ^2.17.2
   intl: any
 
 dev_dependencies:

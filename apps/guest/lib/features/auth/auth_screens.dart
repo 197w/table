@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+import 'package:table_core/email_auth.dart';
+
 import '../../app/app.dart';
 import '../../data/providers.dart';
 
@@ -109,16 +111,12 @@ class _PasswordField extends StatefulWidget {
   const _PasswordField({
     required this.controller,
     required this.label,
-    this.errorText,
     this.onSubmitted,
-    this.isNew = false,
   });
 
   final TextEditingController controller;
   final String label;
-  final String? errorText;
   final ValueChanged<String>? onSubmitted;
-  final bool isNew;
 
   @override
   State<_PasswordField> createState() => _PasswordFieldState();
@@ -132,14 +130,11 @@ class _PasswordFieldState extends State<_PasswordField> {
     return TextField(
       controller: widget.controller,
       obscureText: _obscure,
-      autofillHints: [
-        widget.isNew ? AutofillHints.newPassword : AutofillHints.password,
-      ],
+      autofillHints: const [AutofillHints.password],
       textInputAction: TextInputAction.done,
       onSubmitted: widget.onSubmitted,
       decoration: InputDecoration(
         labelText: widget.label,
-        errorText: widget.errorText,
         suffixIcon: IconButton(
           tooltip: _obscure ? 'Pokaż hasło' : 'Ukryj hasło',
           icon: Glyph(_obscure ? AppIcons.eye : AppIcons.eyeSlash),
@@ -179,7 +174,80 @@ class _BusyButton extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------
-// Logowanie: numer telefonu
+// Logowanie i rejestracja e-mailem (EmailAuthFlow z table_core)
+// ---------------------------------------------------------------
+
+/// Logowanie: e-mail → kod z e-maila → hasło.
+class LoginScreen extends StatelessWidget {
+  const LoginScreen({super.key, this.next});
+
+  final String? next;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(),
+      body: SafeArea(
+        child: EmailAuthFlow(
+          mode: EmailAuthMode.login,
+          onDone: () => context.go(_safeNext(next)),
+          onSwitchMode: () => context.pushReplacement(
+            AppRoutes.withNext(AppRoutes.register, next),
+          ),
+          onSmsLogin: () =>
+              context.push(AppRoutes.withNext(AppRoutes.smsLogin, next)),
+        ),
+      ),
+    );
+  }
+}
+
+/// Rejestracja: numer telefonu → e-mail → kod z e-maila → hasło. Jeden numer to jedno konto.
+class RegisterScreen extends StatelessWidget {
+  const RegisterScreen({super.key, this.next});
+
+  final String? next;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(),
+      body: SafeArea(
+        child: EmailAuthFlow(
+          mode: EmailAuthMode.register,
+          onDone: () => context.go(_safeNext(next)),
+          onSwitchMode: () => context.pushReplacement(
+            AppRoutes.withNext(AppRoutes.login, next),
+          ),
+          phoneHint: 'Lokale widzą go przy rezerwacjach i zamówieniach.',
+        ),
+      ),
+    );
+  }
+}
+
+/// Stare konto z logowania SMS: dodanie e-maila (Ustawienia → Konto → Informacje o logowaniu).
+class AddEmailScreen extends ConsumerWidget {
+  const AddEmailScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Dodaj e-mail')),
+      body: SafeArea(
+        child: AddEmailFlow(
+          onDone: () {
+            ref.invalidate(profileProvider);
+            context.pop();
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------
+// Stare konta bez e-maila: logowanie numerem telefonu (kod SMS albo hasło)
 // ---------------------------------------------------------------
 
 class PhoneLoginScreen extends ConsumerStatefulWidget {
@@ -220,7 +288,11 @@ class _PhoneLoginScreenState extends ConsumerState<PhoneLoginScreen> {
       await ref.read(repositoryProvider).sendLoginCode(phone);
       if (!mounted) return;
       context.push(
-        AppRoutes.withNext('${AppRoutes.login}/kod', widget.next, phone: phone),
+        AppRoutes.withNext(
+          '${AppRoutes.smsLogin}/kod',
+          widget.next,
+          phone: phone,
+        ),
       );
     } catch (e) {
       if (mounted) showError(context, e);
@@ -233,16 +305,21 @@ class _PhoneLoginScreenState extends ConsumerState<PhoneLoginScreen> {
     final phone = _validPhone();
     if (phone == null) return;
     context.push(
-      AppRoutes.withNext('${AppRoutes.login}/haslo', widget.next, phone: phone),
+      AppRoutes.withNext(
+        '${AppRoutes.smsLogin}/haslo',
+        widget.next,
+        phone: phone,
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return _AuthScaffold(
-      title: 'Zaloguj się',
+      title: 'Konto bez e-maila',
       subtitle:
-          'Twój numer telefonu jest loginem. Zalogujesz się kodem SMS albo hasłem.',
+          'Dla kont założonych numerem telefonu. Po zalogowaniu dodaj e-mail w ustawieniach konta: '
+          'odtąd będziesz logować się e-mailem.',
       children: [
         _PhoneField(
           controller: _phone,
@@ -255,13 +332,6 @@ class _PhoneLoginScreenState extends ConsumerState<PhoneLoginScreen> {
         OutlinedButton(
           onPressed: _busy ? null : _usePassword,
           child: const Text('Zaloguj się hasłem'),
-        ),
-        const SizedBox(height: 24),
-        TextButton(
-          onPressed: () => context.pushReplacement(
-            AppRoutes.withNext(AppRoutes.register, widget.next),
-          ),
-          child: const Text('Nie masz konta? Załóż je'),
         ),
       ],
     );
@@ -352,7 +422,7 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
     super.dispose();
   }
 
-  Future<void> _sendCode() async {
+  Future<void> _save() async {
     if (_busy) return;
     final phone = normalizePolishPhone(_phone.text);
     setState(
@@ -370,11 +440,11 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
     try {
       await ref
           .read(repositoryProvider)
-          .requestPhoneChange(newPhone: phone, currentPassword: _password.text);
+          .changePhone(newPhone: phone, currentPassword: _password.text);
+      ref.invalidate(profileProvider);
       if (!mounted) return;
-      context.push(
-        AppRoutes.withNext(AppRoutes.changePhoneCode, null, phone: phone),
-      );
+      showMessage(context, 'Numer telefonu został zmieniony.');
+      context.pop();
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {
@@ -387,7 +457,7 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
     return _AuthScaffold(
       title: 'Zmień numer telefonu',
       subtitle:
-          'Wyślemy kod SMS na nowy numer. Numer zmieni się dopiero po wpisaniu kodu.',
+          'Jeden numer to jedno konto Table. Numer z innego konta nie przejdzie na to.',
       children: [
         _PhoneField(
           controller: _phone,
@@ -399,32 +469,24 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
           child: _PasswordField(
             controller: _password,
             label: 'Obecne hasło',
-            onSubmitted: (_) => _sendCode(),
+            onSubmitted: (_) => _save(),
           ),
         ),
         const SizedBox(height: 24),
-        _BusyButton(label: 'Wyślij kod SMS', busy: _busy, onPressed: _sendCode),
+        _BusyButton(label: 'Zmień numer', busy: _busy, onPressed: _save),
       ],
     );
   }
 }
 
 // ---------------------------------------------------------------
-// Kod SMS: logowanie, potwierdzenie rejestracji i zmiana numeru
+// Kod SMS: logowanie starego konta bez e-maila
 // ---------------------------------------------------------------
 
-enum SmsCodeMode { login, register, phoneChange }
-
 class SmsCodeScreen extends ConsumerStatefulWidget {
-  const SmsCodeScreen({
-    super.key,
-    required this.phone,
-    required this.mode,
-    this.next,
-  });
+  const SmsCodeScreen({super.key, required this.phone, this.next});
 
   final String phone;
-  final SmsCodeMode mode;
   final String? next;
 
   @override
@@ -473,21 +535,6 @@ class _SmsCodeScreenState extends ConsumerState<SmsCodeScreen> {
     setState(() => _busy = true);
     final repository = ref.read(repositoryProvider);
 
-    if (widget.mode == SmsCodeMode.phoneChange) {
-      try {
-        await repository.verifyPhoneChange(phone: widget.phone, code: code);
-        ref.invalidate(profileProvider);
-        if (!mounted) return;
-        showMessage(context, 'Numer telefonu został zmieniony.');
-        context.go(AppRoutes.loginInfo);
-      } catch (e) {
-        if (mounted) showError(context, e);
-      } finally {
-        if (mounted) setState(() => _busy = false);
-      }
-      return;
-    }
-
     try {
       await repository.verifySmsCode(phone: widget.phone, code: code);
       if (mounted) context.go(_safeNext(widget.next));
@@ -507,14 +554,7 @@ class _SmsCodeScreenState extends ConsumerState<SmsCodeScreen> {
   Future<void> _resend() async {
     final repo = ref.read(repositoryProvider);
     try {
-      switch (widget.mode) {
-        case SmsCodeMode.login:
-          await repo.sendLoginCode(widget.phone);
-        case SmsCodeMode.register:
-          await repo.resendSignupCode(widget.phone);
-        case SmsCodeMode.phoneChange:
-          await repo.resendPhoneChangeCode(widget.phone);
-      }
+      await repo.sendLoginCode(widget.phone);
       if (!mounted) return;
       _startTimer();
       showMessage(context, 'Wysłaliśmy nowy kod.');
@@ -525,14 +565,8 @@ class _SmsCodeScreenState extends ConsumerState<SmsCodeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final subtitle = switch (widget.mode) {
-      SmsCodeMode.login =>
-        'Jeśli numer ${_displayPhone(widget.phone)} ma konto, wysłaliśmy na niego 6-cyfrowy kod.',
-      SmsCodeMode.register =>
-        'Wysłaliśmy 6-cyfrowy kod na numer ${_displayPhone(widget.phone)}.',
-      SmsCodeMode.phoneChange =>
-        'Wysłaliśmy 6-cyfrowy kod na nowy numer ${_displayPhone(widget.phone)}.',
-    };
+    final subtitle =
+        'Jeśli numer ${_displayPhone(widget.phone)} ma konto, wysłaliśmy na niego 6-cyfrowy kod.';
 
     return _AuthScaffold(
       title: 'Wpisz kod z SMS-a',
@@ -578,100 +612,6 @@ class _SmsCodeScreenState extends ConsumerState<SmsCodeScreen> {
             style: TextStyle(color: AppColors.warning),
           ),
         ],
-      ],
-    );
-  }
-}
-
-// ---------------------------------------------------------------
-// Rejestracja
-// ---------------------------------------------------------------
-
-class RegisterScreen extends ConsumerStatefulWidget {
-  const RegisterScreen({super.key, this.next});
-
-  final String? next;
-
-  @override
-  ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
-}
-
-class _RegisterScreenState extends ConsumerState<RegisterScreen> {
-  final _phone = TextEditingController();
-  final _password = TextEditingController();
-  String? _phoneError;
-  String? _passwordError;
-  bool _busy = false;
-
-  @override
-  void dispose() {
-    _phone.dispose();
-    _password.dispose();
-    super.dispose();
-  }
-
-  Future<void> _register() async {
-    final phone = normalizePolishPhone(_phone.text);
-    final passwordOk = _password.text.length >= 8;
-    setState(() {
-      _phoneError = phone == null ? 'Wpisz 9-cyfrowy numer telefonu.' : null;
-      _passwordError = passwordOk
-          ? null
-          : 'Hasło musi mieć co najmniej 8 znaków.';
-    });
-    if (phone == null || !passwordOk) return;
-
-    setState(() => _busy = true);
-    try {
-      await ref
-          .read(repositoryProvider)
-          .signUp(phone: phone, password: _password.text);
-      if (!mounted) return;
-      context.push(
-        AppRoutes.withNext(
-          '${AppRoutes.register}/kod',
-          widget.next,
-          phone: phone,
-        ),
-      );
-    } catch (e) {
-      if (mounted) showError(context, e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return _AuthScaffold(
-      title: 'Załóż konto',
-      subtitle:
-          'Konto potwierdzamy kodem SMS. Dzięki temu opinie i rezerwacje pochodzą od prawdziwych osób.',
-      children: [
-        AutofillGroup(
-          child: Column(
-            children: [
-              _PhoneField(controller: _phone, errorText: _phoneError),
-              const SizedBox(height: 16),
-              _PasswordField(
-                controller: _password,
-                label: 'Hasło, co najmniej 8 znaków',
-                errorText: _passwordError,
-                isNew: true,
-                onSubmitted: (_) => _register(),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
-        _BusyButton(label: 'Załóż konto', busy: _busy, onPressed: _register),
-        const SizedBox(height: 24),
-        TextButton(
-          onPressed: () => context.pushReplacement(
-            AppRoutes.withNext(AppRoutes.login, widget.next),
-          ),
-          child: const Text('Masz już konto? Zaloguj się'),
-        ),
       ],
     );
   }

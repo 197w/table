@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:table_core/email_auth.dart';
 import 'package:table_core/table_core.dart';
 
 import '../features/auth/auth_screens.dart';
@@ -43,7 +44,10 @@ class _TableAppState extends ConsumerState<TableApp>
     _authRefresh = _AuthRefresh(
       Supabase.instance.client.auth.onAuthStateChange,
     );
-    _router = _buildRouter(_authRefresh);
+    // Sesja z kodu z e-maila liczy się dopiero po haśle (AuthPending).
+    _router = _buildRouter(
+      Listenable.merge([_authRefresh, AuthPending.instance]),
+    );
   }
 
   @override
@@ -90,7 +94,8 @@ class _TableAppState extends ConsumerState<TableApp>
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         routerConfig: _router,
         // Powiadomienia w stylu Table nad całą aplikacją.
-        builder: (context, child) => ToastHost(child: child ?? const SizedBox.shrink()),
+        builder: (context, child) =>
+            ToastHost(child: child ?? const SizedBox.shrink()),
       ),
     );
   }
@@ -113,7 +118,7 @@ GoRouter _buildRouter(Listenable refresh) {
     initialLocation: AppRoutes.discover,
     refreshListenable: refresh,
     redirect: (context, state) {
-      final loggedIn = Supabase.instance.client.auth.currentSession != null;
+      final loggedIn = signedInWithPassword;
       // Sama ścieżka, bo parametry adresu psuły sprawdzanie końcówki.
       final path = state.uri.path;
       final location = state.uri.toString();
@@ -216,17 +221,10 @@ GoRouter _buildRouter(Listenable refresh) {
                           GoRoute(
                             path: 'telefon',
                             builder: (_, _) => const ChangePhoneScreen(),
-                            routes: [
-                              GoRoute(
-                                path: 'kod',
-                                builder: (context, state) => SmsCodeScreen(
-                                  phone:
-                                      state.uri.queryParameters['telefon'] ??
-                                      '',
-                                  mode: SmsCodeMode.phoneChange,
-                                ),
-                              ),
-                            ],
+                          ),
+                          GoRoute(
+                            path: 'email',
+                            builder: (_, _) => const AddEmailScreen(),
                           ),
                         ],
                       ),
@@ -266,11 +264,13 @@ GoRouter _buildRouter(Listenable refresh) {
           ),
           GoRoute(
             path: 'zamow',
-            builder: (context, state) => OrderMenuScreen(restaurantId: state.pathParameters['id']!),
+            builder: (context, state) =>
+                OrderMenuScreen(restaurantId: state.pathParameters['id']!),
             routes: [
               GoRoute(
                 path: 'koszyk',
-                builder: (context, state) => CheckoutScreen(restaurantId: state.pathParameters['id']!),
+                builder: (context, state) =>
+                    CheckoutScreen(restaurantId: state.pathParameters['id']!),
               ),
             ],
           ),
@@ -278,27 +278,35 @@ GoRouter _buildRouter(Listenable refresh) {
       ),
       GoRoute(
         path: '/zamowienia/:orderId',
-        builder: (context, state) => OrderDetailScreen(orderId: state.pathParameters['orderId']!),
+        builder: (context, state) =>
+            OrderDetailScreen(orderId: state.pathParameters['orderId']!),
       ),
       GoRoute(
         path: AppRoutes.login,
         builder: (context, state) =>
-            PhoneLoginScreen(next: state.uri.queryParameters['next']),
+            LoginScreen(next: state.uri.queryParameters['next']),
         routes: [
+          // Stare konta bez e-maila: numer telefonu i kod SMS albo hasło.
           GoRoute(
-            path: 'haslo',
-            builder: (context, state) => PasswordLoginScreen(
-              phone: state.uri.queryParameters['telefon'] ?? '',
-              next: state.uri.queryParameters['next'],
-            ),
-          ),
-          GoRoute(
-            path: 'kod',
-            builder: (context, state) => SmsCodeScreen(
-              phone: state.uri.queryParameters['telefon'] ?? '',
-              next: state.uri.queryParameters['next'],
-              mode: SmsCodeMode.login,
-            ),
+            path: 'sms',
+            builder: (context, state) =>
+                PhoneLoginScreen(next: state.uri.queryParameters['next']),
+            routes: [
+              GoRoute(
+                path: 'haslo',
+                builder: (context, state) => PasswordLoginScreen(
+                  phone: state.uri.queryParameters['telefon'] ?? '',
+                  next: state.uri.queryParameters['next'],
+                ),
+              ),
+              GoRoute(
+                path: 'kod',
+                builder: (context, state) => SmsCodeScreen(
+                  phone: state.uri.queryParameters['telefon'] ?? '',
+                  next: state.uri.queryParameters['next'],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -306,16 +314,6 @@ GoRouter _buildRouter(Listenable refresh) {
         path: AppRoutes.register,
         builder: (context, state) =>
             RegisterScreen(next: state.uri.queryParameters['next']),
-        routes: [
-          GoRoute(
-            path: 'kod',
-            builder: (context, state) => SmsCodeScreen(
-              phone: state.uri.queryParameters['telefon'] ?? '',
-              next: state.uri.queryParameters['next'],
-              mode: SmsCodeMode.register,
-            ),
-          ),
-        ],
       ),
     ],
   );
@@ -336,10 +334,11 @@ abstract final class AppRoutes {
   static const loginInfo = '/ustawienia/konto/logowanie';
   static const changePassword = '/ustawienia/konto/logowanie/haslo';
   static const changePhone = '/ustawienia/konto/logowanie/telefon';
-  static const changePhoneCode = '/ustawienia/konto/logowanie/telefon/kod';
+  static const addEmail = '/ustawienia/konto/logowanie/email';
   static const settingsAdvanced = '/ustawienia/zaawansowane';
   static const login = '/logowanie';
   static const register = '/rejestracja';
+  static const smsLogin = '/logowanie/sms';
 
   static String restaurant(String id) => '/restauracja/$id';
   static String reservationDetail(String id) => '/rezerwacje/$id';

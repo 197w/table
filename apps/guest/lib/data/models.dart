@@ -842,6 +842,7 @@ class Profile {
     this.firstName,
     this.fullName,
     this.phone,
+    this.email,
     this.addressStreet,
     this.addressHouse,
     this.addressPostcode,
@@ -858,6 +859,9 @@ class Profile {
   /// Imię i nazwisko widoczne tylko dla restauracji, w której gość rezerwuje.
   final String? fullName;
   final String? phone;
+
+  /// E-mail logowania. Null: stare konto z logowania SMS (Ustawienia → „Dodaj e-mail”).
+  final String? email;
 
   /// Adres dostawy z ustawień (Ustawienia → Adres dostawy).
   final String? addressStreet;

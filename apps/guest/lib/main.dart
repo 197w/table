@@ -3,6 +3,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:table_core/email_auth.dart';
 import 'package:table_core/table_core.dart';
 
 import 'app/app.dart';
@@ -39,6 +40,8 @@ Future<void> main() async {
     url: Env.supabaseUrl,
     publishableKey: Env.supabasePublishableKey,
   );
+  // Logowanie przerwane między kodem z e-maila a hasłem wylogowuje.
+  await AuthPending.restore();
 
   runApp(
     ProviderScope(

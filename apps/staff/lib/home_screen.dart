@@ -151,7 +151,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final text = Theme.of(context).textTheme;
     final jobs = ref.watch(jobsProvider);
     final codes = ref.watch(codesProvider).value ?? const <String, String>{};
-    final phone = ref.watch(staffRepositoryProvider).phone;
+    final phone = ref.watch(accountProvider).value?.phone;
     final list = jobs.value ?? const <Job>[];
     final working = list.where((j) => j.working).firstOrNull;
     final announcements = ref.watch(announcementsProvider).value ?? const <StaffAnnouncement>[];

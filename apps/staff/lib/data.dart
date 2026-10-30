@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:table_core/email_auth.dart';
 import 'package:table_core/table_core.dart';
 
 int _toInt(Object? v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
@@ -230,11 +231,11 @@ class StaffRepository {
   final SupabaseClient _db;
 
   Session? get session => _db.auth.currentSession;
-  String? get phone => _db.auth.currentUser?.phone;
 
   /// Kod SMS do logowania. Nowy numer dostaje konto przy pierwszym logowaniu.
   Future<void> sendCode(String phone) =>
-      _guard(() => _db.auth.signInWithOtp(phone: phone, shouldCreateUser: true));
+      // Tylko stare konta: nowe zakłada się e-mailem (EmailAuthFlow).
+      _guard(() => _db.auth.signInWithOtp(phone: phone, shouldCreateUser: false));
 
   Future<void> verifyCode(String phone, String code) =>
       _guard(() => _db.auth.verifyOTP(type: OtpType.sms, phone: phone, token: code));
@@ -397,6 +398,12 @@ class SessionNotifier extends Notifier<Session?> {
 }
 
 final sessionProvider = NotifierProvider<SessionNotifier, Session?>(SessionNotifier.new);
+
+/// Numer i e-mail konta: numer z profilu (logowanie e-mailem), u starych kont z logowania SMS.
+final accountProvider = FutureProvider<AccountStatus>((ref) {
+  ref.watch(sessionProvider.select((s) => s?.user.id));
+  return EmailAuth().status();
+});
 
 final jobsProvider = FutureProvider.autoDispose<List<Job>>((ref) {
   if (ref.watch(sessionProvider) == null) return Future.value(const []);
