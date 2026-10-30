@@ -151,11 +151,18 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                   const SizedBox(width: 20),
                   Expanded(
-                    child: _DeliveryCard(
-                      key: ValueKey('dostawa-${profile.id}'),
-                      profile: profile,
-                      editable: restaurant.canManage,
-                      pro: restaurant.isPro,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _DeliveryCard(
+                          key: ValueKey('dostawa-${profile.id}'),
+                          profile: profile,
+                          editable: restaurant.canManage,
+                          pro: restaurant.isPro,
+                        ),
+                        const SizedBox(height: 20),
+                        const _ThisComputerCard(),
+                      ],
                     ),
                   ),
                 ],
@@ -164,6 +171,46 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Ustawienia tylko tego komputera (nie całego lokalu): uruchamianie panelu na pełnym ekranie.
+class _ThisComputerCard extends ConsumerWidget {
+  const _ThisComputerCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final fullscreen = ref.watch(startFullscreenProvider);
+    return PanelCard(
+      title: 'Ten komputer',
+      icon: AppIcons.monitor,
+      iconColor: TileColors.violet,
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Automatyczne uruchamianie w pełnym ekranie', style: text.titleSmall),
+                const SizedBox(height: 2),
+                Text(
+                  fullscreen
+                      ? 'Panel startuje bez ramki okna i paska zadań. Wyłącz, żeby wrócić do okna.'
+                      : 'Panel otwiera się na całe okno. Włącz, żeby startował na pełnym ekranie, bez paska zadań.',
+                  style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Switch(
+            value: fullscreen,
+            onChanged: (v) => ref.read(startFullscreenProvider.notifier).set(v),
+          ),
+        ],
+      ),
     );
   }
 }

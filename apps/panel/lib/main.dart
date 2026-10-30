@@ -10,6 +10,7 @@ import 'app/app.dart';
 import 'app/panel_theme.dart';
 import 'app/reservation_alerts.dart';
 import 'app/updater.dart';
+import 'data/providers.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,6 +18,8 @@ Future<void> main() async {
   Intl.defaultLocale = 'pl_PL';
 
   // Panel nie zwęża się do rozmiaru telefonu: plan sali i lista rezerwacji potrzebują miejsca.
+  // Otwiera się na całe okno albo, gdy tak ustawiono na tym komputerze, na pełnym ekranie.
+  final fullscreen = await StartFullscreenNotifier.load();
   await windowManager.ensureInitialized();
   await windowManager.waitUntilReadyToShow(
     const WindowOptions(
@@ -26,7 +29,13 @@ Future<void> main() async {
       title: 'Table · Panel restauracji',
     ),
     () async {
-      await windowManager.show();
+      if (fullscreen) {
+        await windowManager.show();
+        await windowManager.setFullScreen(true);
+      } else {
+        await windowManager.maximize();
+        await windowManager.show();
+      }
       await windowManager.focus();
     },
   );
@@ -51,6 +60,7 @@ Future<void> main() async {
         themeSettingProvider.overrideWith(
           () => ThemeSettingNotifier(themeSetting),
         ),
+        startFullscreenProvider.overrideWith(() => StartFullscreenNotifier(fullscreen)),
       ],
       child: const PanelApp(),
     ),

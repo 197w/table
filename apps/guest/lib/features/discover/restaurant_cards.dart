@@ -216,7 +216,50 @@ String restaurantSemantics(
   if (r.isPro && r.deliveryEnabled) 'dostawa',
   if (r.isPro && r.pickupEnabled) 'na wynos',
   if (r.matchedDish != null) 'w menu: ${r.matchedDish}',
+  ?openingStatus(r.hours, DateTime.now())?.label,
 ].join(', ');
+
+/// „Otwarte do 22:00”, „Wkrótce zamknięcie – 22:00”, „Wkrótce otwarcie – 12:00” albo „Zamknięte · …” z kropką:
+/// zielona otwarte, pomarańczowa „wkrótce”, czerwona zamknięte. Nic, gdy lokal nie podał godzin.
+class OpenStatusLine extends StatelessWidget {
+  const OpenStatusLine({super.key, required this.restaurant, this.compact = false});
+
+  final RestaurantSummary restaurant;
+
+  /// W zwartym wierszu mniejszy napis.
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = openingStatus(restaurant.hours, DateTime.now());
+    if (status == null) return const SizedBox.shrink();
+    final text = Theme.of(context).textTheme;
+    final color = switch (status.state) {
+      OpenState.open => AppColors.accent,
+      OpenState.closingSoon || OpenState.openingSoon => AppColors.warning,
+      OpenState.closed => AppColors.error,
+    };
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(width: 7, height: 7, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            status.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: (compact ? text.labelSmall : text.labelMedium)?.copyWith(
+              color: status.state == OpenState.closed ? AppColors.textMuted : color,
+              fontWeight: FontWeight.w600,
+              fontFeatures: _tabular,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 /// Kuchnia, ceny i odległość w jednym wierszu.
 String restaurantMeta(RestaurantSummary r, {required bool showDistance, required DistanceUnit unit}) => [
@@ -303,6 +346,7 @@ class RestaurantCard extends StatelessWidget {
                           restaurantMeta(r, showDistance: showDistance, unit: unit),
                           style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
                         ),
+                        if (r.hours.isNotEmpty) ...[const SizedBox(height: 4), OpenStatusLine(restaurant: r)],
                         if (r.matchedDish != null) ...[const SizedBox(height: 4), _MatchedDish(name: r.matchedDish!)],
                         const SizedBox(height: 10),
                         Wrap(
@@ -408,6 +452,7 @@ class RestaurantRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: text.bodySmall?.copyWith(color: AppColors.textMuted),
                     ),
+                    if (r.hours.isNotEmpty) OpenStatusLine(restaurant: r, compact: true),
                     if (r.matchedDish != null) _MatchedDish(name: r.matchedDish!),
                     const SizedBox(height: 4),
                     Row(

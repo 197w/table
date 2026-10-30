@@ -71,12 +71,16 @@ class RestaurantSummary {
     this.deliveryEnabled = false,
     this.pickupEnabled = false,
     this.matchedDish,
+    this.hours = const [],
   });
 
   final String id;
   final String name;
   final String cuisine;
   final int priceLevel;
+
+  /// Godziny otwarcia (do „Otwarte do 22:00” i „Wkrótce zamknięcie” na kafelku). Puste: lokal ich nie podał.
+  final List<OpeningHours> hours;
 
   /// Zdjęcie na kartę: zdjęcie lokalu albo pierwsze zdjęcie dania z menu. Null: karta z ikoną kuchni.
   final String? coverUrl;
@@ -119,8 +123,77 @@ class RestaurantSummary {
       deliveryEnabled: json['delivery_enabled'] == true,
       pickupEnabled: json['pickup_enabled'] == true,
       matchedDish: json['matched_dish'] as String?,
+      hours: [
+        for (final h in json['hours'] as List? ?? const []) OpeningHours.fromJson(h as Map<String, dynamic>),
+      ],
     );
   }
+}
+
+/// Stan lokalu w danej chwili.
+enum OpenState {
+  open,
+
+  /// Otwarte, ale zamyka się w ciągu [soonMinutes].
+  closingSoon,
+
+  /// Zamknięte, ale otwiera się w ciągu [soonMinutes].
+  openingSoon,
+  closed;
+
+  bool get isOpen => this == open || this == closingSoon;
+}
+
+/// Ile minut przed otwarciem albo zamknięciem lokal jest „wkrótce”.
+const soonMinutes = 60;
+
+/// Czy lokal jest otwarty w chwili [now] i napis dla gościa: „Otwarte do 22:00”, „Wkrótce zamknięcie – 22:00”,
+/// „Wkrótce otwarcie – 12:00” albo „Zamknięte · otwiera jutro o 12:00”. Null: lokal nie podał godzin.
+({OpenState state, String label})? openingStatus(List<OpeningHours> hours, DateTime now) {
+  if (hours.isEmpty) return null;
+  OpeningHours? hoursFor(DateTime day) {
+    for (final h in hours) {
+      if (h.weekday == day.weekday) return h;
+    }
+    return null;
+  }
+
+  DateTime at(DateTime day, String hm) {
+    final p = hm.split(':');
+    return DateTime(day.year, day.month, day.day, int.parse(p[0]), int.parse(p[1]));
+  }
+
+  String closesText(String hm) => hm == '24:00' ? 'północ' : hm;
+  final today = DateTime(now.year, now.month, now.day);
+  final h = hoursFor(today);
+  if (h != null) {
+    final opens = at(today, h.opens);
+    final closes = at(today, h.closes);
+    if (!now.isBefore(opens) && now.isBefore(closes)) {
+      if (closes.difference(now).inMinutes < soonMinutes) {
+        return (state: OpenState.closingSoon, label: 'Wkrótce zamknięcie – ${closesText(h.closes)}');
+      }
+      return (state: OpenState.open, label: 'Otwarte do ${h.closes == '24:00' ? 'północy' : h.closes}');
+    }
+  }
+  const days = ['w poniedziałek', 'we wtorek', 'w środę', 'w czwartek', 'w piątek', 'w sobotę', 'w niedzielę'];
+  for (var d = 0; d <= 7; d++) {
+    final day = DateTime(now.year, now.month, now.day + d);
+    final next = hoursFor(day);
+    if (next == null) continue;
+    final opens = at(day, next.opens);
+    if (!opens.isAfter(now)) continue;
+    if (opens.difference(now).inMinutes < soonMinutes) {
+      return (state: OpenState.openingSoon, label: 'Wkrótce otwarcie – ${next.opens}');
+    }
+    final when = switch (d) {
+      0 => '',
+      1 => 'jutro ',
+      _ => '${days[day.weekday - 1]} ',
+    };
+    return (state: OpenState.closed, label: 'Zamknięte · otwiera ${when}o ${next.opens}');
+  }
+  return (state: OpenState.closed, label: 'Zamknięte');
 }
 
 class OpeningHours {
@@ -431,31 +504,8 @@ class RestaurantDetail {
   /// Czy lokal jest teraz otwarty, z napisem dla gościa: „Otwarte do 22:00”, „Zamknięte · otwiera jutro o 12:00”.
   /// Null: lokal nie podał godzin.
   ({bool open, String label})? openStatusAt(DateTime now) {
-    if (hours.isEmpty) return null;
-    int minutes(String hm) {
-      final p = hm.split(':');
-      return int.parse(p[0]) * 60 + int.parse(p[1]);
-    }
-
-    String closes(String hm) => hm == '24:00' ? 'północy' : hm;
-    final today = hoursFor(now);
-    final nowMin = now.hour * 60 + now.minute;
-    if (today != null) {
-      if (nowMin >= minutes(today.opens) && nowMin < minutes(today.closes)) {
-        return (open: true, label: 'Otwarte do ${closes(today.closes)}');
-      }
-      if (nowMin < minutes(today.opens)) return (open: false, label: 'Zamknięte · otwiera o ${today.opens}');
-    }
-    const days = ['w poniedziałek', 'we wtorek', 'w środę', 'w czwartek', 'w piątek', 'w sobotę', 'w niedzielę'];
-    for (var d = 1; d <= 7; d++) {
-      final day = DateTime(now.year, now.month, now.day + d);
-      final h = hoursFor(day);
-      if (h != null) {
-        final when = d == 1 ? 'jutro' : days[day.weekday - 1];
-        return (open: false, label: 'Zamknięte · otwiera $when o ${h.opens}');
-      }
-    }
-    return (open: false, label: 'Zamknięte');
+    final status = openingStatus(hours, now);
+    return status == null ? null : (open: status.state.isOpen, label: status.label);
   }
 
   OpeningHours? hoursFor(DateTime day) {

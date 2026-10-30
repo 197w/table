@@ -167,7 +167,9 @@ void main() {
     expect(restaurant.openStatusAt(DateTime(2026, 10, 8, 13))!.label, 'Otwarte do 22:00');
     expect(restaurant.openStatusAt(DateTime(2026, 10, 8, 10))!.label, 'Zamknięte · otwiera o 12:00');
     expect(restaurant.openStatusAt(DateTime(2026, 10, 8, 23))!.label, 'Zamknięte · otwiera jutro o 12:00');
-    expect(restaurant.openStatusAt(DateTime(2026, 10, 9, 23, 30))!.label, 'Otwarte do północy');
+    expect(restaurant.openStatusAt(DateTime(2026, 10, 9, 20))!.label, 'Otwarte do północy');
+    // Ostatnia godzina przed zamknięciem: „wkrótce”.
+    expect(restaurant.openStatusAt(DateTime(2026, 10, 9, 23, 30))!.label, 'Wkrótce zamknięcie – północ');
     // Niedziela wieczorem: w poniedziałek zamknięte, więc otwiera we wtorek.
     final sunday = restaurant.openStatusAt(DateTime(2026, 10, 11, 22, 30))!;
     expect(sunday.open, isFalse);
@@ -207,5 +209,29 @@ void main() {
     expect(reservationStatus(ReservationStatus.confirmed, upcoming: false).label, 'Minęła');
     expect(reservationStatus(ReservationStatus.cancelled, upcoming: true).label, 'Odwołana');
     expect(reservationStatus(ReservationStatus.noShow, upcoming: false).label, 'Nieobecność');
+  });
+
+  test('kafelek: otwarte, wkrótce zamknięcie, wkrótce otwarcie, zamknięte', () {
+    final hours = [
+      for (var d = 1; d <= 6; d++) OpeningHours.fromJson({'weekday': d, 'opens': '12:00:00', 'closes': '22:00:00'}),
+    ];
+    // 30.10.2026 to piątek, 1.11.2026 niedziela (zamknięte).
+    expect(openingStatus(hours, DateTime(2026, 10, 30, 15))!.label, 'Otwarte do 22:00');
+    final soonClose = openingStatus(hours, DateTime(2026, 10, 30, 21, 20))!;
+    expect(soonClose.state, OpenState.closingSoon);
+    expect(soonClose.label, 'Wkrótce zamknięcie – 22:00');
+    final soonOpen = openingStatus(hours, DateTime(2026, 10, 30, 11, 15))!;
+    expect(soonOpen.state, OpenState.openingSoon);
+    expect(soonOpen.label, 'Wkrótce otwarcie – 12:00');
+    expect(openingStatus(hours, DateTime(2026, 10, 30, 9))!.label, 'Zamknięte · otwiera o 12:00');
+    expect(openingStatus(hours, DateTime(2026, 10, 31, 23))!.label, 'Zamknięte · otwiera w poniedziałek o 12:00');
+    expect(openingStatus(const [], DateTime(2026, 10, 30)), isNull);
+    final summary = RestaurantSummary.fromJson({
+      'id': 'r1', 'name': 'REVE', 'cuisine': 'wloska', 'price_level': 2, 'address': 'Lipowa 1', 'city': 'Białystok',
+      'plan': 'pro', 'distance_m': 100, 'verified_reviews': 0, 'unverified_reviews': 0,
+      'hours': [{'weekday': 5, 'opens': '10:00:00', 'closes': '24:00:00'}],
+    });
+    expect(openingStatus(summary.hours, DateTime(2026, 10, 30, 23, 30))!.label, 'Wkrótce zamknięcie – północ');
+    expect(openingStatus(summary.hours, DateTime(2026, 10, 30, 18))!.label, 'Otwarte do północy');
   });
 }

@@ -602,6 +602,43 @@ final servingMutedProvider = NotifierProvider<ServingMutedNotifier, bool>(
   ServingMutedNotifier.new,
 );
 
+/// Panel uruchamia się na pełnym ekranie (bez ramki okna i paska zadań). Bez tego otwiera się
+/// zmaksymalizowany na całe okno. Pamiętane na tym komputerze („Ustawienia lokalu” → „Ten komputer”).
+class StartFullscreenNotifier extends Notifier<bool> {
+  StartFullscreenNotifier([this._initial = false]);
+
+  static const _key = 'panel_pelny_ekran_przy_starcie';
+  final bool _initial;
+
+  /// Odczyt przed pokazaniem okna (w `main`).
+  static Future<bool> load() async {
+    try {
+      return await SharedPreferencesAsync().getBool(_key) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  bool build() => _initial;
+
+  /// Zmiana od razu przełącza okno, a wybór zostaje na następne uruchomienia.
+  Future<void> set(bool value) async {
+    state = value;
+    try {
+      await SharedPreferencesAsync().setBool(_key, value);
+    } catch (_) {
+      // Wybór działa do zamknięcia panelu.
+    }
+    try {
+      await windowManager.setFullScreen(value);
+      if (!value) await windowManager.maximize();
+    } catch (_) {}
+  }
+}
+
+final startFullscreenProvider = NotifierProvider<StartFullscreenNotifier, bool>(StartFullscreenNotifier.new);
+
 /// Ekran kuchni na cały ekran, bez bocznego menu. Wyjście przyciskiem albo klawiszem Esc.
 class KitchenFullscreenNotifier extends Notifier<bool> {
   @override
@@ -610,7 +647,8 @@ class KitchenFullscreenNotifier extends Notifier<bool> {
   Future<void> set(bool value) async {
     state = value;
     try {
-      await windowManager.setFullScreen(value);
+      // Po wyjściu z kuchni okno wraca do trybu wybranego w ustawieniach.
+      await windowManager.setFullScreen(value || ref.read(startFullscreenProvider));
     } catch (_) {
       // Bez trybu pełnoekranowego zostaje samo ukrycie menu.
     }
