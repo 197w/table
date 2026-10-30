@@ -488,6 +488,7 @@ class _CustomerDetail extends ConsumerWidget {
     final query = (restaurantId: restaurantId, key: c.key);
     final history = ref.watch(customerHistoryProvider(query));
     final notes = ref.watch(customerNotesProvider(query));
+    final appAddress = ref.watch(customerAppAddressProvider(query)).value;
 
     final dates = [
       if (c.firstSeen != null) 'Pierwszy raz ${Fmt.dayShort(c.firstSeen!)}',
@@ -649,6 +650,36 @@ class _CustomerDetail extends ConsumerWidget {
       ),
     );
 
+    // Adres, który gość sam wpisał w aplikacji Table (do dostaw), nad notatkami.
+    final addressCard = appAddress == null
+        ? null
+        : PanelCard(
+            title: 'Adres z aplikacji Table',
+            icon: AppIcons.mapPin,
+            iconColor: TileColors.green,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SelectableText(appAddress.line, style: text.titleSmall),
+                if (appAddress.entryCode != null) ...[
+                  const SizedBox(height: 6),
+                  Text('Kod do klatki: ${appAddress.entryCode}', style: text.bodyMedium),
+                ],
+                if (appAddress.building != null) ...[
+                  const SizedBox(height: 4),
+                  Text(appAddress.building!, style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
+                ],
+                if (appAddress.updatedAt != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Zmieniony ${Fmt.dayShort(appAddress.updatedAt!)}',
+                    style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                  ),
+                ],
+              ],
+            ),
+          );
+
     final historyCard = PanelCard(
       title: 'Historia',
       icon: AppIcons.clockBack,
@@ -692,10 +723,20 @@ class _CustomerDetail extends ConsumerWidget {
                   children: [
                     Expanded(flex: 3, child: historyCard),
                     const SizedBox(width: 16),
-                    Expanded(flex: 2, child: notesCard),
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (addressCard != null) ...[addressCard, const SizedBox(height: 16)],
+                          notesCard,
+                        ],
+                      ),
+                    ),
                   ],
                 )
               else ...[
+                if (addressCard != null) ...[addressCard, const SizedBox(height: 16)],
                 notesCard,
                 const SizedBox(height: 16),
                 historyCard,

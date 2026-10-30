@@ -16,6 +16,7 @@ import '../features/restaurant/menu_screen.dart';
 import '../features/restaurant/restaurant_screen.dart';
 import '../features/reviews/write_review_screen.dart';
 import '../features/settings/account_screens.dart';
+import '../features/settings/address_screen.dart';
 import '../features/settings/general_settings_screen.dart';
 import '../features/settings/help_screens.dart';
 import '../features/settings/notification_settings_screen.dart';
@@ -193,6 +194,10 @@ GoRouter _buildRouter(Listenable refresh) {
                     ],
                   ),
                   GoRoute(
+                    path: 'adres',
+                    builder: (_, _) => const AddressScreen(),
+                  ),
+                  GoRoute(
                     path: 'konto',
                     builder: (_, _) => const AccountScreen(),
                     routes: [
@@ -326,6 +331,7 @@ abstract final class AppRoutes {
   static const settingsHelp = '/ustawienia/pomoc';
   static const reportBug = '/ustawienia/pomoc/zglos-blad';
   static const settingsAccount = '/ustawienia/konto';
+  static const deliveryAddress = '/ustawienia/adres';
   static const accountDetails = '/ustawienia/konto/szczegoly';
   static const loginInfo = '/ustawienia/konto/logowanie';
   static const changePassword = '/ustawienia/konto/logowanie/haslo';

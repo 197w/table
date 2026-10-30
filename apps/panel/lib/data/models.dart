@@ -1702,6 +1702,48 @@ enum OrderKind {
       values.firstWhere((k) => k.db == value, orElse: () => OrderKind.dineIn);
 }
 
+/// Adres, który gość wpisał w ustawieniach aplikacji Table (Baza klientów, nad notatkami).
+class GuestAppAddress {
+  const GuestAppAddress({
+    required this.street,
+    this.house,
+    this.postcode,
+    this.city,
+    this.entryCode,
+    this.building,
+    this.updatedAt,
+  });
+
+  final String street;
+  final String? house;
+  final String? postcode;
+  final String? city;
+
+  /// Kod do klatki i jak rozpoznać budynek (dla dostawcy).
+  final String? entryCode;
+  final String? building;
+  final DateTime? updatedAt;
+
+  /// „Lipowa 14/3, 15-001 Białystok”.
+  String get line => [
+    [street, ?house].join(' '),
+    [?postcode, ?city].join(' '),
+  ].where((p) => p.isNotEmpty).join(', ');
+
+  static GuestAppAddress? fromJson(Map<String, dynamic>? json) {
+    if (json == null || json['street'] == null) return null;
+    return GuestAppAddress(
+      street: json['street'] as String,
+      house: json['house'] as String?,
+      postcode: json['postcode'] as String?,
+      city: json['city'] as String?,
+      entryCode: json['entry_code'] as String?,
+      building: json['building'] as String?,
+      updatedAt: _toDateOrNull(json['updated_at']),
+    );
+  }
+}
+
 /// Do kogo idzie informacja dla pracowników.
 enum AnnouncementAudience {
   all('all', 'Wszyscy'),

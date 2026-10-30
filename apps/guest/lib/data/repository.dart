@@ -357,7 +357,10 @@ class Repository {
       if (user == null) return null;
       final row = await _db
           .from('profiles')
-          .select('id, first_name, full_name')
+          .select(
+            'id, first_name, full_name, address_street, address_house, address_postcode, address_city, '
+            'address_entry_code, address_building',
+          )
           .eq('id', user.id)
           .maybeSingle();
       return Profile(
@@ -365,6 +368,12 @@ class Repository {
         firstName: row?['first_name'] as String?,
         fullName: row?['full_name'] as String?,
         phone: user.phone,
+        addressStreet: row?['address_street'] as String?,
+        addressHouse: row?['address_house'] as String?,
+        addressPostcode: row?['address_postcode'] as String?,
+        addressCity: row?['address_city'] as String?,
+        addressEntryCode: row?['address_entry_code'] as String?,
+        addressBuilding: row?['address_building'] as String?,
       );
     });
   }
@@ -388,6 +397,34 @@ class Repository {
           .update({
             'first_name': clean(firstName),
             'full_name': clean(fullName),
+          })
+          .eq('id', user.id);
+    });
+  }
+
+  /// Adres dostawy z ustawień. Puste pola zapisują się jako brak wartości.
+  Future<void> updateAddress(GuestAddress a) {
+    return _guard(() async {
+      final user = _db.auth.currentUser;
+      if (user == null) {
+        throw const AppFailure('Zaloguj się, żeby zapisać adres.');
+      }
+      String? clean(String value) {
+        final trimmed = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+        return trimmed.isEmpty ? null : trimmed;
+      }
+
+      final street = clean(a.street);
+      await _db
+          .from('profiles')
+          .update({
+            'address_street': street,
+            'address_house': clean(a.house),
+            'address_postcode': clean(a.postcode),
+            'address_city': clean(a.city),
+            'address_entry_code': clean(a.entryCode),
+            'address_building': clean(a.building),
+            'address_updated_at': street == null ? null : DateTime.now().toUtc().toIso8601String(),
           })
           .eq('id', user.id);
     });

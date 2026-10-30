@@ -765,7 +765,18 @@ class Reservation {
 // ---------------------------------------------------------------
 
 class Profile {
-  const Profile({required this.id, this.firstName, this.fullName, this.phone});
+  const Profile({
+    required this.id,
+    this.firstName,
+    this.fullName,
+    this.phone,
+    this.addressStreet,
+    this.addressHouse,
+    this.addressPostcode,
+    this.addressCity,
+    this.addressEntryCode,
+    this.addressBuilding,
+  });
 
   final String id;
 
@@ -775,6 +786,52 @@ class Profile {
   /// Imię i nazwisko widoczne tylko dla restauracji, w której gość rezerwuje.
   final String? fullName;
   final String? phone;
+
+  /// Adres dostawy z ustawień (Ustawienia → Adres dostawy).
+  final String? addressStreet;
+  final String? addressHouse;
+  final String? addressPostcode;
+  final String? addressCity;
+
+  /// Dla dostawcy: kod do klatki i jak rozpoznać budynek.
+  final String? addressEntryCode;
+  final String? addressBuilding;
+
+  bool get hasAddress => addressStreet != null && addressCity != null;
+
+  /// „Lipowa 14/3”.
+  String get addressLine => [?addressStreet, ?addressHouse].join(' ');
+
+  /// „15-001 Białystok”.
+  String get cityLine => [?addressPostcode, ?addressCity].join(' ');
+
+  /// Kod do klatki i opis budynku jako uwaga do zamówienia. Null: brak.
+  String? get deliveryHint {
+    final parts = [
+      if (addressEntryCode != null) 'Kod do klatki: $addressEntryCode',
+      ?addressBuilding,
+    ];
+    return parts.isEmpty ? null : parts.join('. ');
+  }
+}
+
+/// Adres zapisywany w ustawieniach gościa. Puste pola (także wszystkie) czyszczą adres.
+class GuestAddress {
+  const GuestAddress({
+    this.street = '',
+    this.house = '',
+    this.postcode = '',
+    this.city = '',
+    this.entryCode = '',
+    this.building = '',
+  });
+
+  final String street;
+  final String house;
+  final String postcode;
+  final String city;
+  final String entryCode;
+  final String building;
 }
 
 // ---------------------------------------------------------------

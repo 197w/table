@@ -419,7 +419,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     _prefilled = true;
     _name.text = profile?.firstName ?? profile?.fullName ?? '';
     _phone.text = profile?.phone == null ? '' : Fmt.phone(profile!.phone);
-    _city.text = r.city;
+    // Adres z ustawień (Ustawienia → Adres dostawy), a kod do klatki i opis budynku jako uwaga dla dostawcy.
+    if (profile != null && profile.hasAddress) {
+      _street.text = profile.addressLine;
+      _city.text = profile.cityLine;
+      if (profile.deliveryHint case final hint?) _note.text = hint;
+    } else {
+      _city.text = r.city;
+    }
   }
 
   Future<void> _submit(RestaurantDetail r, List<CartLine> cart) async {

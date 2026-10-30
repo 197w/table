@@ -513,6 +513,11 @@ final customerHistoryProvider = FutureProvider.autoDispose.family<List<CustomerE
   (ref, q) => ref.watch(repositoryProvider).customerHistory(q.restaurantId, q.key),
 );
 
+/// Adres wybranego klienta z ustawień aplikacji Table.
+final customerAppAddressProvider = FutureProvider.autoDispose.family<GuestAppAddress?, CustomerQuery>(
+  (ref, q) => ref.watch(repositoryProvider).customerAppAddress(q.restaurantId, q.key),
+);
+
 /// Notatki o wybranym kliencie.
 final customerNotesProvider = FutureProvider.autoDispose.family<List<Note>, CustomerQuery>(
   (ref, q) => ref.watch(repositoryProvider).customerNotes(q.restaurantId, q.key),

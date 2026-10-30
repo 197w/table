@@ -73,6 +73,13 @@ class SettingsScreen extends ConsumerWidget {
           SettingsGroup(
             children: [
               SettingsRow(
+                icon: AppIcons.mapPin,
+                title: 'Adres dostawy',
+                value: profile?.hasAddress ?? false ? profile!.addressLine : null,
+                locked: !loggedIn,
+                onTap: () => open(AppRoutes.deliveryAddress, needsAccount: true),
+              ),
+              SettingsRow(
                 icon: AppIcons.userGear,
                 title: 'Konto i logowanie',
                 locked: !loggedIn,

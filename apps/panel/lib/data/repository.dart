@@ -1411,6 +1411,17 @@ class PanelRepository {
     });
   }
 
+  /// Adres klienta z ustawień aplikacji Table. Null: gość bez konta albo bez adresu.
+  Future<GuestAppAddress?> customerAppAddress(String restaurantId, String key) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>?>(
+        'panel_customer_app_address',
+        params: {'p_restaurant_id': restaurantId, 'p_key': key},
+      );
+      return GuestAppAddress.fromJson(json);
+    });
+  }
+
   /// Informacje dla pracowników lokalu, najnowsze pierwsze. [memberId]: zalogowany pracownik (czy do niego,
   /// czy przeczytał).
   Future<List<Announcement>> announcements(String restaurantId, {String? memberId}) {
