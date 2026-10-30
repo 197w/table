@@ -234,4 +234,26 @@ void main() {
     expect(openingStatus(summary.hours, DateTime(2026, 10, 30, 23, 30))!.label, 'Wkrótce zamknięcie – północ');
     expect(openingStatus(summary.hours, DateTime(2026, 10, 30, 18))!.label, 'Otwarte do północy');
   });
+
+  test('kody osobiste: aktywny, do aktywacji, wykorzystany, wygasły', () {
+    final now = DateTime(2026, 10, 30, 19);
+    GuestCode code(Map<String, dynamic> extra) => GuestCode.fromJson({
+      'id': 'c1', 'restaurant_id': 'r1', 'restaurant_name': 'REVE', 'source': 'reservation', 'kind': 'percent',
+      'value': 15, 'min_total': 5000, 'expires_at': DateTime(2026, 11, 29).toUtc().toIso8601String(),
+      ...extra,
+    });
+    expect(code({}).statusAt(now), GuestCodeStatus.available);
+    expect(code({}).valueText, '−15%');
+    expect(code({}).conditions, 'od 50 zł');
+    expect(code({}).sourceLabel, 'Za wizytę');
+    expect(
+      code({'code': 'T-ABC234', 'active_until': DateTime(2026, 10, 30, 19, 10).toUtc().toIso8601String()}).statusAt(now),
+      GuestCodeStatus.active,
+    );
+    expect(code({'used_at': DateTime(2026, 10, 20).toUtc().toIso8601String()}).statusAt(now), GuestCodeStatus.used);
+    expect(
+      code({'expires_at': DateTime(2026, 10, 1).toUtc().toIso8601String()}).statusAt(now),
+      GuestCodeStatus.expired,
+    );
+  });
 }

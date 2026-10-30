@@ -154,6 +154,7 @@ abstract final class AppIcons {
   static const menu = AppIconData('assets/icons/list.svg');
   static const link = AppIconData('assets/icons/link-simple.svg');
   static const lock = AppIconData('assets/icons/lock-simple.svg');
+  static const lockOpen = AppIconData('assets/icons/lock-simple-open.svg');
   static const mapPin = AppIconData('assets/icons/map-pin.svg');
   static const megaphone = AppIconData('assets/icons/megaphone.svg');
   static const minus = AppIconData('assets/icons/minus.svg');

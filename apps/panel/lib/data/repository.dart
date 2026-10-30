@@ -1781,6 +1781,29 @@ class PanelRepository {
     );
   }
 
+  /// Zasady automatycznych kodów dla gości (po rezerwacji i po opinii) z liczbą wydanych i wykorzystanych.
+  Future<List<GuestCodeRule>> guestCodeRules(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>('panel_guest_code_rules', params: {'p_restaurant_id': restaurantId});
+      return [for (final r in rows) GuestCodeRule.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
+  Future<void> saveGuestCodeRule(String restaurantId, GuestCodeRule rule, {String? memberId}) {
+    return _guard(
+      () => _db.rpc<void>('panel_save_guest_code_rule', params: {
+        'p_restaurant_id': restaurantId,
+        'p_event': rule.event,
+        'p_active': rule.active,
+        'p_kind': rule.percent ? 'percent' : 'amount',
+        'p_value': rule.value,
+        'p_min_total': rule.minGrosze,
+        'p_valid_days': rule.validDays,
+        'p_member_id': memberId,
+      }),
+    );
+  }
+
   Future<void> deleteDiscountCode(String id) {
     return _guard(() => _db.rpc<void>('panel_delete_discount_code', params: {'p_id': id}));
   }

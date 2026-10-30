@@ -7,6 +7,7 @@ import 'package:table_core/table_core.dart';
 import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../codes/codes.dart';
 import '../likes/likes.dart';
 import '../ordering/order_screens.dart';
 import 'booking_widgets.dart';
@@ -14,7 +15,7 @@ import 'booking_widgets.dart';
 const _tabular = [FontFeature.tabularFigures()];
 
 /// Zakładka „Moje”: rezerwacje (najbliższa na dużej karcie, dalej nadchodzące, lista oczekujących i archiwum),
-/// zamówienia z dostawą albo na wynos i polubione lokale.
+/// zamówienia z dostawą albo na wynos, polubione lokale i osobiste kody rabatowe.
 class ReservationsScreen extends ConsumerWidget {
   const ReservationsScreen({super.key});
 
@@ -41,7 +42,7 @@ class ReservationsScreen extends ConsumerWidget {
 
     // Rezerwacje i zamówienia z dostawą albo na wynos w jednej zakładce.
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Moje'),
@@ -50,6 +51,7 @@ class ReservationsScreen extends ConsumerWidget {
               Tab(text: 'Rezerwacje'),
               Tab(text: 'Zamówienia'),
               Tab(text: 'Polubione'),
+              Tab(text: 'Kody'),
             ],
           ),
         ),
@@ -118,6 +120,7 @@ class ReservationsScreen extends ConsumerWidget {
             ),
             const MyOrdersList(),
             const LikedRestaurantsList(),
+            const MyCodesList(),
           ],
         ),
       ),

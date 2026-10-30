@@ -66,6 +66,12 @@ class LikedIdsNotifier extends AsyncNotifier<Set<String>> {
 
 final likedIdsProvider = AsyncNotifierProvider<LikedIdsNotifier, Set<String>>(LikedIdsNotifier.new);
 
+/// „Moje” → Kody: osobiste kody rabatowe od lokali.
+final myCodesProvider = FutureProvider.autoDispose<List<GuestCode>>((ref) {
+  if (ref.watch(userIdProvider) == null) return Future.value(const <GuestCode>[]);
+  return ref.watch(repositoryProvider).myCodes();
+});
+
 /// „Moje” → Polubione: karty polubionych lokali, ostatnio polubione pierwsze.
 final likedRestaurantsProvider = FutureProvider.autoDispose<List<RestaurantSummary>>((ref) async {
   if (ref.watch(userIdProvider) == null) return const [];

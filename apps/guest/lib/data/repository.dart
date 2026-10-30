@@ -102,6 +102,30 @@ class Repository {
   }
 
   // -------------------------------------------------------------
+  // Kody rabatowe gościa
+  // -------------------------------------------------------------
+
+  /// Osobiste kody od lokali z ostatnich 180 dni: najpierw do wykorzystania.
+  Future<List<GuestCode>> myCodes() {
+    return _guard(() async {
+      if (_db.auth.currentUser == null) return const <GuestCode>[];
+      final rows = await _db.rpc<List<dynamic>>('guest_my_codes');
+      return [for (final r in rows) GuestCode.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
+  /// „Aktywuj”: kod do pokazania kelnerowi, ważny 15 minut.
+  Future<({String code, DateTime until})> activateCode(String id) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>('guest_activate_code', params: {'p_id': id});
+      return (
+        code: json['code'] as String,
+        until: DateTime.parse(json['active_until'] as String).toLocal(),
+      );
+    });
+  }
+
+  // -------------------------------------------------------------
   // Polubione lokale
   // -------------------------------------------------------------
 

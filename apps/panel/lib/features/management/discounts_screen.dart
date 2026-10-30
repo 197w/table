@@ -9,6 +9,7 @@ import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
 import '../fleet/fleet_screen.dart' show UpperCaseFormatter;
+import 'guest_code_rules.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -110,17 +111,34 @@ class DiscountsScreen extends ConsumerWidget {
             skipLoadingOnReload: true,
             loading: () => const LoadingView(),
             error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(discountCodesProvider(restaurant.id))),
-            data: (codes) => codes.isEmpty
-                ? MessageView(
-                    icon: AppIcons.sealPercent,
-                    title: 'Brak kodów rabatowych',
-                    message: 'Gość wpisuje kod przy rezerwacji w aplikacji Table, a rabat odejmuje się od rachunku.',
-                    actionLabel: canEdit ? 'Nowy kod' : null,
-                    onAction: canEdit ? () => _edit(context, ref, restaurant.id) : null,
-                  )
-                : SingleChildScrollView(
+            data: (codes) => SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
-                    child: Card(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        GuestCodeRules(restaurantId: restaurant.id, canEdit: canEdit),
+                        const SizedBox(height: 24),
+                        Text('Kody lokalu', style: text.titleMedium),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Jeden kod dla wielu gości: gość wpisuje go przy rezerwacji w aplikacji Table '
+                          'albo kelner przy rachunku.',
+                          style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                        ),
+                        const SizedBox(height: 12),
+                        if (codes.isEmpty)
+                          Card(
+                            margin: EdgeInsets.zero,
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Text(
+                                'Brak kodów. „Nowy kod” u góry tworzy pierwszy.',
+                                style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                              ),
+                            ),
+                          )
+                        else
+                        Card(
                       margin: EdgeInsets.zero,
                       clipBehavior: Clip.antiAlias,
                       child: Column(
@@ -217,6 +235,8 @@ class DiscountsScreen extends ConsumerWidget {
                           ],
                         ],
                       ),
+                    ),
+                      ],
                     ),
                   ),
           ),

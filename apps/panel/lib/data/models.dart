@@ -1311,6 +1311,64 @@ class OrderDue {
 String discountMoney(int grosze) =>
     grosze % 100 == 0 ? '${grosze ~/ 100} zł' : '${(grosze / 100).toStringAsFixed(2).replaceAll('.', ',')} zł';
 
+/// Zasada automatycznego kodu osobistego dla gościa: po zrealizowanej rezerwacji albo po zweryfikowanej opinii.
+/// Gość widzi kod w aplikacji Table („Moje” → „Kody”), aktywuje go przy stoliku (15 minut) i pokazuje kelnerowi.
+class GuestCodeRule {
+  const GuestCodeRule({
+    required this.event,
+    required this.active,
+    required this.percent,
+    required this.value,
+    required this.validDays,
+    this.minGrosze,
+    this.issued = 0,
+    this.used = 0,
+  });
+
+  /// `reservation` albo `review`.
+  final String event;
+  final bool active;
+  final bool percent;
+  final int value;
+  final int validDays;
+  final int? minGrosze;
+
+  /// Ile kodów lokal już dał i ile gości wykorzystało.
+  final int issued;
+  final int used;
+
+  String get title => event == 'review' ? 'Po opinii' : 'Po zrealizowanej rezerwacji';
+
+  String get description => event == 'review'
+      ? 'Gość, który wystawi zweryfikowaną opinię (z rezerwacji albo paragonu), dostaje kod do tego lokalu.'
+      : 'Gość z kontem w aplikacji dostaje kod do tego lokalu, gdy jego rezerwacja się zakończy.';
+
+  String get valueText => percent ? '−$value%' : '−${discountMoney(value)}';
+
+  GuestCodeRule copyWith({bool? active, bool? percent, int? value, int? validDays, int? Function()? minGrosze}) =>
+      GuestCodeRule(
+        event: event,
+        active: active ?? this.active,
+        percent: percent ?? this.percent,
+        value: value ?? this.value,
+        validDays: validDays ?? this.validDays,
+        minGrosze: minGrosze == null ? this.minGrosze : minGrosze(),
+        issued: issued,
+        used: used,
+      );
+
+  factory GuestCodeRule.fromJson(Map<String, dynamic> json) => GuestCodeRule(
+    event: json['event'] as String,
+    active: json['active'] == true,
+    percent: json['kind'] != 'amount',
+    value: _toInt(json['value'], 10),
+    validDays: _toInt(json['valid_days'], 30),
+    minGrosze: json['min_total'] == null ? null : _toInt(json['min_total']),
+    issued: _toInt(json['issued']),
+    used: _toInt(json['used']),
+  );
+}
+
 /// Podpowiedź przy wpisywaniu kodu rabatowego do rachunku: kod lokalu, który działa dziś.
 class DiscountHint {
   const DiscountHint({

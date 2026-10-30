@@ -701,6 +701,78 @@ class GuestDiscount {
   );
 }
 
+/// Stan osobistego kodu gościa.
+enum GuestCodeStatus { available, active, used, expired }
+
+/// Osobisty kod rabatowy od lokalu (za wizytę albo opinię). Ciąg znaków [code] jest tylko po aktywacji
+/// i działa do [activeUntil] (15 minut).
+class GuestCode {
+  const GuestCode({
+    required this.id,
+    required this.restaurantId,
+    required this.restaurantName,
+    required this.source,
+    required this.percent,
+    required this.value,
+    required this.expiresAt,
+    this.restaurantLogo,
+    this.minTotal,
+    this.usedAt,
+    this.activeUntil,
+    this.code,
+  });
+
+  final String id;
+  final String restaurantId;
+  final String restaurantName;
+  final String? restaurantLogo;
+
+  /// `reservation` albo `review`.
+  final String source;
+  final bool percent;
+
+  /// Procent albo kwota w groszach.
+  final int value;
+  final int? minTotal;
+  final DateTime expiresAt;
+  final DateTime? usedAt;
+  final DateTime? activeUntil;
+  final String? code;
+
+  GuestCodeStatus statusAt(DateTime now) {
+    if (usedAt != null) return GuestCodeStatus.used;
+    if (activeUntil != null && activeUntil!.isAfter(now) && code != null) return GuestCodeStatus.active;
+    if (!expiresAt.isAfter(now)) return GuestCodeStatus.expired;
+    return GuestCodeStatus.available;
+  }
+
+  static String _money(int grosze) =>
+      grosze % 100 == 0 ? '${grosze ~/ 100} zł' : '${(grosze / 100).toStringAsFixed(2).replaceAll('.', ',')} zł';
+
+  /// „−10%” albo „−20 zł”.
+  String get valueText => percent ? '−$value%' : '−${_money(value)}';
+
+  String get sourceLabel => source == 'review' ? 'Za opinię' : 'Za wizytę';
+
+  /// „od 100 zł”. Null: bez progu.
+  String? get conditions => minTotal == null ? null : 'od ${_money(minTotal!)}';
+
+  factory GuestCode.fromJson(Map<String, dynamic> json) => GuestCode(
+    id: json['id'] as String,
+    restaurantId: json['restaurant_id'] as String,
+    restaurantName: json['restaurant_name'] as String? ?? '',
+    restaurantLogo: json['restaurant_logo'] as String?,
+    source: json['source'] as String? ?? 'reservation',
+    percent: json['kind'] == 'percent',
+    value: _toInt(json['value']),
+    minTotal: json['min_total'] == null ? null : _toInt(json['min_total']),
+    expiresAt: DateTime.parse(json['expires_at'] as String).toLocal(),
+    usedAt: json['used_at'] == null ? null : DateTime.parse(json['used_at'] as String).toLocal(),
+    activeUntil: json['active_until'] == null ? null : DateTime.parse(json['active_until'] as String).toLocal(),
+    code: json['code'] as String?,
+  );
+}
+
 class Reservation {
   const Reservation({
     required this.id,

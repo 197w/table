@@ -757,6 +757,11 @@ final orderDueProvider = FutureProvider.autoDispose.family<OrderDue, String>(
 );
 
 /// Kody rabatowe lokalu (Management).
+/// Zasady automatycznych kodów dla gości.
+final guestCodeRulesProvider = FutureProvider.autoDispose.family<List<GuestCodeRule>, String>(
+  (ref, id) => ref.watch(repositoryProvider).guestCodeRules(id),
+);
+
 final discountCodesProvider = FutureProvider.autoDispose.family<List<DiscountCode>, String>(
   (ref, restaurantId) => ref.watch(repositoryProvider).discountCodes(restaurantId),
 );
