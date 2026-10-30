@@ -10,11 +10,13 @@ import 'courier_location.dart';
 import 'data.dart';
 import 'deliveries_screen.dart';
 import 'home_screen.dart';
+import 'liquid_glass.dart';
 import 'schedule_screen.dart';
 import 'settings_screen.dart';
 import 'waiter_screens.dart';
 
-/// Dolne menu aplikacji: Zamówienia, Dostawy, Zeskanuj, Grafik, Ustawienia.
+/// Dolne menu aplikacji: Zamówienia, Dostawy, Zeskanuj, Grafik, Ustawienia. Na iOS 26 systemowy pasek
+/// z Liquid Glass, gdzie indziej Material.
 class StaffShell extends ConsumerStatefulWidget {
   const StaffShell({super.key});
 
@@ -97,18 +99,37 @@ class _StaffShellState extends ConsumerState<StaffShell> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) {
+    // Zakładki trzymają stan (np. wybrany miesiąc w grafiku) przy przełączaniu.
+    final body = IndexedStack(
+      index: _tab,
+      children: [
+        _OrdersTab(onScan: () => _go(2)),
+        DeliveriesTab(onScan: () => _go(2)),
+        HomeScreen(onOrders: () => _go(0)),
+        const ScheduleScreen(),
+        const SettingsScreen(),
+      ],
+    );
+    // iOS 26: prawdziwy Liquid Glass (natywny UITabBar), treść przewija się pod nim.
+    if (nativeLiquidGlass) {
+      return Scaffold(
+        extendBody: true,
+        body: body,
+        bottomNavigationBar: NativeGlassTabBar(
+          index: _tab,
+          onTap: _go,
+          tabs: const [
+            (label: 'Zamówienia', symbol: 'list.bullet.rectangle', selectedSymbol: 'list.bullet.rectangle.fill'),
+            (label: 'Dostawy', symbol: 'scooter', selectedSymbol: 'scooter'),
+            (label: 'Zeskanuj', symbol: 'qrcode.viewfinder', selectedSymbol: 'qrcode.viewfinder'),
+            (label: 'Grafik', symbol: 'calendar', selectedSymbol: 'calendar'),
+            (label: 'Ustawienia', symbol: 'gearshape', selectedSymbol: 'gearshape.fill'),
+          ],
+        ),
+      );
+    }
     return Scaffold(
-      // Zakładki trzymają stan (np. wybrany miesiąc w grafiku) przy przełączaniu.
-      body: IndexedStack(
-        index: _tab,
-        children: [
-          _OrdersTab(onScan: () => _go(2)),
-          DeliveriesTab(onScan: () => _go(2)),
-          HomeScreen(onOrders: () => _go(0)),
-          const ScheduleScreen(),
-          const SettingsScreen(),
-        ],
-      ),
+      body: body,
       // Napisy w jednej linii: mniejsze i bez powiększania czcionki z ustawień telefonu.
       bottomNavigationBar: MediaQuery.withClampedTextScaling(
         maxScaleFactor: 1,
@@ -140,6 +161,8 @@ class _StaffShellState extends ConsumerState<StaffShell> with WidgetsBindingObse
                   icon: Glyph(icon, size: 22),
                   selectedIcon: Glyph(icon.duotone, size: 22),
                   label: label,
+                  // Bez dymków po przytrzymaniu: nazwa jest pod ikoną (dymki tylko w panelu na komputerze).
+                  tooltip: '',
                 ),
             ],
           ),

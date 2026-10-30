@@ -9,6 +9,7 @@ import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../discover/restaurant_cards.dart';
+import '../../app/liquid_glass.dart';
 import '../likes/likes.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
@@ -284,14 +285,20 @@ class _Hero extends StatelessWidget {
       surfaceTintColor: Colors.transparent,
       automaticallyImplyLeading: false,
       leading: Center(
-        child: _RoundButton(
-          icon: AppIcons.arrowLeft,
-          label: 'Wróć',
-          onTap: () => context.canPop() ? context.pop() : context.go(AppRoutes.discover),
+        child: Builder(
+          builder: (context) {
+            void back() => context.canPop() ? context.pop() : context.go(AppRoutes.discover);
+            return GlassIconButton(
+              symbol: 'chevron.left',
+              label: 'Wróć',
+              onTap: back,
+              fallback: _RoundButton(icon: AppIcons.arrowLeft, label: 'Wróć', onTap: back),
+            );
+          },
         ),
       ),
       actions: [
-        LikeButton(restaurantId: r.id, restaurantName: r.name),
+        LikeButton(restaurantId: r.id, restaurantName: r.name, nativeGlass: true),
         const SizedBox(width: 8),
       ],
       flexibleSpace: LayoutBuilder(

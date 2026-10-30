@@ -8,8 +8,10 @@ import 'package:table_core/table_core.dart';
 
 import '../core/live_activity.dart';
 import '../data/providers.dart';
+import 'liquid_glass.dart';
 
-/// Dolna nawigacja: Odkrywaj, Rezerwacje, Ustawienia.
+/// Dolna nawigacja: Odkrywaj, Rezerwacje, Ustawienia. Na iOS 26 systemowy pasek z Liquid Glass,
+/// na starszym iOS szkło rysowane przez Fluttera, na Androidzie Material.
 class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.navigationShell});
 
@@ -25,6 +27,25 @@ class AppShell extends ConsumerWidget {
     });
     ref.watch(myReservationsProvider);
 
+    void select(int index) => navigationShell.goBranch(index, initialLocation: index == navigationShell.currentIndex);
+
+    // iOS 26: prawdziwy Liquid Glass (natywny UITabBar), treść przewija się pod nim.
+    if (nativeLiquidGlass) {
+      return Scaffold(
+        extendBody: true,
+        body: navigationShell,
+        bottomNavigationBar: NativeGlassTabBar(
+          index: navigationShell.currentIndex,
+          onTap: select,
+          tabs: const [
+            (label: 'Odkrywaj', symbol: 'safari', selectedSymbol: 'safari.fill'),
+            (label: 'Rezerwacje', symbol: 'calendar', selectedSymbol: 'calendar'),
+            (label: 'Ustawienia', symbol: 'gearshape', selectedSymbol: 'gearshape.fill'),
+          ],
+        ),
+      );
+    }
+
     // Szklany pasek tylko na iOS i iPadOS. Android zostaje przy pełnym tle.
     final glass = Platform.isIOS;
 
@@ -34,25 +55,26 @@ class AppShell extends ConsumerWidget {
       elevation: glass ? 0 : null,
       shadowColor: glass ? Colors.transparent : null,
       selectedIndex: navigationShell.currentIndex,
-      onDestinationSelected: (index) => navigationShell.goBranch(
-        index,
-        initialLocation: index == navigationShell.currentIndex,
-      ),
+      onDestinationSelected: select,
+      // Bez dymków po przytrzymaniu ikony: nazwa jest pod ikoną (dymki zostają w panelu na komputerze).
       destinations: const [
         NavigationDestination(
           icon: Glyph(AppIcons.compass),
           selectedIcon: Glyph(AppIcons.compassFill),
           label: 'Odkrywaj',
+          tooltip: '',
         ),
         NavigationDestination(
           icon: Glyph(AppIcons.calendarDots),
           selectedIcon: Glyph(AppIcons.calendarDotsFill),
           label: 'Rezerwacje',
+          tooltip: '',
         ),
         NavigationDestination(
           icon: Glyph(AppIcons.gear),
           selectedIcon: Glyph(AppIcons.gearFill),
           label: 'Ustawienia',
+          tooltip: '',
         ),
       ],
     );

@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
 import '../../app/app.dart';
+import '../../app/liquid_glass.dart';
 import '../../app/preferences.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
@@ -15,10 +16,14 @@ const likeColor = Color(0xFFE5484D);
 /// Serce „Polub”: okrągły przycisk 48 dp na zdjęciu karty albo w pasku strony lokalu.
 /// Bez konta prosi o zalogowanie. Zmiana widać od razu, a przy błędzie serce wraca.
 class LikeButton extends ConsumerStatefulWidget {
-  const LikeButton({super.key, required this.restaurantId, required this.restaurantName});
+  const LikeButton({super.key, required this.restaurantId, required this.restaurantName, this.nativeGlass = false});
 
   final String restaurantId;
   final String restaurantName;
+
+  /// Na iOS 26 natywny przycisk Liquid Glass (strona lokalu). Na kartach listy zostaje przycisk Fluttera,
+  /// bo natywny widok w każdej karcie spowalniałby przewijanie.
+  final bool nativeGlass;
 
   @override
   ConsumerState<LikeButton> createState() => _LikeButtonState();
@@ -54,6 +59,18 @@ class _LikeButtonState extends ConsumerState<LikeButton> {
   @override
   Widget build(BuildContext context) {
     final liked = ref.watch(likedIdsProvider.select((s) => s.value?.contains(widget.restaurantId) ?? false));
+    final label = liked
+        ? '${widget.restaurantName} jest w polubionych. Stuknij, żeby usunąć'
+        : 'Polub ${widget.restaurantName}';
+    if (widget.nativeGlass && nativeLiquidGlass) {
+      return GlassIconButton(
+        symbol: liked ? 'heart.fill' : 'heart',
+        color: liked ? likeColor : null,
+        label: label,
+        onTap: _toggle,
+        fallback: const SizedBox.shrink(),
+      );
+    }
     return Semantics(
       button: true,
       toggled: liked,
