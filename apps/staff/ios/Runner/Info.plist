@@ -2,14 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Na zmianie dostawcy lokal widzi Cię na mapie (gdy tego wymaga), a w czasie kursu gość widzi, gdzie jest jego zamówienie.</string>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>location</string>
-	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>Aparat skanuje kod QR z panelu restauracji, żeby rozpocząć zmianę.</string>
+	<string>Aparat skanuje kod QR z panelu restauracji, żeby rozpocząć zmianę, i robi zdjęcia auta dostawcy na początku i końcu zmiany.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

@@ -668,7 +668,6 @@ class DeliverySettings {
     this.feeGrosze = 0,
     this.minGrosze = 0,
     this.area,
-    this.courierTracking = false,
     this.deliveryPlatforms = const [],
   });
 
@@ -685,8 +684,6 @@ class DeliverySettings {
   /// Opis obszaru dostawy dla gości, np. „Białystok, do 5 km”.
   final String? area;
 
-  /// Dostawcy udostępniają lokalizację przez całą zmianę; bez niej nie dostają kursów (mapa w Dostawach).
-  final bool courierTracking;
 
   /// Platformy dostaw (np. Glovo, Uber Eats, Wolt) z kwotami w podsumowaniu dnia.
   final List<String> deliveryPlatforms;
@@ -700,7 +697,6 @@ class DeliverySettings {
     feeGrosze: _toInt(json['delivery_fee_grosze']),
     minGrosze: _toInt(json['delivery_min_grosze']),
     area: json['delivery_area'] as String?,
-    courierTracking: json['courier_tracking'] == true,
     deliveryPlatforms: [for (final n in json['delivery_platforms'] as List? ?? const []) '$n'],
   );
 }
@@ -2375,6 +2371,59 @@ class Vehicle {
     memberId: json['member_id'] as String?,
     note: json['note'] as String?,
     active: json['active'] != false,
+  );
+}
+
+/// Auto dostawcy na dany dzień (Grafik albo Dostawy; dostawca sam wybiera je przy kontroli auta).
+class VehicleDay {
+  const VehicleDay({required this.day, required this.vehicleId, required this.memberId});
+
+  final DateTime day;
+  final String vehicleId;
+  final String memberId;
+
+  factory VehicleDay.fromJson(Map<String, dynamic> json) => VehicleDay(
+    day: DateTime.parse(json['day'] as String),
+    vehicleId: json['vehicle_id'] as String,
+    memberId: json['member_id'] as String,
+  );
+}
+
+/// Kontrola auta z aplikacji dostawcy: przebieg i cztery zdjęcia dookoła na początku albo na końcu zmiany.
+class VehicleCheck {
+  const VehicleCheck({
+    required this.id,
+    required this.vehicleId,
+    required this.day,
+    required this.start,
+    required this.createdAt,
+    this.memberName,
+    this.odometerKm,
+    this.photos = const [],
+  });
+
+  final String id;
+  final String vehicleId;
+  final DateTime day;
+
+  /// Początek zmiany (przed pierwszym kursem). Fałsz: koniec zmiany.
+  final bool start;
+  final DateTime createdAt;
+  final String? memberName;
+  final int? odometerKm;
+
+  /// Ścieżki zdjęć w zasobniku `vehicle-photos`: przód, tył, lewy bok, prawy bok.
+  final List<String> photos;
+
+  factory VehicleCheck.fromJson(Map<String, dynamic> json) => VehicleCheck(
+    id: json['id'] as String,
+    vehicleId: json['vehicle_id'] as String,
+    day: DateTime.parse(json['day'] as String),
+    start: json['kind'] == 'start',
+    createdAt: _toDate(json['created_at']),
+    memberName: json['member_name'] as String?,
+    odometerKm: json['odometer_km'] == null ? null : _toInt(json['odometer_km']),
+    photos: [for (final p in json['photos'] as List? ?? const []) '$p'],
   );
 }
 

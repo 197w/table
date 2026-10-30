@@ -100,6 +100,7 @@ abstract final class AppIcons {
   static const blueprint = AppIconData('assets/icons/blueprint.svg');
   static const bug = AppIconData('assets/icons/bug.svg');
   static const calendar = AppIconData('assets/icons/calendar-blank.svg');
+  static const camera = AppIconData('assets/icons/camera.svg');
   static const callBell = AppIconData('assets/icons/call-bell.svg');
   static const calendarCheck = AppIconData('assets/icons/calendar-check.svg');
   static const calendarDots = AppIconData('assets/icons/calendar-dots.svg');

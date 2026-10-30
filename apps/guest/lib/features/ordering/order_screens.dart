@@ -9,7 +9,6 @@ import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/day_slot_picker.dart';
-import 'courier_map.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -991,10 +990,6 @@ class OrderDetailScreen extends ConsumerWidget {
                 ],
                 const SizedBox(height: 16),
                 _StageCard(order: o),
-                if (o.stage == OrderStage.onTheWay) ...[
-                  const SizedBox(height: 12),
-                  CourierMap(orderId: o.id),
-                ],
                 const SizedBox(height: 16),
                 Card(
                   margin: EdgeInsets.zero,

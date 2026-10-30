@@ -6,6 +6,7 @@ import 'package:table_core/table_core.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
+import '../fleet/vehicle_days.dart';
 import 'timesheet.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
@@ -1997,6 +1998,11 @@ class _HoursDialogState extends State<_HoursDialog> {
                 ],
               ],
             ),
+            // Dostawca: auto na ten dzień (zapisuje się od razu).
+            if (widget.positions.any((p) => p.permissions.contains(StaffPermission.deliveries))) ...[
+              const SizedBox(height: 12),
+              VehicleDayPicker(memberId: widget.member.id, day: widget.day),
+            ],
             // Stanowisko na ten dzień: u osób z kilkoma stanowiskami do wyboru.
             if (widget.positions.length > 1) ...[
               const SizedBox(height: 12),

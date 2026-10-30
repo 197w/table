@@ -95,10 +95,10 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - go_router 18, flutter_riverpod 3 (Notifier), supabase_flutter 2 (`publishableKey`), shared_preferences
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720), file_selector (logo, zdjęcia, zapis plików eksportu), pdf (eksport do PDF).
-  Gość: flutter_map + latlong2 (mapa dostawcy, kafelki OpenStreetMap; przed wydaniem w sklepach przejść na płatnego dostawcę kafelków).
-  Pracownik: geolocator (pozycja dostawcy w drodze).
+  Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
+  Map i śledzenia dostawców nie ma od 0068 (usunięte na prośbę użytkownika, także mapa u gościa).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0063, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0068, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -151,6 +151,26 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `likedRestaurantsProvider`). Polubienie od razu na ekranie (`LikedIdsNotifier`, przy błędzie wraca), w bazie
   `guest_set_like`; bez konta toast z „Zaloguj się”. Tabela `restaurant_likes` (gość czyta tylko swoje, lokal widzi
   same liczby w statystykach).
+  „Moje” → Kody (0066, `features/codes/codes.dart`): kody od lokali za zakończoną rezerwację albo zweryfikowaną opinię
+  (zasady lokalu `guest_code_rules`, event `reservation`/`review`; triggery `reservations_guest_code`,
+  `reviews_guest_code`, `private.issue_guest_code`). Kod jest osobisty, nie do udostępniania: widać go dopiero po
+  „Aktywuj” (`guest_activate_code`), wtedy dostaje nowy tekst `T-XXXXXX` ważny 15 minut do pokazania kelnerowi
+  (odliczanie na karcie; ponowna aktywacja w tym czasie daje ten sam kod). Kelner wpisuje go przy rachunku
+  (`panel_order_set_discount` sprawdza najpierw `guest_codes`, `orders.guest_code_id`), zamknięcie oznacza go jako
+  użyty (`orders_guest_code_used`). Lista: `guest_my_codes`. Panel: Kody rabatowe → „Kody dla gości z aplikacji”
+  (`guest_code_rules.dart`, `panel_guest_code_rules`, `panel_save_guest_code_rule`).
+  Ustawienia → „Adres dostawy” (0065, `features/settings/address_screen.dart`, `/ustawienia/adres`): ulica, numer
+  domu/lokalu, opis budynku i kod do wejścia (opcjonalne), miasto, kod pocztowy (`profiles.address_*`,
+  `Repository.updateAddress`). Koszyk dostawy uzupełnia się z niego (opis budynku i kod wejścia trafiają do notatki).
+  Lokal widzi go w Bazie klientów nad notatkami („Adres z aplikacji Table”, `panel_customer_app_address`).
+  Stan otwarcia na kafelkach lokali (0064, `search_restaurants` i `guest_liked_restaurants` zwracają `hours`):
+  `openingStatus` w `models.dart` („Otwarte do 22:00”, „Wkrótce zamknięcie – 22:00” i „Wkrótce otwarcie – 12:00”
+  na godzinę przed, „Zamknięte · otwiera …”), `OpenStatusLine` w `restaurant_cards.dart`.
+  Liquid Glass (`app/liquid_glass.dart`, u pracownika `lib/liquid_glass.dart`): na iOS 26 i nowszym dolne menu to
+  natywny UITabBar (`IOS26NativeTabBar` z `adaptive_platform_ui`, symbole SF), a „Wróć” i serce na stronie lokalu to
+  przyciski szkła (`GlassIconButton`); natywny pasek chowa się, gdy nad zakładką jest inny ekran. Android zostaje przy
+  Material. Dolne menu nie ma podpowiedzi po przytrzymaniu (`NavigationDestination(tooltip: '')`); podpowiedzi są
+  tylko w lewym pasku panelu. Sprawdzić da się tylko na iPhonie z iOS 26 (Xcode 26).
   Szczegóły rezerwacji: kafelek z datą i stan na górze. Ustawienia: przy „Ogólne” i „Motyw” widać bieżący wybór,
   wiersze co najmniej 56 px, nazwy w dwóch liniach zamiast ucinania. Pary przycisków przy dużej czcionce
   (`textScaler.scale(16) > 20`) stają jeden pod drugim. `textDisabled` (kontrast ok. 3:1) tylko na ozdoby,
@@ -174,7 +194,6 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Odbiór `/odbior`), Kuchnia (Kuchnia), Dostawy (Dostawy, Flota),
   Pracownicy (Pracownicy: Zespół i Grafik, Statystyki zespołu `/zespol`, Informacje dla pracowników `/informacje`),
   Baza klientów (Klienci `/klienci`, Opinie),
-  (grupa Dostawy: Dostawy, Mapa `/mapa`, Flota),
   Management (Podsumowanie dnia `/podsumowanie`, Niezamknięte zamówienia `/niezamkniete`, Godziny pracy `/godziny`,
   Menu, Inwentaryzacja, Statystyki,
   Kody rabatowe `/rabaty`, Eksport `/eksport`);
@@ -188,7 +207,10 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`/ustawienia`), Dane lokalu i Edycja sali. Grupa i zakładki według uprawnień zalogowanego pracownika;
   ostatnia grupa zostaje wybrana na stronach lokalu (`panelSectionProvider`). Bez hamburgera i bez paska nad zakładką.
 - Ustawienia lokalu: rezerwacje w aplikacji (co ile minut, największa grupa), zadatek przy rezerwacji, grafik pracowników,
-  okres inwentaryzacji, dostawa i odbiór.
+  okres inwentaryzacji, dostawa i odbiór, platformy dostaw (0067). Karta „Ten komputer” (preferencje tego komputera):
+  „Automatyczne uruchamianie w pełnym ekranie” (`StartFullscreenNotifier`, klucz `panel_pelny_ekran_przy_starcie`).
+  Bez niej panel startuje zmaksymalizowany (`main.dart`), nie w małym oknie; wyjście z pełnego ekranu kuchni wraca
+  do pełnego ekranu, gdy ta opcja jest włączona.
 - Management (0048–0050): Podsumowanie dnia (`panel_day_summary`, uprawnienie `day_close`): sprzedaż według płatności
   (gotówka, karta z terminala, karta online z aplikacji i zadatki, inne), rabaty, raport dobowy z kasy fiskalnej
   (napiwków tu nie pokazujemy, są w statystykach zespołu; „Obrót w panelu”, „Karty w panelu” i „Powinno być” to duże kafle;
@@ -197,6 +219,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   albo wcześniejszych i „Sprawdź”),
   terminale (kilka, nazwa i kwota), policzona gotówka i notatka (`day_reports`, `panel_save_day_report`), petty cash
   (wydatki i wpłaty z kasy, `petty_cash`, `panel_add_petty`, `panel_delete_petty`); zgodność kwot zielona albo żółta różnica.
+  Platformy dostaw (0067): lokal wpisuje je w „Ustawienia lokalu” → „Platformy dostaw” (np. Glovo, Uber Eats, Wolt;
+  `restaurants.delivery_platforms`, `panel_set_delivery_platforms`), a w podsumowaniu dnia kwotę każdej platformy
+  (`day_reports.platforms` jsonb, `panel_save_day_report(p_platforms)`); suma osobno, poza kasą fiskalną i „Powinno być”.
   Godziny pracy (uprawnienie `timesheet`; wcześniej „Czas pracy” w Pracownikach): miesiąc z sumą godzin każdego pracownika
   (rozwijane zmiany) albo tydzień dzień po dniu; poprawka zmiany co do minuty (`panel_save_shift` z `p_editor_id`)
   zapamiętuje godziny sprzed niej (`staff_shifts.original_*`, `edited_at`), poprawione są żółte z różnicą („+0:15”).
@@ -235,8 +260,20 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Nowe uprawnienia `revenue`, `day_close`, `discounts`, `export` dostały w 0048 stanowiska z `staff` albo `stats`.
 - Dane lokalu: logo, dane, poziom cen, dane właściciela, godziny, dni wyjątkowe.
 - Flota (`/flota`, uprawnienie `fleet`, 0045): `vehicles` (auto, skuter, rower, inny; nazwa, rejestracja unikalna
-  w lokalu, VIN 17 znaków bez I/O/Q unikalny w lokalu (0046), dostawca, w użyciu), `panel_save_vehicle`,
-  `panel_delete_vehicle`. Notatki o pojeździe (0047): `vehicle_notes` (autor z zalogowanego pracownika albo
+  w lokalu, VIN 17 znaków bez I/O/Q unikalny w lokalu (0046), w użyciu), `panel_save_vehicle`,
+  `panel_delete_vehicle`. Od 0068 auto nie ma stałego dostawcy (`vehicles.member_id` zawsze puste): auto przypisuje się
+  na dzień (`vehicle_days`, jedno auto i jeden dostawca na dzień, `panel_set_vehicle_day`, `panel_vehicle_days`) w oknie
+  dnia Grafiku (`VehicleDayPicker`, zapisuje się od razu, poza szkicem) albo w Dostawach (stuknięcie dostawcy w pasku
+  „na zmianie”); dostawca może też sam wybrać auto przy kontroli. Kontrola auta (`vehicle_checks`): w lokalu
+  z aktywnymi pojazdami (`private.vehicle_check_required`) dostawca przed pierwszym kursem wpisuje przebieg i robi
+  cztery zdjęcia dookoła (przód, tył, boki), a przed końcem zmiany to samo jeszcze raz (`staff_vehicle_status`,
+  `staff_vehicle_check`; przebieg nie mniejszy niż ostatni, wymagany dla auta i skutera). Bez kontroli początku
+  kolejka nie daje mu kursów (`private.vehicle_ready` w `private.courier_queue`). Zdjęcia: image_picker 1280 px,
+  jakość 72, prywatny zasobnik `vehicle-photos` (`{lokal}/{auto}/{dzień}/...jpg`, `private.can_use_vehicle_photos`).
+  Telefon: `vehicle_check.dart` (`VehicleCheckScreen`), otwiera się po zeskanowaniu kodu i przy „Zakończ zmianę”,
+  karta przypomnienia w Dostawach. Panel: na karcie pojazdu „Dziś: dostawca” i „Przebieg i zdjęcia”
+  (`features/fleet/vehicle_days.dart`, `VehicleChecksDialog`: 30 dni, dzień po dniu z przejechanymi km, zdjęcia
+  z podpisanych adresów, kliknięcie powiększa). Notatki o pojeździe (0047): `vehicle_notes` (autor z zalogowanego pracownika albo
   „Konto restauracji”, `private.note_author`), `panel_add_vehicle_note`, `panel_delete_vehicle_note`; w oknie pojazdu
   po prawej, karta pokazuje ostatnią. Stare „Uwagi” (`vehicles.note`) przeszły do notatek z autorem „Uwagi”.
 - Stawki i zarobki (0046, 0047): w oknie pracownika rodzaj umowy („Umowa”: zlecenie, zlecenie – student do 26 lat,
@@ -444,39 +481,10 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   w panelu „Połącz z inną dostawą” łączy przyjęte dostawy (jeszcze w lokalu) w jeden kurs jednego dostawcy
   (`panel_takeaway_merge`, wybór dostawcy albo bez zmiany), „Wyjmij” oddaje dostawę kolejce (`panel_takeaway_split`);
   kolejka, zmiana dostawcy, oddanie kursu i „Odebrałem” działają na cały kurs, „Dostarczone” na każdy adres osobno.
-  Mapa dostawców (0061, Dostawy → Mapa `/mapa`, uprawnienie `orders`, `CourierMapScreen`, `data/courier_map.dart`):
-  lokal włącza w „Ustawienia lokalu” → „Dostawa i odbiór” → „Lokalizacja dostawców” (`restaurants.courier_tracking`,
-  `panel_set_courier_tracking`). Wtedy Table for employees wysyła pozycję dostawcy przez całą zmianę
-  (`staff_share_location` co ~15 s i co minutę bez ruchu, `staff_locations`, jedna na pracownika; koniec zmiany ją kasuje),
-  a dostawca bez pozycji z ostatnich 3 minut (`private.located`) nie dostaje kursów (`courier_queue.located`,
-  `dispatch_deliveries`); brak zgody albo wyłączony GPS zgłasza od razu `staff_stop_location`, odzyskana pozycja
-  od razu przydziela czekające kursy. Telefon: `CourierTracker.shift` (uruchamia `StaffShell` z `Job.sharesLocation`),
-  karta „Zezwól na lokalizację” w Dostawach, wiersz „Udostępniasz lokalizację” na karcie lokalu, kolejka z „Bez
-  lokalizacji”. Bez wymogu pozycja tylko w trakcie kursu (jak dotąd, ale też na mapie panelu). Panel: `panel_courier_map`
-  (dostawcy z pozycją, kolorem i pojazdem, dostawy w toku z celem, świeże trasy) odświeżany co 10 s; cele dostaw to
-  współrzędne adresu (`orders.delivery_lat/lng`, `delivery_geo`: google, osm, none; zmiana adresu je kasuje), trasy co minutę.
-  Mapa w stylu Table (`features/deliveries/map_style.dart`, `tableMapStyle`): kafelki wektorowe OpenFreeMap
-  (schemat OpenMapTiles, bez kluczy i limitów, adres z TileJSON `tiles.openfreemap.org/planet`), `vector_map_tiles`
-  9.0.0-beta.13 i `vector_tile_renderer`. Rysujemy tylko to, czego potrzebuje dostawca: drogi dla aut i skuterów
-  (bez ścieżek, dróg rowerowych, chodników, torów i promów; dojazdowe dopiero z bliska), budynki, wodę, zieleń,
-  nazwy ulic, numery domów i osiedla. Bez punktów usług, placów zabaw (landuse), przystanków i granic; pilnuje
-  tego test `courier_map_test.dart`. Kolory jak panel (ciemny i jasny), napisy czcionką Geist. Rysowanie
-  wektorowe (`VectorTileLayerMode.vector`; rastrowe przy przybliżeniu ładowało się bardzo długo), zaokrąglone końce
-  linii i główne ulice szersze niż pas między jezdniami (dwie jezdnie wyglądają jak jedna droga), tło mapy
-  (`mapBackground`) w kolorze stylu, osobne `id` stylów ciemnego i jasnego (biblioteka trzyma kafelki według `id`).
-  W rogu
-  „© OpenFreeMap © OpenMapTiles © OpenStreetMap” i „Trasy: Google Maps” (albo OSRM).
-  Funkcja Edge `maps` (`supabase/functions/maps`, z tokenem konta panelu; uprawnienia sprawdza `panel_geocode_input`,
-  `panel_route_input`): `geocode` (Google Geocoding API, bez klucza Nominatim, a przy odmowie Photon; błąd usługi
-  nie zapisuje „nie znaleziono”, panel ponawia po 2 minutach) i `route` (Routes API z korkami, tylko linia, czas
-  i odległość, bez opisu krok po kroku, bo w EOG nie wolno go pokazywać przy mapie; pamięć `courier_routes`
-  4 min albo 400 m ruchu; bez klucza OSRM). Klucz Google w sekrecie funkcji `GOOGLE_MAPS_SERVER_KEY` (Routes
-  i Geocoding, tylko w Supabase). Kafelki Google (Map Tiles API) nie są potrzebne. Darmowe limity Google są na
-  całe konto Table: trasy z korkami 5 000, adresy 10 000 miesięcznie.
-  Dostawca na mapie (0053): gdy kurs jest w drodze,
-  Table for employees wysyła pozycję (`courier_location.dart`, co ~25 m, najwyżej co 15 s, w tle z powiadomieniem
-  „Kurs w drodze”, `staff_courier_position`), gość widzi mapę w szczegółach zamówienia (`courier_map.dart`,
-  `guest_courier_position` co 10 s); pozycja znika po zakończeniu kursu.
+  Mapy dostawców i śledzenia pozycji nie ma (0068): `staff_share_location`, `staff_courier_position` nic nie robią
+  (dla starszych wersji aplikacji), `guest_courier_position` zwraca null, `courier_tracking` wyłączone, pozycje
+  i trasy skasowane. Funkcja Edge `maps` i sekret `GOOGLE_MAPS_SERVER_KEY` zostały w Supabase, ale nic ich nie używa
+  (do usunięcia przez użytkownika w panelu Supabase).
 - Ekran kuchni (`/kuchnia`, uprawnienie `kitchen`, np. Kucharz): bileciki z pozycjami wysłanymi na kuchnię,
   pogrupowane po rachunku i chwili wysłania, najstarsze pierwsze. Czas liczony od wysłania z sekundami;
   kolory po progach z `restaurants.kitchen_warn_minutes`/`kitchen_late_minutes` (domyślnie 4 i 6 min).
@@ -486,7 +494,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (1–9, strzałki, Spacja, Enter, Backspace, F, M, Esc; strzałki przechodzą między bilecikami, Spacja zbija
   i schodzi niżej, Enter zamyka bilecik i zaznacza następny), dolny pasek ze średnim czasem (`panel_kitchen_stats`),
   ustawienia (progi, wyprzedzenie zamówień na godzinę „Na wynos” i „Na dostawę”, pozycje ukryte,
-  `panel_set_kitchen_config`). Pełny ekran chowa menu. Nowy bilecik dzwoni. Zamówienia na godzinę czekają w pasku
+  `panel_set_kitchen_config`). W ustawieniach kuchni też „Powiadomienia o rezerwacjach” na tym komputerze
+  (`KitchenReservationAlertsNotifier`, preferencja lokalna; wyłączone wyciszają `ReservationAlerts` na ekranie kuchni,
+  `kitchenSilent`). Pełny ekran chowa menu. Nowy bilecik dzwoni. Zamówienia na godzinę czekają w pasku
   „Zaplanowane” po prawej (tylko gdy są; godzina wejścia do kuchni, bez odliczania), o swojej porze przechodzą
   do bilecików (dzwonią) z paskiem „NA GODZINĘ · odbiór/u klienta HH:MM”. Kompletowanie pokazuje je dopiero wtedy.
 - Kompletowanie (dawniej Wydanie; `/wydanie`, `features/serving`, uprawnienie `serving`, grupa Zamówienia; w 0042 dostały je stanowiska

@@ -7,6 +7,7 @@ import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/notes_view.dart';
 import '../../shared/panel_widgets.dart';
+import 'vehicle_days.dart';
 
 /// Wpisywane litery od razu zamieniają się na wielkie (rejestracja, VIN), jak przy włączonym Caps Locku.
 class UpperCaseFormatter extends TextInputFormatter {
@@ -51,6 +52,11 @@ class FleetScreen extends ConsumerWidget {
     final async = ref.watch(vehiclesProvider(restaurant.id));
     final staff = ref.watch(staffProvider(restaurant.id)).value ?? const <StaffMember>[];
     final names = {for (final m in staff) m.id: m.name};
+    // Kto jeździ autem dziś (Grafik, Dostawy albo wybór dostawcy przy kontroli auta).
+    final today = {
+      for (final d in ref.watch(todayVehicleDaysProvider(restaurant.id)).value ?? const <VehicleDay>[])
+        d.vehicleId: names[d.memberId],
+    };
     final notes = ref.watch(vehicleNotesProvider(restaurant.id)).value ?? const <String, List<Note>>{};
 
     return Column(
@@ -75,7 +81,8 @@ class FleetScreen extends ConsumerWidget {
                 ? MessageView(
                     icon: AppIcons.car,
                     title: 'Brak pojazdów',
-                    message: 'Dodaj auto, skuter albo rower i przypisz go dostawcy.',
+                    message:
+                        'Dodaj auto, skuter albo rower. Dostawcę wybiera się na dany dzień w Grafiku albo Dostawach.',
                     actionLabel: canEdit ? 'Dodaj pojazd' : null,
                     onAction: canEdit ? () => _edit(context, ref, restaurant.id) : null,
                   )
@@ -95,9 +102,13 @@ class FleetScreen extends ConsumerWidget {
                                 width: width,
                                 child: _VehicleCard(
                                   vehicle: v,
-                                  courier: v.memberId == null ? null : names[v.memberId],
+                                  courier: today[v.id],
                                   notes: notes[v.id] ?? const [],
                                   onTap: canEdit ? () => _edit(context, ref, restaurant.id, v) : null,
+                                  onChecks: () => showDialog<void>(
+                                    context: context,
+                                    builder: (_) => VehicleChecksDialog(restaurantId: restaurant.id, vehicle: v),
+                                  ),
                                 ),
                               ),
                           ],
@@ -113,10 +124,19 @@ class FleetScreen extends ConsumerWidget {
 }
 
 class _VehicleCard extends StatelessWidget {
-  const _VehicleCard({required this.vehicle, required this.courier, required this.notes, required this.onTap});
+  const _VehicleCard({
+    required this.vehicle,
+    required this.courier,
+    required this.notes,
+    required this.onTap,
+    required this.onChecks,
+  });
 
   final Vehicle vehicle;
+
+  /// Kto jeździ tym autem dziś.
   final String? courier;
+  final VoidCallback onChecks;
 
   /// Notatki od najnowszej. Karta pokazuje ostatnią i ile ich jest.
   final List<Note> notes;
@@ -180,13 +200,19 @@ class _VehicleCard extends StatelessWidget {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          courier ?? 'Bez dostawcy',
+                          courier == null ? 'Dziś bez dostawcy' : 'Dziś: $courier',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: text.bodyMedium?.copyWith(
                             color: courier == null ? AppColors.textMuted : AppColors.text,
                           ),
                         ),
+                      ),
+                      TextButton.icon(
+                        onPressed: onChecks,
+                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                        icon: const Glyph(AppIcons.camera, size: 15),
+                        label: const Text('Przebieg i zdjęcia'),
                       ),
                     ],
                   ),
@@ -242,7 +268,8 @@ class _VehicleCard extends StatelessWidget {
   }
 }
 
-/// Nowy pojazd albo zmiana istniejącego: rodzaj, nazwa, rejestracja, dostawca i czy jest używany.
+/// Nowy pojazd albo zmiana istniejącego: rodzaj, nazwa, rejestracja i czy jest używany. Dostawcę ma się na dany
+/// dzień (Grafik, Dostawy), nie na stałe.
 /// Istniejący pojazd ma obok notatki (dopisują się od razu, bez „Zapisz”).
 class _VehicleDialog extends ConsumerStatefulWidget {
   const _VehicleDialog({required this.restaurantId, this.vehicle});
@@ -259,7 +286,6 @@ class _VehicleDialogState extends ConsumerState<_VehicleDialog> {
   late final _name = TextEditingController(text: widget.vehicle?.name ?? '');
   late final _plate = TextEditingController(text: widget.vehicle?.plate ?? '');
   late final _vin = TextEditingController(text: widget.vehicle?.vin ?? '');
-  late String? _memberId = widget.vehicle?.memberId;
   late bool _active = widget.vehicle?.active ?? true;
   bool _busy = false;
 
@@ -292,7 +318,6 @@ class _VehicleDialogState extends ConsumerState<_VehicleDialog> {
             name: _name.text.trim(),
             plate: _kind == VehicleKind.bike || _plate.text.trim().isEmpty ? null : _plate.text.trim(),
             vin: _kind == VehicleKind.bike || vin.isEmpty ? null : vin,
-            memberId: _memberId,
             active: _active,
           );
       if (mounted) Navigator.pop(context, true);
@@ -326,11 +351,6 @@ class _VehicleDialogState extends ConsumerState<_VehicleDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final staff = [
-      for (final m in ref.watch(staffProvider(widget.restaurantId)).value ?? const <StaffMember>[])
-        if (m.active || m.id == _memberId) m,
-    ]..sort((a, b) => a.name.compareTo(b.name));
-
     final vehicle = widget.vehicle;
     final form = SizedBox(
       width: 460,
@@ -372,17 +392,6 @@ class _VehicleDialogState extends ConsumerState<_VehicleDialog> {
               decoration: const InputDecoration(labelText: 'VIN', hintText: '17 znaków, z dowodu rejestracyjnego'),
             ),
           ],
-          const SizedBox(height: 14),
-          DropdownButtonFormField<String?>(
-            initialValue: staff.any((m) => m.id == _memberId) ? _memberId : null,
-            decoration: const InputDecoration(labelText: 'Dostawca'),
-            icon: const Glyph(AppIcons.caretDown, size: 16),
-            items: [
-              const DropdownMenuItem<String?>(value: null, child: Text('Bez dostawcy')),
-              for (final m in staff) DropdownMenuItem<String?>(value: m.id, child: Text(m.name)),
-            ],
-            onChanged: (v) => setState(() => _memberId = v),
-          ),
           const SizedBox(height: 8),
           Row(
             children: [

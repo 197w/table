@@ -5,10 +5,10 @@ import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
 import 'announcements_screen.dart';
-import 'courier_location.dart';
 import 'data.dart';
 import 'scan_screen.dart';
 import 'ui.dart';
+import 'vehicle_check.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -98,6 +98,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ],
       ),
     );
+    // Dostawca w lokalu z flotą: przed pierwszym kursem przebieg i zdjęcia auta.
+    if (result.endedNow || !mounted) return;
+    final jobs = await ref.read(jobsProvider.future);
+    final job = jobs.where((j) => j.working && j.restaurantName == result.restaurant).firstOrNull;
+    if (job == null || !job.permissions.contains('deliveries') || !mounted) return;
+    final status = await ref.read(vehicleStatusProvider(job.memberId).future);
+    if (status.needsStart && mounted) await VehicleCheckScreen.open(context, job, end: false);
   }
 
   Future<void> _end(Job job) async {
@@ -117,6 +124,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
     );
     if (ok != true) return;
+    // Dostawca z autem z floty: przed końcem zmiany przebieg i zdjęcia auta.
+    if (job.permissions.contains('deliveries')) {
+      try {
+        final status = await ref.read(vehicleStatusProvider(job.memberId).future);
+        if (status.needsEnd) {
+          if (!mounted) return;
+          final done = await VehicleCheckScreen.open(context, job, end: true);
+          if (!done) return;
+        }
+      } catch (_) {
+        // Bez połączenia ze stanem auta i tak pozwalamy zakończyć zmianę.
+      }
+    }
     try {
       await ref.read(staffRepositoryProvider).endShift(job.memberId);
       _refresh();
@@ -312,8 +332,6 @@ class _JobCard extends StatelessWidget {
               ),
             ),
             if (code != null) ...[const SizedBox(height: 10), _CodeRow(code: code!)],
-            // Dostawca w lokalu z wymogiem lokalizacji: zawsze widać, że lokal go widzi na mapie.
-            if (job.sharesLocation) ...[const SizedBox(height: 10), const _ShareRow()],
             // Kelner nabija zamówienia z telefonu, ale tylko w trakcie zmiany. Przyciski jeden pod drugim:
             // „Zakończ zmianę” w połowie szerokości łamie się już przy czcionce telefonu powiększonej o 15%.
             if (job.working) ...[
@@ -400,44 +418,6 @@ class _CodeRow extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// Wiersz „Udostępniasz lokalizację” (albo co jest nie tak) na karcie lokalu.
-class _ShareRow extends ConsumerWidget {
-  const _ShareRow();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final text = Theme.of(context).textTheme;
-    return ValueListenableBuilder<ShareState>(
-      valueListenable: ref.watch(courierTrackerProvider).state,
-      builder: (context, state, _) {
-        final ok = state == ShareState.on || state == ShareState.starting;
-        final color = ok ? AppColors.accent : StaffColors.pending;
-        return Semantics(
-          liveRegion: true,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Glyph(ok ? AppIcons.navigation : AppIcons.gpsSlash, size: 16, color: color),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  ok
-                      ? 'Udostępniasz lokalizację do końca zmiany.'
-                      : 'Lokalizacja wyłączona: nie dostajesz kursów. Włącz ją w zakładce Dostawy.',
-                  style: text.bodyMedium?.copyWith(color: ok ? AppColors.textMuted : color),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }

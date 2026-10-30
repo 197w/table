@@ -762,39 +762,88 @@ class _CourierRow extends StatelessWidget {
   }
 }
 
-/// Dostawcy na zmianie: kto wolny, kto w kursie.
-class _CouriersStrip extends StatelessWidget {
+/// Dostawcy na zmianie: kto wolny, kto w kursie i jakim autem jeździ dziś (kliknięcie zmienia auto).
+class _CouriersStrip extends ConsumerWidget {
   const _CouriersStrip({required this.couriers});
 
   final List<Courier> couriers;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final text = Theme.of(context).textTheme;
+    final restaurant = ref.watch(currentRestaurantProvider);
+    if (restaurant == null) return const SizedBox.shrink();
+    final vehicles = [
+      for (final v in ref.watch(vehiclesProvider(restaurant.id)).value ?? const <Vehicle>[])
+        if (v.active) v,
+    ];
+    final today = ref.watch(todayVehicleDaysProvider(restaurant.id)).value ?? const <VehicleDay>[];
+    String? carOf(String memberId) {
+      final id = today.where((d) => d.memberId == memberId).firstOrNull?.vehicleId;
+      return vehicles.where((v) => v.id == id).firstOrNull?.name;
+    }
+
+    Future<void> assign(String memberId, String? vehicleId) async {
+      try {
+        await ref
+            .read(repositoryProvider)
+            .setVehicleDay(
+              restaurant.id,
+              DateTime.now(),
+              memberId,
+              vehicleId,
+              editorId: ref.read(panelMemberProvider)?.dbMemberId,
+            );
+        ref.invalidate(todayVehicleDaysProvider(restaurant.id));
+      } catch (e) {
+        if (context.mounted) showError(context, e);
+      }
+    }
+
     return Wrap(
       spacing: 8,
+      runSpacing: 8,
       children: [
         for (final c in couriers)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceRaised,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: c.busy ? _deliveryColor : AppColors.accent,
-                    shape: BoxShape.circle,
+          PopupMenuButton<String>(
+            tooltip: vehicles.isEmpty ? c.name : 'Auto dla ${c.name} na dziś',
+            enabled: vehicles.isNotEmpty,
+            onSelected: (v) => assign(c.memberId, v.isEmpty ? null : v),
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: '', child: Text('Bez auta')),
+              for (final v in vehicles)
+                PopupMenuItem(value: v.id, child: Text([v.name, ?v.plate].join(' · '))),
+            ],
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceRaised,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: c.busy ? _deliveryColor : AppColors.accent,
+                      shape: BoxShape.circle,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 6),
-                Text(c.name, style: text.labelLarge),
-              ],
+                  const SizedBox(width: 6),
+                  Text(c.name, style: text.labelLarge),
+                  if (vehicles.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Glyph(AppIcons.car, size: 14, color: AppColors.textMuted),
+                    const SizedBox(width: 4),
+                    Text(
+                      carOf(c.memberId) ?? 'bez auta',
+                      style: text.labelMedium?.copyWith(color: AppColors.textMuted),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
       ],

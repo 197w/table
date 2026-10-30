@@ -28,7 +28,6 @@ enum PanelSection {
   ]),
   deliveries('Dostawy', AppIcons.moped, [
     PanelTab(PanelRoutes.deliveries, 'Dostawy', AppIcons.moped),
-    PanelTab(PanelRoutes.courierMap, 'Mapa', AppIcons.mapTrifold),
     PanelTab(PanelRoutes.fleet, 'Flota', AppIcons.car),
   ]),
   staff('Pracownicy', AppIcons.usersThree, [

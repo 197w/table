@@ -1711,9 +1711,6 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
     setState(() => _busy = true);
     try {
       final repo = ref.read(repositoryProvider);
-      if (_s.courierTracking != widget.profile.delivery.courierTracking) {
-        await repo.setCourierTracking(widget.profile.id, _s.courierTracking);
-      }
       await repo.updateProfile(widget.profile.id, {
         'delivery_enabled': _s.deliveryEnabled,
         'pickup_enabled': _s.pickupEnabled,
@@ -1758,22 +1755,6 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
           toggle('Odbiór osobisty', _s.pickupEnabled, (v) => setState(() => _s = _copy(pickup: v))),
           const SizedBox(height: 6),
           toggle('Gotówka', _s.cash, (v) => setState(() => _s = _copy(cash: v))),
-          const SizedBox(height: 6),
-          toggle(
-            'Lokalizacja dostawców',
-            _s.courierTracking,
-            (v) => setState(() => _s = _copy(tracking: v)),
-          ),
-          // Co znaczy włączenie: dla dostawców, dla kolejki i obowiązek poinformowania pracowników.
-          Padding(
-            padding: const EdgeInsets.only(top: 2, right: 56),
-            child: Text(
-              'Dostawcy udostępniają lokalizację w Table for employees od początku do końca zmiany, '
-              'a bez niej nie dostają kursów. Pozycje i trasy widać w Dostawy → Mapa. '
-              'Przed włączeniem poinformuj o tym pracowników.',
-              style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-            ),
-          ),
           const SizedBox(height: 14),
           Row(
             children: [
@@ -1811,13 +1792,12 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
     );
   }
 
-  DeliverySettings _copy({bool? delivery, bool? pickup, bool? cash, bool? tracking}) => DeliverySettings(
+  DeliverySettings _copy({bool? delivery, bool? pickup, bool? cash}) => DeliverySettings(
     deliveryEnabled: delivery ?? _s.deliveryEnabled,
     pickupEnabled: pickup ?? _s.pickupEnabled,
     cash: cash ?? _s.cash,
     feeGrosze: _s.feeGrosze,
     minGrosze: _s.minGrosze,
     area: _s.area,
-    courierTracking: tracking ?? _s.courierTracking,
   );
 }

@@ -6,7 +6,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../app/reservation_alerts.dart';
-import 'courier_map.dart';
 import 'models.dart';
 import 'repository.dart';
 
@@ -767,12 +766,6 @@ final customerLookupProvider = FutureProvider.autoDispose.family<CustomerLookup,
   return ref.watch(repositoryProvider).customerLookup(q.restaurantId, q.phone);
 });
 
-/// Mapa dostawców. Ekran mapy odświeża ją co 10 sekund, a zmiany zamówień od razu.
-final courierMapProvider = FutureProvider.autoDispose.family<CourierMap, String>((ref, id) {
-  ref.watch(ordersLiveProvider(id).select((s) => s.version));
-  return ref.watch(repositoryProvider).courierMap(id);
-});
-
 final couriersProvider = FutureProvider.autoDispose.family<List<Courier>, String>(
   (ref, id) {
     ref.cacheFor();
@@ -787,6 +780,28 @@ final orderDueProvider = FutureProvider.autoDispose.family<OrderDue, String>(
 );
 
 /// Kody rabatowe lokalu (Management).
+typedef VehicleQuery = ({String restaurantId, String? vehicleId});
+
+/// Auta dostawców dziś. Odświeża się z rachunkami (zmiany dostawców i kursów).
+final todayVehicleDaysProvider = FutureProvider.autoDispose.family<List<VehicleDay>, String>((ref, id) {
+  ref.watch(ordersLiveProvider(id).select((s) => s.version));
+  final today = dateOnly(DateTime.now());
+  return ref.watch(repositoryProvider).vehicleDays(id, today, today);
+});
+
+/// Auta dostawców w wybranym dniu (Grafik).
+final vehicleDaysOnProvider = FutureProvider.autoDispose.family<List<VehicleDay>, DayQuery>(
+  (ref, q) => ref.watch(repositoryProvider).vehicleDays(q.restaurantId, q.day, q.day),
+);
+
+/// Kontrole auta z ostatnich 30 dni (Flota).
+final vehicleChecksProvider = FutureProvider.autoDispose.family<List<VehicleCheck>, VehicleQuery>((ref, q) {
+  final today = dateOnly(DateTime.now());
+  return ref
+      .watch(repositoryProvider)
+      .vehicleChecks(q.restaurantId, q.vehicleId, today.subtract(const Duration(days: 30)), today);
+});
+
 /// Zasady automatycznych kodów dla gości.
 final guestCodeRulesProvider = FutureProvider.autoDispose.family<List<GuestCodeRule>, String>(
   (ref, id) => ref.watch(repositoryProvider).guestCodeRules(id),

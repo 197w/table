@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:table_core/table_core.dart';
 
-import 'courier_map.dart';
 import 'models.dart';
 
 /// Jedyne miejsce panelu, które rozmawia z Supabase.
@@ -701,50 +700,6 @@ class PanelRepository {
     });
   }
 
-  // -------------------------------------------------------------
-  // Mapa dostawców
-  // -------------------------------------------------------------
-
-  /// Dostawcy na zmianie z pozycją, dostawy w toku z celami i świeże trasy.
-  Future<CourierMap> courierMap(String restaurantId) {
-    return _guard(() async {
-      final json = await _db.rpc<Map<String, dynamic>>(
-        'panel_courier_map',
-        params: {'p_restaurant_id': restaurantId},
-      );
-      return CourierMap.fromJson(json);
-    });
-  }
-
-  /// Wymóg lokalizacji dostawców przez całą zmianę („Ustawienia lokalu” → „Dostawa i odbiór”).
-  Future<void> setCourierTracking(String restaurantId, bool enabled) => _guard(
-    () => _db.rpc<void>(
-      'panel_set_courier_tracking',
-      params: {'p_restaurant_id': restaurantId, 'p_enabled': enabled},
-    ),
-  );
-
-  /// Szuka współrzędnych adresu dostawy (raz na zamówienie, wynik zostaje w bazie).
-  Future<void> geocodeOrder(String orderId) => _maps({'action': 'geocode', 'order_id': orderId});
-
-  /// Liczy trasę dostawcy do celu; funkcja Edge oddaje trasę z pamięci, jeśli jest świeża.
-  Future<void> courierRoute(String memberId, String orderId) =>
-      _maps({'action': 'route', 'member_id': memberId, 'order_id': orderId});
-
-  Future<Map<String, dynamic>> _maps(Map<String, dynamic> body) {
-    return _guard(() async {
-      try {
-        final res = await _db.functions.invoke('maps', body: body);
-        return Map<String, dynamic>.from(res.data as Map);
-      } on FunctionException catch (e) {
-        final details = e.details;
-        throw AppFailure(
-          details is Map && details['error'] is String ? details['error'] as String : 'Mapa nie odpowiada. Spróbuj za chwilę.',
-        );
-      }
-    });
-  }
-
   Future<void> acceptTakeaway(String orderId, int minutes, {String? memberId}) => _guard(
     () => _db.rpc<void>('panel_takeaway_accept', params: {
       'p_order_id': orderId,
@@ -853,6 +808,55 @@ class PanelRepository {
         'p_active': active,
       }),
     );
+  }
+
+  /// Auta dostawców w dniach od [from] do [to].
+  Future<List<VehicleDay>> vehicleDays(String restaurantId, DateTime from, DateTime to) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>(
+        'panel_vehicle_days',
+        params: {'p_restaurant_id': restaurantId, 'p_from': _dateOnly(from), 'p_to': _dateOnly(to)},
+      );
+      return [for (final r in rows) VehicleDay.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
+  /// Auto dostawcy na dzień. [vehicleId] null: bez auta.
+  Future<void> setVehicleDay(String restaurantId, DateTime day, String memberId, String? vehicleId, {String? editorId}) {
+    return _guard(
+      () => _db.rpc<void>('panel_set_vehicle_day', params: {
+        'p_restaurant_id': restaurantId,
+        'p_day': _dateOnly(day),
+        'p_member_id': memberId,
+        'p_vehicle_id': vehicleId,
+        'p_editor_id': editorId,
+      }),
+    );
+  }
+
+  /// Kontrole auta (przebieg i zdjęcia) od najnowszej. [vehicleId] null: wszystkie auta.
+  Future<List<VehicleCheck>> vehicleChecks(String restaurantId, String? vehicleId, DateTime from, DateTime to) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>('panel_vehicle_checks', params: {
+        'p_restaurant_id': restaurantId,
+        'p_vehicle_id': vehicleId,
+        'p_from': _dateOnly(from),
+        'p_to': _dateOnly(to),
+      });
+      return [for (final r in rows) VehicleCheck.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
+  /// Podpisane adresy zdjęć aut (ważne godzinę).
+  Future<Map<String, String>> vehiclePhotoUrls(List<String> paths) {
+    return _guard(() async {
+      if (paths.isEmpty) return const <String, String>{};
+      final signed = await _db.storage.from('vehicle-photos').createSignedUrlsResult(paths, 3600);
+      return {
+        for (final s in signed)
+          if (s case SignedUrlSuccess(:final path, :final signedUrl)) path: signedUrl,
+      };
+    });
   }
 
   Future<void> deleteVehicle(String id) {
