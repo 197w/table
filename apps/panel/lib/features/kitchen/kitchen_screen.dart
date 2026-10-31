@@ -411,7 +411,6 @@ class _KitchenScreenState extends ConsumerState<KitchenScreen> {
                     : null,
                 onFullscreen: () => ref.read(kitchenFullscreenProvider.notifier).set(!fullscreen),
               ),
-              Divider(height: 1, thickness: 1, color: AppColors.ring),
               Expanded(
                 child: async.when(
                   skipLoadingOnReload: true,

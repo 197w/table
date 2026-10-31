@@ -206,29 +206,24 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Tryb i dzień nad osią czasu (wcześniej w pasku nad całym ekranem).
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: SegmentedTabs<bool>(
-                    options: const [(true, 'Na żywo'), (false, 'Historia')],
-                    selected: _live,
-                    onChanged: (live) => live ? _goLive() : setState(() => _live = false),
-                  ),
+                // Tryb i dzień nad osią czasu, na całą szerokość jej karty.
+                SegmentedTabs<bool>(
+                  options: const [(true, 'Na żywo'), (false, 'Historia')],
+                  selected: _live,
+                  expand: true,
+                  onChanged: (live) => live ? _goLive() : setState(() => _live = false),
                 ),
                 const SizedBox(height: 10),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: StepSwitcher(
-                    label: _day == today ? 'Dziś' : Fmt.capitalize(Fmt.dayShort(_day)),
-                    labelWidth: 118,
-                    previousTooltip: 'Poprzedni dzień',
-                    nextTooltip: 'Następny dzień',
-                    onPrevious: () => _shiftDay(-1),
-                    onNext: _day == today ? null : () => _shiftDay(1),
-                    resetTooltip: 'Wróć do teraz',
-                    onReset: _live ? null : _goLive,
-                    extras: [(AppIcons.calendar, 'Wybierz dzień', _pickDay)],
-                  ),
+                StepSwitcher(
+                  label: _day == today ? 'Dziś' : Fmt.capitalize(Fmt.dayShort(_day)),
+                  expand: true,
+                  previousTooltip: 'Poprzedni dzień',
+                  nextTooltip: 'Następny dzień',
+                  onPrevious: () => _shiftDay(-1),
+                  onNext: _day == today ? null : () => _shiftDay(1),
+                  resetTooltip: 'Wróć do teraz',
+                  onReset: _live ? null : _goLive,
+                  extras: [(AppIcons.calendar, 'Wybierz dzień', _pickDay)],
                 ),
                 const SizedBox(height: 12),
                 Expanded(
@@ -290,8 +285,11 @@ const _railWidth = 240.0;
 
 /// Kreska wybranej chwili: tyle punktów od góry osi.
 const _playY = 52.0;
-const _labelWidth = 40.0;
-const _axisX = 54.0;
+
+/// Podpisy godzin zaczynają się tyle od lewej krawędzi (równo z godziną na kresce), za nimi kreski minut i pas osi.
+const _labelLeft = 18.0;
+const _tickX = 60.0;
+const _axisX = 74.0;
 const _minZoom = 0.4;
 const _maxZoom = 14.0;
 
@@ -493,7 +491,7 @@ class _TimeRailState extends State<_TimeRail> with SingleTickerProviderStateMixi
                               ),
                             // Wybrana chwila: kreska przez całą oś i godzina z sekundami.
                             Positioned(
-                              left: 6,
+                              left: _labelLeft - 10,
                               top: _playY - 13,
                               child: IgnorePointer(
                                 child: Container(
@@ -708,10 +706,11 @@ class _RailPainter extends CustomPainter {
       if (y < -10) break;
       if (y <= h + 10) {
         final isMajor = minute % major == 0;
-        canvas.drawLine(Offset(isMajor ? _labelWidth : _labelWidth + 4, y), Offset(_axisX - 6, y), tick);
-        if (isMajor) {
+        canvas.drawLine(Offset(isMajor ? _tickX : _tickX + 4, y), Offset(_axisX - 6, y), tick);
+        // Godzinę przy kresce wybranej chwili zakrywa pigułka z sekundami, więc jej nie rysujemy.
+        if (isMajor && (y - _playY).abs() >= 20) {
           final tp = _label('${_two(t.hour)}:${_two(t.minute)}');
-          tp.paint(canvas, Offset(_labelWidth - 4 - tp.width, y - tp.height / 2));
+          tp.paint(canvas, Offset(_labelLeft, y - tp.height / 2));
         }
       }
       minute += minor;

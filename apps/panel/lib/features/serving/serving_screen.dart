@@ -215,7 +215,6 @@ class _ServingScreenState extends ConsumerState<ServingScreen> {
             undoLabel: _lastServed?.label,
             onUndo: () => _undo(restaurant.id),
           ),
-          Divider(height: 1, thickness: 1, color: AppColors.ring),
           Expanded(
             child: async.when(
               skipLoadingOnReload: true,

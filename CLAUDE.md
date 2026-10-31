@@ -235,8 +235,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 ## Panel restauracji
 
 - Logowanie e-mailem i hasłem. Obowiązkowe 2FA dodajemy przed wydaniem.
-- Układ jak w UniFi (`shell.dart`, `sections.dart`, 0.11.0). Górny pasek: lokal po lewej (logo, kropka połączenia
-  na żywo, plan; strzałka i lista tylko przy kilku lokalach konta), grupy zakładek (`PanelSection`, `_SectionTab`: same ikony bez ramek, wybrana w kolorze akcentu z nazwą):
+- Układ jak w UniFi (`shell.dart`, `sections.dart`, 0.11.0). Górny pasek: w lewym rogu logo Table z nazwą (`_Brand`,
+  `TableLogo` z ekranu logowania, znak na środku nad ikonami bocznego paska; od 0.26.0, wcześniej był tu lokal), grupy zakładek (`PanelSection`, `_SectionTab`: same ikony bez ramek, wybrana w kolorze akcentu z nazwą):
   Rezerwacje (Rezerwacje), Zamówienia (Zamówienia, Historia zamówień `/historia`, Kompletowanie `/wydanie`,
   Odbiór `/odbior`), Kuchnia (Kuchnia), Dostawy (Dostawy, Flota),
   Pracownicy (Pracownicy: Zespół i Grafik, Statystyki zespołu `/zespol`, Informacje dla pracowników `/informacje`),
@@ -246,13 +246,16 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Kody rabatowe `/rabaty`, Eksport `/eksport`);
   Kropki nowości (`tabNewsProvider`, `TabNews`, `_NewsDot`): nowa rezerwacja z aplikacji, nowe zamówienie na dostawę
   albo odbiór, nowe danie do wydania; kropka na zakładce i jej grupie znika po wejściu do zakładki.
-  „Table” na środku; po prawej nowa wersja, odliczanie do wylogowania, motyw (systemowy: ikona monitora `AppIcons.monitor`),
+  Po prawej nowa wersja, odliczanie do wylogowania, lokal (`_RestaurantSwitcher`: logo, kropka połączenia na żywo,
+  plan; strzałka i lista tylko przy kilku lokalach konta), motyw (systemowy: ikona monitora `AppIcons.monitor`),
   obok niego ikona „Wyloguj” (gdy ktoś jest zalogowany, od 0.21.0) i kółko pracownika (inicjały; menu:
   kod pracownika, „Zakończ zmianę”, „Wejdź na zmianę”, e-mail i wersja, wylogowanie konta restauracji).
   Kropka na „Informacje dla pracowników”, dopóki zalogowany pracownik ma nieprzeczytane informacje.
   Wąski pasek boczny: zakładki wybranej grupy (same ikony bez ramek, 30 px, nazwy w podpowiedziach po prawej, `tooltipOnRight`), na dole Ustawienia lokalu
   (`/ustawienia`), pod nimi Logi (`/logi`, od 31.10.2026), Dane lokalu i Edycja sali (`placeTabs`). Grupa i zakładki według uprawnień zalogowanego pracownika;
   ostatnia grupa zostaje wybrana na stronach lokalu (`panelSectionProvider`). Bez hamburgera i bez paska nad zakładką.
+  Pod nagłówkiem zakładki (`PageHeader`) i pod paskiem Kuchni i Kompletowania nie ma linii (31.10.2026, prośba
+  użytkownika): treść zaczyna się zaraz pod zakładkami.
 - Ustawienia lokalu: rezerwacje w aplikacji (co ile minut, największa grupa), zadatek przy rezerwacji, grafik pracowników,
   okres inwentaryzacji, dostawa i odbiór, platformy dostaw (0067). Karta „Ten komputer” (preferencje tego komputera):
   „Automatyczne uruchamianie w pełnym ekranie” (`StartFullscreenNotifier`, klucz `panel_pelny_ekran_przy_starcie`).
@@ -326,7 +329,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Logi i Time Machine (0072, pasek boczny pod „Ustawienia lokalu” → `/logi`, uprawnienie `activity` w grupie Lokal,
   w 0072 dostały je stanowiska z `day_close` albo `staff`; `features/activity/activity_screen.dart`). Wygląd
   i działanie jak Time Machine w UniFi z filmu w Todoist (od 31.10.2026): po lewej „Na żywo / Historia” i dzień
-  (`StepSwitcher` z kalendarzem), pod nimi oś czasu przycięta do swojej karty (godziny nie wchodzą na przyciski
+  (`StepSwitcher` z kalendarzem), oba na całą szerokość osi (`expand: true`), pod nimi oś czasu (godziny 18 px od
+  lewej krawędzi, równo z godziną na kresce; godziny pod pigułką z sekundami się nie rysują) przycięta do swojej karty (godziny nie wchodzą na przyciski
   skali), bez paska nad całym ekranem, więc plan sali ma ponad połowę wysokości. Oś przesuwa się pod
   stałą kreską z godziną i sekundami u góry (wcześniejsze chwile niżej; przeciąganie z bezwładnością, kółko myszy,
   Ctrl + kółko albo suwak −/+ zmienia skalę, kliknięcie wybiera chwilę), na osi ikony zdarzeń w kolorach grup

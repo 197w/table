@@ -5,6 +5,7 @@ import 'package:table_core/table_core.dart';
 
 import '../data/models.dart';
 import '../data/providers.dart';
+import '../features/auth/login_screen.dart' show TableLogo;
 import '../features/kiosk/kiosk_screen.dart';
 import '../features/onboarding/create_restaurant_screen.dart';
 import '../shared/panel_widgets.dart';
@@ -19,7 +20,7 @@ const _tabular = [FontFeature.tabularFigures()];
 String _two(int n) => n.toString().padLeft(2, '0');
 String _hm(DateTime t) => '${_two(t.toLocal().hour)}:${_two(t.toLocal().minute)}';
 
-/// Układ panelu: górny pasek (lokal, grupy zakładek, motyw i pracownik), wąski pasek boczny z zakładkami
+/// Układ panelu: górny pasek (logo Table, grupy zakładek, lokal, motyw i pracownik), wąski pasek boczny z zakładkami
 /// wybranej grupy i zakładkami lokalu na dole, a obok treść zakładki.
 class PanelShell extends ConsumerWidget {
   const PanelShell({super.key, required this.location, required this.child});
@@ -214,8 +215,8 @@ class _RouteGuard extends ConsumerWidget {
 // Górny pasek
 // ---------------------------------------------------------------
 
-/// Górny pasek: lokal po lewej, grupy zakładek, nazwa Table na środku, a po prawej nowa wersja,
-/// odliczanie do wylogowania, motyw i zalogowany pracownik.
+/// Górny pasek: logo Table i grupy zakładek po lewej, a po prawej nowa wersja, odliczanie do wylogowania,
+/// lokal, motyw i zalogowany pracownik.
 class _TopBar extends ConsumerWidget {
   const _TopBar({required this.sections, required this.section, required this.onSection, this.dots = const {}});
 
@@ -244,91 +245,100 @@ class _TopBar extends ConsumerWidget {
         color: PanelDepth.sidebar,
         border: Border(bottom: BorderSide(color: AppColors.ring)),
       ),
-      child: LayoutBuilder(
-        builder: (context, box) => Stack(
-          alignment: Alignment.center,
-          children: [
-            // Nazwa Table na środku paska, gdy jest na nią miejsce (sześć grup zakładek kończy się ok. 650 px).
-            if (box.maxWidth >= 1400)
-              Text(
-                'Table',
-                style: text.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.2,
-                  color: AppColors.textDisabled,
-                ),
+      child: Row(
+        children: [
+          const _Brand(),
+          if (sections.isNotEmpty && section != null) ...[
+            const SizedBox(width: 20),
+            for (final s in sections)
+              _SectionTab(section: s, selected: s == section, dot: dots.contains(s), onTap: () => onSection(s)),
+          ],
+          const Spacer(),
+          // Nowa wersja znaleziona w trakcie pracy: instaluje się dopiero po kliknięciu,
+          // żeby nie przerwać obsługi w środku serwisu.
+          if (release != null) ...[
+            TextButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => _UpdateDialog(release: release),
               ),
-            Row(
-              children: [
-                if (current != null) _RestaurantSwitcher(current: current, restaurants: list),
-                if (sections.isNotEmpty && section != null) ...[
-                  const SizedBox(width: 16),
-                  for (final s in sections)
-                    _SectionTab(section: s, selected: s == section, dot: dots.contains(s), onTap: () => onSection(s)),
-                ],
-                const Spacer(),
-                // Nowa wersja znaleziona w trakcie pracy: instaluje się dopiero po kliknięciu,
-                // żeby nie przerwać obsługi w środku serwisu.
-                if (release != null) ...[
-                  TextButton.icon(
-                    onPressed: () => showDialog<void>(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (_) => _UpdateDialog(release: release),
-                    ),
-                    icon: const Glyph(AppIcons.arrowsClockwise, size: 16),
-                    label: Text('Nowa wersja ${release.version}'),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                if (idle > 0) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: AppColors.warning.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      'Wylogowanie za ${kIdleLogoutSeconds - idle} s',
-                      style: text.labelMedium?.copyWith(color: AppColors.warning, fontFeatures: _tabular),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                _BareIcon(
-                  icon: theme.icon,
-                  tooltip: 'Motyw: ${theme.label}',
-                  size: 26,
-                  onTap: () {
-                    final values = AppThemeSetting.values;
-                    ThemeFade.run(
-                      context,
-                      () => ref.read(themeSettingProvider.notifier).set(values[(theme.index + 1) % values.length]),
-                    );
-                  },
-                ),
-                // Wylogowanie zalogowanego pracownika (albo pełnego dostępu właściciela) jednym kliknięciem, obok motywu.
-                if (member != null) ...[
-                  const SizedBox(width: 2),
-                  _BareIcon(
-                    icon: AppIcons.signOut,
-                    tooltip: 'Wyloguj (${member.name.split(' ').first})',
-                    size: 24,
-                    onTap: () => ref.read(panelMemberProvider.notifier).signOut(),
-                  ),
-                ],
-                const SizedBox(width: 10),
-                if (current != null) _MemberMenu(restaurant: current),
-              ],
+              icon: const Glyph(AppIcons.arrowsClockwise, size: 16),
+              label: Text('Nowa wersja ${release.version}'),
+            ),
+            const SizedBox(width: 8),
+          ],
+          if (idle > 0) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'Wylogowanie za ${kIdleLogoutSeconds - idle} s',
+                style: text.labelMedium?.copyWith(color: AppColors.warning, fontFeatures: _tabular),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          // Lokal po prawej (31.10.2026, prośba użytkownika; wcześniej w lewym rogu, gdzie jest teraz logo Table).
+          if (current != null) ...[
+            _RestaurantSwitcher(current: current, restaurants: list),
+            const SizedBox(width: 10),
+          ],
+          _BareIcon(
+            icon: theme.icon,
+            tooltip: 'Motyw: ${theme.label}',
+            size: 26,
+            onTap: () {
+              final values = AppThemeSetting.values;
+              ThemeFade.run(
+                context,
+                () => ref.read(themeSettingProvider.notifier).set(values[(theme.index + 1) % values.length]),
+              );
+            },
+          ),
+          // Wylogowanie zalogowanego pracownika (albo pełnego dostępu właściciela) jednym kliknięciem, obok motywu.
+          if (member != null) ...[
+            const SizedBox(width: 2),
+            _BareIcon(
+              icon: AppIcons.signOut,
+              tooltip: 'Wyloguj (${member.name.split(' ').first})',
+              size: 24,
+              onTap: () => ref.read(panelMemberProvider.notifier).signOut(),
             ),
           ],
-        ),
+          const SizedBox(width: 10),
+          if (current != null) _MemberMenu(restaurant: current),
+        ],
       ),
     );
   }
 }
 
-/// Lokal w lewym rogu: logo, nazwa i kropka połączenia na żywo. Strzałka i lista tylko wtedy,
+/// Znak i nazwa Table w lewym rogu. Znak stoi na środku nad ikonami bocznego paska.
+class _Brand extends StatelessWidget {
+  const _Brand();
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(left: 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const TableLogo(size: 32),
+          const SizedBox(width: 10),
+          Text('Table', style: text.titleMedium?.copyWith(fontWeight: FontWeight.w600, letterSpacing: -0.2)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Lokal po prawej stronie górnego paska: logo, nazwa i kropka połączenia na żywo. Strzałka i lista tylko wtedy,
 /// gdy konto ma kilka lokali.
 class _RestaurantSwitcher extends ConsumerWidget {
   const _RestaurantSwitcher({required this.current, required this.restaurants});

@@ -42,8 +42,8 @@ class _PanelPressState extends State<PanelPress> {
   }
 }
 
-/// Pasek nad treścią zakładki: rząd zakładek albo filtrów i przyciski po prawej, w jednym rzędzie.
-/// Bez tytułu i opisu: nazwę zakładki widać w menu bocznym. [actionsInRow] false zostawia przyciski
+/// Nagłówek nad treścią zakładki: rząd zakładek albo filtrów i przyciski po prawej, w jednym rzędzie.
+/// Bez tytułu, opisu i linii pod spodem: nazwę zakładki widać w menu bocznym. [actionsInRow] false zostawia przyciski
 /// w osobnym rzędzie nad zakładkami (np. dużo przycisków w Edycji sali).
 class PageHeader extends StatelessWidget {
   const PageHeader({
@@ -72,40 +72,26 @@ class PageHeader extends StatelessWidget {
           )
         : below;
     if (!top && row == null) return const SizedBox(height: 20);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(32, 18, 32, below == null ? 18 : 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (top)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const Spacer(),
-                    for (var i = 0; i < actions.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 8),
-                      PanelPress(child: actions[i]),
-                    ],
-                  ],
-                ),
-              if (row != null) ...[if (top) const SizedBox(height: 16), row],
-            ],
-          ),
-        ),
-        // Cienka linia oddziela nagłówek z filtrami od treści strony.
-        // W jasnym motywie sam pierścień ginie na białym tle.
-        Divider(
-          height: 1,
-          thickness: 1,
-          color: AppColors.palette.brightness == Brightness.dark
-              ? AppColors.ring
-              : AppColors.ringStrong,
-        ),
-        const SizedBox(height: 20),
-      ],
+    // Bez linii pod spodem (31.10.2026, prośba użytkownika): treść zaczyna się zaraz pod zakładkami.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(32, 18, 32, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (top)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Spacer(),
+                for (var i = 0; i < actions.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  PanelPress(child: actions[i]),
+                ],
+              ],
+            ),
+          if (row != null) ...[if (top) const SizedBox(height: 16), row],
+        ],
+      ),
     );
   }
 }
@@ -498,16 +484,21 @@ class SegmentedTabs<T> extends StatelessWidget {
     required this.options,
     required this.selected,
     required this.onChanged,
+    this.expand = false,
   });
 
   final List<(T, String)> options;
   final T selected;
   final ValueChanged<T> onChanged;
 
+  /// Na całą dostępną szerokość, opcje po równo (np. nad osią czasu w Logach).
+  final bool expand;
+
   @override
   Widget build(BuildContext context) {
     return _SlidingSegments(
       selectedIndex: options.indexWhere((o) => o.$1 == selected),
+      expand: expand,
       children: [
         for (final (value, label) in options)
           _TextSegment(
@@ -557,11 +548,12 @@ const _segmentDuration = Duration(milliseconds: 340);
 /// Pigułka z opcjami. Jedno podświetlenie przesuwa się między opcjami i dopasowuje szerokość,
 /// zamiast gasnąć w jednej opcji i zapalać się w drugiej.
 class _SlidingSegments extends StatefulWidget {
-  const _SlidingSegments({required this.selectedIndex, required this.children});
+  const _SlidingSegments({required this.selectedIndex, required this.children, this.expand = false});
 
   /// -1: nic nie jest wybrane.
   final int selectedIndex;
   final List<Widget> children;
+  final bool expand;
 
   @override
   State<_SlidingSegments> createState() => _SlidingSegmentsState();
@@ -601,6 +593,7 @@ class _SlidingSegmentsState extends State<_SlidingSegments> with SingleTickerPro
       ),
       child: _IndicatorRow(
         selected: widget.selectedIndex,
+        expand: widget.expand,
         progress: _progress,
         decoration: BoxDecoration(
           color: dark ? const Color(0xFF26262B) : AppColors.surface,
@@ -627,23 +620,26 @@ class _SlidingSegmentsState extends State<_SlidingSegments> with SingleTickerPro
 class _IndicatorRow extends MultiChildRenderObjectWidget {
   const _IndicatorRow({
     required this.selected,
+    required this.expand,
     required this.progress,
     required this.decoration,
     required super.children,
   });
 
   final int selected;
+  final bool expand;
   final Animation<double> progress;
   final BoxDecoration decoration;
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      _RenderIndicatorRow(selected, progress, decoration, createLocalImageConfiguration(context));
+      _RenderIndicatorRow(selected, expand, progress, decoration, createLocalImageConfiguration(context));
 
   @override
   void updateRenderObject(BuildContext context, _RenderIndicatorRow renderObject) {
     renderObject
       ..selected = selected
+      ..expand = expand
       ..progress = progress
       ..decoration = decoration
       ..configuration = createLocalImageConfiguration(context);
@@ -656,7 +652,15 @@ class _RenderIndicatorRow extends RenderBox
     with
         ContainerRenderObjectMixin<RenderBox, _IndicatorParentData>,
         RenderBoxContainerDefaultsMixin<RenderBox, _IndicatorParentData> {
-  _RenderIndicatorRow(this._selected, this._progress, this._decoration, this._configuration);
+  _RenderIndicatorRow(this._selected, this._expand, this._progress, this._decoration, this._configuration);
+
+  /// Opcje po równo na całą szerokość.
+  bool _expand;
+  set expand(bool value) {
+    if (value == _expand) return;
+    _expand = value;
+    markNeedsLayout();
+  }
 
   int _selected;
   set selected(int value) {
@@ -751,9 +755,18 @@ class _RenderIndicatorRow extends RenderBox
   double? computeDistanceToActualBaseline(TextBaseline baseline) =>
       defaultComputeDistanceToHighestActualBaseline(baseline);
 
+  /// Ograniczenia opcji: swoja szerokość albo równa część całej szerokości.
+  BoxConstraints _childConstraints(BoxConstraints constraints) {
+    if (!_expand || !constraints.hasBoundedWidth || childCount == 0) {
+      return BoxConstraints(maxHeight: constraints.maxHeight);
+    }
+    final share = constraints.maxWidth / childCount;
+    return BoxConstraints(minWidth: share, maxWidth: share, maxHeight: constraints.maxHeight);
+  }
+
   @override
   Size computeDryLayout(covariant BoxConstraints constraints) {
-    final loose = BoxConstraints(maxHeight: constraints.maxHeight);
+    final loose = _childConstraints(constraints);
     var width = 0.0;
     var height = 0.0;
     for (final c in _children) {
@@ -766,7 +779,7 @@ class _RenderIndicatorRow extends RenderBox
 
   @override
   void performLayout() {
-    final loose = BoxConstraints(maxHeight: constraints.maxHeight);
+    final loose = _childConstraints(constraints);
     var height = 0.0;
     for (final c in _children) {
       c.layout(loose, parentUsesSize: true);
@@ -856,6 +869,7 @@ class _TextSegmentState extends State<_TextSegment> {
                 curve: AppMotion.easeOut,
                 builder: (context, color, _) => Text(
                   widget.label,
+                  textAlign: TextAlign.center,
                   style: text.labelLarge?.copyWith(color: color),
                 ),
               ),
@@ -1109,6 +1123,7 @@ class StepSwitcher extends StatelessWidget {
     this.resetTooltip,
     this.labelWidth,
     this.extras = const [],
+    this.expand = false,
   });
 
   final String label;
@@ -1125,6 +1140,9 @@ class StepSwitcher extends StatelessWidget {
   /// Dodatkowe przyciski w tej samej pigułce za kreską, np. kalendarz: ikona, podpowiedź, akcja.
   final List<(AppIconData, String, VoidCallback?)> extras;
 
+  /// Na całą dostępną szerokość: napis zajmuje miejsce między strzałkami ([labelWidth] się nie liczy).
+  final bool expand;
+
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
@@ -1138,16 +1156,17 @@ class StepSwitcher extends StatelessWidget {
         style: text.titleSmall?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
       ),
     );
-    if (labelWidth != null) caption = SizedBox(width: labelWidth, child: caption);
+    if (labelWidth != null && !expand) caption = SizedBox(width: labelWidth, child: caption);
     if (onReset != null) {
       caption = Tooltip(
         message: resetTooltip ?? '',
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
-          child: GestureDetector(onTap: onReset, child: caption),
+          child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: onReset, child: caption),
         ),
       );
     }
+    if (expand) caption = Expanded(child: caption);
     return Container(
       height: 40,
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1157,7 +1176,7 @@ class StepSwitcher extends StatelessWidget {
         border: Border.all(color: AppColors.ring),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
         children: [
           _StepArrow(icon: AppIcons.caretLeft, tooltip: previousTooltip, onTap: onPrevious),
           caption,
