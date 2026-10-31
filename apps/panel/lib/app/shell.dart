@@ -54,6 +54,10 @@ class PanelShell extends ConsumerWidget {
           }
         }
       });
+      // Analiza oszustw w tle: ocena nowych zamówień z aplikacji i sprawdzenie IP bez otwierania Dostaw.
+      if (allowed(PanelRoutes.deliveries)) {
+        ref.listen(orderRisksProvider((restaurantId: current.id, days: 2)), (_, _) {});
+      }
       // Nowe danie gotowe z kuchni: kropka na „Kompletowanie”.
       if (allowed(PanelRoutes.serving)) {
         ref.listen(servingTicketsProvider(current.id), (previous, next) {

@@ -363,34 +363,38 @@ class _PulseState extends State<_Pulse> with SingleTickerProviderStateMixin {
     final still = MediaQuery.disableAnimationsOf(context);
     if (still && _controller.isAnimating) _controller.stop();
     if (!still && !_controller.isAnimating) _controller.repeat();
-    return SizedBox(
-      width: 64,
-      height: 64,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          final t = still ? 0.0 : Curves.easeOut.transform(_controller.value);
-          return Stack(
+    // Pulsowanie przemalowuje tylko siebie (RepaintBoundary), a ikona nie buduje się od nowa co klatkę.
+    return RepaintBoundary(
+      child: SizedBox(
+        width: 64,
+        height: 64,
+        child: AnimatedBuilder(
+          animation: _controller,
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.accent.withValues(alpha: 0.16)),
             alignment: Alignment.center,
-            children: [
-              Container(
-                width: 24 + 40 * t,
-                height: 24 + 40 * t,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.accent.withValues(alpha: 0.28 * (1 - t)),
+            child: Glyph(AppIcons.moped.duotone, size: 24, color: AppColors.accent),
+          ),
+          builder: (context, icon) {
+            final t = still ? 0.0 : Curves.easeOut.transform(_controller.value);
+            return Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 24 + 40 * t,
+                  height: 24 + 40 * t,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.accent.withValues(alpha: 0.28 * (1 - t)),
+                  ),
                 ),
-              ),
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.accent.withValues(alpha: 0.16)),
-                alignment: Alignment.center,
-                child: Glyph(AppIcons.moped.duotone, size: 24, color: AppColors.accent),
-              ),
-            ],
-          );
-        },
+                ?icon,
+              ],
+            );
+          },
+        ),
       ),
     );
   }

@@ -771,12 +771,15 @@ class RestaurantLogo extends StatelessWidget {
     final url = logoUrl;
     final fallback = RestaurantMark(name: name, size: size, radius: radius);
     if (url == null) return fallback;
+    // Logo dekodowane w rozmiarze kafelka, a nie w pełnej rozdzielczości pliku (mniej pamięci i pracy na liście).
+    final px = (size * MediaQuery.devicePixelRatioOf(context)).round();
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius ?? size / 4),
       child: Image.network(
         url,
         width: size,
         height: size,
+        cacheWidth: px,
         fit: BoxFit.cover,
         errorBuilder: (_, _, _) => fallback,
       ),

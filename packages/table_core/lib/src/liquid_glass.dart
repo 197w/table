@@ -1,9 +1,9 @@
 import 'dart:io' show Platform;
+import 'dart:ui' show ImageFilter;
 
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart'
     show
         AdaptiveButton,
-        AdaptiveButtonSize,
         AdaptiveButtonStyle,
         AdaptiveNavigationDestination,
         IOS26NativeTabBar,
@@ -12,11 +12,20 @@ import 'package:adaptive_platform_ui/adaptive_platform_ui.dart'
 import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'app_icons.dart';
 import 'theme.dart';
+import 'widgets.dart';
 
 // Liquid Glass w Table i Table for employees (10.2026). Prawdziwy, systemowy Liquid Glass jest tylko na iOS 26
 // i nowszym (natywne kontrolki UIKit z adaptive_platform_ui). Starszy iOS i Android zostają przy przyciskach
 // rysowanych przez Fluttera (Material), które każde miejsce podaje jako `fallback`.
+//
+// Wydajność (31.10.2026): każda klatka z natywnym widokiem na ekranie czeka na wątek główny iOS, a każdy napis
+// Fluttera na natywnym szkle to osobna warstwa wielkości ekranu rysowana w każdej klatce. Kilkanaście pigułek
+// i serc w przewijanej liście Odkrywaj zacinało obie aplikacje. Dlatego natywne zostały tylko kontrolki, które
+// stoją w miejscu i nie mają nic z Fluttera na sobie: dolne menu, „Wstecz” i „Zamknij”, przyciski w pasku strony
+// lokalu. Pigułki, serca na kartach i przełączniki to szkło rysowane przez Fluttera ([GlassSurface]) w tym
+// samym stylu, tylko na iOS 26.
 
 /// Natywny Liquid Glass: iOS 26 i nowszy.
 bool get nativeLiquidGlass => !kIsWeb && Platform.isIOS && PlatformInfo.isIOS26OrHigher();
@@ -50,8 +59,143 @@ class NativeGlassTabBar extends StatelessWidget {
   }
 }
 
-/// Okrągły przycisk z symbolem SF: na iOS 26 natywny Liquid Glass (wybrany: wypełniony kolorem akcentu),
-/// gdzie indziej [fallback] (przycisk rysowany przez Fluttera).
+/// Szkło rysowane przez Fluttera w stylu Liquid Glass: półprzezroczysta warstwa jaśniejsza u góry, jasna krawędź
+/// łapiąca światło z lewego górnego rogu i miękki cień. Bez natywnego widoku i bez rozmycia (pigułki leżą zwykle
+/// na jednolitym tle), więc kosztuje tyle co zwykły przycisk. [selected]: wypełnienie w kolorze akcentu.
+/// [blur]: rozmycie tego, co pod spodem, dla szkła pływającego nad przewijaną treścią (np. przyciski na dole
+/// strony lokalu), żeby napis był czytelny.
+class GlassSurface extends StatelessWidget {
+  const GlassSurface({
+    super.key,
+    required this.child,
+    this.circle = false,
+    this.selected = false,
+    this.tint,
+    this.blur = false,
+    bool? frosted,
+  }) : frosted = frosted ?? blur;
+
+  final Widget child;
+
+  /// Koło zamiast pigułki.
+  final bool circle;
+  final bool selected;
+
+  /// Kolor wybranego szkła. Domyślnie akcent.
+  final Color? tint;
+  final bool blur;
+
+  /// Gęstsze szkło (czytelne na zdjęciu albo tekście). Domyślnie razem z [blur]; bez rozmycia np. serce na
+  /// zdjęciu karty w przewijanej liście.
+  final bool frosted;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = AppColors.palette.brightness == Brightness.dark;
+    final glass = CustomPaint(
+      painter: _GlassPainter(
+        circle: circle,
+        dark: dark,
+        tint: selected ? (tint ?? AppColors.accentFill) : null,
+        frosted: frosted,
+      ),
+      child: child,
+    );
+    if (!blur) return glass;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14), child: glass),
+    );
+  }
+}
+
+class _GlassPainter extends CustomPainter {
+  _GlassPainter({required this.circle, required this.dark, required this.frosted, this.tint});
+
+  final bool circle;
+  final bool dark;
+  final Color? tint;
+
+  /// Nad rozmytą treścią: w ciemnym motywie gęstsze szkło, żeby napis był czytelny.
+  final bool frosted;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final shape = circle
+        ? RRect.fromRectAndRadius(rect, Radius.circular(size.shortestSide / 2))
+        : RRect.fromRectAndRadius(rect, Radius.circular(size.height / 2));
+    final path = Path()..addRRect(shape);
+    const white = Color(0xFFFFFFFF);
+
+    // Cień pod szkłem (przy rozmyciu i tak przycięty).
+    canvas.drawShadow(path.shift(const Offset(0, 1)), const Color(0xFF000000), dark ? 4 : 3, false);
+
+    // Wypełnienie: jaśniejsze u góry, jak światło wpadające przez szkło.
+    final t = tint;
+    final fill = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: t != null
+            ? [Color.alphaBlend(white.withValues(alpha: 0.22), t), t]
+            : dark
+            ? frosted
+                  ? [const Color(0xCC3A3A3C), const Color(0xB82C2C2E)]
+                  : [white.withValues(alpha: 0.16), white.withValues(alpha: 0.08)]
+            : [white.withValues(alpha: frosted ? 0.86 : 0.94), white.withValues(alpha: frosted ? 0.7 : 0.78)],
+      ).createShader(rect);
+    canvas.drawRRect(shape, fill);
+
+    // Odblask w górnej połowie.
+    canvas.save();
+    canvas.clipRRect(shape);
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, size.height * 0.5),
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [white.withValues(alpha: dark || t != null ? 0.10 : 0.35), white.withValues(alpha: 0)],
+        ).createShader(Rect.fromLTWH(0, 0, size.width, size.height * 0.5)),
+    );
+    canvas.restore();
+
+    // Krawędź: jasna z lewej u góry i prawej u dołu, prawie niewidoczna pośrodku.
+    final rim = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          white.withValues(alpha: dark ? 0.42 : 1),
+          white.withValues(alpha: dark ? 0.06 : 0.35),
+          white.withValues(alpha: dark ? 0.24 : 0.85),
+        ],
+        stops: const [0, 0.5, 1],
+      ).createShader(rect);
+    canvas.drawRRect(shape.deflate(0.5), rim);
+
+    // W jasnym motywie cienki obrys, żeby białe szkło nie znikało na jasnym tle.
+    if (!dark && t == null) {
+      canvas.drawRRect(
+        shape,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.6
+          ..color = const Color(0x14000000),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_GlassPainter old) =>
+      old.circle != circle || old.dark != dark || old.tint != tint || old.frosted != frosted;
+}
+
+/// Okrągły przycisk na szkle. [native] (tylko w miejscach, które stoją w miejscu, np. „Wstecz” w pasku): natywny
+/// Liquid Glass z symbolem SF; inaczej szkło rysowane przez Fluttera z ikoną [icon]. Poza iOS 26 [fallback].
 class GlassIconButton extends StatelessWidget {
   const GlassIconButton({
     super.key,
@@ -59,17 +203,28 @@ class GlassIconButton extends StatelessWidget {
     required this.label,
     required this.onTap,
     required this.fallback,
+    this.icon,
+    this.native = false,
     this.color,
     this.selected = false,
     this.size = 44,
+    this.iconScale = 1,
+    this.frosted = false,
   });
 
+  /// Symbol SF dla natywnego przycisku.
   final String symbol;
+
+  /// Ikona dla szkła rysowanego przez Fluttera. Null: [fallback].
+  final AppIconData? icon;
   final String label;
   final VoidCallback onTap;
   final Widget fallback;
 
-  /// Kolor symbolu (np. czerwone serce). Null: kolor systemowy.
+  /// Natywny przycisk UIKit. Tylko tam, gdzie nie przewija się z treścią i nic go nie przykrywa.
+  final bool native;
+
+  /// Kolor symbolu (np. czerwone serce). Null: kolor tekstu.
   final Color? color;
 
   /// Wybrana opcja przełącznika: szkło w kolorze akcentu.
@@ -78,10 +233,49 @@ class GlassIconButton extends StatelessWidget {
   /// Średnica szkła. Pole dotyku zawsze co najmniej 48.
   final double size;
 
+  /// Powiększenie ikony (np. „podskoczenie” serca przy polubieniu).
+  final double iconScale;
+
+  /// Gęstsze szkło na zdjęciu ([GlassSurface.frosted]).
+  final bool frosted;
+
   @override
   Widget build(BuildContext context) {
     if (!nativeLiquidGlass) return fallback;
     final tap = size < 48 ? 48.0 : size;
+    final icon = this.icon;
+    if (!native && icon == null) return fallback;
+    final Widget glass = native
+        ? AdaptiveButton.sfSymbol(
+            // Natywny przycisk nie zmienia stylu po utworzeniu, więc zmiana wyglądu to nowy przycisk.
+            key: ValueKey('$symbol-${color?.toARGB32()}-$selected'),
+            onPressed: onTap,
+            sfSymbol: SFSymbol(symbol, size: size * 0.43, color: selected ? AppColors.onAccent : color),
+            style: selected ? AdaptiveButtonStyle.prominentGlass : AdaptiveButtonStyle.glass,
+            color: selected ? AppColors.accentFill : null,
+            useSmoothRectangleBorder: false,
+            borderRadius: BorderRadius.circular(size / 2),
+          )
+        : PressScale(
+            onTap: onTap,
+            child: GlassSurface(
+              circle: true,
+              selected: selected,
+              frosted: frosted,
+              child: Center(
+                child: AnimatedScale(
+                  scale: iconScale,
+                  duration: const Duration(milliseconds: 160),
+                  curve: Curves.easeOut,
+                  child: Glyph(
+                    icon!,
+                    size: size * 0.45,
+                    color: selected ? AppColors.onAccent : (color ?? AppColors.text),
+                  ),
+                ),
+              ),
+            ),
+          );
     return Semantics(
       button: true,
       selected: selected,
@@ -90,30 +284,15 @@ class GlassIconButton extends StatelessWidget {
       child: SizedBox(
         width: tap,
         height: tap,
-        child: Center(
-          child: SizedBox(
-            width: size,
-            height: size,
-            child: AdaptiveButton.sfSymbol(
-              // Natywny przycisk nie zmienia stylu po utworzeniu, więc zmiana wyglądu to nowy przycisk.
-              key: ValueKey('$symbol-${color?.toARGB32()}-$selected'),
-              onPressed: onTap,
-              sfSymbol: SFSymbol(symbol, size: size * 0.43, color: selected ? AppColors.onAccent : color),
-              style: selected ? AdaptiveButtonStyle.prominentGlass : AdaptiveButtonStyle.glass,
-              color: selected ? AppColors.accentFill : null,
-              useSmoothRectangleBorder: false,
-              borderRadius: BorderRadius.circular(size / 2),
-            ),
-          ),
-        ),
+        child: Center(child: SizedBox(width: size, height: size, child: glass)),
       ),
     );
   }
 }
 
-/// Pigułka z treścią Fluttera (ikona i napis) na natywnym szkle: filtry, przełączniki i przyciski akcji.
-/// [selected] albo [prominent]: szkło w kolorze akcentu (treść w kolorze [AppColors.onAccent] podaje wywołujący).
-/// Gdzie indziej [fallback].
+/// Pigułka z treścią (ikona i napis) na szkle rysowanym przez Fluttera: filtry, przełączniki i przyciski akcji.
+/// [selected]: szkło w kolorze akcentu (treść w kolorze [AppColors.onAccent] podaje wywołujący).
+/// Poza iOS 26 [fallback].
 class GlassPill extends StatelessWidget {
   const GlassPill({
     super.key,
@@ -125,16 +304,20 @@ class GlassPill extends StatelessWidget {
     this.height = 44,
     this.semanticLabel,
     this.padding = const EdgeInsets.symmetric(horizontal: 16),
+    this.blur = false,
   });
 
   final VoidCallback? onPressed;
 
-  /// Treść pigułki (ikona i napis), rysowana przez Fluttera na szkle.
+  /// Pływa nad przewijaną treścią: rozmycie pod szkłem ([GlassSurface.blur]).
+  final bool blur;
+
+  /// Treść pigułki (ikona i napis).
   final Widget content;
   final Widget fallback;
   final bool selected;
 
-  /// Kolor wypełnienia wybranej pigułki. Domyślnie akcent.
+  /// Kolor wybranej pigułki. Domyślnie akcent.
   final Color? tint;
   final double height;
   final String? semanticLabel;
@@ -143,23 +326,33 @@ class GlassPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!nativeLiquidGlass) return fallback;
-    final button = SizedBox(
-      height: height,
-      child: AdaptiveButton.child(
-        key: ValueKey('glass-$selected-${tint?.toARGB32()}'),
-        onPressed: onPressed,
-        enabled: onPressed != null,
-        style: selected ? AdaptiveButtonStyle.prominentGlass : AdaptiveButtonStyle.glass,
-        color: selected ? (tint ?? AppColors.accentFill) : null,
-        size: height >= 44 ? AdaptiveButtonSize.large : AdaptiveButtonSize.medium,
-        useSmoothRectangleBorder: false,
-        borderRadius: BorderRadius.circular(height / 2),
-        padding: padding,
-        child: content,
+    final pill = PressScale(
+      onTap: onPressed,
+      child: SizedBox(
+        height: height,
+        child: GlassSurface(
+          selected: selected,
+          tint: tint,
+          blur: blur,
+          child: Padding(
+            padding: padding,
+            child: Center(widthFactor: 1, child: content),
+          ),
+        ),
       ),
     );
-    if (semanticLabel == null) return button;
-    return Semantics(button: true, selected: selected, label: semanticLabel, excludeSemantics: true, child: button);
+    return Semantics(
+      button: true,
+      enabled: onPressed != null,
+      selected: selected,
+      label: semanticLabel,
+      excludeSemantics: semanticLabel != null,
+      // Wysokość pigułki zawsze [height], na środku wyższego rzędu (np. 48 dp pola dotyku); szerokość jak u rodzica.
+      child: UnconstrainedBox(
+        constrainedAxis: Axis.horizontal,
+        child: Opacity(opacity: onPressed == null ? 0.5 : 1, child: pill),
+      ),
+    );
   }
 }
 
@@ -174,6 +367,7 @@ Widget? glassLeading(BuildContext context) {
   return GlassIconButton(
     symbol: close ? 'xmark' : 'chevron.left',
     label: close ? 'Zamknij' : 'Wstecz',
+    native: true,
     onTap: () => Navigator.maybePop(context),
     fallback: close ? const CloseButton() : const BackButton(),
   );

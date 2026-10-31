@@ -5,7 +5,7 @@ import 'package:table_core/table_core.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
-import '../fraud/fraud_screen.dart';
+import 'order_risk.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -152,7 +152,7 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
     final settings = ref.watch(profileProvider(rid)).value?.delivery ?? const DeliverySettings();
     final async = ref.watch(takeawayOrdersProvider(rid));
     final couriers = ref.watch(couriersProvider(rid)).value ?? const <Courier>[];
-    // Analiza oszustw: ocena zamówień z aplikacji z ostatnich 2 dni.
+    // Analiza oszustw w tle: ocena zamówień z aplikacji z ostatnich 2 dni.
     final risks = {
       for (final r in ref.watch(orderRisksProvider((restaurantId: rid, days: 2))).value ?? const <OrderRisk>[])
         r.orderId: r,
@@ -378,7 +378,7 @@ class _OrderCardState extends State<_OrderCard> {
                   const SizedBox(width: 6),
                   const Tag('NA GODZINĘ', color: _plannedColor),
                 ],
-                if (widget.risk case final risk? when risk.level != RiskLevel.low) ...[
+                if (widget.risk case final risk?) ...[
                   const SizedBox(width: 6),
                   RiskChip(risk: risk),
                 ],

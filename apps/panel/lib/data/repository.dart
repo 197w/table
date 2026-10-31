@@ -822,14 +822,18 @@ class PanelRepository {
     });
   }
 
-  /// Stan lokalu w chwili [at] (Time Machine).
-  Future<TimeMachine> timeMachine(String restaurantId, DateTime at) {
+  /// Wszystko do Time Machine z przedziału [from]–[to] (zwykle doby), stan w chwili liczy panel.
+  Future<TimeMachineDay> timeMachineDay(String restaurantId, DateTime from, DateTime to) {
     return _guard(() async {
       final json = await _db.rpc<Map<String, dynamic>>(
-        'panel_time_machine',
-        params: {'p_restaurant_id': restaurantId, 'p_at': at.toUtc().toIso8601String()},
+        'panel_time_machine_day',
+        params: {
+          'p_restaurant_id': restaurantId,
+          'p_from': from.toUtc().toIso8601String(),
+          'p_to': to.toUtc().toIso8601String(),
+        },
       );
-      return TimeMachine.fromJson(json);
+      return TimeMachineDay.fromJson(json);
     });
   }
 

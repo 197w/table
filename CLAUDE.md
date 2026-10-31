@@ -32,6 +32,11 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   „Ogranicz ruch”. Grafik: pigułka okresu (stuknięcie w napis wraca do teraz), dni z kafelkiem i chipem stanu
   (`_dayStatus`), bez przygaszania przezroczystością, uwaga na tydzień pod nazwą tygodnia, „Moje godziny” na karcie.
   Ustawienia jak u gościa. Podgląd ekranów: test golden poza repozytorium, jak przy panelu.
+  „Zakończ zmianę” (31.10.2026, wzór od użytkownika: okno wyboru sposobu zamówienia z aplikacji McDonald's) otwiera
+  okno od dołu (`showOptionSheet` w `table_core/src/option_sheet.dart`: karta z zaokrągleniem odsunięta od krawędzi,
+  okrągłe „Zamknij” w lewym górnym rogu, duży tytuł, opcje jako wiersze z ikoną i strzałką): „Zakończ w aplikacji”
+  albo „Zeskanuj kod z panelu”; potem „Zmiana zakończona” z godzinami w tym samym oknie (`showMessageSheet`, też
+  po zeskanowaniu kodu startu albo końca zmiany).
   Informacje od kierownika (0062, `announcements_screen.dart`): karta na „Zeskanuj” (nowe wyróżnione, najnowsza),
   lista z ostatnich 60 dni ze wszystkich lokali pracownika (`staff_announcements`, `announcementsProvider` co 2 min)
   i cała informacja; otwarcie oznacza ją jako przeczytaną (`staff_read_announcement`). Dyspozycyjność może trwać przez
@@ -103,7 +108,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
   Map i śledzenia dostawców nie ma od 0068 (usunięte na prośbę użytkownika, także mapa u gościa).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0072, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0073, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -190,12 +195,19 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   do 820 punktów na środku (`TabletWidth` w `app/tablet_width.dart`, owija trasy w `app.dart`).
   Dolne menu Table: Odkrywaj, Rezerwacje („Moje”: rezerwacje i zamówienia), Konto (dawniej Ustawienia; pod kafelkiem
   konta Polubione i Kody).
-  Liquid Glass (wspólny moduł `table_core/src/liquid_glass.dart`, eksportowany z `table_core`): na iOS 26 i nowszym
-  dolne menu to natywny UITabBar (`NativeGlassTabBar`), „Wstecz” i „Zamknij” w każdym pasku u góry to przyciski szkła
-  (`AppBar(leading: glassLeading(context))`; poza iOS 26 null, czyli zwykły przycisk), a na szkle są też: filtry
-  w Odkrywaj (`GlassPill`, `DropdownPill` sam przechodzi na szkło), przełącznik kart i listy (`GlassIconButton`
-  z `selected`), serca na kartach i na stronie lokalu, „Zarezerwuj stolik”, „Zadzwoń, żeby zarezerwować” i „Zamów”
-  (bez paska pod spodem), u kelnera filtry działów menu. Wybrane: `prominentGlass` w kolorze akcentu z treścią
+  Liquid Glass (wspólny moduł `table_core/src/liquid_glass.dart`, eksportowany z `table_core`), tylko iOS 26 i nowszy.
+  Natywne kontrolki UIKit tylko tam, gdzie stoją w miejscu i nic z Fluttera ich nie przykrywa: dolne menu
+  (`NativeGlassTabBar`, natywny UITabBar), „Wstecz” i „Zamknij” w każdym pasku u góry
+  (`AppBar(leading: glassLeading(context))`; poza iOS 26 null, czyli zwykły przycisk), „Wróć” i serce w pasku strony
+  lokalu, „Zamknij” w oknie od dołu (`GlassIconButton(native: true)`). Reszta to szkło rysowane przez Fluttera
+  w tym samym stylu (`GlassSurface`: półprzezroczysta warstwa, jasna krawędź, cień; `frosted` gęstsze na zdjęciu,
+  `blur` z rozmyciem nad przewijaną treścią): filtry w Odkrywaj (`GlassPill`, `DropdownPill` sam przechodzi na
+  szkło), przełącznik kart i listy (`GlassIconButton` z `icon` i `selected`), serca na kartach
+  (`LikeButton(glass: true)`), „Zarezerwuj stolik”, „Zadzwoń, żeby zarezerwować” i „Zamów” (z rozmyciem, bez paska
+  pod spodem), u kelnera filtry działów menu. Powód (31.10.2026, „aplikacje są zlagowane”): we Flutterze 3.47 na iOS
+  każda klatka z natywnym widokiem czeka na wątek główny, a każdy napis Fluttera na natywnym szkle to osobna warstwa
+  wielkości ekranu rysowana w każdej klatce; kilkanaście pigułek i serc w przewijanej liście zacinało obie aplikacje.
+  Nie dodawać natywnych kontrolek w listach ani pod treścią Fluttera. Wybrane: kolor akcentu z treścią
   `AppColors.onAccent`. Natywny przycisk nie zmienia stylu po utworzeniu, więc klucz zawiera stan. Natywny pasek
   chowa się, gdy nad zakładką jest inny ekran. Android zostaje przy Material. Dolne menu nie ma podpowiedzi po przytrzymaniu (`NavigationDestination(tooltip: '')`); podpowiedzi są
   tylko w lewym pasku panelu. Sprawdzić da się tylko na iPhonie z iOS 26 (Xcode 26).
@@ -224,7 +236,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Baza klientów (Klienci `/klienci`, Opinie),
   Management (Podsumowanie dnia `/podsumowanie`, Niezamknięte zamówienia `/niezamkniete`, Godziny pracy `/godziny`,
   Menu, Inwentaryzacja, Statystyki,
-  Kody rabatowe `/rabaty`, Eksport `/eksport`, Analiza oszustw `/oszustwa`, Logi `/logi`);
+  Kody rabatowe `/rabaty`, Eksport `/eksport`);
   Kropki nowości (`tabNewsProvider`, `TabNews`, `_NewsDot`): nowa rezerwacja z aplikacji, nowe zamówienie na dostawę
   albo odbiór, nowe danie do wydania; kropka na zakładce i jej grupie znika po wejściu do zakładki.
   „Table” na środku; po prawej nowa wersja, odliczanie do wylogowania, motyw (systemowy: ikona monitora `AppIcons.monitor`),
@@ -232,7 +244,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   kod pracownika, „Zakończ zmianę”, „Wejdź na zmianę”, e-mail i wersja, wylogowanie konta restauracji).
   Kropka na „Informacje dla pracowników”, dopóki zalogowany pracownik ma nieprzeczytane informacje.
   Wąski pasek boczny: zakładki wybranej grupy (same ikony bez ramek, 30 px, nazwy w podpowiedziach po prawej, `tooltipOnRight`), na dole Ustawienia lokalu
-  (`/ustawienia`), Dane lokalu i Edycja sali. Grupa i zakładki według uprawnień zalogowanego pracownika;
+  (`/ustawienia`), pod nimi Logi (`/logi`, od 31.10.2026), Dane lokalu i Edycja sali (`placeTabs`). Grupa i zakładki według uprawnień zalogowanego pracownika;
   ostatnia grupa zostaje wybrana na stronach lokalu (`panelSectionProvider`). Bez hamburgera i bez paska nad zakładką.
 - Ustawienia lokalu: rezerwacje w aplikacji (co ile minut, największa grupa), zadatek przy rezerwacji, grafik pracowników,
   okres inwentaryzacji, dostawa i odbiór, platformy dostaw (0067). Karta „Ten komputer” (preferencje tego komputera):
@@ -286,8 +298,10 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `panel_save_announcement`, `panel_delete_announcement`, `panel_read_announcement`, `staff_announcements`,
   `staff_read_announcement`; odbiorcy liczone w `private.announcement_for`.
   Nowe uprawnienia `revenue`, `day_close`, `discounts`, `export` dostały w 0048 stanowiska z `staff` albo `stats`.
-- Analiza oszustw (0070, Management → `/oszustwa`, uprawnienie `fraud`, w 0070 dostały je stanowiska z `day_close`
-  albo `staff`; `features/fraud/fraud_screen.dart`): każde zamówienie gościa z aplikacji (dostawa, odbiór) dostaje
+- Analiza oszustw (0070) działa w tle, bez zakładki (zakładkę „Analiza oszustw” `/oszustwa` usunęliśmy 31.10.2026
+  na prośbę użytkownika; uprawnienie `fraud` zostało w bazie, w oknie stanowiska go nie ma). Ryzyko widać przy
+  zamówieniu w Dostawach i Odbiorze (`features/deliveries/order_risk.dart`). Każde zamówienie gościa z aplikacji
+  (dostawa, odbiór) dostaje
   ocenę 0–100 w `order_risks` (RLS bez zasad, tylko funkcje; trigger `orders_risk` na końcu transakcji zapisuje IP
   z nagłówków `private.request_ip` i liczy `private.fraud_assess`). Sygnały z punktami: ten sam gość (konto albo
   numer) w całym Table z kilkoma zamówieniami po co najmniej 5 sztuk jednego dania, dużo zamówień w 24 h, duża
@@ -296,21 +310,31 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   odległość od lokalu). Średnie ryzyko od 25, wysokie od 50. IP sprawdza funkcja Edge `fraud-ip`
   (`supabase/functions/fraud-ip`, token użytkownika, `panel_fraud_ip_input`, `panel_fraud_apply_ip`; sekret
   `IPINFO_TOKEN` wpisuje użytkownik), wywoływana przez panel raz na sesję dla niesprawdzonych zamówień
-  (`orderRisksProvider`; bez tokenu ekran pokazuje uwagę). Dostawy i Odbiór: znaczek „Ryzyko N” na karcie
-  (`RiskChip`, okno `showRiskDialog`). AVS i CVV dojdą z operatorem płatności. Limity zamówień z aplikacji:
+  (`orderRisksProvider`, który panel trzyma włączony na każdej zakładce w `shell.dart`, odświeża się przy nowym
+  zamówieniu na wynos). Dostawy i Odbiór: znaczek „Ryzyko N” na karcie każdego zamówienia z aplikacji, także
+  niskie (`RiskChip`, okno `showRiskDialog` z sygnałami i IP). AVS i CVV dojdą z operatorem płatności. Limity zamówień z aplikacji:
   „Ustawienia lokalu” → „Dostawa i odbiór” (`restaurants.takeaway_max_items`, `takeaway_max_per_item`; trigger
   `order_items_takeaway_limits` tylko dla pozycji dodanych przez gościa), w Table koszyk blokuje „+” i pokazuje
   przekroczenie (`RestaurantDetail.cartLimitProblem`, `canAddMore`).
-- Logi i Time Machine (0072, Management → `/logi`, uprawnienie `activity`, w 0072 dostały je stanowiska z `day_close`
-  albo `staff`; `features/activity/activity_screen.dart`), w stylu UniFi Protect: po lewej pionowa oś doby z kropkami
-  zdarzeń w pasach grup (zmiany, rachunki, kuchnia, na wynos, rezerwacje, magazyn) i kreską wybranej chwili
-  (kliknięcie albo przeciągnięcie), w środku stan lokalu w tej chwili (liczby, sala z rachunkami i rezerwacjami na
-  `FloorCanvas`, rachunki z pozycjami i ich stanem z tamtej chwili, na wynos, na zmianie), po prawej zdarzenia do tej
-  chwili (kliknięcie przenosi do chwili zdarzenia). „Na żywo” trzyma chwilę na teraz (co 30 s, odświeżanie
-  z zamówieniami), „Historia” ma dzień (`StepSwitcher`). Nic nowego się nie zapisuje: `panel_activity` składa
+- Logi i Time Machine (0072, pasek boczny pod „Ustawienia lokalu” → `/logi`, uprawnienie `activity` w grupie Lokal,
+  w 0072 dostały je stanowiska z `day_close` albo `staff`; `features/activity/activity_screen.dart`). Wygląd
+  i działanie jak Time Machine w UniFi z filmu w Todoist (od 31.10.2026): po lewej oś czasu, która przesuwa się pod
+  stałą kreską z godziną i sekundami u góry (wcześniejsze chwile niżej; przeciąganie z bezwładnością, kółko myszy,
+  Ctrl + kółko albo suwak −/+ zmienia skalę, kliknięcie wybiera chwilę), na osi ikony zdarzeń w kolorach grup
+  (bliskie razem z liczbą, podpowiedź z listą, kliknięcie przenosi do zdarzenia). Po prawej na samej górze plan sali
+  w tej chwili (`FloorCanvas`: rachunek z kwotą, rezerwacja; podsumowanie sali w rogu), pod nim legenda (stan stolika
+  i stan pozycji), a pod nią tabela jak porty w UniFi: zakładki Stoliki (wszystkie stoliki: kwadracik z numerem
+  w kolorze stanu, strefa, stan, od, goście, kelner, pasek pozycji w kolorach stanu, kwota, wpłacone; kliknięcie
+  rozwija pozycje i zaznacza stolik na planie), Na wynos, Na zmianie i Zdarzenia (do tej chwili). Kafli z liczbami
+  już nie ma. Time Machine bez czekania (0073): `panel_time_machine_day` zwraca raz całą dobę z chwilami (rachunki
+  z pozycjami i płatnościami, rezerwacje, na wynos z etapami, zmiany), stan w chwili liczy panel
+  (`TimeMachineDay.at`, `timeMachineDayProvider`), więc przewijanie osi zmienia plan i tabelę od razu.
+  „Na żywo” trzyma chwilę na teraz (co sekundę; dziś dane odświeżają się z zamówieniami), „Historia” ma dzień
+  (`StepSwitcher`). Nic nowego się nie zapisuje: `panel_activity` składa
   zdarzenia z chwil przy zamówieniach, pozycjach (dodane, na kuchnię, gotowe, wydane, anulowane; to samo danie
   łączy `private.merge_item_names`), płatnościach, dostawach, rezerwacjach, zmianach i inwentaryzacji, a
-  `panel_time_machine` odtwarza rachunki, rezerwacje (`table_holds`), zamówienia na wynos i zmianę w chwili.
+  `panel_time_machine_day` daje chwile do odtworzenia rachunków, rezerwacji (`table_holds`), zamówień na wynos
+  i zmian (stare `panel_time_machine` dla jednej chwili zostało dla starszych wersji panelu).
   Doszła tylko chwila anulowania pozycji (`order_items.cancelled_at`, trigger). Model zdarzenia z polskimi tytułami
   jest w `table_core` (`ActivityEvent`). Logów nie ma w aplikacji mobilnej (usunięte na prośbę użytkownika);
   `panel_activity(p_member_id)` zostało w bazie.

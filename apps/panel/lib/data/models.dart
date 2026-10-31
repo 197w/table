@@ -1128,6 +1128,7 @@ enum StaffPermission {
   menu('menu', 'Menu', 'Podgląd menu lokalu', 'Lokal'),
   menuEdit('menu_edit', 'Edycja menu', 'Dodawanie i zmiana dań, cen, sekcji i zdjęć', 'Lokal'),
   menuAvailability('menu_availability', 'Dostępność dań', 'Oznaczanie „Skończyło się” i „Znowu dostępne”', 'Lokal'),
+  activity('activity', 'Logi i Time Machine', 'Zdarzenia dnia i stan sali w wybranej chwili', 'Lokal'),
   inventoryEdit('inventory_edit', 'Edytowanie składników', 'Dodawanie, zmiana i usuwanie składników', 'Inwentaryzacja'),
   inventoryCount('inventory_count', 'Wpisywanie ilości składników', 'Spis ilości składników w inwentaryzacji', 'Inwentaryzacja'),
   customers('customers', 'Baza klientów', 'Goście lokalu: wizyty, wydatki, nieobecności', 'Wyniki'),
@@ -1136,9 +1137,7 @@ enum StaffPermission {
   revenue('revenue', 'Przychody', 'Obrót i średni rachunek w historii zamówień', 'Management'),
   dayClose('day_close', 'Podsumowanie dnia', 'Raporty z kasy i terminali, petty cash', 'Management'),
   discounts('discounts', 'Kody rabatowe', 'Tworzenie i wyłączanie kodów rabatowych', 'Management'),
-  export('export', 'Eksport', 'Pliki dla księgowej: sprzedaż, VAT i czas pracy', 'Management'),
-  fraud('fraud', 'Analiza oszustw', 'Ocena ryzyka zamówień z aplikacji Table', 'Management'),
-  activity('activity', 'Logi i Time Machine', 'Zdarzenia dnia i stan sali w wybranej chwili', 'Management');
+  export('export', 'Eksport', 'Pliki dla księgowej: sprzedaż, VAT i czas pracy', 'Management');
 
   const StaffPermission(this.key, this.label, this.description, this.group);
 
@@ -4259,11 +4258,23 @@ class TmReservation {
 }
 
 class TmTakeaway {
-  const TmTakeaway({required this.orderId, required this.label, required this.stage, required this.total, this.customer});
+  const TmTakeaway({
+    required this.orderId,
+    required this.label,
+    required this.stage,
+    required this.total,
+    this.customer,
+    this.kind,
+    this.openedAt,
+  });
 
   final String orderId;
   final String label;
   final String? customer;
+
+  /// delivery albo pickup (null w starym `panel_time_machine`).
+  final String? kind;
+  final DateTime? openedAt;
 
   /// placed, accepted, ready, on_the_way.
   final String stage;
@@ -4318,6 +4329,288 @@ class TimeMachine {
     staff: [
       for (final s in json['staff'] as List? ?? const [])
         ('${(s as Map)['name']}', _toDate(s['since'])),
+    ],
+  );
+}
+
+/// Chwila z JSON-a albo null.
+DateTime? _tmDate(Object? value) => value == null ? null : _toDate(value);
+
+/// Czy chwila [t] już nastąpiła w [at] (null: jeszcze nie).
+bool _done(DateTime? t, DateTime at) => t != null && !t.isAfter(at);
+
+/// Pozycja rachunku z chwilami etapów (Time Machine bez czekania, 0073).
+class TmItemTrack {
+  const TmItemTrack({
+    required this.name,
+    required this.quantity,
+    required this.price,
+    required this.createdAt,
+    this.variant,
+    this.sentAt,
+    this.readyAt,
+    this.servedAt,
+    this.cancelledAt,
+    this.cancelledEarlier = false,
+  });
+
+  final String name;
+  final String? variant;
+  final int quantity;
+  final int price;
+  final DateTime createdAt;
+  final DateTime? sentAt;
+  final DateTime? readyAt;
+  final DateTime? servedAt;
+  final DateTime? cancelledAt;
+
+  /// Anulowana przed 0072 (bez chwili anulowania): anulowana od początku.
+  final bool cancelledEarlier;
+
+  String statusAt(DateTime at) {
+    if (cancelledEarlier || _done(cancelledAt, at)) return 'cancelled';
+    if (_done(servedAt, at)) return 'served';
+    if (_done(readyAt, at)) return 'ready';
+    if (_done(sentAt, at)) return 'sent';
+    return 'new';
+  }
+
+  factory TmItemTrack.fromJson(Map<String, dynamic> json) => TmItemTrack(
+    name: '${json['name']}',
+    variant: json['variant'] as String?,
+    quantity: _toInt(json['quantity']),
+    price: _toInt(json['price']),
+    createdAt: _toDate(json['created_at']),
+    sentAt: _tmDate(json['sent_at']),
+    readyAt: _tmDate(json['ready_at']),
+    servedAt: _tmDate(json['served_at']),
+    cancelledAt: _tmDate(json['cancelled_at']),
+    cancelledEarlier: json['cancelled'] == true,
+  );
+}
+
+class TmBillTrack {
+  const TmBillTrack({
+    required this.orderId,
+    required this.label,
+    required this.openedAt,
+    this.closedAt,
+    this.tableId,
+    this.openedBy,
+    this.guests,
+    this.payments = const [],
+    this.items = const [],
+  });
+
+  final String orderId;
+  final String? tableId;
+  final String label;
+  final DateTime openedAt;
+  final DateTime? closedAt;
+  final String? openedBy;
+  final int? guests;
+
+  /// Chwila i kwota każdej płatności.
+  final List<(DateTime, int)> payments;
+  final List<TmItemTrack> items;
+
+  bool openAt(DateTime at) => !openedAt.isAfter(at) && (closedAt == null || closedAt!.isAfter(at));
+
+  TmBill at(DateTime at) => TmBill(
+    orderId: orderId,
+    tableId: tableId,
+    label: label,
+    openedAt: openedAt,
+    openedBy: openedBy,
+    guests: guests,
+    paid: payments.where((p) => !p.$1.isAfter(at)).fold(0, (s, p) => s + p.$2),
+    items: [
+      for (final i in items)
+        if (!i.createdAt.isAfter(at))
+          TmItem(name: i.name, variant: i.variant, quantity: i.quantity, price: i.price, status: i.statusAt(at)),
+    ],
+  );
+
+  factory TmBillTrack.fromJson(Map<String, dynamic> json) => TmBillTrack(
+    orderId: json['order_id'] as String,
+    tableId: json['table_id'] as String?,
+    label: '${json['label']}',
+    openedAt: _toDate(json['opened_at']),
+    closedAt: _tmDate(json['closed_at']),
+    openedBy: json['opened_by'] as String?,
+    guests: json['guests'] == null ? null : _toInt(json['guests']),
+    payments: [
+      for (final p in json['payments'] as List? ?? const []) (_toDate((p as Map)['at']), _toInt(p['amount'])),
+    ],
+    items: [for (final i in json['items'] as List? ?? const []) TmItemTrack.fromJson(i as Map<String, dynamic>)],
+  );
+}
+
+class TmReservationTrack {
+  const TmReservationTrack({
+    required this.name,
+    required this.party,
+    required this.startsAt,
+    required this.endsAt,
+    required this.createdAt,
+    required this.tableIds,
+    this.seatedAt,
+  });
+
+  final String name;
+  final int party;
+  final DateTime startsAt;
+  final DateTime endsAt;
+  final DateTime createdAt;
+  final DateTime? seatedAt;
+  final List<String> tableIds;
+
+  bool activeAt(DateTime at) => !startsAt.isAfter(at) && endsAt.isAfter(at) && !createdAt.isAfter(at);
+
+  TmReservation at(DateTime at) => TmReservation(
+    name: name,
+    party: party,
+    startsAt: startsAt,
+    endsAt: endsAt,
+    seated: _done(seatedAt, at),
+    tableIds: tableIds,
+  );
+
+  factory TmReservationTrack.fromJson(Map<String, dynamic> json) => TmReservationTrack(
+    name: '${json['name']}',
+    party: _toInt(json['party']),
+    startsAt: _toDate(json['starts_at']),
+    endsAt: _toDate(json['ends_at']),
+    createdAt: _toDate(json['created_at']),
+    seatedAt: _tmDate(json['seated_at']),
+    tableIds: [for (final t in json['table_ids'] as List? ?? const []) '$t'],
+  );
+}
+
+class TmTakeawayTrack {
+  const TmTakeawayTrack({
+    required this.orderId,
+    required this.label,
+    required this.kind,
+    required this.fulfillment,
+    required this.openedAt,
+    required this.total,
+    this.customer,
+    this.acceptedAt,
+    this.readyAt,
+    this.pickedUpAt,
+    this.deliveredAt,
+    this.closedAt,
+  });
+
+  final String orderId;
+  final String label;
+  final String? customer;
+
+  /// delivery albo pickup.
+  final String kind;
+  final String fulfillment;
+  final DateTime openedAt;
+  final DateTime? acceptedAt;
+  final DateTime? readyAt;
+  final DateTime? pickedUpAt;
+  final DateTime? deliveredAt;
+  final DateTime? closedAt;
+  final int total;
+
+  /// W toku w chwili [at]: złożone, jeszcze nie wydane ani nie dostarczone; odrzucone, anulowane i nieopłacone
+  /// tylko, jeśli wtedy jeszcze trwały (tak samo jak w `panel_time_machine`).
+  bool activeAt(DateTime at) {
+    if (openedAt.isAfter(at)) return false;
+    final end = deliveredAt ?? closedAt;
+    if (end != null && !end.isAfter(at)) return false;
+    const stopped = {'rejected', 'cancelled', 'awaiting_payment'};
+    return !stopped.contains(fulfillment) || (closedAt != null && closedAt!.isAfter(at));
+  }
+
+  TmTakeaway at(DateTime at) => TmTakeaway(
+    orderId: orderId,
+    label: label,
+    customer: customer,
+    stage: _done(deliveredAt, at)
+        ? 'delivered'
+        : _done(pickedUpAt, at)
+        ? 'on_the_way'
+        : _done(readyAt, at)
+        ? 'ready'
+        : _done(acceptedAt, at)
+        ? 'accepted'
+        : 'placed',
+    total: total,
+    kind: kind,
+    openedAt: openedAt,
+  );
+
+  factory TmTakeawayTrack.fromJson(Map<String, dynamic> json) => TmTakeawayTrack(
+    orderId: json['order_id'] as String,
+    label: '${json['label']}',
+    customer: json['customer'] as String?,
+    kind: '${json['kind']}',
+    fulfillment: '${json['fulfillment']}',
+    openedAt: _toDate(json['opened_at']),
+    acceptedAt: _tmDate(json['accepted_at']),
+    readyAt: _tmDate(json['ready_at']),
+    pickedUpAt: _tmDate(json['picked_up_at']),
+    deliveredAt: _tmDate(json['delivered_at']),
+    closedAt: _tmDate(json['closed_at']),
+    total: _toInt(json['total']),
+  );
+}
+
+/// Dane Time Machine z całej doby (`panel_time_machine_day`, 0073): pobierane raz, a stan lokalu w dowolnej chwili
+/// liczy [at] bez pytania bazy, więc przewijanie osi czasu jest natychmiastowe.
+class TimeMachineDay {
+  const TimeMachineDay({
+    this.bills = const [],
+    this.reservations = const [],
+    this.takeaway = const [],
+    this.shifts = const [],
+  });
+
+  final List<TmBillTrack> bills;
+  final List<TmReservationTrack> reservations;
+  final List<TmTakeawayTrack> takeaway;
+
+  /// Imię, początek i koniec zmiany (null: trwa).
+  final List<(String, DateTime, DateTime?)> shifts;
+
+  TimeMachine at(DateTime at) => TimeMachine(
+    at: at,
+    bills: [
+      for (final b in bills)
+        if (b.openAt(at)) b.at(at),
+    ],
+    reservations: [
+      for (final r in reservations)
+        if (r.activeAt(at)) r.at(at),
+    ],
+    takeaway: [
+      for (final t in takeaway)
+        if (t.activeAt(at)) t.at(at),
+    ],
+    staff: [
+      for (final (name, from, to) in shifts)
+        if (!from.isAfter(at) && (to == null || to.isAfter(at))) (name, from),
+    ],
+  );
+
+  factory TimeMachineDay.fromJson(Map<String, dynamic> json) => TimeMachineDay(
+    bills: [for (final b in json['bills'] as List? ?? const []) TmBillTrack.fromJson(b as Map<String, dynamic>)],
+    reservations: [
+      for (final r in json['reservations'] as List? ?? const [])
+        TmReservationTrack.fromJson(r as Map<String, dynamic>),
+    ],
+    takeaway: [
+      for (final t in json['takeaway'] as List? ?? const []) TmTakeawayTrack.fromJson(t as Map<String, dynamic>),
+    ],
+    shifts: [
+      for (final s in json['staff'] as List? ?? const [])
+        ('${(s as Map)['name']}', _toDate(s['started_at']), _tmDate(s['ended_at'])),
     ],
   );
 }

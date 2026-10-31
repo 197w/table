@@ -11,7 +11,6 @@ import '../features/activity/activity_screen.dart';
 import '../features/customers/customers_screen.dart';
 import '../features/deliveries/deliveries_screen.dart';
 import '../features/fleet/fleet_screen.dart';
-import '../features/fraud/fraud_screen.dart';
 import '../features/floor/floor_screen.dart';
 import '../features/inventory/inventory_screen.dart';
 import '../features/kitchen/kitchen_screen.dart';
@@ -197,7 +196,6 @@ GoRouter _buildRouter(
           _page(PanelRoutes.hours, const HoursScreen()),
           _page(PanelRoutes.discounts, const DiscountsScreen()),
           _page(PanelRoutes.export, const ExportScreen()),
-          _page(PanelRoutes.fraud, const FraudScreen()),
           _page(PanelRoutes.activity, const ActivityScreen()),
         ],
       ),
@@ -249,7 +247,6 @@ abstract final class PanelRoutes {
   static const hours = '/godziny';
   static const discounts = '/rabaty';
   static const export = '/eksport';
-  static const fraud = '/oszustwa';
   static const activity = '/logi';
 }
 
@@ -281,7 +278,6 @@ const _routePermissions = {
   PanelRoutes.hours: {'timesheet'},
   PanelRoutes.discounts: {'discounts'},
   PanelRoutes.export: {'export'},
-  PanelRoutes.fraud: {'fraud'},
   PanelRoutes.activity: {'activity'},
 };
 
@@ -311,7 +307,6 @@ const panelTabLabels = {
   PanelRoutes.hours: 'Godziny pracy',
   PanelRoutes.discounts: 'Kody rabatowe',
   PanelRoutes.export: 'Eksport',
-  PanelRoutes.fraud: 'Analiza oszustw',
   PanelRoutes.activity: 'Logi',
 };
 

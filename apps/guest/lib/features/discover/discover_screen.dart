@@ -681,14 +681,15 @@ class _ResultsBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          // iOS 26: dwa przyciski Liquid Glass, wybrany w kolorze akcentu.
+          // iOS 26: dwa przyciski na szkle, wybrany w kolorze akcentu.
           if (nativeLiquidGlass)
-            for (final (value, symbol, label) in const [
-              (DiscoverLayout.cards, 'rectangle.grid.1x2', 'Karty ze zdjęciem'),
-              (DiscoverLayout.list, 'list.bullet', 'Zwarta lista'),
+            for (final (value, symbol, icon, label) in const [
+              (DiscoverLayout.cards, 'rectangle.grid.1x2', AppIcons.cards, 'Karty ze zdjęciem'),
+              (DiscoverLayout.list, 'list.bullet', AppIcons.rows, 'Zwarta lista'),
             ])
               GlassIconButton(
                 symbol: symbol,
+                icon: icon,
                 label: label,
                 selected: layout == value,
                 onTap: () {

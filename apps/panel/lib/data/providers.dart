@@ -789,19 +789,23 @@ typedef VehicleQuery = ({String restaurantId, String? vehicleId});
 
 typedef RiskQuery = ({String restaurantId, int days});
 
-typedef MomentQuery = ({String restaurantId, DateTime at});
-
-/// Zdarzenia z dnia (Logi). Dziś odświeżają się z zamówieniami.
+/// Zdarzenia z dnia (Logi). Dziś odświeżają się z zamówieniami; inne dni zostają w pamięci kilka minut.
 final activityProvider = FutureProvider.autoDispose.family<List<ActivityEvent>, DayQuery>((ref, q) {
   final day = dateOnly(q.day);
+  ref.cacheFor();
   if (day == dateOnly(DateTime.now())) ref.watch(ordersLiveProvider(q.restaurantId).select((s) => s.version));
-  return ref.watch(repositoryProvider).activity(q.restaurantId, day, day.add(const Duration(days: 1)));
+  return ref.watch(repositoryProvider).activity(q.restaurantId, day, DateTime(day.year, day.month, day.day + 1));
 });
 
-/// Stan lokalu w chwili (Time Machine). Chwila zaokrąglona do minuty, więc Na żywo nie pobiera co sekundę.
-final timeMachineProvider = FutureProvider.autoDispose.family<TimeMachine, MomentQuery>((ref, q) {
-  ref.watch(ordersLiveProvider(q.restaurantId).select((s) => s.version));
-  return ref.watch(repositoryProvider).timeMachine(q.restaurantId, q.at);
+/// Time Machine: cała doba naraz (rachunki, rezerwacje, na wynos, zmiany z chwilami), stan w chwili liczy
+/// [TimeMachineDay.at] od razu przy przewijaniu. Dziś odświeża się z zamówieniami.
+final timeMachineDayProvider = FutureProvider.autoDispose.family<TimeMachineDay, DayQuery>((ref, q) {
+  final day = dateOnly(q.day);
+  ref.cacheFor();
+  if (day == dateOnly(DateTime.now())) ref.watch(ordersLiveProvider(q.restaurantId).select((s) => s.version));
+  return ref
+      .watch(repositoryProvider)
+      .timeMachineDay(q.restaurantId, day, DateTime(day.year, day.month, day.day + 1));
 });
 
 /// Zamówienia, których IP panel już próbował sprawdzić w tej sesji (bez powtórek przy każdym odświeżeniu).
@@ -817,10 +821,14 @@ class IpCheckStatusNotifier extends Notifier<String?> {
 
 final ipCheckStatusProvider = NotifierProvider<IpCheckStatusNotifier, String?>(IpCheckStatusNotifier.new);
 
-/// Ocena ryzyka zamówień z aplikacji z ostatnich [RiskQuery.days] dni. Odświeża się z zamówieniami; niesprawdzone
-/// IP sprawdza w tle (ipinfo.io przez funkcję Edge fraud-ip) i wtedy pobiera oceny od nowa.
+/// Ocena ryzyka zamówień z aplikacji z ostatnich [RiskQuery.days] dni (analiza oszustw w tle: panel trzyma ją
+/// włączoną na każdej zakładce, `shell.dart`). Ocenę liczy baza przy złożeniu zamówienia, więc odświeża się tylko
+/// przy nowym zamówieniu na wynos; niesprawdzone IP sprawdza (ipinfo.io przez funkcję Edge fraud-ip) i wtedy pobiera
+/// oceny od nowa.
 final orderRisksProvider = FutureProvider.autoDispose.family<List<OrderRisk>, RiskQuery>((ref, q) async {
-  ref.watch(ordersLiveProvider(q.restaurantId).select((s) => s.version));
+  ref.watch(
+    takeawayOrdersProvider(q.restaurantId).select((s) => s.value?.map((o) => o.id).join(',')),
+  );
   var alive = true;
   ref.onDispose(() => alive = false);
   final repo = ref.watch(repositoryProvider);

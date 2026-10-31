@@ -58,46 +58,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final ended = result.endedAt;
     // Skan zaczyna zmianę i loguje w panelu na komputerze, jeśli nikt inny nie użył tego kodu.
     // Kod z ekranu „Zakończ zmianę” kończy zmianę.
-    await showDialog<void>(
+    // To samo okno od dołu co „Zakończyć zmianę?”.
+    await showMessageSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        icon: Glyph(
-          (result.endedNow ? AppIcons.doorOpen : AppIcons.checkCircle).duotone,
-          size: 44,
-          color: AppColors.accent,
-        ),
-        title: Text(
-          result.endedNow
-              ? 'Zmiana zakończona'
-              : result.startedNow
-              ? 'Zmiana rozpoczęta'
-              : 'Zmiana trwa',
-        ),
-        content: Text(
-          result.endedNow
-              ? [
-                  '${result.restaurant}'
-                      '${at == null || ended == null ? '' : ', ${hm(at)}–${hm(ended)} (${hoursText(ended.difference(at))} h)'}.',
-                  'Dobrego odpoczynku!',
-                ].join('\n\n')
-              : [
-                  result.startedNow
-                      ? '${result.restaurant}, od ${at == null ? 'teraz' : hm(at)}.'
-                      : 'Twoja zmiana w ${result.restaurant} trwa${at == null ? '' : ' od ${hm(at)}'}.',
-                  result.openedPanel
-                      ? 'Jesteś zalogowany w panelu na komputerze. Panel wyloguje Cię sam po 30 sekundach bez ruchu.'
-                      : 'Ktoś już zalogował się tym kodem. Żeby pracować przy komputerze, '
-                            'zeskanuj nowy kod albo wpisz swój czterocyfrowy kod.',
-                ].join('\n\n'),
-        ),
-        actions: [
-          FilledButton(
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Gotowe'),
-          ),
-        ],
-      ),
+      icon: result.endedNow ? AppIcons.doorOpen : AppIcons.checkCircle,
+      title: result.endedNow
+          ? 'Zmiana zakończona'
+          : result.startedNow
+          ? 'Zmiana rozpoczęta'
+          : 'Zmiana trwa',
+      message: result.endedNow
+          ? [
+              '${result.restaurant}'
+                  '${at == null || ended == null ? '' : ', ${hm(at)}–${hm(ended)} (${hoursText(ended.difference(at))} h)'}.',
+              'Dobrego odpoczynku!',
+            ].join('\n\n')
+          : [
+              result.startedNow
+                  ? '${result.restaurant}, od ${at == null ? 'teraz' : hm(at)}.'
+                  : 'Twoja zmiana w ${result.restaurant} trwa${at == null ? '' : ' od ${hm(at)}'}.',
+              result.openedPanel
+                  ? 'Jesteś zalogowany w panelu na komputerze. Panel wyloguje Cię sam po 30 sekundach bez ruchu.'
+                  : 'Ktoś już zalogował się tym kodem. Żeby pracować przy komputerze, '
+                        'zeskanuj nowy kod albo wpisz swój czterocyfrowy kod.',
+            ].join('\n\n'),
     );
     // Dostawca w lokalu z flotą: przed pierwszym kursem przebieg i zdjęcia auta.
     if (result.endedNow || !mounted) return;
@@ -109,22 +93,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _end(Job job) async {
-    final ok = await showDialog<bool>(
+    // Okno od dołu jak w aplikacjach iOS (wzór od użytkownika): zakończenie w aplikacji albo kodem z panelu.
+    final start = job.shiftStartedAt;
+    final how = await showOptionSheet<_EndBy>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Zakończyć zmianę?'),
-        content: Text('Kończysz pracę w ${job.restaurantName}.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Anuluj')),
-          FilledButton(
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Zakończ'),
-          ),
-        ],
-      ),
+      title: 'Zakończyć zmianę?',
+      message: [
+        job.restaurantName,
+        if (start != null) 'od ${hm(start)}, ${hoursText(DateTime.now().difference(start))} h',
+      ].join(' · '),
+      options: [
+        SheetOption(
+          value: _EndBy.app,
+          icon: AppIcons.doorOpen,
+          title: 'Zakończ w aplikacji',
+          subtitle: 'Zmiana skończy się od razu',
+          color: AppColors.error,
+        ),
+        const SheetOption(
+          value: _EndBy.scan,
+          icon: AppIcons.qrCode,
+          title: 'Zeskanuj kod z panelu',
+          subtitle: 'Kod z „Zakończ zmianę” na komputerze w lokalu',
+        ),
+      ],
     );
-    if (ok != true) return;
+    if (how == null || !mounted) return;
     // Dostawca z autem z floty: przed końcem zmiany przebieg i zdjęcia auta.
     if (job.permissions.contains('deliveries')) {
       try {
@@ -138,10 +132,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // Bez połączenia ze stanem auta i tak pozwalamy zakończyć zmianę.
       }
     }
+    if (how == _EndBy.scan) {
+      if (mounted) await _scan();
+      return;
+    }
     try {
       await ref.read(staffRepositoryProvider).endShift(job.memberId);
       _refresh();
-      if (mounted) showMessage(context, 'Zmiana zakończona. Dobrego odpoczynku!');
+      final end = DateTime.now();
+      if (mounted) {
+        await showMessageSheet(
+          context: context,
+          icon: AppIcons.doorOpen,
+          title: 'Zmiana zakończona',
+          message: [
+            '${job.restaurantName}'
+                '${start == null ? '' : ', ${hm(start)}–${hm(end)} (${hoursText(end.difference(start))} h)'}.',
+            'Dobrego odpoczynku!',
+          ].join('\n\n'),
+        );
+      }
     } catch (e) {
       if (mounted) showError(context, e);
     }
@@ -439,3 +449,6 @@ class _CodeRow extends StatelessWidget {
     );
   }
 }
+
+/// Jak pracownik kończy zmianę: od razu w aplikacji albo kodem QR z „Zakończ zmianę” w panelu.
+enum _EndBy { app, scan }

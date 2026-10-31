@@ -290,6 +290,7 @@ class _Hero extends StatelessWidget {
             return GlassIconButton(
               symbol: 'chevron.left',
               label: 'Wróć',
+              native: true,
               onTap: back,
               fallback: _RoundButton(icon: AppIcons.arrowLeft, label: 'Wróć', onTap: back),
             );
@@ -1170,7 +1171,8 @@ class _BottomBar extends StatelessWidget {
 }
 
 extension on _BottomBar {
-  /// iOS 26: przyciski na Liquid Glass bez paska pod spodem; główne działanie w kolorze akcentu.
+  /// iOS 26: przyciski na szkle (rysowanym przez Fluttera, z rozmyciem treści pod spodem) bez paska pod spodem;
+  /// główne działanie w kolorze akcentu.
   Widget _glass(BuildContext context, RestaurantDetail r, bool order, bool stacked) {
     final text = Theme.of(context).textTheme.labelLarge?.copyWith(fontSize: 16);
     Widget label(AppIconData? icon, String title, Color color) => Row(
@@ -1182,6 +1184,7 @@ extension on _BottomBar {
     );
     final primary = GlassPill(
       height: 52,
+      blur: true,
       selected: true,
       onPressed: r.isPro ? () => context.push(AppRoutes.booking(r.id)) : onCall,
       semanticLabel: r.isPro ? 'Zarezerwuj stolik' : 'Zadzwoń, żeby zarezerwować',
@@ -1195,6 +1198,7 @@ extension on _BottomBar {
     final secondary = order
         ? GlassPill(
             height: 52,
+            blur: true,
             onPressed: () => context.push(AppRoutes.orderMenu(r.id)),
             semanticLabel: 'Zamów',
             content: label(r.deliveryEnabled ? AppIcons.moped : AppIcons.shoppingBag, 'Zamów', AppColors.text),

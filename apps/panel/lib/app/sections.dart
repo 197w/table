@@ -49,8 +49,6 @@ enum PanelSection {
     PanelTab(PanelRoutes.stats, 'Statystyki', AppIcons.chartPie),
     PanelTab(PanelRoutes.discounts, 'Kody rabatowe', AppIcons.sealPercent),
     PanelTab(PanelRoutes.export, 'Eksport', AppIcons.fileArrowDown),
-    PanelTab(PanelRoutes.fraud, 'Analiza oszustw', AppIcons.shieldWarning),
-    PanelTab(PanelRoutes.activity, 'Logi', AppIcons.clockCounterClockwise),
   ]);
 
   const PanelSection(this.label, this.icon, this.tabs);
@@ -78,6 +76,8 @@ enum PanelSection {
 /// Zakładki lokalu na dole bocznego paska, wspólne dla wszystkich grup.
 const placeTabs = [
   PanelTab(PanelRoutes.settings, 'Ustawienia lokalu', AppIcons.gear),
+  // Logi i Time Machine (od 10.2026 pod ustawieniami, nie w Management).
+  PanelTab(PanelRoutes.activity, 'Logi', AppIcons.clockCounterClockwise),
   PanelTab(PanelRoutes.profile, 'Dane lokalu', AppIcons.storefront),
   PanelTab(PanelRoutes.floor, 'Edycja sali', AppIcons.blueprint),
 ];
