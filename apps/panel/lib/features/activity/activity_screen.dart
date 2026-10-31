@@ -95,7 +95,7 @@ class ActivityScreen extends ConsumerStatefulWidget {
   ConsumerState<ActivityScreen> createState() => _ActivityScreenState();
 }
 
-class _ActivityScreenState extends ConsumerState<ActivityScreen> {
+class _ActivityScreenState extends ConsumerState<ActivityScreen> with SingleTickerProviderStateMixin {
   bool _live = true;
   DateTime _day = dateOnly(DateTime.now());
   DateTime _at = DateTime.now();
@@ -107,6 +107,11 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   String? _selectedTable;
   _ListTab _tab = _ListTab.tables;
   Timer? _clock;
+
+  /// Płynne przewinięcie osi do klikniętego zdarzenia (zamiast przeskoku): od [_glideFrom] do [_glideTarget].
+  late final _glide = AnimationController(vsync: this)..addListener(_onGlide);
+  DateTime _glideFrom = DateTime(2000);
+  DateTime _glideTarget = DateTime(2000);
 
   @override
   void initState() {
@@ -125,10 +130,12 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   @override
   void dispose() {
     _clock?.cancel();
+    _glide.dispose();
     super.dispose();
   }
 
   void _goLive() {
+    _glide.stop();
     final now = DateTime.now();
     setState(() {
       _live = true;
@@ -143,9 +150,16 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     return end.isAfter(now) ? now : end;
   }
 
+  /// Chwila w obrębie wybranego dnia, nie później niż teraz.
+  DateTime _clamp(DateTime at) {
+    final t = at.isBefore(_day) ? _day : at;
+    return t.isAfter(_latest) ? _latest : t;
+  }
+
   void _pick(DateTime at) {
-    var t = at.isBefore(_day) ? _day : at;
-    if (t.isAfter(_latest)) t = _latest;
+    // Przeciąganie osi przerywa przewijanie do zdarzenia.
+    if (_glide.isAnimating) _glide.stop();
+    final t = _clamp(at);
     if (t == _at && !_live) return;
     setState(() {
       _live = false;
@@ -153,7 +167,31 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     });
   }
 
+  /// Kliknięte zdarzenie (na osi albo w tabeli): oś przewija się do jego chwili, dłużej przy dalszej drodze.
+  /// Przy „Ogranicz ruch” przeskakuje od razu.
+  void _jump(DateTime at) {
+    final t = _clamp(at);
+    if (MediaQuery.disableAnimationsOf(context) || t == _at) {
+      _pick(t);
+      return;
+    }
+    final minutes = t.difference(_at).inSeconds.abs() / 60;
+    _glideFrom = _at;
+    _glideTarget = t;
+    _glide.duration = Duration(milliseconds: (320 + minutes * 3).clamp(360, 800).round());
+    setState(() => _live = false);
+    _glide.forward(from: 0);
+  }
+
+  void _onGlide() {
+    final k = Curves.easeInOutCubic.transform(_glide.value);
+    final from = _glideFrom.millisecondsSinceEpoch;
+    final ms = from + ((_glideTarget.millisecondsSinceEpoch - from) * k).round();
+    setState(() => _at = DateTime.fromMillisecondsSinceEpoch(ms));
+  }
+
   void _shiftDay(int days) {
+    _glide.stop();
     final today = dateOnly(DateTime.now());
     var day = DateTime(_day.year, _day.month, _day.day + days);
     if (day.isAfter(today)) day = today;
@@ -236,7 +274,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
                     onPick: _pick,
                     onZoom: (z) => setState(() => _zoom = z),
                     onEvent: (e) {
-                      _pick(e.at);
+                      _jump(e.at);
                       if (e.orderId != null) setState(() => _selectedOrder = e.orderId);
                     },
                   ),
@@ -265,7 +303,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
                     selectedTable: _selectedTable,
                     onSelect: _selectOrder,
                     onEvent: (e) {
-                      _pick(e.at);
+                      _jump(e.at);
                       if (e.orderId != null) setState(() => _selectedOrder = e.orderId);
                     },
                   ),

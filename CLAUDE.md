@@ -337,7 +337,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   skali), bez paska nad całym ekranem, więc plan sali ma ponad połowę wysokości. Oś przesuwa się pod
   stałą kreską z godziną i sekundami u góry (wcześniejsze chwile niżej; przeciąganie z bezwładnością, kółko myszy,
   Ctrl + kółko albo suwak −/+ zmienia skalę, kliknięcie wybiera chwilę), na osi ikony zdarzeń w kolorach grup
-  (bliskie razem z liczbą, podpowiedź z listą, kliknięcie przenosi do zdarzenia). Po prawej na samej górze plan sali
+  (bliskie razem z liczbą, podpowiedź z listą, kliknięcie płynnie przewija oś do zdarzenia: `_jump`,
+  360–800 ms według odległości, przy „Ogranicz ruch” od razu; przeciąganie przerywa przewijanie). Po prawej na samej górze plan sali
   w tej chwili (`FloorCanvas`: rachunek z kwotą, rezerwacja; podsumowanie sali w rogu), pod nim legenda (stan stolika
   i stan pozycji), a pod nią tabela jak porty w UniFi: zakładki Stoliki (wszystkie stoliki: kwadracik z numerem
   w kolorze stanu, strefa, stan, od, goście, kelner, pasek pozycji w kolorach stanu, kwota, wpłacone; kliknięcie
@@ -424,8 +425,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`_RestaurantPicker`, jak wybór firmy w UniFi; widzi go tylko osoba ze stanowiskiem ALL albo pełny dostęp
   właściciela, zmienia lokal całego panelu), „Dodaj pracownika” („Dodaj stanowisko” w Stanowiskach) i filtrami
   z liczbą osób (`_FilterSection`: Stanowisko; Stan: Na zmianie / Aktywni / Nieaktywni / Zwolnieni, na start
-  zaznaczeni Aktywni; pusta grupa nie filtruje). Panel zwija okrągły przycisk na kresce między panelem a treścią
-  (`_EdgeButton` w `_StaffLayout`). Filtry, zwinięte grupy i zwinięcie panelu są wspólne dla Pracowników i Grafiku
+  zaznaczeni Aktywni; pusta grupa nie filtruje; pola wyboru `_Check` bez okrągłej poświaty po najechaniu). Panel
+  zwija okrągły przycisk na kresce między panelem a treścią (`_EdgeButton` w `_StaffLayout`), z animacją: panel
+  odjeżdża w lewo i gaśnie, przycisk jedzie z kreską (280 ms, przy „Ogranicz ruch” od razu). Filtry, zwinięte grupy i zwinięcie panelu są wspólne dla Pracowników i Grafiku
   (`_panelProvider`). Grafik to osobna podzakładka (`ScheduleScreen`, `/grafik`) z tym samym panelem: wybór okresu
   i „Edytuj” / „Anuluj” / „Zapisz” są w panelu zamiast „Dodaj pracownika”, siatka bez zmian. Po prawej Zespół jako
   tabela (`_TeamTable`: pole wyboru, imię z odznakami ALL / Ty / Nieaktywny / Zwolniony, telefon, stanowisko jako
@@ -433,14 +435,18 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   z uprawnieniem `staff`) dostają pasek nad tabelą (`_SelectionBar`: „Aktywny”, „Nieaktywny”, „Zwolnij”;
   `panel_set_staff_status`, 0075). Zwolniony (`staff_members.dismissed_at`) jest nieaktywny, kończy trwającą zmianę
   i znika z przyszłego grafiku, a jego godziny pracy zostają (usunięcie pracownika kasowałoby jego zmiany);
-  „Aktywny” przywraca go. Siebie nie da się wyłączyć ani zwolnić. Nowego pracownika dodaje okno obok panelu jak
-  „Add New Person” w UniFi (`_MemberSheet` w `_SheetFrame`: imię i nazwisko, telefon, stanowisko jako karty po dwie
-  z kartą „Nowe stanowisko”, dodatkowe stanowiska przyciskiem „+ Dodaj stanowisko”, umowa i stawka, kolor), a nowe
-  albo zmienione stanowisko to samo okno dla roli (`_RoleSheet`: nazwa, uprawnienia w grupach z „Zaznacz wszystkie”,
-  „Usuń”). „Nowe stanowisko” z okna pracownika otwiera okno stanowiska nad nim, a po zapisie wraca z nowym
-  stanowiskiem zaznaczonym. Stanowiska jako tabela (`_PositionsTable`: nazwa, systemowe z kłódką, uprawnienia,
-  liczba pracowników; kliknięcie własnego otwiera okno). Edycja istniejącego pracownika zostaje w oknie ze
-  szczegółów (`_MemberDialog`, wspólny zapis `_persistMember`).
+  „Aktywny” przywraca go. Siebie nie da się wyłączyć ani zwolnić. Kliknięty pracownik pokazuje szczegóły w miejscu
+  listy, nie w osobnym oknie (`_MemberDetails`: „‹ Zespół” wraca, dane, uprawnienia, kod i „Zmień kod”, statystyki
+  z miesiąca; tak samo w Grafiku po kliknięciu nazwiska, „‹ Grafik”). Nowego pracownika dodaje, a istniejącego
+  zmienia („Edytuj” w szczegółach) okno obok panelu jak „Add New Person” w UniFi (`_MemberSheet` w `_SheetFrame`:
+  imię i nazwisko, telefon, stanowisko jako karty po dwie z samą nazwą, bez opisów, i kartą „Nowe stanowisko”,
+  dodatkowe stanowiska przyciskiem „+ Dodaj stanowisko”, umowa i stawka, kolor, przy zmianie „Aktywny” i „Usuń”;
+  zapis `_persistMember`). Nowe stanowisko to to samo okno dla roli (`_RoleEditor`: nazwa, uprawnienia w grupach
+  z „Zaznacz wszystkie”). „Nowe stanowisko” z okna pracownika otwiera okno stanowiska nad nim, a po zapisie wraca
+  z nowym stanowiskiem zaznaczonym. Stanowiska jako tabela (`_PositionsTable`: nazwa, systemowe z kłódką,
+  uprawnienia, liczba pracowników); kliknięte stanowisko pokazuje się w miejscu tabeli (`_RoleEditor(inline: true)`:
+  „‹ Stanowiska”, nazwa i uprawnienia w dwóch kolumnach, „Usuń” i „Zapisz” u góry, obok kto ma to stanowisko;
+  systemowe tylko do podglądu).
   `SegmentedTabs` i `IconTabs` mają wspólne podświetlenie (`_SlidingSegments`), które przesuwa się do wybranej opcji. Każdy pracownik ma czterocyfrowy kod, unikalny w lokalu
   (nadaje go baza przy dodaniu, trigger `staff_members_code`; zmiana: `panel_set_staff_code`, wpisany albo losowy).
   Kod widać stale w szczegółach (uprawnienie `staff_logins`, „Kody pracowników”, `panel_staff_codes`) i w aplikacji
