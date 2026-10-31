@@ -10,7 +10,7 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   zapis plików (eksport, PDF) tylko na komputerze (`panelOnDesktop`). Nigdy na telefony.
 - `apps/staff`: Table for employees, aplikacja dla pracowników lokalu na telefony (Android `pl.table.table_staff`,
   iOS `pl.table.tableStaff`). Na tablecie (krótszy bok co najmniej 600 punktów, `isTabletScreen`) aplikacja zamiast
-  siebie uruchamia pełny panel restauracji jak na komputerze (zależność `table_panel`, Task z Todoist „na tabletach
+  siebie uruchamia pełny panel restauracji jak na komputerze (zależność `table_panel`, zadanie z Todoist: „na tabletach
   identycznie jak na komputerach”): konto lokalu, pracownicy kodem albo QR. Logowanie e-mailem jak w Table (0069; numer konta = numer u pracownika w panelu), skan wspólnego kodu QR z panelu
   zaczyna zmianę i loguje w panelu. Dolne menu: Zamówienia, Dostawy, Zeskanuj, Grafik, Ustawienia. Grafik to lista dni z okresu lokalu
   (tydzień, 2 tygodnie albo miesiąc, `restaurants.schedule_period`, ustawia „Ustawienia lokalu”) ze zgłaszaniem godzin
