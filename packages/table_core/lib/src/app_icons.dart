@@ -181,6 +181,7 @@ abstract final class AppIcons {
   static const refresh = AppIconData('assets/icons/arrow-clockwise.svg');
   static const search = AppIconData('assets/icons/magnifying-glass.svg');
   static const send = AppIconData('assets/icons/paper-plane-tilt.svg');
+  static const shieldWarning = AppIconData('assets/icons/shield-warning.svg');
   static const signIn = AppIconData('assets/icons/sign-in.svg');
   static const signOut = AppIconData('assets/icons/sign-out.svg');
   static const sliders = AppIconData('assets/icons/sliders-horizontal.svg');

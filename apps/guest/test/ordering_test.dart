@@ -245,4 +245,35 @@ void main() {
       GuestCodeStatus.expired,
     );
   });
+
+  test('limity lokalu: sztuk w zamówieniu i jednego dania', () {
+    RestaurantDetail detail({int? maxItems, int? maxPerItem}) => RestaurantDetail(
+      id: 'r',
+      name: 'Lokal',
+      cuisine: 'polska',
+      priceLevel: 2,
+      address: 'Lipowa 1',
+      city: 'Białystok',
+      phone: '600700800',
+      isPro: true,
+      isExample: false,
+      hours: const [],
+      menu: const [],
+      rating: Rating.empty,
+      maxItems: maxItems,
+      maxPerItem: maxPerItem,
+    );
+    const pasta = CartLine(menuItemId: 'p', name: 'Makaron', unitPriceGrosze: 3000, quantity: 6);
+    const pastaBig = CartLine(menuItemId: 'p', name: 'Makaron', unitPriceGrosze: 3500, quantity: 2, variant: 'duży');
+    const soup = CartLine(menuItemId: 's', name: 'Zupa', unitPriceGrosze: 1500, quantity: 3);
+
+    expect(detail().cartLimitProblem([pasta, pastaBig, soup]), isNull);
+    // Warianty tego samego dania liczą się razem.
+    expect(detail(maxPerItem: 7).cartLimitProblem([pasta, pastaBig]), contains('Makaron'));
+    expect(detail(maxPerItem: 8).cartLimitProblem([pasta, pastaBig]), isNull);
+    expect(detail(maxItems: 10).cartLimitProblem([pasta, pastaBig, soup]), contains('w koszyku: 11'));
+    expect(detail(maxPerItem: 8).canAddMore([pasta, pastaBig], 'p'), isFalse);
+    expect(detail(maxPerItem: 8).canAddMore([pasta, pastaBig], 's'), isTrue);
+    expect(detail(maxItems: 11).canAddMore([pasta, pastaBig, soup], 's'), isFalse);
+  });
 }

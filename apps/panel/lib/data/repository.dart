@@ -305,7 +305,7 @@ class PanelRepository {
             'cover_url, '
             'deposit_min_party, deposit_per_person_grosze, '
             'schedule_period, schedule_deadline_dow, schedule_deadline_time, inventory_period, delivery_enabled, '
-            'pickup_enabled, takeaway_cash, courier_tracking, delivery_platforms, '
+            'pickup_enabled, takeaway_cash, delivery_platforms, takeaway_max_items, takeaway_max_per_item, '
             'delivery_fee_grosze, delivery_min_grosze, delivery_area, opening_hours(weekday, opens, closes)',
           )
           .eq('id', restaurantId)
@@ -808,6 +808,26 @@ class PanelRepository {
         'p_active': active,
       }),
     );
+  }
+
+  /// Ocena ryzyka zamówień z aplikacji od [from] (analiza oszustw).
+  Future<List<OrderRisk>> orderRisks(String restaurantId, DateTime from) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>(
+        'panel_order_risks',
+        params: {'p_restaurant_id': restaurantId, 'p_from': from.toUtc().toIso8601String()},
+      );
+      return [for (final r in rows) OrderRisk.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
+  /// Sprawdza IP zamówienia w ipinfo.io (funkcja Edge fraud-ip). Zwraca ok, skip, no_token albo ipinfo_error.
+  Future<String> checkOrderIp(String orderId) {
+    return _guard(() async {
+      final res = await _db.functions.invoke('fraud-ip', body: {'order_id': orderId});
+      final data = res.data;
+      return data is Map ? '${data['status'] ?? data['error'] ?? ''}' : '';
+    });
   }
 
   /// Auta dostawców w dniach od [from] do [to].

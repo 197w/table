@@ -367,7 +367,40 @@ class RestaurantDetail {
     this.coverUrl,
     this.leadPickupMin = 20,
     this.leadDeliveryMin = 40,
+    this.maxItems,
+    this.maxPerItem,
   });
+
+  /// Limity lokalu dla zamówień w aplikacji (0070): sztuk w zamówieniu i sztuk jednego dania. Null: bez limitu.
+  final int? maxItems;
+  final int? maxPerItem;
+
+  /// Pierwszy przekroczony limit w koszyku albo null.
+  String? cartLimitProblem(List<CartLine> cart) {
+    final total = cart.fold(0, (s, l) => s + l.quantity);
+    if (maxItems != null && total > maxItems!) {
+      return 'Lokal przyjmuje najwyżej $maxItems szt. w jednym zamówieniu (w koszyku: $total).';
+    }
+    if (maxPerItem != null) {
+      final perDish = <String, int>{};
+      for (final l in cart) {
+        perDish[l.menuItemId] = (perDish[l.menuItemId] ?? 0) + l.quantity;
+      }
+      for (final l in cart) {
+        if (perDish[l.menuItemId]! > maxPerItem!) {
+          return 'Lokal przyjmuje najwyżej $maxPerItem szt. jednego dania („${l.name}”).';
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Czy do koszyka można dołożyć jeszcze sztukę tego dania.
+  bool canAddMore(List<CartLine> cart, String menuItemId) {
+    final total = cart.fold(0, (s, l) => s + l.quantity);
+    final dish = cart.where((l) => l.menuItemId == menuItemId).fold(0, (s, l) => s + l.quantity);
+    return (maxItems == null || total < maxItems!) && (maxPerItem == null || dish < maxPerItem!);
+  }
 
   /// Zdjęcie lokalu z panelu („Dane lokalu”). Bez niego: pierwsze zdjęcie dania z menu ([coverPhoto]).
   final String? coverUrl;
@@ -467,6 +500,8 @@ class RestaurantDetail {
       coverUrl: json['cover_url'] as String?,
       leadPickupMin: json['kitchen_lead_pickup_min'] == null ? 20 : _toInt(json['kitchen_lead_pickup_min']),
       leadDeliveryMin: json['kitchen_lead_delivery_min'] == null ? 40 : _toInt(json['kitchen_lead_delivery_min']),
+      maxItems: json['takeaway_max_items'] == null ? null : _toInt(json['takeaway_max_items']),
+      maxPerItem: json['takeaway_max_per_item'] == null ? null : _toInt(json['takeaway_max_per_item']),
     );
   }
 

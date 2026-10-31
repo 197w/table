@@ -444,6 +444,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       showMessage(context, 'Minimalne zamówienie z dostawą to ${Fmt.price(r.deliveryMinGrosze)}.', tone: ToastTone.warning);
       return;
     }
+    if (r.cartLimitProblem(cart) case final problem?) {
+      showMessage(context, problem, tone: ToastTone.warning);
+      return;
+    }
     if (_scheduled && _when == null) {
       showMessage(context, 'Wybierz dzień i godzinę albo „Jak najszybciej”.', tone: ToastTone.warning);
       return;
@@ -599,6 +603,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           final subtotal = cart.fold(0, (s, l) => s + l.totalGrosze);
           final fee = kind == OrderKind.delivery ? r.deliveryFeeGrosze : 0;
           final belowMin = kind == OrderKind.delivery && subtotal < r.deliveryMinGrosze;
+          final overLimit = r.cartLimitProblem(cart);
 
           return ListView(
             padding: EdgeInsets.fromLTRB(16, 4, 16, 32 + MediaQuery.paddingOf(context).bottom),
@@ -654,7 +659,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                               Text('${l.quantity}', style: text.titleMedium?.copyWith(fontFeatures: _tabular)),
                               IconButton(
                                 tooltip: 'Więcej',
-                                onPressed: l.quantity >= 99
+                                onPressed: l.quantity >= 99 || !r.canAddMore(cart, l.menuItemId)
                                     ? null
                                     : () => ref.read(cartProvider(r.id).notifier).setQuantity(l.key, l.quantity + 1),
                                 icon: const Glyph(AppIcons.plus, size: 18),
@@ -730,6 +735,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     'Do minimalnego zamówienia z dostawą brakuje ${Fmt.price(r.deliveryMinGrosze - subtotal)}.',
                     style: text.bodyMedium?.copyWith(color: AppColors.error),
                   ),
+                ),
+              if (overLimit != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(overLimit, style: text.bodyMedium?.copyWith(color: AppColors.error)),
                 ),
               const SizedBox(height: 16),
               FilledButton(

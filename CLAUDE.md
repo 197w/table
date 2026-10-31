@@ -98,7 +98,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
   Map i śledzenia dostawców nie ma od 0068 (usunięte na prośbę użytkownika, także mapa u gościa).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0069, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0070, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -210,7 +210,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Baza klientów (Klienci `/klienci`, Opinie),
   Management (Podsumowanie dnia `/podsumowanie`, Niezamknięte zamówienia `/niezamkniete`, Godziny pracy `/godziny`,
   Menu, Inwentaryzacja, Statystyki,
-  Kody rabatowe `/rabaty`, Eksport `/eksport`);
+  Kody rabatowe `/rabaty`, Eksport `/eksport`, Analiza oszustw `/oszustwa`);
   Kropki nowości (`tabNewsProvider`, `TabNews`, `_NewsDot`): nowa rezerwacja z aplikacji, nowe zamówienie na dostawę
   albo odbiór, nowe danie do wydania; kropka na zakładce i jej grupie znika po wejściu do zakładki.
   „Table” na środku; po prawej nowa wersja, odliczanie do wylogowania, motyw (systemowy: ikona monitora `AppIcons.monitor`),
@@ -272,6 +272,21 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `panel_save_announcement`, `panel_delete_announcement`, `panel_read_announcement`, `staff_announcements`,
   `staff_read_announcement`; odbiorcy liczone w `private.announcement_for`.
   Nowe uprawnienia `revenue`, `day_close`, `discounts`, `export` dostały w 0048 stanowiska z `staff` albo `stats`.
+- Analiza oszustw (0070, Management → `/oszustwa`, uprawnienie `fraud`, w 0070 dostały je stanowiska z `day_close`
+  albo `staff`; `features/fraud/fraud_screen.dart`): każde zamówienie gościa z aplikacji (dostawa, odbiór) dostaje
+  ocenę 0–100 w `order_risks` (RLS bez zasad, tylko funkcje; trigger `orders_risk` na końcu transakcji zapisuje IP
+  z nagłówków `private.request_ip` i liczy `private.fraud_assess`). Sygnały z punktami: ten sam gość (konto albo
+  numer) w całym Table z kilkoma zamówieniami po co najmniej 5 sztuk jednego dania, dużo zamówień w 24 h, duża
+  ilość w zamówieniu, kwota 3× wyższa niż zwykle w lokalu, nowe konto z dużą kwotą, nieudane płatności kartą,
+  odrzucone zamówienia, ten sam numer albo IP na kilku kontach, IP z ipinfo.io (inny kraj, VPN/proxy/Tor/serwer,
+  odległość od lokalu). Średnie ryzyko od 25, wysokie od 50. IP sprawdza funkcja Edge `fraud-ip`
+  (`supabase/functions/fraud-ip`, token użytkownika, `panel_fraud_ip_input`, `panel_fraud_apply_ip`; sekret
+  `IPINFO_TOKEN` wpisuje użytkownik), wywoływana przez panel raz na sesję dla niesprawdzonych zamówień
+  (`orderRisksProvider`; bez tokenu ekran pokazuje uwagę). Dostawy i Odbiór: znaczek „Ryzyko N” na karcie
+  (`RiskChip`, okno `showRiskDialog`). AVS i CVV dojdą z operatorem płatności. Limity zamówień z aplikacji:
+  „Ustawienia lokalu” → „Dostawa i odbiór” (`restaurants.takeaway_max_items`, `takeaway_max_per_item`; trigger
+  `order_items_takeaway_limits` tylko dla pozycji dodanych przez gościa), w Table koszyk blokuje „+” i pokazuje
+  przekroczenie (`RestaurantDetail.cartLimitProblem`, `canAddMore`).
 - Dane lokalu: logo, dane, poziom cen, dane właściciela, godziny, dni wyjątkowe.
 - Flota (`/flota`, uprawnienie `fleet`, 0045): `vehicles` (auto, skuter, rower, inny; nazwa, rejestracja unikalna
   w lokalu, VIN 17 znaków bez I/O/Q unikalny w lokalu (0046), w użyciu), `panel_save_vehicle`,

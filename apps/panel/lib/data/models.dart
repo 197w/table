@@ -669,6 +669,8 @@ class DeliverySettings {
     this.minGrosze = 0,
     this.area,
     this.deliveryPlatforms = const [],
+    this.maxItems,
+    this.maxPerItem,
   });
 
   final bool deliveryEnabled;
@@ -688,6 +690,10 @@ class DeliverySettings {
   /// Platformy dostaw (np. Glovo, Uber Eats, Wolt) z kwotami w podsumowaniu dnia.
   final List<String> deliveryPlatforms;
 
+  /// Limity zamówień z aplikacji (0070): sztuk w zamówieniu i sztuk jednego dania. Null: bez limitu.
+  final int? maxItems;
+  final int? maxPerItem;
+
   bool get any => deliveryEnabled || pickupEnabled;
 
   factory DeliverySettings.fromJson(Map<String, dynamic> json) => DeliverySettings(
@@ -698,6 +704,8 @@ class DeliverySettings {
     minGrosze: _toInt(json['delivery_min_grosze']),
     area: json['delivery_area'] as String?,
     deliveryPlatforms: [for (final n in json['delivery_platforms'] as List? ?? const []) '$n'],
+    maxItems: json['takeaway_max_items'] == null ? null : _toInt(json['takeaway_max_items']),
+    maxPerItem: json['takeaway_max_per_item'] == null ? null : _toInt(json['takeaway_max_per_item']),
   );
 }
 
@@ -1126,7 +1134,8 @@ enum StaffPermission {
   revenue('revenue', 'Przychody', 'Obrót i średni rachunek w historii zamówień', 'Management'),
   dayClose('day_close', 'Podsumowanie dnia', 'Raporty z kasy i terminali, petty cash', 'Management'),
   discounts('discounts', 'Kody rabatowe', 'Tworzenie i wyłączanie kodów rabatowych', 'Management'),
-  export('export', 'Eksport', 'Pliki dla księgowej: sprzedaż, VAT i czas pracy', 'Management');
+  export('export', 'Eksport', 'Pliki dla księgowej: sprzedaż, VAT i czas pracy', 'Management'),
+  fraud('fraud', 'Analiza oszustw', 'Ocena ryzyka zamówień z aplikacji Table', 'Management');
 
   const StaffPermission(this.key, this.label, this.description, this.group);
 
@@ -3891,5 +3900,92 @@ class WaitlistEntry {
     guestPhone: json['guest_phone'] as String?,
     guestVisits: _toInt(json['guest_visits']),
     createdAt: _toDate(json['created_at']),
+  );
+}
+
+/// Jeden sygnał analizy oszustw, np. „Dużo jednego dania: 9 × Tatar.” (punkty dodają się do oceny).
+class RiskFlag {
+  const RiskFlag({required this.code, required this.points, required this.text});
+
+  final String code;
+  final int points;
+  final String text;
+
+  factory RiskFlag.fromJson(Map<String, dynamic> json) =>
+      RiskFlag(code: '${json['code']}', points: _toInt(json['points']), text: '${json['text']}');
+}
+
+enum RiskLevel { low, medium, high }
+
+/// Ocena ryzyka zamówienia z aplikacji Table (0070, `panel_order_risks`): wzorce zamówień gościa, nieudane
+/// płatności, wspólne IP i numer, adres IP z ipinfo.io. 0–100 punktów.
+class OrderRisk {
+  const OrderRisk({
+    required this.orderId,
+    required this.number,
+    required this.kind,
+    required this.fulfillment,
+    required this.openedAt,
+    required this.customerName,
+    required this.customerPhone,
+    required this.totalGrosze,
+    required this.paymentChoice,
+    required this.score,
+    required this.ipChecked,
+    this.clientIp,
+    this.ipInfo = const {},
+    this.flags = const [],
+  });
+
+  final String orderId;
+  final int number;
+  final OrderKind kind;
+  final String fulfillment;
+  final DateTime openedAt;
+  final String customerName;
+  final String customerPhone;
+  final int totalGrosze;
+  final String paymentChoice;
+  final int score;
+  final bool ipChecked;
+  final String? clientIp;
+
+  /// ipinfo.io: city, region, country, org, privacy, distance_km.
+  final Map<String, dynamic> ipInfo;
+  final List<RiskFlag> flags;
+
+  RiskLevel get level => score >= 50
+      ? RiskLevel.high
+      : score >= 25
+      ? RiskLevel.medium
+      : RiskLevel.low;
+
+  /// „Białystok, PL · 12 km od lokalu · AS5617 Orange Polska”.
+  String? get ipPlace {
+    if (ipInfo.isEmpty) return null;
+    final place = [?ipInfo['city'] as String?, ?ipInfo['country'] as String?].join(', ');
+    final km = ipInfo['distance_km'];
+    return [
+      if (place.isNotEmpty) place,
+      if (km != null) '${_toInt(km)} km od lokalu',
+      ?ipInfo['org'] as String?,
+    ].join(' · ');
+  }
+
+  factory OrderRisk.fromJson(Map<String, dynamic> json) => OrderRisk(
+    orderId: json['order_id'] as String,
+    number: _toInt(json['number']),
+    kind: json['kind'] == 'pickup' ? OrderKind.pickup : OrderKind.delivery,
+    fulfillment: '${json['fulfillment']}',
+    openedAt: _toDate(json['opened_at']),
+    customerName: '${json['customer_name'] ?? ''}',
+    customerPhone: '${json['customer_phone'] ?? ''}',
+    totalGrosze: _toInt(json['total_grosze']),
+    paymentChoice: '${json['payment_choice'] ?? ''}',
+    score: _toInt(json['score']),
+    ipChecked: json['ip_checked'] == true,
+    clientIp: json['client_ip'] as String?,
+    ipInfo: (json['ip_info'] as Map?)?.cast<String, dynamic>() ?? const {},
+    flags: [for (final f in json['flags'] as List? ?? const []) RiskFlag.fromJson((f as Map).cast<String, dynamic>())],
   );
 }

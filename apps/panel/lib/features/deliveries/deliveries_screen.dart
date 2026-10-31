@@ -5,6 +5,7 @@ import 'package:table_core/table_core.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
+import '../fraud/fraud_screen.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -151,6 +152,11 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
     final settings = ref.watch(profileProvider(rid)).value?.delivery ?? const DeliverySettings();
     final async = ref.watch(takeawayOrdersProvider(rid));
     final couriers = ref.watch(couriersProvider(rid)).value ?? const <Courier>[];
+    // Analiza oszustw: ocena zamówień z aplikacji z ostatnich 2 dni.
+    final risks = {
+      for (final r in ref.watch(orderRisksProvider((restaurantId: rid, days: 2))).value ?? const <OrderRisk>[])
+        r.orderId: r,
+    };
     final orders = [for (final o in async.value ?? const <TakeawayOrder>[]) if (o.kind == widget.kind) o];
     final active = orders.where((o) => !o.stage.finished).toList();
     final finished = orders.where((o) => o.stage.finished).toList()
@@ -203,6 +209,7 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
                     for (final o in list)
                       _OrderCard(
                         order: o,
+                        risk: risks[o.id],
                         couriers: couriers,
                         mates: [
                           for (final m in active)
@@ -312,6 +319,7 @@ class _Column extends StatelessWidget {
 class _OrderCard extends StatefulWidget {
   const _OrderCard({
     required this.order,
+    required this.risk,
     required this.couriers,
     required this.mates,
     required this.busy,
@@ -325,6 +333,9 @@ class _OrderCard extends StatefulWidget {
   });
 
   final TakeawayOrder order;
+
+  /// Ocena ryzyka (tylko zamówienia z aplikacji).
+  final OrderRisk? risk;
   final List<Courier> couriers;
 
   /// Inne dostawy z tego samego kursu.
@@ -366,6 +377,10 @@ class _OrderCardState extends State<_OrderCard> {
                 if (o.scheduledFor != null) ...[
                   const SizedBox(width: 6),
                   const Tag('NA GODZINĘ', color: _plannedColor),
+                ],
+                if (widget.risk case final risk? when risk.level != RiskLevel.low) ...[
+                  const SizedBox(width: 6),
+                  RiskChip(risk: risk),
                 ],
                 const Spacer(),
                 Text(

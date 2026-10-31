@@ -782,6 +782,52 @@ final orderDueProvider = FutureProvider.autoDispose.family<OrderDue, String>(
 /// Kody rabatowe lokalu (Management).
 typedef VehicleQuery = ({String restaurantId, String? vehicleId});
 
+typedef RiskQuery = ({String restaurantId, int days});
+
+/// Zamówienia, których IP panel już próbował sprawdzić w tej sesji (bez powtórek przy każdym odświeżeniu).
+final _ipAttempted = <String>{};
+
+/// Wynik ostatniego sprawdzenia IP: no_token, gdy w Supabase nie ma jeszcze tokenu ipinfo.
+class IpCheckStatusNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void set(String? status) => state = status;
+}
+
+final ipCheckStatusProvider = NotifierProvider<IpCheckStatusNotifier, String?>(IpCheckStatusNotifier.new);
+
+/// Ocena ryzyka zamówień z aplikacji z ostatnich [RiskQuery.days] dni. Odświeża się z zamówieniami; niesprawdzone
+/// IP sprawdza w tle (ipinfo.io przez funkcję Edge fraud-ip) i wtedy pobiera oceny od nowa.
+final orderRisksProvider = FutureProvider.autoDispose.family<List<OrderRisk>, RiskQuery>((ref, q) async {
+  ref.watch(ordersLiveProvider(q.restaurantId).select((s) => s.version));
+  var alive = true;
+  ref.onDispose(() => alive = false);
+  final repo = ref.watch(repositoryProvider);
+  final rows = await repo.orderRisks(q.restaurantId, DateTime.now().subtract(Duration(days: q.days)));
+  final pending = [
+    for (final r in rows)
+      if (r.clientIp != null && !r.ipChecked && _ipAttempted.add(r.orderId)) r.orderId,
+  ];
+  if (pending.isNotEmpty) {
+    unawaited(() async {
+      var changed = false;
+      for (final id in pending.take(20)) {
+        try {
+          final status = await repo.checkOrderIp(id);
+          if (status == 'ok') changed = true;
+          if (alive) ref.read(ipCheckStatusProvider.notifier).set(status);
+          if (status == 'no_token') break;
+        } catch (_) {
+          // Następna próba przy kolejnym uruchomieniu panelu.
+        }
+      }
+      if (changed && alive) ref.invalidateSelf();
+    }());
+  }
+  return rows;
+});
+
 /// Auta dostawców dziś. Odświeża się z rachunkami (zmiany dostawców i kursów).
 final todayVehicleDaysProvider = FutureProvider.autoDispose.family<List<VehicleDay>, String>((ref, id) {
   ref.watch(ordersLiveProvider(id).select((s) => s.version));

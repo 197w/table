@@ -1691,6 +1691,8 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
   late final _fee = TextEditingController(text: groszeToText(widget.profile.delivery.feeGrosze));
   late final _min = TextEditingController(text: groszeToText(widget.profile.delivery.minGrosze));
   late final _area = TextEditingController(text: widget.profile.delivery.area ?? '');
+  late final _maxItems = TextEditingController(text: '${widget.profile.delivery.maxItems ?? ''}');
+  late final _maxPerItem = TextEditingController(text: '${widget.profile.delivery.maxPerItem ?? ''}');
   bool _busy = false;
 
   @override
@@ -1698,7 +1700,17 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
     _fee.dispose();
     _min.dispose();
     _area.dispose();
+    _maxItems.dispose();
+    _maxPerItem.dispose();
     super.dispose();
+  }
+
+  /// Puste: bez limitu. Inaczej liczba z zakresu albo błąd (null w drugim polu).
+  (int?, bool) _limit(TextEditingController c, int max) {
+    final t = c.text.trim();
+    if (t.isEmpty) return (null, true);
+    final n = int.tryParse(t);
+    return (n, n != null && n >= 1 && n <= max);
   }
 
   Future<void> _save() async {
@@ -1706,6 +1718,16 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
     final min = _min.text.trim().isEmpty ? 0 : parseGrosze(_min.text);
     if (fee == null || min == null) {
       showMessage(context, 'Wpisz kwoty, na przykład 8 albo 8,50.', tone: ToastTone.warning);
+      return;
+    }
+    final (maxItems, itemsOk) = _limit(_maxItems, 999);
+    final (maxPerItem, perItemOk) = _limit(_maxPerItem, 99);
+    if (!itemsOk || !perItemOk) {
+      showMessage(
+        context,
+        'Limity: liczba sztuk (w zamówieniu 1–999, jednego dania 1–99) albo puste pole bez limitu.',
+        tone: ToastTone.warning,
+      );
       return;
     }
     setState(() => _busy = true);
@@ -1718,6 +1740,8 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
         'delivery_fee_grosze': fee,
         'delivery_min_grosze': min,
         'delivery_area': _area.text.trim().isEmpty ? null : _area.text.trim(),
+        'takeaway_max_items': maxItems,
+        'takeaway_max_per_item': maxPerItem,
       });
       ref.invalidate(profileProvider(widget.profile.id));
       if (mounted) showMessage(context, 'Ustawienia dostawy zapisane.', tone: ToastTone.success);
@@ -1782,6 +1806,43 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
             maxLength: 120,
             decoration: const InputDecoration(labelText: 'Obszar dostawy dla gości', hintText: 'Na przykład: Białystok, do 5 km'),
           ),
+          const SizedBox(height: 4),
+          // Analiza oszustw: limity zamówień z aplikacji Table (puste = bez limitu).
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _maxItems,
+                  enabled: enabled,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Najwięcej sztuk w zamówieniu',
+                    hintText: 'bez limitu',
+                    suffixText: 'szt.',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _maxPerItem,
+                  enabled: enabled,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Najwięcej sztuk jednego dania',
+                    hintText: 'bez limitu',
+                    suffixText: 'szt.',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Limity dotyczą zamówień gości w aplikacji Table. Zamówienia wpisane w panelu ich nie mają.',
+            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 8),
           if (widget.editable && widget.pro)
             Align(
               alignment: Alignment.centerRight,
@@ -1799,5 +1860,8 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
     feeGrosze: _s.feeGrosze,
     minGrosze: _s.minGrosze,
     area: _s.area,
+    deliveryPlatforms: _s.deliveryPlatforms,
+    maxItems: _s.maxItems,
+    maxPerItem: _s.maxPerItem,
   );
 }
