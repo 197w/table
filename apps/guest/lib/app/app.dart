@@ -24,6 +24,7 @@ import '../features/settings/notification_settings_screen.dart';
 import 'guest_theme.dart';
 import '../features/settings/settings_screen.dart';
 import 'shell.dart';
+import 'tablet_width.dart';
 
 class TableApp extends ConsumerStatefulWidget {
   const TableApp({super.key});
@@ -161,8 +162,10 @@ GoRouter _buildRouter(Listenable refresh) {
                   // Wewnątrz zakładki, więc dolne menu zostaje na ekranie.
                   GoRoute(
                     path: ':id',
-                    builder: (context, state) => ReservationDetailScreen(
-                      reservationId: state.pathParameters['id']!,
+                    builder: (context, state) => TabletWidth(
+                      child: ReservationDetailScreen(
+                        reservationId: state.pathParameters['id']!,
+                      ),
                     ),
                   ),
                 ],
@@ -173,58 +176,71 @@ GoRouter _buildRouter(Listenable refresh) {
             routes: [
               GoRoute(
                 path: AppRoutes.settings,
-                builder: (context, state) => const SettingsScreen(),
+                builder: (context, state) =>
+                    const TabletWidth(child: SettingsScreen()),
                 // Podstrony w zakładce, więc dolne menu zostaje na ekranie.
                 routes: [
                   GoRoute(
                     path: 'ogolne',
-                    builder: (_, _) => const GeneralSettingsScreen(),
+                    builder: (_, _) =>
+                        const TabletWidth(child: GeneralSettingsScreen()),
                   ),
                   GoRoute(
                     path: 'motyw',
-                    builder: (_, _) => const ThemeSettingsScreen(),
+                    builder: (_, _) =>
+                        const TabletWidth(child: ThemeSettingsScreen()),
                   ),
                   GoRoute(
                     path: 'powiadomienia',
-                    builder: (_, _) => const NotificationSettingsScreen(),
+                    builder: (_, _) =>
+                        const TabletWidth(child: NotificationSettingsScreen()),
                   ),
                   GoRoute(
                     path: 'pomoc',
-                    builder: (_, _) => const HelpScreen(),
+                    builder: (_, _) => const TabletWidth(child: HelpScreen()),
                     routes: [
                       GoRoute(
                         path: 'zglos-blad',
-                        builder: (_, _) => const ReportBugScreen(),
+                        builder: (_, _) =>
+                            const TabletWidth(child: ReportBugScreen()),
                       ),
                     ],
                   ),
                   GoRoute(
                     path: 'adres',
-                    builder: (_, _) => const AddressScreen(),
+                    builder: (_, _) =>
+                        const TabletWidth(child: AddressScreen()),
                   ),
                   GoRoute(
                     path: 'konto',
-                    builder: (_, _) => const AccountScreen(),
+                    builder: (_, _) =>
+                        const TabletWidth(child: AccountScreen()),
                     routes: [
                       GoRoute(
                         path: 'szczegoly',
-                        builder: (_, _) => const AccountDetailsScreen(),
+                        builder: (_, _) =>
+                            const TabletWidth(child: AccountDetailsScreen()),
                       ),
                       GoRoute(
                         path: 'logowanie',
-                        builder: (_, _) => const LoginInfoScreen(),
+                        builder: (_, _) =>
+                            const TabletWidth(child: LoginInfoScreen()),
                         routes: [
                           GoRoute(
                             path: 'haslo',
-                            builder: (_, _) => const ChangePasswordScreen(),
+                            builder: (_, _) => const TabletWidth(
+                              child: ChangePasswordScreen(),
+                            ),
                           ),
                           GoRoute(
                             path: 'telefon',
-                            builder: (_, _) => const ChangePhoneScreen(),
+                            builder: (_, _) =>
+                                const TabletWidth(child: ChangePhoneScreen()),
                           ),
                           GoRoute(
                             path: 'email',
-                            builder: (_, _) => const AddEmailScreen(),
+                            builder: (_, _) =>
+                                const TabletWidth(child: AddEmailScreen()),
                           ),
                         ],
                       ),
@@ -232,7 +248,8 @@ GoRouter _buildRouter(Listenable refresh) {
                   ),
                   GoRoute(
                     path: 'zaawansowane',
-                    builder: (_, _) => const AdvancedSettingsScreen(),
+                    builder: (_, _) =>
+                        const TabletWidth(child: AdvancedSettingsScreen()),
                   ),
                 ],
               ),
@@ -242,35 +259,46 @@ GoRouter _buildRouter(Listenable refresh) {
       ),
       GoRoute(
         path: '/restauracja/:id',
-        builder: (context, state) =>
-            RestaurantScreen(restaurantId: state.pathParameters['id']!),
+        builder: (context, state) => TabletWidth(
+          child: RestaurantScreen(restaurantId: state.pathParameters['id']!),
+        ),
         routes: [
           GoRoute(
             path: 'rezerwuj',
-            builder: (context, state) =>
-                BookingScreen(restaurantId: state.pathParameters['id']!),
+            builder: (context, state) => TabletWidth(
+              child: BookingScreen(restaurantId: state.pathParameters['id']!),
+            ),
           ),
           GoRoute(
             path: 'menu',
-            builder: (context, state) =>
-                RestaurantMenuScreen(restaurantId: state.pathParameters['id']!),
+            builder: (context, state) => TabletWidth(
+              child: RestaurantMenuScreen(
+                restaurantId: state.pathParameters['id']!,
+              ),
+            ),
           ),
           GoRoute(
             path: 'opinia',
-            builder: (context, state) => WriteReviewScreen(
-              restaurantId: state.pathParameters['id']!,
-              reservationId: state.uri.queryParameters['rezerwacja'],
+            builder: (context, state) => TabletWidth(
+              child: WriteReviewScreen(
+                restaurantId: state.pathParameters['id']!,
+                reservationId: state.uri.queryParameters['rezerwacja'],
+              ),
             ),
           ),
           GoRoute(
             path: 'zamow',
-            builder: (context, state) =>
-                OrderMenuScreen(restaurantId: state.pathParameters['id']!),
+            builder: (context, state) => TabletWidth(
+              child: OrderMenuScreen(restaurantId: state.pathParameters['id']!),
+            ),
             routes: [
               GoRoute(
                 path: 'koszyk',
-                builder: (context, state) =>
-                    CheckoutScreen(restaurantId: state.pathParameters['id']!),
+                builder: (context, state) => TabletWidth(
+                  child: CheckoutScreen(
+                    restaurantId: state.pathParameters['id']!,
+                  ),
+                ),
               ),
             ],
           ),
@@ -278,32 +306,39 @@ GoRouter _buildRouter(Listenable refresh) {
       ),
       GoRoute(
         path: '/zamowienia/:orderId',
-        builder: (context, state) =>
-            OrderDetailScreen(orderId: state.pathParameters['orderId']!),
+        builder: (context, state) => TabletWidth(
+          child: OrderDetailScreen(orderId: state.pathParameters['orderId']!),
+        ),
       ),
       GoRoute(
         path: AppRoutes.login,
-        builder: (context, state) =>
-            LoginScreen(next: state.uri.queryParameters['next']),
+        builder: (context, state) => TabletWidth(
+          child: LoginScreen(next: state.uri.queryParameters['next']),
+        ),
         routes: [
           // Stare konta bez e-maila: numer telefonu i kod SMS albo hasło.
           GoRoute(
             path: 'sms',
-            builder: (context, state) =>
-                PhoneLoginScreen(next: state.uri.queryParameters['next']),
+            builder: (context, state) => TabletWidth(
+              child: PhoneLoginScreen(next: state.uri.queryParameters['next']),
+            ),
             routes: [
               GoRoute(
                 path: 'haslo',
-                builder: (context, state) => PasswordLoginScreen(
-                  phone: state.uri.queryParameters['telefon'] ?? '',
-                  next: state.uri.queryParameters['next'],
+                builder: (context, state) => TabletWidth(
+                  child: PasswordLoginScreen(
+                    phone: state.uri.queryParameters['telefon'] ?? '',
+                    next: state.uri.queryParameters['next'],
+                  ),
                 ),
               ),
               GoRoute(
                 path: 'kod',
-                builder: (context, state) => SmsCodeScreen(
-                  phone: state.uri.queryParameters['telefon'] ?? '',
-                  next: state.uri.queryParameters['next'],
+                builder: (context, state) => TabletWidth(
+                  child: SmsCodeScreen(
+                    phone: state.uri.queryParameters['telefon'] ?? '',
+                    next: state.uri.queryParameters['next'],
+                  ),
                 ),
               ),
             ],
@@ -312,8 +347,9 @@ GoRouter _buildRouter(Listenable refresh) {
       ),
       GoRoute(
         path: AppRoutes.register,
-        builder: (context, state) =>
-            RegisterScreen(next: state.uri.queryParameters['next']),
+        builder: (context, state) => TabletWidth(
+          child: RegisterScreen(next: state.uri.queryParameters['next']),
+        ),
       ),
     ],
   );

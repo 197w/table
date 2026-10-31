@@ -4,6 +4,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+import '../../app/platform.dart';
 import '../../data/models.dart';
 import '../management/export_csv.dart';
 import '../management/export_pdf.dart';
@@ -76,6 +77,10 @@ ExportTable _docsTable(List<InventoryDoc> docs, {required bool delivery}) => Exp
 
 /// PDF podsumowania inwentaryzacji: spis z różnicami oraz dostawy i usunięcia z okresu (z powodami).
 Future<void> saveInventoryPdf(BuildContext context, InventoryCount count, {required String restaurant}) async {
+  if (!panelOnDesktop) {
+    showMessage(context, 'PDF zapisuje panel na komputerze.', tone: ToastTone.warning);
+    return;
+  }
   final finished = count.finishedAt ?? DateTime.now();
   final day =
       '${finished.year}-${finished.month.toString().padLeft(2, '0')}-${finished.day.toString().padLeft(2, '0')}';

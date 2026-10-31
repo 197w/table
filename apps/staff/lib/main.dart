@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:table_core/email_auth.dart';
 import 'package:table_core/table_core.dart';
+import 'package:table_panel/tablet.dart';
 
 import 'data.dart';
 import 'login_screen.dart';
@@ -23,6 +24,11 @@ Future<void> main() async {
   }
 
   await Supabase.initialize(url: Env.supabaseUrl, publishableKey: Env.supabasePublishableKey);
+  // Na tablecie pełny panel restauracji, tak jak na komputerze (logowanie kontem lokalu, pracownicy kodem albo QR).
+  if (isTabletScreen) {
+    await runPanelOnTablet();
+    return;
+  }
   // Logowanie przerwane między kodem z e-maila a hasłem wylogowuje.
   await AuthPending.restore();
   runApp(const ProviderScope(child: StaffApp()));

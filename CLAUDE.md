@@ -4,9 +4,14 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
 
 - `apps/guest`: aplikacja dla gości na telefony (Android i iOS), identyfikator `pl.table.app`.
 - `apps/panel`: panel restauracji na komputery (Windows i macOS), identyfikator macOS `pl.table.panel`.
-  Na tablety przejdziemy, gdy panel na komputerach będzie ustalony. Nigdy na telefony.
+  Na tabletach pełny panel uruchamia Table for employees (`lib/tablet.dart`, `runPanelOnTablet`, od 10.2026):
+  poziomo, dźwięki z pakietu (`AudioCache` z prefiksem `packages/table_panel/assets/`), pełny ekran przez
+  `SystemChrome` (`setPanelFullscreen` w `app/platform.dart`), bez okna, powiadomień Windows i aktualizatora;
+  zapis plików (eksport, PDF) tylko na komputerze (`panelOnDesktop`). Nigdy na telefony.
 - `apps/staff`: Table for employees, aplikacja dla pracowników lokalu na telefony (Android `pl.table.table_staff`,
-  iOS `pl.table.tableStaff`). Logowanie e-mailem jak w Table (0069; numer konta = numer u pracownika w panelu), skan wspólnego kodu QR z panelu
+  iOS `pl.table.tableStaff`). Na tablecie (krótszy bok co najmniej 600 punktów, `isTabletScreen`) aplikacja zamiast
+  siebie uruchamia pełny panel restauracji jak na komputerze (zależność `table_panel`, Task z Todoist „na tabletach
+  identycznie jak na komputerach”): konto lokalu, pracownicy kodem albo QR. Logowanie e-mailem jak w Table (0069; numer konta = numer u pracownika w panelu), skan wspólnego kodu QR z panelu
   zaczyna zmianę i loguje w panelu. Dolne menu: Zamówienia, Dostawy, Zeskanuj, Grafik, Ustawienia. Grafik to lista dni z okresu lokalu
   (tydzień, 2 tygodnie albo miesiąc, `restaurants.schedule_period`, ustawia „Ustawienia lokalu”) ze zgłaszaniem godzin
   na cały okres naraz i „Moje godziny” na dole (miesiąc kalendarzowy ze strzałkami, do 3 miesięcy wstecz).
@@ -180,6 +185,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Stan otwarcia na kafelkach lokali (0064, `search_restaurants` i `guest_liked_restaurants` zwracają `hours`):
   `openingStatus` w `models.dart` („Otwarte do 22:00”, „Wkrótce zamknięcie – 22:00” i „Wkrótce otwarcie – 12:00”
   na godzinę przed, „Zamknięte · otwiera …”), `OpenStatusLine` w `restaurant_cards.dart`.
+  Tablet (10.2026): przy szerokości od 840 punktów menu z boku (`NavigationRail` w `shell.dart`, poza iOS 26 z natywnym
+  paskiem), a ekrany z treścią (lokal, menu, rezerwacja, koszyk, zamówienie, ustawienia, logowanie) mają szerokość
+  do 820 punktów na środku (`TabletWidth` w `app/tablet_width.dart`, owija trasy w `app.dart`).
   Liquid Glass (`app/liquid_glass.dart`, u pracownika `lib/liquid_glass.dart`): na iOS 26 i nowszym dolne menu to
   natywny UITabBar (`IOS26NativeTabBar` z `adaptive_platform_ui`, symbole SF), a „Wróć” i serce na stronie lokalu to
   przyciski szkła (`GlassIconButton`); natywny pasek chowa się, gdy nad zakładką jest inny ekran. Android zostaje przy

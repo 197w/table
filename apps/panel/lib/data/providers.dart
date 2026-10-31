@@ -4,8 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:table_core/table_core.dart';
-import 'package:window_manager/window_manager.dart';
 
+import '../app/platform.dart';
 import '../app/reservation_alerts.dart';
 import 'models.dart';
 import 'repository.dart';
@@ -646,10 +646,7 @@ class StartFullscreenNotifier extends Notifier<bool> {
     } catch (_) {
       // Wybór działa do zamknięcia panelu.
     }
-    try {
-      await windowManager.setFullScreen(value);
-      if (!value) await windowManager.maximize();
-    } catch (_) {}
+    await setPanelFullscreen(value);
   }
 }
 
@@ -662,12 +659,8 @@ class KitchenFullscreenNotifier extends Notifier<bool> {
 
   Future<void> set(bool value) async {
     state = value;
-    try {
-      // Po wyjściu z kuchni okno wraca do trybu wybranego w ustawieniach.
-      await windowManager.setFullScreen(value || ref.read(startFullscreenProvider));
-    } catch (_) {
-      // Bez trybu pełnoekranowego zostaje samo ukrycie menu.
-    }
+    // Po wyjściu z kuchni okno wraca do trybu wybranego w ustawieniach.
+    await setPanelFullscreen(value || ref.read(startFullscreenProvider));
   }
 }
 

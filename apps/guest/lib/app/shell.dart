@@ -11,7 +11,7 @@ import '../data/providers.dart';
 import 'liquid_glass.dart';
 
 /// Dolna nawigacja: Odkrywaj, Rezerwacje, Ustawienia. Na iOS 26 systemowy pasek z Liquid Glass,
-/// na starszym iOS szkło rysowane przez Fluttera, na Androidzie Material.
+/// na starszym iOS szkło rysowane przez Fluttera, na Androidzie Material. Na szerokim tablecie menu z boku.
 class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.navigationShell});
 
@@ -42,6 +42,44 @@ class AppShell extends ConsumerWidget {
             (label: 'Rezerwacje', symbol: 'calendar', selectedSymbol: 'calendar'),
             (label: 'Ustawienia', symbol: 'gearshape', selectedSymbol: 'gearshape.fill'),
           ],
+        ),
+      );
+    }
+
+    // Tablet poziomo (szeroko): menu z boku, treść ma całą wysokość.
+    if (MediaQuery.sizeOf(context).width >= 840) {
+      return Scaffold(
+        body: SafeArea(
+          right: false,
+          child: Row(
+            children: [
+              NavigationRail(
+                selectedIndex: navigationShell.currentIndex,
+                onDestinationSelected: select,
+                labelType: NavigationRailLabelType.all,
+                groupAlignment: -0.9,
+                destinations: const [
+                  NavigationRailDestination(
+                    icon: Glyph(AppIcons.compass),
+                    selectedIcon: Glyph(AppIcons.compassFill),
+                    label: Text('Odkrywaj'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Glyph(AppIcons.calendarDots),
+                    selectedIcon: Glyph(AppIcons.calendarDotsFill),
+                    label: Text('Rezerwacje'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Glyph(AppIcons.gear),
+                    selectedIcon: Glyph(AppIcons.gearFill),
+                    label: Text('Ustawienia'),
+                  ),
+                ],
+              ),
+              VerticalDivider(width: 1, color: AppColors.ring),
+              Expanded(child: navigationShell),
+            ],
+          ),
         ),
       );
     }
@@ -105,11 +143,7 @@ class _GlassBar extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.surface.withValues(alpha: dark ? 0.62 : 0.72),
             border: Border(
-              top: BorderSide(
-                color: (dark ? Colors.white : Colors.black).withValues(
-                  alpha: dark ? 0.12 : 0.08,
-                ),
-              ),
+              top: BorderSide(color: (dark ? Colors.white : Colors.black).withValues(alpha: dark ? 0.12 : 0.08)),
             ),
           ),
           child: child,

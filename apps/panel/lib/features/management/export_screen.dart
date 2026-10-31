@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+import '../../app/platform.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
 import 'export_csv.dart';
@@ -33,6 +34,10 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
 
   /// Zapis pliku w miejscu wybranym przez użytkownika: PDF (domyślnie) albo CSV.
   Future<void> _save(String name, ExportTable table, {bool csv = false}) async {
+    if (!panelOnDesktop) {
+      showMessage(context, 'Pliki zapisuje panel na komputerze.', tone: ToastTone.warning);
+      return;
+    }
     final ext = csv ? 'csv' : 'pdf';
     final location = await getSaveLocation(
       suggestedName: '$name-$_suffix.$ext',
