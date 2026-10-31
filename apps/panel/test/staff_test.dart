@@ -122,7 +122,10 @@ void main() {
 
   test('zakładki według uprawnień', () {
     expect(canOpenRoute(PanelRoutes.staff, {'staff'}), isTrue);
-    expect(canOpenRoute(PanelRoutes.staff, {'schedule'}), isTrue);
+    expect(canOpenRoute(PanelRoutes.staff, {'schedule'}), isFalse);
+    expect(canOpenRoute(PanelRoutes.schedule, {'schedule'}), isTrue);
+    expect(canOpenRoute(PanelRoutes.schedule, {'staff'}), isFalse);
+    expect(canOpenRoute(PanelRoutes.staff, {'positions'}), isTrue);
     expect(canOpenRoute(PanelRoutes.staff, {'staff_logins'}), isTrue);
     expect(canOpenRoute(PanelRoutes.staff, {'orders'}), isFalse);
     expect(canOpenRoute(PanelRoutes.reservations, {'orders'}), isFalse);

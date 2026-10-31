@@ -485,6 +485,7 @@ class SegmentedTabs<T> extends StatelessWidget {
     required this.selected,
     required this.onChanged,
     this.expand = false,
+    this.icons,
   });
 
   final List<(T, String)> options;
@@ -495,15 +496,19 @@ class SegmentedTabs<T> extends StatelessWidget {
   /// swoją szerokość i równą część zapasu, a napisy mają mniejszy margines, żeby zmieściły się trzy.
   final bool expand;
 
+  /// Ikony przed napisami, w kolejności opcji (jak „People” i „Roles” w UniFi).
+  final List<AppIconData>? icons;
+
   @override
   Widget build(BuildContext context) {
     return _SlidingSegments(
       selectedIndex: options.indexWhere((o) => o.$1 == selected),
       expand: expand,
       children: [
-        for (final (value, label) in options)
+        for (final (i, (value, label)) in options.indexed)
           _TextSegment(
             label: label,
+            icon: icons?.elementAtOrNull(i),
             selected: value == selected,
             padding: expand ? 6 : 14,
             onTap: () => onChanged(value),
@@ -840,13 +845,20 @@ Color _segmentColor({required bool selected, required bool hovered, Color? selec
     ? Color.lerp(AppColors.textMuted, AppColors.text, 0.6)!
     : AppColors.textMuted;
 
-/// Opcja z samym napisem.
+/// Opcja z napisem (i ewentualnie ikoną przed nim).
 class _TextSegment extends StatefulWidget {
-  const _TextSegment({required this.label, required this.selected, required this.onTap, this.padding = 14});
+  const _TextSegment({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.padding = 14,
+    this.icon,
+  });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final AppIconData? icon;
 
   /// Margines napisu z lewej i prawej.
   final double padding;
@@ -879,14 +891,26 @@ class _TextSegmentState extends State<_TextSegment> {
                 tween: ColorTween(end: _segmentColor(selected: widget.selected, hovered: _hovered)),
                 duration: const Duration(milliseconds: 200),
                 curve: AppMotion.easeOut,
-                builder: (context, color, _) => Text(
-                  widget.label,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  softWrap: false,
-                  overflow: TextOverflow.ellipsis,
-                  style: text.labelLarge?.copyWith(color: color),
-                ),
+                builder: (context, color, _) {
+                  final label = Text(
+                    widget.label,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.labelLarge?.copyWith(color: color),
+                  );
+                  if (widget.icon == null) return label;
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Glyph(widget.icon!, size: 16, color: color),
+                      const SizedBox(width: 7),
+                      Flexible(child: label),
+                    ],
+                  );
+                },
               ),
             ),
           ),

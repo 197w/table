@@ -1014,6 +1014,7 @@ class StaffMember {
     this.phone,
     this.userId,
     this.extraPositionIds = const [],
+    this.dismissedAt,
   });
 
   final String id;
@@ -1041,6 +1042,10 @@ class StaffMember {
   /// Konto, którym pracownik loguje się do panelu. Null, gdy nie ma konta.
   final String? userId;
 
+  /// Kiedy pracownik został zwolniony (0075). Zwolniony jest też nieaktywny; godziny pracy zostają.
+  final DateTime? dismissedAt;
+  bool get dismissed => dismissedAt != null;
+
   factory StaffMember.fromJson(Map<String, dynamic> json) {
     return StaffMember(
       id: json['id'] as String,
@@ -1053,6 +1058,7 @@ class StaffMember {
       color: _toInt(json['color']),
       active: json['active'] != false,
       userId: json['user_id'] as String?,
+      dismissedAt: _toDateOrNull(json['dismissed_at']),
       extraPositionIds: [
         for (final p in json['staff_member_positions'] as List? ?? const [])
           if (p is Map && p['position_id'] is String) p['position_id'] as String,

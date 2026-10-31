@@ -182,6 +182,7 @@ GoRouter _buildRouter(
           _page(PanelRoutes.kitchen, const KitchenScreen()),
           _page(PanelRoutes.serving, const ServingScreen()),
           _page(PanelRoutes.staff, const StaffScreen()),
+          _page(PanelRoutes.schedule, const ScheduleScreen()),
           _page(PanelRoutes.teamStats, const TeamStatsScreen()),
           _page(PanelRoutes.customers, const CustomersScreen()),
           _page(PanelRoutes.settings, const SettingsScreen()),
@@ -233,6 +234,7 @@ abstract final class PanelRoutes {
   static const serving = '/wydanie';
   static const pickup = '/odbior';
   static const staff = '/pracownicy';
+  static const schedule = '/grafik';
   static const teamStats = '/zespol';
   static const announcements = '/informacje';
   static const customers = '/klienci';
@@ -261,8 +263,9 @@ const _routePermissions = {
   PanelRoutes.serving: {'serving'},
   PanelRoutes.pickup: {'orders'},
   PanelRoutes.floor: {'floor_edit'},
-  // W Pracownikach każda część ma własne uprawnienie: zespół, loginy, grafik, stanowiska.
-  PanelRoutes.staff: {'staff', 'staff_logins', 'schedule', 'positions'},
+  // W Pracownikach każda część ma własne uprawnienie: zespół, loginy, stanowiska. Grafik jest osobną podzakładką.
+  PanelRoutes.staff: {'staff', 'staff_logins', 'positions'},
+  PanelRoutes.schedule: {'schedule'},
   PanelRoutes.teamStats: {'stats'},
   // Informacje czyta każdy pracownik (tylko te do siebie); pisze osoba z uprawnieniem „announcements”.
   PanelRoutes.announcements: <String>{},
@@ -293,6 +296,7 @@ const panelTabLabels = {
   PanelRoutes.pickup: 'Odbiór',
   PanelRoutes.floor: 'Edycja sali',
   PanelRoutes.staff: 'Pracownicy',
+  PanelRoutes.schedule: 'Grafik',
   PanelRoutes.teamStats: 'Statystyki zespołu',
   PanelRoutes.announcements: 'Informacje dla pracowników',
   PanelRoutes.customers: 'Klienci',

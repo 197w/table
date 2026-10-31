@@ -115,7 +115,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
   Map i śledzenia dostawców nie ma od 0068 (usunięte na prośbę użytkownika, także mapa u gościa).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0074, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0075, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -240,7 +240,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   użytkownika, wcześniej był tu lokal), grupy zakładek (`PanelSection`, `_SectionTab`: same ikony bez ramek, wybrana w kolorze akcentu z nazwą):
   Rezerwacje (Rezerwacje), Zamówienia (Zamówienia, Historia zamówień `/historia`, Kompletowanie `/wydanie`,
   Odbiór `/odbior`), Kuchnia (Kuchnia), Dostawy (Dostawy, Flota),
-  Pracownicy (Pracownicy: Zespół i Grafik, Statystyki zespołu `/zespol`, Informacje dla pracowników `/informacje`),
+  Pracownicy (Pracownicy: Zespół i Stanowiska, Grafik `/grafik`, Statystyki zespołu `/zespol`, Informacje dla
+  pracowników `/informacje`),
   Baza klientów (Klienci `/klienci`, Opinie),
   Management (Podsumowanie dnia `/podsumowanie`, Niezamknięte zamówienia `/niezamkniete`, Godziny pracy `/godziny`,
   Menu, Inwentaryzacja, Statystyki,
@@ -417,15 +418,29 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Ja nadal nie zakładam kont ani nie wymyślam haseł: konto zakłada sama restauracja albo użytkownik.
 - Pracownicy nie mają kont w panelu. Dodaje ich osoba z uprawnieniem `staff` w „Pracownicy” → „Zespół”
   (szczegóły ze statystykami `panel_member_stats`). Zakładka „Pracownicy” wygląda jak „People” w UniFi (od 0.28.0,
-  wzór od użytkownika; `staff_screen.dart`): po lewej panel (312 px, zwijany strzałką) z zakładkami Zespół / Grafik /
-  Stanowiska (`SegmentedTabs(expand: true)`, według uprawnień `staff`/`staff_logins`, `schedule`, `positions`),
-  wyszukiwaniem (imię albo telefon), „Dodaj pracownika” („Dodaj stanowisko” w Stanowiskach) i filtrami z liczbą osób
-  (`_FilterSection`: Stanowisko, Stan: Na zmianie / Aktywni / Nieaktywni, na start zaznaczone Aktywni; Konto
-  w aplikacji: Połączone / Niepołączone; pusta grupa nie filtruje). Filtry działają też w Grafiku. Po prawej Zespół
-  jako tabela (`_TeamTable`: imię z odznakami ALL / Ty / Nieaktywny, telefon, stanowisko jako znaczek z „+1” za
-  dodatkowe, Teraz: zielona kropka „od 18:50”, godziny w tym tygodniu, kod), Grafik z okresem i „Edytuj” nad
-  siatką, Stanowiska jako tabela (`_PositionsTable`: nazwa, systemowe z kłódką, uprawnienia, liczba pracowników,
-  zmiana i usunięcie własnych; wcześniej okno „Stanowiska”). Kafelków zespołu już nie ma.
+  wzory od użytkownika; `staff_screen.dart`). Po lewej panel (`_StaffPanel`, 288 px) z zakładkami Zespół / Stanowiska
+  z ikonami jak w UniFi (`SegmentedTabs(expand: true, icons:)`, `AppIcons.list` i `AppIcons.userGear`; według uprawnień
+  `staff`/`staff_logins` i `positions`), wyszukiwaniem (imię albo telefon), wyborem lokalu pod wyszukiwaniem
+  (`_RestaurantPicker`, jak wybór firmy w UniFi; widzi go tylko osoba ze stanowiskiem ALL albo pełny dostęp
+  właściciela, zmienia lokal całego panelu), „Dodaj pracownika” („Dodaj stanowisko” w Stanowiskach) i filtrami
+  z liczbą osób (`_FilterSection`: Stanowisko; Stan: Na zmianie / Aktywni / Nieaktywni / Zwolnieni, na start
+  zaznaczeni Aktywni; pusta grupa nie filtruje). Panel zwija okrągły przycisk na kresce między panelem a treścią
+  (`_EdgeButton` w `_StaffLayout`). Filtry, zwinięte grupy i zwinięcie panelu są wspólne dla Pracowników i Grafiku
+  (`_panelProvider`). Grafik to osobna podzakładka (`ScheduleScreen`, `/grafik`) z tym samym panelem: wybór okresu
+  i „Edytuj” / „Anuluj” / „Zapisz” są w panelu zamiast „Dodaj pracownika”, siatka bez zmian. Po prawej Zespół jako
+  tabela (`_TeamTable`: pole wyboru, imię z odznakami ALL / Ty / Nieaktywny / Zwolniony, telefon, stanowisko jako
+  znaczek z „+1” za dodatkowe, Teraz: zielona kropka „od 18:50”, godziny w tym tygodniu, kod). Zaznaczeni (tylko
+  z uprawnieniem `staff`) dostają pasek nad tabelą (`_SelectionBar`: „Aktywny”, „Nieaktywny”, „Zwolnij”;
+  `panel_set_staff_status`, 0075). Zwolniony (`staff_members.dismissed_at`) jest nieaktywny, kończy trwającą zmianę
+  i znika z przyszłego grafiku, a jego godziny pracy zostają (usunięcie pracownika kasowałoby jego zmiany);
+  „Aktywny” przywraca go. Siebie nie da się wyłączyć ani zwolnić. Nowego pracownika dodaje okno obok panelu jak
+  „Add New Person” w UniFi (`_MemberSheet` w `_SheetFrame`: imię i nazwisko, telefon, stanowisko jako karty po dwie
+  z kartą „Nowe stanowisko”, dodatkowe stanowiska przyciskiem „+ Dodaj stanowisko”, umowa i stawka, kolor), a nowe
+  albo zmienione stanowisko to samo okno dla roli (`_RoleSheet`: nazwa, uprawnienia w grupach z „Zaznacz wszystkie”,
+  „Usuń”). „Nowe stanowisko” z okna pracownika otwiera okno stanowiska nad nim, a po zapisie wraca z nowym
+  stanowiskiem zaznaczonym. Stanowiska jako tabela (`_PositionsTable`: nazwa, systemowe z kłódką, uprawnienia,
+  liczba pracowników; kliknięcie własnego otwiera okno). Edycja istniejącego pracownika zostaje w oknie ze
+  szczegółów (`_MemberDialog`, wspólny zapis `_persistMember`).
   `SegmentedTabs` i `IconTabs` mają wspólne podświetlenie (`_SlidingSegments`), które przesuwa się do wybranej opcji. Każdy pracownik ma czterocyfrowy kod, unikalny w lokalu
   (nadaje go baza przy dodaniu, trigger `staff_members_code`; zmiana: `panel_set_staff_code`, wpisany albo losowy).
   Kod widać stale w szczegółach (uprawnienie `staff_logins`, „Kody pracowników”, `panel_staff_codes`) i w aplikacji
@@ -459,7 +474,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Konto telefonu pracownika dostaje rolę obsługi (`restaurant_staff`, trigger `staff_members_account`), więc
   zamówienia w aplikacji używają funkcji `panel_*` z `p_member_id` (wymagana trwająca zmiana). Zamówienia zapisują
   pracownika (`opened_by_member`, `created_by_member`), kuchnia pokazuje jego imię na bileciku.
-- Grafik („Pracownicy” → „Grafik”, uprawnienie `schedule`): pracownik zgłasza w aplikacji, od której do której może
+- Grafik (podzakładka „Grafik” `/grafik` w grupie Pracownicy, `ScheduleScreen`, uprawnienie `schedule`): pracownik zgłasza w aplikacji, od której do której może
   pracować (`staff_submit_hours`, `staff_delete_hours`, `staff_my_schedule`), przełożony przyjmuje (także ze
   zmienionymi godzinami), odrzuca albo sam wpisuje godziny (`panel_decide_hours`, `panel_add_hours`,
   `panel_delete_hours`) albo daje wolne (`panel_set_day_off`, stan `off` bez godzin, niebieski, ikona słońca).

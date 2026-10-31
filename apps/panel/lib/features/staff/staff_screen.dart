@@ -36,9 +36,9 @@ String _hm(DateTime t) => '${_two(t.toLocal().hour)}:${_two(t.toLocal().minute)}
 String _initials(String name) =>
     name.split(' ').where((p) => p.isNotEmpty).take(2).map((p) => p[0].toUpperCase()).join();
 
-/// Pracownicy w układzie jak „People” w UniFi (31.10.2026, wzór od użytkownika): po lewej panel z zakładkami
-/// (Zespół, Grafik, Stanowiska), wyszukiwaniem, „Dodaj pracownika” i filtrami (stanowisko, stan, konto
-/// w aplikacji), po prawej tabela pracowników, grafik albo tabela stanowisk.
+/// Pracownicy w układzie jak „People” w UniFi (31.10.2026, wzór od użytkownika): po lewej panel z zakładkami Zespół
+/// i Stanowiska, wyszukiwaniem, wyborem lokalu (tylko ALL), „Dodaj pracownika” i filtrami, obok niego okno dodawania
+/// pracownika albo stanowiska, po prawej tabela. Grafik jest osobną podzakładką ([ScheduleScreen]) z tym samym panelem.
 class StaffScreen extends ConsumerStatefulWidget {
   const StaffScreen({super.key});
 
@@ -46,14 +46,15 @@ class StaffScreen extends ConsumerStatefulWidget {
   ConsumerState<StaffScreen> createState() => _StaffScreenState();
 }
 
-/// Zakładki w panelu po lewej.
-enum _View { team, schedule, positions }
+/// Zakładki w panelu po lewej (jak „People” i „Roles” w UniFi).
+enum _View { team, positions }
 
 /// Stan pracownika w filtrach.
 enum _Status {
   onShift('Na zmianie'),
   active('Aktywni'),
-  inactive('Nieaktywni');
+  inactive('Nieaktywni'),
+  dismissed('Zwolnieni');
 
   const _Status(this.label);
   final String label;
@@ -61,29 +62,190 @@ enum _Status {
   bool matches(StaffMember m, Map<String, DateTime> working) => switch (this) {
     _Status.onShift => working.containsKey(m.id),
     _Status.active => m.active,
-    _Status.inactive => !m.active,
+    _Status.inactive => !m.active && !m.dismissed,
+    _Status.dismissed => m.dismissed,
   };
 }
 
-/// Szerokość panelu z zakładkami i filtrami.
-const _panelWidth = 312.0;
+/// Szerokość panelu po lewej, zwiniętego paska i okna dodawania obok panelu.
+const _panelWidth = 288.0;
+const _collapsedWidth = 20.0;
+const _sheetWidth = 368.0;
+
+/// Panel po lewej wspólny dla Pracowników i Grafiku: zaznaczone filtry ('' = bez stanowiska), zwinięte grupy
+/// i czy panel jest rozwinięty. Zostaje przy przejściu między zakładkami. Na start tylko aktywni.
+class _PanelState {
+  const _PanelState({
+    this.positions = const {},
+    this.statuses = const {_Status.active},
+    this.closed = const {},
+    this.open = true,
+  });
+
+  final Set<String> positions;
+  final Set<_Status> statuses;
+  final Set<String> closed;
+  final bool open;
+
+  _PanelState copyWith({Set<String>? positions, Set<_Status>? statuses, Set<String>? closed, bool? open}) =>
+      _PanelState(
+        positions: positions ?? this.positions,
+        statuses: statuses ?? this.statuses,
+        closed: closed ?? this.closed,
+        open: open ?? this.open,
+      );
+}
+
+class _PanelNotifier extends Notifier<_PanelState> {
+  @override
+  _PanelState build() => const _PanelState();
+
+  void togglePosition(String id) => state = state.copyWith(positions: _flip(state.positions, id));
+  void toggleStatus(_Status s) => state = state.copyWith(statuses: _flip(state.statuses, s));
+  void toggleSection(String key) => state = state.copyWith(closed: _flip(state.closed, key));
+  void setOpen(bool open) => state = state.copyWith(open: open);
+}
+
+final _panelProvider = NotifierProvider<_PanelNotifier, _PanelState>(_PanelNotifier.new);
+
+Set<T> _flip<T>(Set<T> set, T value) => set.contains(value) ? ({...set}..remove(value)) : {...set, value};
+
+/// Pracownik pasuje do wyszukiwania (imię albo co najmniej 3 cyfry telefonu) i do zaznaczonych filtrów.
+/// Pusta grupa filtrów nie filtruje.
+bool _matches(StaffMember m, _PanelState f, String query, Map<String, DateTime> working) {
+  if (query.isNotEmpty) {
+    final digits = query.replaceAll(RegExp(r'[^0-9]'), '');
+    final byPhone = digits.length >= 3 && (m.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '').contains(digits);
+    if (!m.name.toLowerCase().contains(query) && !byPhone) return false;
+  }
+  if (f.positions.isNotEmpty &&
+      !(m.positionIds.isEmpty ? f.positions.contains('') : m.positionIds.any(f.positions.contains))) {
+    return false;
+  }
+  return f.statuses.isEmpty || f.statuses.any((s) => s.matches(m, working));
+}
+
+/// Zmiany z bieżącego tygodnia i kto jest teraz na zmianie (od kiedy).
+({List<StaffShift> shifts, Map<String, DateTime> working}) _thisWeek(WidgetRef ref, String restaurantId) {
+  final monday = _weekStart(DateTime.now());
+  final shifts = ref.watch(
+    shiftsProvider((
+      restaurantId: restaurantId,
+      from: monday,
+      to: DateTime(monday.year, monday.month, monday.day + 7),
+    )),
+  ).value ?? const <StaffShift>[];
+  return (shifts: shifts, working: {for (final s in shifts) if (s.isOpen) s.memberId: s.startedAt});
+}
+
+/// Zalogowany ma stanowisko ALL albo pełny dostęp właściciela: tylko on widzi wybór lokalu w panelu.
+bool _hasAll(ActingMember? member, List<StaffMember> staff, List<StaffPosition> positions) {
+  if (member == null) return false;
+  if (member.isAccount) return true;
+  final all = {for (final p in positions) if (p.isAll) p.id};
+  return staff.any((m) => m.id == member.memberId && m.positionIds.any(all.contains));
+}
+
+/// Grupy filtrów w panelu: stanowisko i stan, z liczbą osób przy każdej pozycji.
+List<Widget> _filterSections(
+  _PanelState f,
+  _PanelNotifier notifier,
+  List<StaffMember> all,
+  List<StaffPosition> positions,
+  Map<String, DateTime> working,
+) {
+  int count(bool Function(StaffMember m) test) => all.where(test).length;
+  final noPosition = count((m) => m.positionIds.isEmpty);
+  return [
+    _FilterSection(
+      title: 'Stanowisko',
+      first: true,
+      open: !f.closed.contains('positions'),
+      onToggle: () => notifier.toggleSection('positions'),
+      options: [
+        for (final p in positions)
+          (
+            label: p.name,
+            count: count((m) => m.positionIds.contains(p.id)),
+            checked: f.positions.contains(p.id),
+            onChanged: (_) => notifier.togglePosition(p.id),
+            dot: null,
+          ),
+        if (noPosition > 0)
+          (
+            label: 'Bez stanowiska',
+            count: noPosition,
+            checked: f.positions.contains(''),
+            onChanged: (_) => notifier.togglePosition(''),
+            dot: null,
+          ),
+      ],
+    ),
+    _FilterSection(
+      title: 'Stan',
+      open: !f.closed.contains('status'),
+      onToggle: () => notifier.toggleSection('status'),
+      options: [
+        for (final s in _Status.values)
+          (
+            label: s.label,
+            count: count((m) => s.matches(m, working)),
+            checked: f.statuses.contains(s),
+            onChanged: (_) => notifier.toggleStatus(s),
+            dot: s == _Status.onShift ? AppColors.accent : null,
+          ),
+      ],
+    ),
+  ];
+}
+
+/// Szczegóły pracownika (dane, kod, statystyki).
+Future<void> _showMember(BuildContext context, String restaurantId, StaffMember member) {
+  return showDialog<void>(
+    context: context,
+    builder: (_) => _MemberDetailsDialog(restaurantId: restaurantId, member: member),
+  );
+}
+
+/// Lista pracowników albo pusty lokal, ładowanie i błąd (Zespół i Grafik).
+Widget _staffOrEmpty(
+  AsyncValue<List<StaffMember>> async, {
+  required VoidCallback onRetry,
+  required bool canStaff,
+  required Widget Function() build,
+}) {
+  return async.when(
+    skipLoadingOnReload: true,
+    loading: () => const LoadingView(),
+    error: (e, _) => ErrorView(error: e, onRetry: onRetry),
+    data: (all) => all.isEmpty
+        ? MessageView(
+            icon: AppIcons.users,
+            title: 'Brak pracowników',
+            message: canStaff
+                ? 'Dodaj pracownika przyciskiem w panelu po lewej.'
+                : 'Kierownik jeszcze nie dodał pracowników.',
+          )
+        : build(),
+  );
+}
 
 class _StaffScreenState extends ConsumerState<StaffScreen> {
-  /// Okres grafiku względem bieżącego (tydzień, 2 tygodnie albo miesiąc, jak ustawił lokal).
-  int _offset = 0;
-  bool _saving = false;
   _View _view = _View.team;
-  bool _panelOpen = true;
   final _search = TextEditingController();
 
-  /// Filtry: zaznaczone stanowiska ('' = bez stanowiska), stany i konto w aplikacji (true = połączone).
-  /// Pusta grupa nie filtruje. Na start tylko aktywni, jak wcześniej bez „Pokaż nieaktywnych”.
-  final _positionFilter = <String>{};
-  final _statusFilter = <_Status>{_Status.active};
-  final _accountFilter = <bool>{};
+  /// Zaznaczeni pracownicy (pola wyboru w tabeli).
+  final _selected = <String>{};
 
-  /// Zwinięte grupy filtrów.
-  final _closed = <String>{};
+  /// Otwarte okno dodawania pracownika.
+  bool _addingMember = false;
+
+  /// Otwarte okno stanowiska: (position: null) to nowe stanowisko.
+  ({StaffPosition? position})? _role;
+
+  /// Stanowisko dodane z okna pracownika: okno pracownika je zaznacza.
+  String? _newRoleId;
+  bool _busy = false;
 
   @override
   void dispose() {
@@ -91,15 +253,15 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     super.dispose();
   }
 
-  Future<void> _addMember(String restaurantId, {required bool withLogin}) async {
-    final id = await showDialog<String>(
-      context: context,
-      builder: (_) => _MemberDialog(restaurantId: restaurantId),
-    );
-    if (id == null || !mounted) return;
+  /// Po dodaniu pracownika: okno się zamyka, a nowy kod (nadaje go baza) pokazujemy do przekazania.
+  Future<void> _memberAdded(String restaurantId, String id, {required bool withLogin}) async {
+    setState(() {
+      _addingMember = false;
+      _role = null;
+      _newRoleId = null;
+    });
     ref.invalidate(staffProvider(restaurantId));
     if (!withLogin) return;
-    // Nowy pracownik od razu ma czterocyfrowy kod (nadaje go baza). Pokazujemy go do przekazania.
     try {
       ref.invalidate(staffCodesProvider(restaurantId));
       final codes = await ref.read(staffCodesProvider(restaurantId).future);
@@ -115,11 +277,260 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     }
   }
 
-  Future<void> _openMember(String restaurantId, StaffMember member) {
-    return showDialog<void>(
-      context: context,
-      builder: (_) => _MemberDetailsDialog(restaurantId: restaurantId, member: member),
+  /// „Aktywny”, „Nieaktywny” albo „Zwolnij” dla zaznaczonych (0075). Siebie nie da się wyłączyć ani zwolnić.
+  Future<void> _setStatus(String restaurantId, List<StaffMember> members, String status) async {
+    final me = ref.read(panelMemberProvider)?.memberId;
+    if (status != 'active' && members.any((m) => m.id == me)) {
+      showMessage(context, 'Nie możesz wyłączyć ani zwolnić siebie. Odznacz swój wiersz.');
+      return;
+    }
+    final one = members.length == 1 ? members.single.name : null;
+    final many = '${members.length} pracowników';
+    if (status != 'active') {
+      final dismiss = status == 'dismissed';
+      final ok = await confirm(
+        context,
+        title: dismiss
+            ? 'Zwolnić ${one ?? many}?'
+            : one != null
+            ? 'Ustawić $one jako nieaktywnego?'
+            : 'Ustawić $many jako nieaktywnych?',
+        message: dismiss
+            ? 'Zakończą trwającą zmianę, znikną z przyszłego grafiku i nie zalogują się w panelu ani w aplikacji. '
+                  'Przepracowane godziny i historia zostają. Później możesz ich znowu ustawić jako aktywnych.'
+            : 'Nie zalogują się w panelu ani w aplikacji, dopóki znowu nie ustawisz ich jako aktywnych. '
+                  'Grafik i godziny pracy zostają.',
+        action: dismiss ? 'Zwolnij' : 'Nieaktywny',
+        destructive: dismiss,
+      );
+      if (!ok) return;
+    }
+    setState(() => _busy = true);
+    try {
+      final n = await ref.read(repositoryProvider).setStaffStatus([for (final m in members) m.id], status);
+      ref.invalidate(staffProvider(restaurantId));
+      if (!mounted) return;
+      setState(_selected.clear);
+      showMessage(
+        context,
+        switch (status) {
+          'dismissed' => 'Zwolnieni: $n',
+          'inactive' => 'Nieaktywni: $n',
+          _ => 'Aktywni: $n',
+        },
+        tone: ToastTone.success,
+      );
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _openRole(StaffPosition? position) => setState(() => _role = (position: position));
+
+  @override
+  Widget build(BuildContext context) {
+    final restaurant = ref.watch(currentRestaurantProvider);
+    if (restaurant == null) return const LoadingView();
+    // Uprawnienia pracownika zalogowanego w tej zakładce. Każda część ma własne.
+    final permissions = ref.watch(memberPermissionsProvider);
+    final canStaff = permissions.contains('staff');
+    final canLogins = permissions.contains('staff_logins');
+    final canPositions = permissions.contains('positions');
+    // Grafik jest osobną podzakładką, czas pracy w Management → „Godziny pracy”.
+    final views = [
+      if (canStaff || canLogins) (_View.team, 'Zespół', AppIcons.list),
+      if (canPositions) (_View.positions, 'Stanowiska', AppIcons.userGear),
+    ];
+    if (views.isEmpty) {
+      return const MessageView(
+        icon: AppIcons.lock,
+        title: 'Brak dostępu',
+        message: 'Twoje stanowisko nie ma uprawnień do żadnej części zakładki „Pracownicy”.',
+      );
+    }
+    final view = views.any((v) => v.$1 == _view) ? _view : views.first.$1;
+
+    final staffAsync = ref.watch(staffProvider(restaurant.id));
+    final all = staffAsync.value ?? const <StaffMember>[];
+    final positions = ref.watch(positionsProvider(restaurant.id)).value ?? const <StaffPosition>[];
+    final week = _thisWeek(ref, restaurant.id);
+    final filters = ref.watch(_panelProvider);
+    final query = _search.text.trim().toLowerCase();
+    final members = [for (final m in all) if (_matches(m, filters, query, week.working)) m];
+    final chosen = [for (final m in members) if (_selected.contains(m.id)) m];
+
+    final panel = _StaffPanel(
+      header: views.length > 1
+          ? SegmentedTabs<_View>(
+              options: [for (final v in views) (v.$1, v.$2)],
+              icons: [for (final v in views) v.$3],
+              selected: view,
+              expand: true,
+              onChanged: (v) => setState(() {
+                _view = v;
+                _search.clear();
+                _selected.clear();
+                _addingMember = false;
+                _role = null;
+              }),
+            )
+          : _PanelTitle(icon: views.first.$3, title: views.first.$2),
+      search: _search,
+      searchHint: view == _View.positions ? 'Szukaj stanowiska' : 'Szukaj',
+      onSearch: () => setState(() {}),
+      restaurantPicker: _hasAll(ref.watch(panelMemberProvider), all, positions),
+      actions: [
+        if (view == _View.team && canStaff)
+          _PanelAction(
+            label: 'Dodaj pracownika',
+            active: _addingMember,
+            onTap: () => setState(() {
+              _addingMember = true;
+              _role = null;
+              _newRoleId = null;
+            }),
+          ),
+        if (view == _View.positions)
+          _PanelAction(
+            label: 'Dodaj stanowisko',
+            active: _role != null && _role!.position == null,
+            onTap: () => _openRole(null),
+          ),
+      ],
+      children: view == _View.positions
+          ? [
+              Text(
+                'ALL, Kelner, Kucharz i Dostawca dodał system i nie da się ich zmienić ani usunąć, bo korzystają '
+                'z nich pakiety Table. Własne stanowiska dodajesz tutaj. Pracownik otworzy tylko te zakładki '
+                'i przyciski, do których jego stanowisko ma uprawnienia.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+              ),
+            ]
+          : _filterSections(filters, ref.read(_panelProvider.notifier), all, positions, week.working),
     );
+
+    final content = switch (view) {
+      _View.team => _staffOrEmpty(
+        staffAsync,
+        onRetry: () => ref.invalidate(staffProvider(restaurant.id)),
+        canStaff: canStaff,
+        build: () => Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 32, 16),
+          child: _TeamTable(
+            members: members,
+            positions: positions,
+            codes: canLogins
+                ? ref.watch(staffCodesProvider(restaurant.id)).value ?? const <String, String>{}
+                : const <String, String>{},
+            showCodes: canLogins,
+            working: week.working,
+            shifts: week.shifts,
+            me: ref.watch(panelMemberProvider)?.memberId,
+            onOpen: canStaff || canLogins ? (m) => _showMember(context, restaurant.id, m) : null,
+            selectable: canStaff,
+            selected: _selected,
+            onSelect: (id, on) => setState(() => on ? _selected.add(id) : _selected.remove(id)),
+            onSelectAll: (on) => setState(() {
+              for (final m in members) {
+                on ? _selected.add(m.id) : _selected.remove(m.id);
+              }
+            }),
+            bar: chosen.isEmpty
+                ? null
+                : _SelectionBar(
+                    count: chosen.length,
+                    busy: _busy,
+                    onClear: () => setState(_selected.clear),
+                    onActive: chosen.any((m) => !m.active)
+                        ? () => _setStatus(restaurant.id, chosen, 'active')
+                        : null,
+                    onInactive: chosen.any((m) => m.active)
+                        ? () => _setStatus(restaurant.id, chosen, 'inactive')
+                        : null,
+                    onDismiss: chosen.any((m) => !m.dismissed)
+                        ? () => _setStatus(restaurant.id, chosen, 'dismissed')
+                        : null,
+                  ),
+          ),
+        ),
+      ),
+      _View.positions => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 16, 32, 16),
+        child: _PositionsTable(
+          restaurantId: restaurant.id,
+          positions: positions,
+          members: all,
+          query: query,
+          selectedId: _role?.position?.id,
+          onEdit: _openRole,
+        ),
+      ),
+    };
+
+    // Okno dodawania obok panelu. Nowe stanowisko z okna pracownika otwiera się na nim, a po zapisie
+    // okno pracownika wraca z tym stanowiskiem zaznaczonym (IndexedStack zachowuje wpisane dane).
+    final sheets = [
+      if (_addingMember)
+        _MemberSheet(
+          key: const ValueKey('nowy pracownik'),
+          restaurantId: restaurant.id,
+          positions: positions,
+          selectPositionId: _newRoleId,
+          onNewRole: canPositions ? () => _openRole(null) : null,
+          onClose: () => setState(() {
+            _addingMember = false;
+            _role = null;
+          }),
+          onSaved: (id) => _memberAdded(restaurant.id, id, withLogin: canLogins),
+        ),
+      if (_role case final role?)
+        _RoleSheet(
+          key: ValueKey('stanowisko ${role.position?.id}'),
+          restaurantId: restaurant.id,
+          position: role.position,
+          onClose: () => setState(() => _role = null),
+          onSaved: (id) => setState(() {
+            if (_addingMember && role.position == null) _newRoleId = id;
+            _role = null;
+          }),
+        ),
+    ];
+
+    return _StaffLayout(
+      panel: panel,
+      sheet: sheets.isEmpty
+          ? null
+          : SizedBox(
+              key: ValueKey(_addingMember ? 'okno pracownika' : 'okno stanowiska'),
+              width: _sheetWidth,
+              child: IndexedStack(index: sheets.length - 1, sizing: StackFit.expand, children: sheets),
+            ),
+      content: TabContent(tab: view, child: content),
+    );
+  }
+}
+
+/// Grafik jako osobna podzakładka Pracowników (31.10.2026): ten sam panel po lewej co w Pracownikach, w nim wybór
+/// okresu i „Edytuj”, a po prawej grafik dla pracowników z filtrów. Uprawnienie „Grafik”.
+class ScheduleScreen extends ConsumerStatefulWidget {
+  const ScheduleScreen({super.key});
+
+  @override
+  ConsumerState<ScheduleScreen> createState() => _ScheduleScreenState();
+}
+
+class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
+  /// Okres grafiku względem bieżącego (tydzień, 2 tygodnie albo miesiąc, jak ustawił lokal).
+  int _offset = 0;
+  bool _saving = false;
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
   }
 
   /// Dzień pracownika w trybie edycji: decyzja trafia do niezapisanych zmian.
@@ -185,311 +596,25 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     }
   }
 
-  /// Pracownik pasuje do wyszukiwania (imię albo co najmniej 3 cyfry telefonu) i do zaznaczonych filtrów.
-  bool _matches(StaffMember m, Map<String, DateTime> working) {
-    final query = _search.text.trim().toLowerCase();
-    if (query.isNotEmpty) {
-      final digits = query.replaceAll(RegExp(r'[^0-9]'), '');
-      final byPhone = digits.length >= 3 && (m.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '').contains(digits);
-      if (!m.name.toLowerCase().contains(query) && !byPhone) return false;
-    }
-    if (_positionFilter.isNotEmpty &&
-        !(m.positionIds.isEmpty ? _positionFilter.contains('') : m.positionIds.any(_positionFilter.contains))) {
-      return false;
-    }
-    if (_statusFilter.isNotEmpty && !_statusFilter.any((s) => s.matches(m, working))) return false;
-    if (_accountFilter.isNotEmpty && !_accountFilter.contains(m.userId != null)) return false;
-    return true;
-  }
-
-  void _toggle<T>(Set<T> set, T value, bool on) {
-    setState(() {
-      if (on) {
-        set.add(value);
-      } else {
-        set.remove(value);
-      }
-    });
-  }
-
-  void _toggleSection(String key) => _toggle(_closed, key, !_closed.contains(key));
-
   @override
   Widget build(BuildContext context) {
     final restaurant = ref.watch(currentRestaurantProvider);
     if (restaurant == null) return const LoadingView();
-    // Uprawnienia pracownika zalogowanego w tej zakładce. Każda część ma własne.
+    final restaurantId = restaurant.id;
+    final text = Theme.of(context).textTheme;
     final permissions = ref.watch(memberPermissionsProvider);
     final canStaff = permissions.contains('staff');
-    final canLogins = permissions.contains('staff_logins');
     final canPlan = permissions.contains('schedule');
-    final canPositions = permissions.contains('positions');
-    // Czas pracy jest w Management → „Godziny pracy”.
-    final views = [
-      if (canStaff || canLogins) (_View.team, 'Zespół'),
-      if (canPlan) (_View.schedule, 'Grafik'),
-      if (canPositions) (_View.positions, 'Stanowiska'),
-    ];
-    if (views.isEmpty) {
-      return const MessageView(
-        icon: AppIcons.lock,
-        title: 'Brak dostępu',
-        message: 'Twoje stanowisko nie ma uprawnień do żadnej części zakładki „Pracownicy”.',
-      );
-    }
-    final view = views.any((v) => v.$1 == _view) ? _view : views.first.$1;
-
-    final staffAsync = ref.watch(staffProvider(restaurant.id));
-    final all = staffAsync.value ?? const <StaffMember>[];
-    final positions = ref.watch(positionsProvider(restaurant.id)).value ?? const <StaffPosition>[];
-    final thisWeek = _weekStart(DateTime.now());
-    final shifts = ref.watch(
-      shiftsProvider((
-        restaurantId: restaurant.id,
-        from: thisWeek,
-        to: DateTime(thisWeek.year, thisWeek.month, thisWeek.day + 7),
-      )),
-    ).value ?? const <StaffShift>[];
-    final working = {for (final s in shifts) if (s.isOpen) s.memberId: s.startedAt};
     final me = ref.watch(panelMemberProvider)?.memberId;
-    final members = [for (final m in all) if (_matches(m, working)) m];
-    final addMember = canStaff ? () => _addMember(restaurant.id, withLogin: canLogins) : null;
 
-    // Lista pracowników albo pusty lokal, ładowanie i błąd (Zespół i Grafik).
-    Widget withStaff(Widget Function() build) => staffAsync.when(
-      skipLoadingOnReload: true,
-      loading: () => const LoadingView(),
-      error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(staffProvider(restaurant.id))),
-      data: (all) => all.isEmpty
-          ? MessageView(
-              icon: AppIcons.users,
-              title: 'Brak pracowników',
-              message: canStaff ? 'Dodaj pracownika.' : 'Kierownik jeszcze nie dodał pracowników.',
-              actionLabel: canStaff ? 'Dodaj pracownika' : null,
-              onAction: addMember,
-            )
-          : build(),
-    );
+    final staffAsync = ref.watch(staffProvider(restaurantId));
+    final all = staffAsync.value ?? const <StaffMember>[];
+    final positions = ref.watch(positionsProvider(restaurantId)).value ?? const <StaffPosition>[];
+    final week = _thisWeek(ref, restaurantId);
+    final filters = ref.watch(_panelProvider);
+    final query = _search.text.trim().toLowerCase();
+    final members = [for (final m in all) if (_matches(m, filters, query, week.working)) m];
 
-    final content = switch (view) {
-      _View.team => withStaff(
-        () => Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 32, 16),
-          child: _TeamTable(
-            members: members,
-            positions: positions,
-            codes: canLogins
-                ? ref.watch(staffCodesProvider(restaurant.id)).value ?? const <String, String>{}
-                : const <String, String>{},
-            showCodes: canLogins,
-            working: working,
-            shifts: shifts,
-            me: me,
-            onOpen: canStaff || canLogins ? (m) => _openMember(restaurant.id, m) : null,
-          ),
-        ),
-      ),
-      _View.schedule => withStaff(() => _schedule(restaurant.id, members, positions, canStaff, canPlan, me)),
-      _View.positions => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 16, 32, 16),
-        child: _PositionsTable(
-          restaurantId: restaurant.id,
-          positions: positions,
-          members: all,
-          query: _search.text.trim().toLowerCase(),
-        ),
-      ),
-    };
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (_panelOpen)
-          _panel(
-            views: views,
-            view: view,
-            all: all,
-            positions: positions,
-            working: working,
-            onAdd: switch (view) {
-              _View.team => addMember,
-              _View.positions => () => _editPosition(context, ref, restaurant.id),
-              _View.schedule => null,
-            },
-          )
-        else
-          // Zwinięty panel: wąski pasek ze strzałką, która go rozwija.
-          Container(
-            width: 48,
-            padding: const EdgeInsets.only(top: 16),
-            alignment: Alignment.topCenter,
-            decoration: BoxDecoration(border: Border(right: BorderSide(color: AppColors.ring))),
-            child: IconButton(
-              tooltip: 'Pokaż panel',
-              visualDensity: VisualDensity.compact,
-              onPressed: () => setState(() => _panelOpen = true),
-              icon: Glyph(AppIcons.caretRight, size: 16, color: AppColors.textMuted),
-            ),
-          ),
-        Expanded(child: TabContent(tab: view, child: content)),
-      ],
-    );
-  }
-
-  /// Panel po lewej: zakładki, wyszukiwanie, „Dodaj…” i filtry pracowników (w Stanowiskach opis zamiast filtrów).
-  Widget _panel({
-    required List<(_View, String)> views,
-    required _View view,
-    required List<StaffMember> all,
-    required List<StaffPosition> positions,
-    required Map<String, DateTime> working,
-    required VoidCallback? onAdd,
-  }) {
-    final text = Theme.of(context).textTheme;
-    int count(bool Function(StaffMember m) test) => all.where(test).length;
-    final noPosition = count((m) => m.positionIds.isEmpty);
-    _FilterOption option<T>(Set<T> set, T value, String label, int n, {Color? dot}) => (
-      label: label,
-      count: n,
-      checked: set.contains(value),
-      onChanged: (on) => _toggle(set, value, on),
-      dot: dot,
-    );
-
-    return Container(
-      width: _panelWidth,
-      decoration: BoxDecoration(border: Border(right: BorderSide(color: AppColors.ring))),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 8, 0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: views.length > 1
-                      ? SegmentedTabs<_View>(
-                          options: views,
-                          selected: view,
-                          expand: true,
-                          onChanged: (v) => setState(() {
-                            _view = v;
-                            _search.clear();
-                          }),
-                        )
-                      : Text(views.first.$2, style: text.titleSmall),
-                ),
-                const SizedBox(width: 4),
-                IconButton(
-                  tooltip: 'Zwiń panel',
-                  constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-                  padding: EdgeInsets.zero,
-                  onPressed: () => setState(() => _panelOpen = false),
-                  icon: Glyph(AppIcons.caretLeft, size: 16, color: AppColors.textMuted),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: TextField(
-              controller: _search,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                hintText: view == _View.positions ? 'Szukaj stanowiska' : 'Szukaj',
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-                prefixIcon: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Glyph(AppIcons.search, size: 16, color: AppColors.textMuted),
-                ),
-                prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              ),
-            ),
-          ),
-          if (onAdd != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: OutlinedButton(
-                onPressed: onAdd,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.accent,
-                  side: BorderSide(color: AppColors.accent.withValues(alpha: 0.7)),
-                  minimumSize: const Size.fromHeight(40),
-                ),
-                child: Text(view == _View.positions ? 'Dodaj stanowisko' : 'Dodaj pracownika'),
-              ),
-            ),
-          const SizedBox(height: 10),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              children: [
-                if (view == _View.positions)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      'ALL, Kelner, Kucharz i Dostawca dodał system i nie da się ich usunąć, bo korzystają z nich '
-                      'pakiety Table. Własne stanowiska dodajesz tutaj. Pracownik otworzy tylko te zakładki '
-                      'i przyciski, do których jego stanowisko ma uprawnienia.',
-                      style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-                    ),
-                  )
-                else ...[
-                  _FilterSection(
-                    title: 'Stanowisko',
-                    first: true,
-                    open: !_closed.contains('positions'),
-                    onToggle: () => _toggleSection('positions'),
-                    options: [
-                      for (final p in positions)
-                        option(_positionFilter, p.id, p.name, count((m) => m.positionIds.contains(p.id))),
-                      if (noPosition > 0) option(_positionFilter, '', 'Bez stanowiska', noPosition),
-                    ],
-                  ),
-                  _FilterSection(
-                    title: 'Stan',
-                    open: !_closed.contains('status'),
-                    onToggle: () => _toggleSection('status'),
-                    options: [
-                      for (final s in _Status.values)
-                        option(
-                          _statusFilter,
-                          s,
-                          s.label,
-                          count((m) => s.matches(m, working)),
-                          dot: s == _Status.onShift ? AppColors.accent : null,
-                        ),
-                    ],
-                  ),
-                  _FilterSection(
-                    title: 'Konto w aplikacji',
-                    open: !_closed.contains('account'),
-                    onToggle: () => _toggleSection('account'),
-                    options: [
-                      option(_accountFilter, true, 'Połączone', count((m) => m.userId != null)),
-                      option(_accountFilter, false, 'Niepołączone', count((m) => m.userId == null)),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Grafik: okres i edycja u góry, pod nimi tydzień pod tygodniem dla pracowników z filtrów.
-  Widget _schedule(
-    String restaurantId,
-    List<StaffMember> members,
-    List<StaffPosition> positions,
-    bool canStaff,
-    bool canPlan,
-    String? me,
-  ) {
-    final text = Theme.of(context).textTheme;
     // Okres z „Ustawień lokalu” i tryb edycji.
     final periodKind = ref.watch(profileProvider(restaurantId)).value?.schedulePeriod ?? 'week';
     final period = schedulePeriod(periodKind, _offset);
@@ -508,8 +633,8 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     // Cały okres lokalu, tydzień pod tygodniem (miesiąc: od poniedziałku do niedzieli).
     final weeks = periodWeeks(period);
     final gridEnd = DateTime(weeks.last.year, weeks.last.month, weeks.last.day + 7);
-    final query = (restaurantId: restaurantId, from: weeks.first, to: gridEnd);
-    final saved = ref.watch(scheduleRangeProvider(query)).value ?? const <PlannedShift>[];
+    final range = (restaurantId: restaurantId, from: weeks.first, to: gridEnd);
+    final saved = ref.watch(scheduleRangeProvider(range)).value ?? const <PlannedShift>[];
     // W trybie edycji grafik pokazuje dni po niezapisanych zmianach.
     final changes = editing ? draft.changes : const <String, ScheduleChange>{};
     final savedByKey = {for (final p in saved) scheduleKey(p.memberId, p.day): p};
@@ -522,148 +647,419 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     final waiting = planned.where((p) => p.status == PlannedShiftStatus.pending && inPeriod(p.day)).length;
     // Uwagi pracowników na tygodnie (z aplikacji Table for employees).
     final notes = {
-      for (final n in ref.watch(weekNotesProvider(query)).value ?? const <WeekNote>[])
+      for (final n in ref.watch(weekNotesProvider(range)).value ?? const <WeekNote>[])
         '${n.memberId}@${dateOnly(n.weekStart)}': n.note,
     };
     final positionNames = {for (final p in positions) p.id: p.name};
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Okres i edycja grafiku nad tabelą; pracownicy widzą zmiany dopiero po „Zapisz”.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 32, 16),
-          child: Row(
-            children: [
-              StepSwitcher(
-                label: periodKind == 'month' ? Fmt.monthYear(period.from) : weekLabel(period.from, period.to),
-                labelWidth: periodKind == 'week' ? 132 : 170,
-                previousTooltip: periodKind == 'month' ? 'Poprzedni miesiąc' : 'Poprzedni okres',
-                nextTooltip: periodKind == 'month' ? 'Następny miesiąc' : 'Następny okres',
-                onPrevious: () => setState(() => _offset--),
-                onNext: () => setState(() => _offset++),
-                resetTooltip: 'Wróć do bieżącego okresu',
-                onReset: _offset == 0 ? null : () => setState(() => _offset = 0),
-              ),
-              const Spacer(),
-              if (canPlan) ...[
-                if (editing) ...[
-                  TextButton(
+    final panel = _StaffPanel(
+      header: const _PanelTitle(icon: AppIcons.calendarDots, title: 'Grafik'),
+      search: _search,
+      searchHint: 'Szukaj',
+      onSearch: () => setState(() {}),
+      restaurantPicker: _hasAll(ref.watch(panelMemberProvider), all, positions),
+      // Okres i edycja w panelu; pracownicy widzą zmiany dopiero po „Zapisz”.
+      actions: [
+        StepSwitcher(
+          label: periodKind == 'month' ? Fmt.monthYear(period.from) : weekLabel(period.from, period.to),
+          expand: true,
+          previousTooltip: periodKind == 'month' ? 'Poprzedni miesiąc' : 'Poprzedni okres',
+          nextTooltip: periodKind == 'month' ? 'Następny miesiąc' : 'Następny okres',
+          onPrevious: () => setState(() => _offset--),
+          onNext: () => setState(() => _offset++),
+          resetTooltip: 'Wróć do bieżącego okresu',
+          onReset: _offset == 0 ? null : () => setState(() => _offset = 0),
+        ),
+        if (canPlan)
+          if (editing)
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
                     onPressed: _saving ? null : () => _cancelEdit(restaurantId, draft),
-                    style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+                    style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(40)),
                     child: const Text('Anuluj'),
                   ),
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
                     onPressed: _saving || draft.changes.isEmpty ? null : () => _saveSchedule(restaurantId, draft),
-                    icon: const Glyph(AppIcons.check, size: 18),
-                    label: Text(draft.changes.isEmpty ? 'Zapisz' : 'Zapisz (${draft.changes.length})'),
+                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(40)),
+                    child: Text(draft.changes.isEmpty ? 'Zapisz' : 'Zapisz (${draft.changes.length})'),
                   ),
-                ] else
-                  FilledButton.icon(
-                    onPressed: () => ref.read(scheduleDraftProvider(restaurantId).notifier).start(me ?? ''),
-                    icon: const Glyph(AppIcons.pencil, size: 18),
-                    label: const Text('Edytuj'),
-                  ),
+                ),
               ],
+            )
+          else
+            FilledButton.icon(
+              onPressed: () => ref.read(scheduleDraftProvider(restaurantId).notifier).start(me ?? ''),
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(40)),
+              icon: const Glyph(AppIcons.pencil, size: 18),
+              label: const Text('Edytuj'),
+            ),
+      ],
+      children: _filterSections(filters, ref.read(_panelProvider.notifier), all, positions, week.working),
+    );
+
+    final content = _staffOrEmpty(
+      staffAsync,
+      onRetry: () => ref.invalidate(staffProvider(restaurantId)),
+      canStaff: canStaff,
+      build: () => SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 16, 32, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (editing)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _Banner(
+                  icon: AppIcons.pencil,
+                  color: AppColors.accent,
+                  text: draft.changes.isEmpty
+                      ? 'Edycja grafiku. Kliknij dzień, żeby przyjąć, zmienić albo odrzucić zgłoszenie, wpisać godziny '
+                            'albo dać wolne. Pracownicy zobaczą zmiany po „Zapisz”.'
+                      : 'Niezapisane zmiany: ${draft.changes.length} (zaznaczone kropką). '
+                            'Pracownicy zobaczą je po „Zapisz”.',
+                ),
+              )
+            else if (waiting > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _Banner(
+                  icon: AppIcons.clock,
+                  text: waiting == 1
+                      ? 'Jedno zgłoszenie czeka na decyzję.${canPlan ? ' Kliknij „Edytuj” w panelu, żeby je przyjąć, zmienić albo odrzucić.' : ''}'
+                      : 'Zgłoszenia czekające na decyzję: $waiting.${canPlan ? ' Kliknij „Edytuj” w panelu, żeby je przyjąć, zmienić albo odrzucić.' : ''}',
+                ),
+              ),
+            if (members.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 40),
+                child: Text(
+                  'Nikogo nie znaleziono. Zmień wyszukiwanie albo filtry po lewej.',
+                  textAlign: TextAlign.center,
+                  style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                ),
+              )
+            else
+              for (final (i, week) in weeks.indexed) ...[
+                if (weeks.length > 1)
+                  Padding(
+                    padding: EdgeInsets.only(top: i == 0 ? 0 : 20, bottom: 8, left: 4),
+                    child: Text(
+                      'Tydzień ${weekLabel(week, DateTime(week.year, week.month, week.day + 6))}',
+                      style: text.titleSmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                    ),
+                  ),
+                Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: _WeekGrid(
+                    week: week,
+                    members: members,
+                    planned: planned,
+                    inPeriod: inPeriod,
+                    changed: changes.keys.toSet(),
+                    positionNames: positionNames,
+                    notes: {
+                      for (final m in members) m.id: ?notes['${m.id}@$week'],
+                    },
+                    onOpenMember: canStaff ? (m) => _showMember(context, restaurantId, m) : null,
+                    onHours: editing
+                        ? (m, day, _) => _hours(
+                            restaurantId,
+                            m,
+                            day,
+                            savedByKey[scheduleKey(m.id, day)],
+                            changes[scheduleKey(m.id, day)],
+                            [
+                              for (final id in m.positionIds)
+                                for (final p in positions)
+                                  if (p.id == id) p,
+                            ],
+                          )
+                        : null,
+                  ),
+                ),
+              ],
+            const SizedBox(height: 8),
+            const _Legend(),
+            const SizedBox(height: 8),
+            Text(
+              'Pracownicy zgłaszają w aplikacji Table for employees, od której do której mogą pracować '
+              '(okres grafiku: $unit, zmiana i termin zgłaszania w „Ustawieniach lokalu”). Dzień bez zgłoszenia '
+              'to „Niedostępny”: takiej osobie nie da się wpisać zmiany, ale można wysłać propozycję, którą przyjmie '
+              'albo odrzuci w aplikacji. Kliknij „Edytuj” w panelu, żeby przyjąć zgłoszenie (także ze zmienionymi '
+              'godzinami i stanowiskiem na ten dzień), odrzucić je, wysłać propozycję albo dać wolne. Zmiany trafiają '
+              'do pracowników dopiero po „Zapisz”.',
+              style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    return _StaffLayout(panel: panel, content: content);
+  }
+}
+
+// ---------------------------------------------------------------
+// Układ jak w UniFi: panel po lewej, okno obok, treść
+// ---------------------------------------------------------------
+
+/// Panel po lewej (albo wąski pasek, gdy zwinięty), obok niego okno dodawania (gdy otwarte), po prawej treść.
+/// Przycisk zwijania stoi na kresce między panelem a resztą, jak w UniFi.
+class _StaffLayout extends ConsumerWidget {
+  const _StaffLayout({required this.panel, required this.content, this.sheet});
+
+  final Widget panel;
+  final Widget content;
+  final Widget? sheet;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final open = ref.watch(_panelProvider.select((s) => s.open));
+    final edge = open ? _panelWidth : _collapsedWidth;
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (open)
+                panel
+              else
+                Container(
+                  width: _collapsedWidth,
+                  decoration: BoxDecoration(border: Border(right: BorderSide(color: AppColors.ring))),
+                ),
+              // Okno dodawania wysuwa się zza panelu.
+              AnimatedSwitcher(
+                duration: PanelMotion.tab,
+                transitionBuilder: (child, animation) => SizeTransition(
+                  axis: Axis.horizontal,
+                  alignment: Alignment.centerLeft,
+                  sizeFactor: CurvedAnimation(parent: animation, curve: AppMotion.easeOut),
+                  child: child,
+                ),
+                child: sheet ?? const SizedBox.shrink(key: ValueKey('bez okna')),
+              ),
+              Expanded(child: content),
             ],
           ),
         ),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 0, 32, 32),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (editing)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _Banner(
-                      icon: AppIcons.pencil,
-                      color: AppColors.accent,
-                      text: draft.changes.isEmpty
-                          ? 'Edycja grafiku. Kliknij dzień, żeby przyjąć, zmienić albo odrzucić zgłoszenie, wpisać godziny '
-                              'albo dać wolne. Pracownicy zobaczą zmiany po „Zapisz”.'
-                          : 'Niezapisane zmiany: ${draft.changes.length} (zaznaczone kropką). '
-                              'Pracownicy zobaczą je po „Zapisz”.',
-                    ),
-                  )
-                else if (waiting > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _Banner(
-                      icon: AppIcons.clock,
-                      text: waiting == 1
-                          ? 'Jedno zgłoszenie czeka na decyzję.${canPlan ? ' Kliknij „Edytuj”, żeby je przyjąć, zmienić albo odrzucić.' : ''}'
-                          : 'Zgłoszenia czekające na decyzję: $waiting.${canPlan ? ' Kliknij „Edytuj”, żeby je przyjąć, zmienić albo odrzucić.' : ''}',
-                    ),
-                  ),
-                if (members.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 40),
-                    child: Text(
-                      'Nikogo nie znaleziono. Zmień wyszukiwanie albo filtry po lewej.',
-                      textAlign: TextAlign.center,
-                      style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
-                    ),
-                  )
-                else
-                  for (final (i, week) in weeks.indexed) ...[
-                    if (weeks.length > 1)
-                      Padding(
-                        padding: EdgeInsets.only(top: i == 0 ? 0 : 20, bottom: 8, left: 4),
-                        child: Text(
-                          'Tydzień ${weekLabel(week, DateTime(week.year, week.month, week.day + 6))}',
-                          style: text.titleSmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-                        ),
-                      ),
-                    Card(
-                      clipBehavior: Clip.antiAlias,
-                      child: _WeekGrid(
-                        week: week,
-                        members: members,
-                        planned: planned,
-                        inPeriod: inPeriod,
-                        changed: changes.keys.toSet(),
-                        positionNames: positionNames,
-                        notes: {
-                          for (final m in members) m.id: ?notes['${m.id}@$week'],
-                        },
-                        onOpenMember: canStaff ? (m) => _openMember(restaurantId, m) : null,
-                        onHours: editing
-                            ? (m, day, _) => _hours(
-                                restaurantId,
-                                m,
-                                day,
-                                savedByKey[scheduleKey(m.id, day)],
-                                changes[scheduleKey(m.id, day)],
-                                [
-                                  for (final id in m.positionIds)
-                                    for (final p in positions)
-                                      if (p.id == id) p,
-                                ],
-                              )
-                            : null,
-                      ),
-                    ),
-                  ],
-                const SizedBox(height: 8),
-                const _Legend(),
-                const SizedBox(height: 8),
-                Text(
-                  'Pracownicy zgłaszają w aplikacji Table for employees, od której do której mogą pracować '
-                  '(okres grafiku: $unit, zmiana i termin zgłaszania w „Ustawieniach lokalu”). Dzień bez zgłoszenia '
-                  'to „Niedostępny”: takiej osobie nie da się wpisać zmiany, ale można wysłać propozycję, którą przyjmie '
-                  'albo odrzuci w aplikacji. Kliknij „Edytuj”, żeby przyjąć zgłoszenie (także ze zmienionymi godzinami '
-                  'i stanowiskiem na ten dzień), odrzucić je, wysłać propozycję albo dać wolne. Zmiany trafiają do '
-                  'pracowników dopiero po „Zapisz”.',
-                  style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-                ),
-              ],
+        Positioned(
+          left: edge - 14,
+          top: 22,
+          child: _EdgeButton(open: open, onTap: () => ref.read(_panelProvider.notifier).setOpen(!open)),
+        ),
+      ],
+    );
+  }
+}
+
+/// Okrągły przycisk na kresce panelu: zwija go albo rozwija.
+class _EdgeButton extends StatelessWidget {
+  const _EdgeButton({required this.open, required this.onTap});
+
+  final bool open;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: open ? 'Zwiń panel' : 'Pokaż panel',
+      child: Material(
+        color: AppColors.surface,
+        shape: CircleBorder(side: BorderSide(color: AppColors.ringStrong)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: Center(
+              child: Glyph(open ? AppIcons.caretLeft : AppIcons.caretRight, size: 14, color: AppColors.textMuted),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Panel po lewej: zakładki albo tytuł, wyszukiwanie, wybór lokalu (tylko ALL), przyciski i filtry.
+class _StaffPanel extends StatelessWidget {
+  const _StaffPanel({
+    required this.header,
+    required this.search,
+    required this.searchHint,
+    required this.onSearch,
+    required this.restaurantPicker,
+    this.actions = const [],
+    this.children = const [],
+  });
+
+  final Widget header;
+  final TextEditingController search;
+  final String searchHint;
+  final VoidCallback onSearch;
+  final bool restaurantPicker;
+  final List<Widget> actions;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: _panelWidth,
+      decoration: BoxDecoration(border: Border(right: BorderSide(color: AppColors.ring))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: SizedBox(height: 40, child: header),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: TextField(
+              controller: search,
+              onChanged: (_) => onSearch(),
+              decoration: InputDecoration(
+                hintText: searchHint,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                prefixIcon: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Glyph(AppIcons.search, size: 16, color: AppColors.textMuted),
+                ),
+                prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              ),
+            ),
+          ),
+          if (restaurantPicker)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: _RestaurantPicker(),
+            ),
+          for (final a in actions)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: a,
+            ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              children: children,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tytuł panelu, gdy nie ma zakładek do wyboru (Grafik albo tylko jedna część Pracowników).
+class _PanelTitle extends StatelessWidget {
+  const _PanelTitle({required this.icon, required this.title});
+
+  final AppIconData icon;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Glyph(icon, size: 18, color: AppColors.textMuted),
+        const SizedBox(width: 10),
+        Text(title, style: Theme.of(context).textTheme.titleMedium),
       ],
+    );
+  }
+}
+
+/// Przycisk z obrysem w kolorze akcentu („Dodaj pracownika”), podświetlony, gdy jego okno jest otwarte.
+class _PanelAction extends StatelessWidget {
+  const _PanelAction({required this.label, required this.onTap, this.active = false});
+
+  final String label;
+  final VoidCallback onTap;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.accent,
+        backgroundColor: active ? AppColors.accentTint : null,
+        side: BorderSide(color: AppColors.accent.withValues(alpha: 0.7)),
+        minimumSize: const Size.fromHeight(40),
+      ),
+      child: Text(label),
+    );
+  }
+}
+
+/// Wybór lokalu pod wyszukiwaniem, jak wybór firmy w UniFi. Widzi go tylko osoba ze stanowiskiem ALL albo
+/// z pełnym dostępem właściciela; zmienia lokal całego panelu (jak lokal w prawym górnym rogu).
+class _RestaurantPicker extends ConsumerWidget {
+  const _RestaurantPicker();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final current = ref.watch(currentRestaurantProvider);
+    final list = ref.watch(restaurantsProvider).value ?? const <PanelRestaurant>[];
+    if (current == null) return const SizedBox.shrink();
+    return PopupMenuButton<String>(
+      tooltip: 'Zmień lokal',
+      position: PopupMenuPosition.under,
+      color: AppColors.surface,
+      constraints: const BoxConstraints(minWidth: _panelWidth - 32),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: AppColors.ring),
+      ),
+      onSelected: (id) => ref.read(selectedRestaurantIdProvider.notifier).select(id),
+      itemBuilder: (context) => [
+        for (final r in list)
+          PopupMenuItem(
+            value: r.id,
+            child: Row(
+              children: [
+                RestaurantLogo(name: r.name, logoUrl: r.logoUrl, size: 24, radius: 6),
+                const SizedBox(width: 10),
+                Expanded(child: Text(r.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                if (r.id == current.id) ...[
+                  const SizedBox(width: 8),
+                  Glyph(AppIcons.check, size: 16, color: AppColors.accent),
+                ],
+              ],
+            ),
+          ),
+      ],
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.fromLTRB(8, 0, 10, 0),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.ring),
+        ),
+        child: Row(
+          children: [
+            RestaurantLogo(name: current.name, logoUrl: current.logoUrl, size: 24, radius: 6),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(current.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.labelLarge),
+            ),
+            Glyph(AppIcons.caretDown, size: 14, color: AppColors.textMuted),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -764,7 +1160,7 @@ class _Legend extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------
-// Panel po lewej i tabela zespołu
+// Filtry i tabela zespołu
 // ---------------------------------------------------------------
 
 /// Pole wyboru w grupie filtrów: napis, liczba osób, zaznaczenie i kropka koloru (np. „Na zmianie”).
@@ -834,23 +1230,7 @@ class _FilterRow extends StatelessWidget {
         height: 32,
         child: Row(
           children: [
-            SizedBox(
-              width: 18,
-              height: 18,
-              child: Checkbox(
-                value: o.checked,
-                onChanged: enabled ? (v) => o.onChanged(v ?? false) : null,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.compact,
-                activeColor: AppColors.accentFill,
-                checkColor: AppColors.onAccent,
-                side: WidgetStateBorderSide.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? BorderSide.none
-                      : BorderSide(color: enabled ? AppColors.ringStrong : AppColors.ring, width: 1.5),
-                ),
-              ),
-            ),
+            _Check(value: o.checked, onChanged: enabled ? (v) => o.onChanged(v ?? false) : null),
             const SizedBox(width: 10),
             if (o.dot != null) ...[
               Container(
@@ -878,6 +1258,38 @@ class _FilterRow extends StatelessWidget {
   }
 }
 
+/// Małe pole wyboru (filtry, uprawnienia, wiersze tabeli). Przy [tristate] null znaczy „część zaznaczona”.
+class _Check extends StatelessWidget {
+  const _Check({required this.value, required this.onChanged, this.tristate = false});
+
+  final bool? value;
+  final ValueChanged<bool?>? onChanged;
+  final bool tristate;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onChanged != null;
+    return SizedBox(
+      width: 18,
+      height: 18,
+      child: Checkbox(
+        value: value,
+        tristate: tristate,
+        onChanged: onChanged,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+        activeColor: AppColors.accentFill,
+        checkColor: AppColors.onAccent,
+        side: WidgetStateBorderSide.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? BorderSide.none
+              : BorderSide(color: enabled ? AppColors.ringStrong : AppColors.ring, width: 1.5),
+        ),
+      ),
+    );
+  }
+}
+
 /// Nagłówek kolumny tabeli: z [width] stała szerokość, bez niej część wolnego miejsca według [flex].
 Widget _head(BuildContext context, String label, int flex, {TextAlign align = TextAlign.left, double? width}) {
   final child = Text(
@@ -891,13 +1303,15 @@ Widget _head(BuildContext context, String label, int flex, {TextAlign align = Te
 }
 
 /// Stałe szerokości wąskich kolumn tabeli zespołu; imię i stanowisko dzielą resztę.
+const _checkWidth = 36.0;
 const _phoneWidth = 136.0;
 const _nowWidth = 96.0;
 const _weekWidth = 88.0;
 const _codeWidth = 60.0;
 
-/// Zespół jako tabela jak „People” w UniFi: imię z odznakami (ALL, Ty, Nieaktywny), telefon, stanowisko, stan
-/// teraz, godziny w tym tygodniu i kod. Kliknięcie wiersza otwiera szczegóły pracownika.
+/// Zespół jako tabela jak „People” w UniFi: pole wyboru, imię z odznakami (ALL, Ty, Nieaktywny, Zwolniony),
+/// telefon, stanowisko, stan teraz, godziny w tym tygodniu i kod. Kliknięcie wiersza otwiera szczegóły pracownika.
+/// Nad tabelą pasek działań dla zaznaczonych ([bar]).
 class _TeamTable extends StatelessWidget {
   const _TeamTable({
     required this.members,
@@ -908,6 +1322,11 @@ class _TeamTable extends StatelessWidget {
     required this.shifts,
     required this.me,
     required this.onOpen,
+    required this.selectable,
+    required this.selected,
+    required this.onSelect,
+    required this.onSelectAll,
+    this.bar,
   });
 
   final List<StaffMember> members;
@@ -927,19 +1346,45 @@ class _TeamTable extends StatelessWidget {
   final String? me;
   final ValueChanged<StaffMember>? onOpen;
 
+  /// Pola wyboru tylko z uprawnieniem „Pracownicy” (działania na zaznaczonych).
+  final bool selectable;
+  final Set<String> selected;
+  final void Function(String id, bool on) onSelect;
+  final ValueChanged<bool> onSelectAll;
+  final Widget? bar;
+
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final byId = {for (final p in positions) p.id: p};
+    final chosen = members.where((m) => selected.contains(m.id)).length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        AnimatedSize(
+          duration: const Duration(milliseconds: 180),
+          curve: AppMotion.easeOut,
+          alignment: Alignment.topCenter,
+          child: bar == null ? const SizedBox(width: double.infinity) : Padding(padding: const EdgeInsets.only(bottom: 8), child: bar),
+        ),
         SizedBox(
           height: 40,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
+                if (selectable)
+                  SizedBox(
+                    width: _checkWidth,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: _Check(
+                        tristate: true,
+                        value: chosen == 0 ? false : (chosen == members.length ? true : null),
+                        onChanged: members.isEmpty ? null : (_) => onSelectAll(chosen < members.length),
+                      ),
+                    ),
+                  ),
                 _head(context, 'Imię i nazwisko', 3),
                 _head(context, 'Telefon', 0, width: _phoneWidth),
                 _head(context, 'Stanowisko', 2),
@@ -964,6 +1409,7 @@ class _TeamTable extends StatelessWidget {
                   separatorBuilder: (_, _) => Divider(height: 1, color: AppColors.ring),
                   itemBuilder: (context, i) {
                     final m = members[i];
+                    final on = selected.contains(m.id);
                     return _TeamRow(
                       member: m,
                       position: byId[m.positionId]?.name ?? m.position,
@@ -974,6 +1420,16 @@ class _TeamTable extends StatelessWidget {
                       showCode: showCodes,
                       workingSince: working[m.id],
                       week: shifts.where((s) => s.memberId == m.id).fold(Duration.zero, (sum, s) => sum + s.duration),
+                      selected: on,
+                      leading: selectable
+                          ? SizedBox(
+                              width: _checkWidth,
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: _Check(value: on, onChanged: (v) => onSelect(m.id, v ?? false)),
+                              ),
+                            )
+                          : null,
                       onTap: onOpen == null ? null : () => onOpen!(m),
                     );
                   },
@@ -996,6 +1452,8 @@ class _TeamRow extends StatelessWidget {
     required this.workingSince,
     required this.week,
     required this.onTap,
+    this.selected = false,
+    this.leading,
   });
 
   final StaffMember member;
@@ -1008,121 +1466,195 @@ class _TeamRow extends StatelessWidget {
   final DateTime? workingSince;
   final Duration week;
   final VoidCallback? onTap;
+  final bool selected;
+
+  /// Pole wyboru przed imieniem.
+  final Widget? leading;
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final m = member;
     final muted = text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular);
-    return InkWell(
-      onTap: onTap,
-      child: SizedBox(
-        height: 52,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            children: [
-              Expanded(
-                flex: 3,
-                // W wąskiej kolumnie (najmniejsze okno) odznaki ustępują miejsca imieniu.
-                child: LayoutBuilder(
-                  builder: (context, box) {
-                    final badges = box.maxWidth >= 260;
-                    return Row(
-                      children: [
-                        _Avatar(
-                          name: m.name,
-                          color: staffColors[m.color % staffColors.length],
-                          size: 30,
-                          dimmed: !m.active,
-                        ),
-                        const SizedBox(width: 12),
-                        Flexible(
-                          child: Text(
-                            m.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: text.bodyMedium?.copyWith(
-                              color: m.active ? AppColors.text : AppColors.textMuted,
-                              fontWeight: FontWeight.w500,
+    return Material(
+      color: selected ? AppColors.accentFill.withValues(alpha: 0.08) : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          height: 52,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                ?leading,
+                Expanded(
+                  flex: 3,
+                  // W wąskiej kolumnie (najmniejsze okno) odznaki ustępują miejsca imieniu.
+                  child: LayoutBuilder(
+                    builder: (context, box) {
+                      final badges = box.maxWidth >= 260;
+                      return Row(
+                        children: [
+                          _Avatar(
+                            name: m.name,
+                            color: staffColors[m.color % staffColors.length],
+                            size: 30,
+                            dimmed: !m.active,
+                          ),
+                          const SizedBox(width: 12),
+                          Flexible(
+                            child: Text(
+                              m.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: text.bodyMedium?.copyWith(
+                                color: m.active ? AppColors.text : AppColors.textMuted,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
-                        ),
-                        if (badges) ...[
-                          if (isAll) ...[const SizedBox(width: 8), const _Badge('ALL')],
-                          if (isMe) ...[const SizedBox(width: 6), const _Badge('Ty', accent: true)],
-                          if (!m.active) ...[const SizedBox(width: 6), const _Badge('Nieaktywny')],
-                        ],
-                        const SizedBox(width: 12),
-                      ],
-                    );
-                  },
-                ),
-              ),
-              SizedBox(
-                width: _phoneWidth,
-                child: Text(
-                  m.phone == null ? '—' : Fmt.phone(m.phone),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: muted,
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: position == null
-                        ? Text('—', style: muted)
-                        : _PositionChip(name: position!, extra: extraPositions),
-                  ),
-                ),
-              ),
-              // Na zmianie: zielona kropka i godzina początku, jak „Na zmianie” w filtrach.
-              SizedBox(
-                width: _nowWidth,
-                child: workingSince == null
-                    ? Text('—', style: muted)
-                    : Tooltip(
-                        message: 'Na zmianie od ${_hm(workingSince!)}',
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 7,
-                              height: 7,
-                              decoration: BoxDecoration(color: AppColors.accent, shape: BoxShape.circle),
-                            ),
-                            const SizedBox(width: 7),
-                            Text(
-                              'od ${_hm(workingSince!)}',
-                              style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
-                            ),
+                          if (badges) ...[
+                            if (isAll) ...[const SizedBox(width: 8), const _Badge('ALL')],
+                            if (isMe) ...[const SizedBox(width: 6), const _Badge('Ty', accent: true)],
+                            if (m.dismissed)
+                              ...[const SizedBox(width: 6), const _Badge('Zwolniony')]
+                            else if (!m.active)
+                              ...[const SizedBox(width: 6), const _Badge('Nieaktywny')],
                           ],
-                        ),
-                      ),
-              ),
-              SizedBox(
-                width: _weekWidth,
-                child: Text(
-                  '${hoursText(week)} h',
-                  textAlign: TextAlign.right,
-                  style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
-                ),
-              ),
-              if (showCode)
-                SizedBox(
-                  width: _codeWidth,
-                  child: Text(
-                    code ?? '…',
-                    textAlign: TextAlign.right,
-                    style: text.labelLarge?.copyWith(fontFeatures: _tabular, letterSpacing: 2),
+                          const SizedBox(width: 12),
+                        ],
+                      );
+                    },
                   ),
                 ),
-            ],
+                SizedBox(
+                  width: _phoneWidth,
+                  child: Text(
+                    m.phone == null ? '—' : Fmt.phone(m.phone),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: muted,
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: position == null
+                          ? Text('—', style: muted)
+                          : _PositionChip(name: position!, extra: extraPositions),
+                    ),
+                  ),
+                ),
+                // Na zmianie: zielona kropka i godzina początku, jak „Na zmianie” w filtrach.
+                SizedBox(
+                  width: _nowWidth,
+                  child: workingSince == null
+                      ? Text('—', style: muted)
+                      : Tooltip(
+                          message: 'Na zmianie od ${_hm(workingSince!)}',
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 7,
+                                height: 7,
+                                decoration: BoxDecoration(color: AppColors.accent, shape: BoxShape.circle),
+                              ),
+                              const SizedBox(width: 7),
+                              Text(
+                                'od ${_hm(workingSince!)}',
+                                style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
+                              ),
+                            ],
+                          ),
+                        ),
+                ),
+                SizedBox(
+                  width: _weekWidth,
+                  child: Text(
+                    '${hoursText(week)} h',
+                    textAlign: TextAlign.right,
+                    style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
+                  ),
+                ),
+                if (showCode)
+                  SizedBox(
+                    width: _codeWidth,
+                    child: Text(
+                      code ?? '…',
+                      textAlign: TextAlign.right,
+                      style: text.labelLarge?.copyWith(fontFeatures: _tabular, letterSpacing: 2),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Pasek nad tabelą, gdy ktoś jest zaznaczony: liczba i działania „Aktywny”, „Nieaktywny”, „Zwolnij”
+/// (przycisk tylko wtedy, gdy zmienia coś u któregoś z zaznaczonych).
+class _SelectionBar extends StatelessWidget {
+  const _SelectionBar({
+    required this.count,
+    required this.busy,
+    required this.onClear,
+    this.onActive,
+    this.onInactive,
+    this.onDismiss,
+  });
+
+  final int count;
+  final bool busy;
+  final VoidCallback onClear;
+  final VoidCallback? onActive;
+  final VoidCallback? onInactive;
+  final VoidCallback? onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    Widget action(String label, AppIconData icon, VoidCallback onTap, {Color? color}) => Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: OutlinedButton.icon(
+        onPressed: busy ? null : onTap,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: color,
+          side: color == null ? null : BorderSide(color: color.withValues(alpha: 0.6)),
+          minimumSize: const Size(0, 36),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+        ),
+        icon: Glyph(icon, size: 16, color: color),
+        label: Text(label),
+      ),
+    );
+    return Container(
+      height: 52,
+      padding: const EdgeInsets.fromLTRB(16, 0, 6, 0),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.ring),
+      ),
+      child: Row(
+        children: [
+          Text('Zaznaczono: $count', style: text.labelLarge?.copyWith(fontFeatures: _tabular)),
+          const Spacer(),
+          if (onActive case final f?) action('Aktywny', AppIcons.userCheck, f),
+          if (onInactive case final f?) action('Nieaktywny', AppIcons.userMinus, f),
+          if (onDismiss case final f?) action('Zwolnij', AppIcons.prohibit, f, color: AppColors.error),
+          const SizedBox(width: 4),
+          IconButton(
+            tooltip: 'Odznacz wszystkich',
+            onPressed: onClear,
+            icon: Glyph(AppIcons.close, size: 16, color: AppColors.textMuted),
+          ),
+        ],
       ),
     );
   }
@@ -2321,7 +2853,7 @@ class _HoursDialogState extends State<_HoursDialog> {
 // Dane pracownika
 // ---------------------------------------------------------------
 
-/// Dodanie albo edycja pracownika. Zwraca numer pracownika po zapisie
+/// Edycja pracownika (ze szczegółów; nowego dodaje okno obok panelu). Zwraca numer pracownika po zapisie
 /// albo [deleted] po usunięciu.
 class _MemberDialog extends ConsumerStatefulWidget {
   const _MemberDialog({required this.restaurantId, this.member});
@@ -2408,23 +2940,14 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
   }
 
   Future<void> _save(List<StaffPosition> positions) async {
-    final digits = _phone.text.replaceAll(RegExp(r'[^0-9]'), '');
-    StaffPosition? position;
-    for (final p in positions) {
-      if (p.id == _positionId) position = p;
-    }
-    final String? problem;
-    if (_firstName.text.trim().isEmpty || _lastName.text.trim().isEmpty) {
-      problem = 'Wpisz imię i nazwisko pracownika.';
-    } else if (digits.length < 9 || digits.length > 15) {
-      problem = 'Wpisz numer telefonu, co najmniej 9 cyfr.';
-    } else if (position == null) {
-      problem = 'Wybierz stanowisko.';
-    } else if (_gross.text.trim().isNotEmpty && (parseGrosze(_gross.text) == null || parseGrosze(_gross.text)! > 100000)) {
-      problem = 'Wpisz stawkę za godzinę, na przykład 30 albo 32,50.';
-    } else {
-      problem = null;
-    }
+    final position = positions.where((p) => p.id == _positionId).firstOrNull;
+    final problem = _memberProblem(
+      firstName: _firstName.text,
+      lastName: _lastName.text,
+      phone: _phone.text,
+      position: position,
+      gross: _gross.text,
+    );
     if (problem != null) {
       showMessage(context, problem);
       return;
@@ -2432,30 +2955,23 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
 
     setState(() => _busy = true);
     try {
-      final id = await ref.read(repositoryProvider).saveStaffMember(
+      final id = await _persistMember(
+        ref,
         restaurantId: widget.restaurantId,
-        id: widget.member?.id,
+        member: widget.member,
         firstName: _firstName.text,
         lastName: _lastName.text,
-        position: position!,
         phone: _phone.text,
+        position: position!,
+        extras: _extraPositions,
+        positions: positions,
         color: _color,
         active: _active,
+        gross: _gross.text,
+        contract: _contract,
+        savedRate: _savedRate,
+        rateLoaded: _rateLoaded,
       );
-      final extras = [for (final p in positions) if (_extraPositions.contains(p.id) && p.id != position.id) p.id];
-      if (widget.member != null || extras.isNotEmpty) {
-        final before = {...?widget.member?.extraPositionIds};
-        if (before.length != extras.length || !before.containsAll(extras)) {
-          await ref.read(repositoryProvider).setMemberPositions(id, extras);
-        }
-      }
-      final rate = _gross.text.trim().isEmpty ? null : parseGrosze(_gross.text);
-      if (_rateLoaded && (rate != _savedRate?.grossGrosze || (rate != null && _contract != _savedRate?.contract))) {
-        await ref.read(repositoryProvider).setStaffRate(id, rate, _contract);
-        ref.invalidate(staffRatesProvider(widget.restaurantId));
-        ref.invalidate(memberStatsProvider);
-        ref.invalidate(teamStatsProvider);
-      }
       if (mounted) Navigator.pop(context, id);
     } catch (e) {
       if (mounted) showError(context, e);
@@ -2676,20 +3192,8 @@ class _MemberDialogState extends ConsumerState<_MemberDialog> {
   }
 }
 
-/// Nowe albo zmienione własne stanowisko (okno z nazwą i uprawnieniami).
-Future<void> _editPosition(BuildContext context, WidgetRef ref, String restaurantId, [StaffPosition? position]) async {
-  final saved = await showDialog<bool>(
-    context: context,
-    builder: (_) => _PositionEditor(restaurantId: restaurantId, position: position),
-  );
-  if (saved == true) {
-    ref
-      ..invalidate(positionsProvider(restaurantId))
-      ..invalidate(staffProvider(restaurantId));
-  }
-}
-
-Future<void> _deletePosition(BuildContext context, WidgetRef ref, String restaurantId, StaffPosition position) async {
+/// Usunięcie własnego stanowiska po potwierdzeniu. True, gdy się udało.
+Future<bool> _deletePosition(BuildContext context, WidgetRef ref, String restaurantId, StaffPosition position) async {
   final ok = await confirm(
     context,
     title: 'Usunąć stanowisko „${position.name}”?',
@@ -2697,12 +3201,13 @@ Future<void> _deletePosition(BuildContext context, WidgetRef ref, String restaur
     action: 'Usuń',
     destructive: true,
   );
-  if (!ok) return;
+  if (!ok) return false;
   try {
     await ref.read(repositoryProvider).deletePosition(position.id);
     ref.invalidate(positionsProvider(restaurantId));
+    return true;
   } catch (e) {
-    if (!context.mounted) return;
+    if (!context.mounted) return false;
     final raw = e.toString().toLowerCase();
     showMessage(
       context,
@@ -2711,17 +3216,27 @@ Future<void> _deletePosition(BuildContext context, WidgetRef ref, String restaur
           : errorText(e),
       tone: ToastTone.error,
     );
+    return false;
   }
 }
 
+/// Uprawnienia stanowiska w jednej linii (karty stanowisk i tabela).
+String _permissionSummary(StaffPosition p, {String separator = ' · '}) => p.isAll
+    ? 'Wszystkie uprawnienia, także te dodane w przyszłości'
+    : p.permissions.isEmpty
+    ? 'Bez uprawnień'
+    : p.permissions.map((x) => x.label).join(separator);
+
 /// Stanowiska jak „Roles” w UniFi: nazwa (systemowe z kłódką), uprawnienia i liczba pracowników.
-/// Kliknięcie własnego stanowiska otwiera jego zmianę; systemowych nie da się zmienić ani usunąć.
+/// Kliknięcie własnego stanowiska otwiera je w oknie obok panelu; systemowych nie da się zmienić ani usunąć.
 class _PositionsTable extends ConsumerWidget {
   const _PositionsTable({
     required this.restaurantId,
     required this.positions,
     required this.members,
     required this.query,
+    required this.onEdit,
+    this.selectedId,
   });
 
   final String restaurantId;
@@ -2730,6 +3245,10 @@ class _PositionsTable extends ConsumerWidget {
 
   /// Wyszukiwanie z panelu po lewej (małymi literami).
   final String query;
+  final ValueChanged<StaffPosition> onEdit;
+
+  /// Stanowisko otwarte w oknie obok panelu.
+  final String? selectedId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2749,7 +3268,7 @@ class _PositionsTable extends ConsumerWidget {
               children: [
                 _head(context, 'Nazwa', 3),
                 _head(context, 'Uprawnienia', 6),
-                _head(context, 'Pracownicy', 1, align: TextAlign.right),
+                _head(context, 'Pracownicy', 0, align: TextAlign.right, width: 88),
                 const SizedBox(width: 96),
               ],
             ),
@@ -2769,86 +3288,86 @@ class _PositionsTable extends ConsumerWidget {
                   separatorBuilder: (_, _) => Divider(height: 1, color: AppColors.ring),
                   itemBuilder: (context, i) {
                     final p = list[i];
-                    final summary = p.isAll
-                        ? 'Wszystkie uprawnienia, także te dodane w przyszłości'
-                        : p.permissions.isEmpty
-                        ? 'Bez uprawnień'
-                        : p.permissions.map((x) => x.label).join(' · ');
+                    final summary = _permissionSummary(p);
                     final people = members.where((m) => m.positionIds.contains(p.id)).length;
-                    return InkWell(
-                      onTap: p.isSystem ? null : () => _editPosition(context, ref, restaurantId, p),
-                      child: SizedBox(
-                        height: 52,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: Row(
-                                  children: [
-                                    Flexible(
-                                      child: Text(
-                                        p.name,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                    return Material(
+                      color: p.id == selectedId ? AppColors.accentFill.withValues(alpha: 0.08) : Colors.transparent,
+                      child: InkWell(
+                        onTap: p.isSystem ? null : () => onEdit(p),
+                        child: SizedBox(
+                          height: 52,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          p.name,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                                        ),
                                       ),
-                                    ),
-                                    if (p.isSystem) ...[
-                                      const SizedBox(width: 8),
-                                      Tooltip(
-                                        message: 'Dodane przez system, nie da się go zmienić ani usunąć',
-                                        child: Glyph(AppIcons.lock, size: 13, color: AppColors.textMuted),
-                                      ),
+                                      if (p.isSystem) ...[
+                                        const SizedBox(width: 8),
+                                        Tooltip(
+                                          message: 'Dodane przez system, nie da się go zmienić ani usunąć',
+                                          child: Glyph(AppIcons.lock, size: 13, color: AppColors.textMuted),
+                                        ),
+                                      ],
+                                      const SizedBox(width: 12),
                                     ],
-                                    const SizedBox(width: 12),
-                                  ],
-                                ),
-                              ),
-                              Expanded(
-                                flex: 6,
-                                child: Tooltip(
-                                  message: summary,
-                                  waitDuration: const Duration(milliseconds: 400),
-                                  child: Text(
-                                    summary,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
                                   ),
                                 ),
-                              ),
-                              Expanded(
-                                child: Text(
-                                  '$people',
-                                  textAlign: TextAlign.right,
-                                  style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
+                                Expanded(
+                                  flex: 6,
+                                  child: Tooltip(
+                                    message: summary,
+                                    waitDuration: const Duration(milliseconds: 400),
+                                    child: Text(
+                                      summary,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                                    ),
+                                  ),
                                 ),
-                              ),
-                              SizedBox(
-                                width: 96,
-                                child: p.isSystem
-                                    ? null
-                                    : Row(
-                                        mainAxisAlignment: MainAxisAlignment.end,
-                                        children: [
-                                          IconButton(
-                                            tooltip: 'Zmień',
-                                            visualDensity: VisualDensity.compact,
-                                            icon: const Glyph(AppIcons.pencil, size: 16),
-                                            onPressed: () => _editPosition(context, ref, restaurantId, p),
-                                          ),
-                                          IconButton(
-                                            tooltip: 'Usuń',
-                                            visualDensity: VisualDensity.compact,
-                                            icon: Glyph(AppIcons.trash, size: 16, color: AppColors.error),
-                                            onPressed: () => _deletePosition(context, ref, restaurantId, p),
-                                          ),
-                                        ],
-                                      ),
-                              ),
-                            ],
+                                SizedBox(
+                                  width: 88,
+                                  child: Text(
+                                    '$people',
+                                    textAlign: TextAlign.right,
+                                    style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 96,
+                                  child: p.isSystem
+                                      ? null
+                                      : Row(
+                                          mainAxisAlignment: MainAxisAlignment.end,
+                                          children: [
+                                            IconButton(
+                                              tooltip: 'Zmień',
+                                              visualDensity: VisualDensity.compact,
+                                              icon: const Glyph(AppIcons.pencil, size: 16),
+                                              onPressed: () => onEdit(p),
+                                            ),
+                                            IconButton(
+                                              tooltip: 'Usuń',
+                                              visualDensity: VisualDensity.compact,
+                                              icon: Glyph(AppIcons.trash, size: 16, color: AppColors.error),
+                                              onPressed: () => _deletePosition(context, ref, restaurantId, p),
+                                            ),
+                                          ],
+                                        ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -2861,18 +3380,615 @@ class _PositionsTable extends ConsumerWidget {
   }
 }
 
-/// Nazwa i uprawnienia własnego stanowiska.
-class _PositionEditor extends ConsumerStatefulWidget {
-  const _PositionEditor({required this.restaurantId, this.position});
+// ---------------------------------------------------------------
+// Okna obok panelu: nowy pracownik i stanowisko (jak „Add New Person” w UniFi)
+// ---------------------------------------------------------------
+
+/// Ramka okna obok panelu: tytuł z „Zamknij”, przewijana treść i przycisk na dole.
+class _SheetFrame extends StatelessWidget {
+  const _SheetFrame({required this.title, required this.onClose, required this.children, required this.footer});
+
+  final String title;
+  final VoidCallback onClose;
+  final List<Widget> children;
+  final Widget footer;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border(right: BorderSide(color: AppColors.ring)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 10, 4),
+            child: SizedBox(
+              height: 40,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Zamknij',
+                    onPressed: onClose,
+                    icon: Glyph(AppIcons.close, size: 18, color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+              children: children,
+            ),
+          ),
+          Divider(height: 1, color: AppColors.ring),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+            child: footer,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pole w oknie: mały napis nad nim, jak w UniFi.
+class _SheetField extends StatelessWidget {
+  const _SheetField({required this.label, required this.child});
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: AppColors.textMuted)),
+        const SizedBox(height: 6),
+        child,
+      ],
+    );
+  }
+}
+
+/// Nagłówek części okna, np. „Stanowisko” albo „Dodatkowe stanowiska (opcjonalnie)”.
+class _SheetHeading extends StatelessWidget {
+  const _SheetHeading(this.title, {this.optional = false, this.trailing});
+
+  final String title;
+  final bool optional;
+  final String? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Row(
+      children: [
+        Text(title, style: text.titleSmall),
+        if (optional) ...[
+          const SizedBox(width: 6),
+          Text('(opcjonalnie)', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+        ],
+        const Spacer(),
+        if (trailing != null)
+          Text(trailing!, style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular)),
+      ],
+    );
+  }
+}
+
+InputDecoration _sheetInput({String? hint, String? suffix}) => InputDecoration(
+  isDense: true,
+  hintText: hint,
+  suffixText: suffix,
+  counterText: '',
+  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+);
+
+/// Karty po dwie w rzędzie (stanowiska w oknie pracownika, jak role w UniFi).
+class _CardGrid extends StatelessWidget {
+  const _CardGrid({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, box) {
+        final width = (box.maxWidth - 10) / 2;
+        return Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [for (final c in children) SizedBox(width: width, height: 108, child: c)],
+        );
+      },
+    );
+  }
+}
+
+/// Karta wyboru: ikona, nazwa i opis w dwóch liniach. Wybrana ma obrys i tło w kolorze akcentu.
+class _ChoiceCard extends StatelessWidget {
+  const _ChoiceCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.selected = false,
+  });
+
+  final AppIconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Material(
+      color: selected ? AppColors.accentTint : AppColors.surfaceRaised,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: selected ? AppColors.accent : Colors.transparent, width: 1.5),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Glyph(selected ? icon.duotone : icon, size: 20, color: AppColors.accent),
+              const Spacer(),
+              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.labelLarge),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: text.bodySmall?.copyWith(color: AppColors.textMuted, height: 1.3),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Szary przycisk na całą szerokość z plusem, jak „Add site” w UniFi.
+class _AddRow extends StatelessWidget {
+  const _AddRow({required this.label, this.enabled = true});
+
+  final String label;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = enabled ? AppColors.text : AppColors.textDisabled;
+    return Container(
+      height: 40,
+      decoration: BoxDecoration(color: AppColors.surfaceRaised, borderRadius: BorderRadius.circular(10)),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Glyph(AppIcons.plus, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(label, style: Theme.of(context).textTheme.labelLarge?.copyWith(color: color)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Co trzeba poprawić przed zapisem pracownika; null, gdy wszystko w porządku.
+String? _memberProblem({
+  required String firstName,
+  required String lastName,
+  required String phone,
+  required StaffPosition? position,
+  required String gross,
+}) {
+  final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+  if (firstName.trim().isEmpty || lastName.trim().isEmpty) return 'Wpisz imię i nazwisko pracownika.';
+  if (digits.length < 9 || digits.length > 15) return 'Wpisz numer telefonu, co najmniej 9 cyfr.';
+  if (position == null) return 'Wybierz stanowisko.';
+  if (gross.trim().isNotEmpty && (parseGrosze(gross) == null || parseGrosze(gross)! > 100000)) {
+    return 'Wpisz stawkę za godzinę, na przykład 30 albo 32,50.';
+  }
+  return null;
+}
+
+/// Zapis pracownika (okno pracownika i okno dodawania): dane, dodatkowe stanowiska i stawka. Zwraca jego numer.
+/// Stawka zapisuje się tylko wtedy, gdy się zmieniła względem [savedRate].
+Future<String> _persistMember(
+  WidgetRef ref, {
+  required String restaurantId,
+  StaffMember? member,
+  required String firstName,
+  required String lastName,
+  required String phone,
+  required StaffPosition position,
+  required Set<String> extras,
+  required List<StaffPosition> positions,
+  required int color,
+  required bool active,
+  required String gross,
+  required Contract contract,
+  StaffRate? savedRate,
+  bool rateLoaded = true,
+}) async {
+  final repository = ref.read(repositoryProvider);
+  final id = await repository.saveStaffMember(
+    restaurantId: restaurantId,
+    id: member?.id,
+    firstName: firstName,
+    lastName: lastName,
+    position: position,
+    phone: phone,
+    color: color,
+    active: active,
+  );
+  final extraIds = [for (final p in positions) if (extras.contains(p.id) && p.id != position.id) p.id];
+  if (member != null || extraIds.isNotEmpty) {
+    final before = {...?member?.extraPositionIds};
+    if (before.length != extraIds.length || !before.containsAll(extraIds)) {
+      await repository.setMemberPositions(id, extraIds);
+    }
+  }
+  final rate = gross.trim().isEmpty ? null : parseGrosze(gross);
+  if (rateLoaded && (rate != savedRate?.grossGrosze || (rate != null && contract != savedRate?.contract))) {
+    await repository.setStaffRate(id, rate, contract);
+    ref.invalidate(staffRatesProvider(restaurantId));
+    ref.invalidate(memberStatsProvider);
+    ref.invalidate(teamStatsProvider);
+  }
+  return id;
+}
+
+/// Nowy pracownik w oknie obok panelu (jak „Add New Person” w UniFi): imię i nazwisko, telefon, stanowisko jako
+/// karty z „Nowe stanowisko”, dodatkowe stanowiska, umowa i stawka, kolor w grafiku.
+class _MemberSheet extends ConsumerStatefulWidget {
+  const _MemberSheet({
+    super.key,
+    required this.restaurantId,
+    required this.positions,
+    required this.onClose,
+    required this.onSaved,
+    this.onNewRole,
+    this.selectPositionId,
+  });
+
+  final String restaurantId;
+  final List<StaffPosition> positions;
+  final VoidCallback onClose;
+  final ValueChanged<String> onSaved;
+
+  /// „Nowe stanowisko” (tylko z uprawnieniem „Stanowiska”).
+  final VoidCallback? onNewRole;
+
+  /// Stanowisko dodane przed chwilą z tego okna: zaznacza się samo.
+  final String? selectPositionId;
+
+  @override
+  ConsumerState<_MemberSheet> createState() => _MemberSheetState();
+}
+
+class _MemberSheetState extends ConsumerState<_MemberSheet> {
+  final _firstName = TextEditingController();
+  final _lastName = TextEditingController();
+  final _phone = TextEditingController();
+  final _gross = TextEditingController();
+  final _net = TextEditingController();
+  String? _positionId;
+  final _extraPositions = <String>{};
+  int _color = 0;
+  Contract _contract = Contract.zlecenie;
+  bool _busy = false;
+
+  @override
+  void didUpdateWidget(_MemberSheet old) {
+    super.didUpdateWidget(old);
+    final added = widget.selectPositionId;
+    if (added != null && added != old.selectPositionId) {
+      _positionId = added;
+      _extraPositions.remove(added);
+    }
+  }
+
+  @override
+  void dispose() {
+    _firstName.dispose();
+    _lastName.dispose();
+    _phone.dispose();
+    _gross.dispose();
+    _net.dispose();
+    super.dispose();
+  }
+
+  /// Brutto wpisane: netto liczy się samo.
+  void _grossChanged(String text) {
+    final gross = parseGrosze(text);
+    _net.text = text.trim().isEmpty || gross == null ? '' : groszeToText(Payroll.hourlyNet(_contract, gross));
+  }
+
+  /// Netto wpisane: brutto liczy się samo.
+  void _netChanged(String text) {
+    final net = parseGrosze(text);
+    _gross.text = text.trim().isEmpty || net == null ? '' : groszeToText(Payroll.hourlyGross(_contract, net));
+  }
+
+  Future<void> _save(List<StaffPosition> positions) async {
+    final position = positions.where((p) => p.id == _positionId).firstOrNull;
+    final problem = _memberProblem(
+      firstName: _firstName.text,
+      lastName: _lastName.text,
+      phone: _phone.text,
+      position: position,
+      gross: _gross.text,
+    );
+    if (problem != null) {
+      showMessage(context, problem);
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final id = await _persistMember(
+        ref,
+        restaurantId: widget.restaurantId,
+        firstName: _firstName.text,
+        lastName: _lastName.text,
+        phone: _phone.text,
+        position: position!,
+        extras: _extraPositions,
+        positions: positions,
+        color: _color,
+        active: true,
+        gross: _gross.text,
+        contract: _contract,
+      );
+      if (mounted) widget.onSaved(id);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    // „ALL” (wszystkie uprawnienia) nadaje tylko osoba z uprawnieniem „Stanowiska”.
+    final canAssignAll = ref.watch(memberPermissionsProvider).contains('positions');
+    final positions = [for (final p in widget.positions) if (!p.isAll || canAssignAll) p];
+    final extrasLeft = [for (final p in positions) if (p.id != _positionId && !_extraPositions.contains(p.id)) p];
+    final decimal = [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))];
+
+    return _SheetFrame(
+      title: 'Nowy pracownik',
+      onClose: widget.onClose,
+      footer: FilledButton(
+        onPressed: _busy ? null : () => _save(positions),
+        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+        child: const Text('Dodaj pracownika'),
+      ),
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _SheetField(
+                label: 'Imię',
+                child: TextField(
+                  controller: _firstName,
+                  autofocus: true,
+                  maxLength: 40,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: _sheetInput(),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _SheetField(
+                label: 'Nazwisko',
+                child: TextField(
+                  controller: _lastName,
+                  maxLength: 60,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: _sheetInput(),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        _SheetField(
+          label: 'Numer telefonu',
+          child: TextField(
+            controller: _phone,
+            keyboardType: TextInputType.phone,
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]')),
+              LengthLimitingTextInputFormatter(20),
+            ],
+            style: const TextStyle(fontFeatures: _tabular),
+            decoration: _sheetInput(hint: '+48 600 100 200'),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Tym numerem pracownik loguje się w aplikacji Table for employees.',
+          style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 24),
+        const _SheetHeading('Stanowisko'),
+        const SizedBox(height: 10),
+        _CardGrid(
+          children: [
+            for (final p in positions)
+              _ChoiceCard(
+                icon: p.isAll ? AppIcons.userGear : AppIcons.identification,
+                title: p.name,
+                subtitle: _permissionSummary(p, separator: ', '),
+                selected: p.id == _positionId,
+                onTap: () => setState(() {
+                  _positionId = p.id;
+                  _extraPositions.remove(p.id);
+                }),
+              ),
+            if (widget.onNewRole case final newRole?)
+              _ChoiceCard(
+                icon: AppIcons.plus,
+                title: 'Nowe stanowisko',
+                subtitle: 'Własne uprawnienia dla zespołu',
+                onTap: newRole,
+              ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        const _SheetHeading('Dodatkowe stanowiska', optional: true),
+        const SizedBox(height: 4),
+        Text(
+          'Uprawnienia są sumą wszystkich stanowisk, a w grafiku wybiera się stanowisko na dany dzień.',
+          style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 10),
+        if (_extraPositions.isNotEmpty) ...[
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final p in positions)
+                if (_extraPositions.contains(p.id))
+                  InputChip(
+                    label: Text(p.name),
+                    deleteIcon: const Glyph(AppIcons.close, size: 14),
+                    onDeleted: () => setState(() => _extraPositions.remove(p.id)),
+                  ),
+            ],
+          ),
+          const SizedBox(height: 8),
+        ],
+        PopupMenuButton<String>(
+          enabled: extrasLeft.isNotEmpty,
+          tooltip: 'Dodaj stanowisko',
+          position: PopupMenuPosition.under,
+          color: AppColors.surface,
+          onSelected: (id) => setState(() => _extraPositions.add(id)),
+          itemBuilder: (_) => [for (final p in extrasLeft) PopupMenuItem(value: p.id, child: Text(p.name))],
+          child: _AddRow(label: 'Dodaj stanowisko', enabled: extrasLeft.isNotEmpty),
+        ),
+        const SizedBox(height: 24),
+        const _SheetHeading('Umowa i stawka', optional: true),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<Contract>(
+          initialValue: _contract,
+          decoration: _sheetInput(),
+          icon: const Glyph(AppIcons.caretDown, size: 16),
+          items: [for (final c in Contract.values) DropdownMenuItem(value: c, child: Text(c.label))],
+          onChanged: (c) {
+            setState(() => _contract = c!);
+            _grossChanged(_gross.text);
+          },
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _SheetField(
+                label: 'Stawka brutto',
+                child: TextField(
+                  controller: _gross,
+                  onChanged: _grossChanged,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: decimal,
+                  style: const TextStyle(fontFeatures: _tabular),
+                  decoration: _sheetInput(suffix: 'zł/h'),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _SheetField(
+                label: 'Stawka netto',
+                child: TextField(
+                  controller: _net,
+                  onChanged: _netChanged,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: decimal,
+                  style: const TextStyle(fontFeatures: _tabular),
+                  decoration: _sheetInput(suffix: 'zł/h'),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        const _SheetHeading('Kolor w grafiku'),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (var i = 0; i < staffColors.length; i++)
+              GestureDetector(
+                onTap: () => setState(() => _color = i),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: staffColors[i],
+                      shape: BoxShape.circle,
+                      border: Border.all(color: i == _color ? AppColors.text : Colors.transparent, width: 2.5),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Nowe albo zmienione własne stanowisko w oknie obok panelu (ten sam wygląd co nowy pracownik): nazwa
+/// i uprawnienia w grupach z „Zaznacz wszystkie”. Systemowych stanowisk tu nie ma (są zablokowane).
+class _RoleSheet extends ConsumerStatefulWidget {
+  const _RoleSheet({
+    super.key,
+    required this.restaurantId,
+    required this.onClose,
+    required this.onSaved,
+    this.position,
+  });
 
   final String restaurantId;
   final StaffPosition? position;
+  final VoidCallback onClose;
+
+  /// Po zapisie: numer stanowiska (nowy przy dodaniu).
+  final ValueChanged<String> onSaved;
 
   @override
-  ConsumerState<_PositionEditor> createState() => _PositionEditorState();
+  ConsumerState<_RoleSheet> createState() => _RoleSheetState();
 }
 
-class _PositionEditorState extends ConsumerState<_PositionEditor> {
+class _RoleSheetState extends ConsumerState<_RoleSheet> {
   late final _name = TextEditingController(text: widget.position?.name ?? '');
   late final Set<StaffPermission> _permissions = {...?widget.position?.permissions};
   bool _busy = false;
@@ -2889,14 +4005,14 @@ class _PositionEditorState extends ConsumerState<_PositionEditor> {
       showMessage(context, 'Wpisz nazwę stanowiska.');
       return;
     }
-    const reserved = ['kelner', 'kucharz', 'dostawca'];
+    const reserved = ['kelner', 'kucharz', 'dostawca', 'all'];
     if (reserved.contains(name.toLowerCase())) {
       showMessage(context, 'Stanowisko „$name” jest już dodane przez system.');
       return;
     }
     setState(() => _busy = true);
     try {
-      await ref.read(repositoryProvider).savePosition(
+      final id = await ref.read(repositoryProvider).savePosition(
         restaurantId: widget.restaurantId,
         id: widget.position?.id,
         name: name,
@@ -2905,15 +4021,16 @@ class _PositionEditorState extends ConsumerState<_PositionEditor> {
             if (_permissions.contains(p)) p,
         ],
       );
-      if (mounted) Navigator.pop(context, true);
+      ref
+        ..invalidate(positionsProvider(widget.restaurantId))
+        ..invalidate(staffProvider(widget.restaurantId));
+      if (mounted) widget.onSaved(id);
     } catch (e) {
       if (!mounted) return;
       final raw = e.toString().toLowerCase();
       showMessage(
         context,
-        raw.contains('duplicate') || raw.contains('unique')
-            ? 'Stanowisko o tej nazwie już istnieje.'
-            : errorText(e),
+        raw.contains('duplicate') || raw.contains('unique') ? 'Stanowisko o tej nazwie już istnieje.' : errorText(e),
         tone: ToastTone.error,
       );
     } finally {
@@ -2921,81 +4038,139 @@ class _PositionEditorState extends ConsumerState<_PositionEditor> {
     }
   }
 
+  Future<void> _delete() async {
+    if (await _deletePosition(context, ref, widget.restaurantId, widget.position!)) widget.onClose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    return AlertDialog(
-      title: Text(widget.position == null ? 'Nowe stanowisko' : 'Stanowisko'),
-      content: SizedBox(
-        width: 460,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              TextField(
-                controller: _name,
-                autofocus: widget.position == null,
-                maxLength: 40,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  labelText: 'Nazwa',
-                  hintText: 'Barman, Kierownik zmiany, Hostessa',
-                  counterText: '',
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text('Uprawnienia', style: text.titleSmall),
-              Text(
-                'Pracownik widzi i otwiera tylko te zakładki i przyciski, do których ma uprawnienia.',
-                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-              ),
-              for (final p in StaffPermission.values) ...[
-                if (p == StaffPermission.values.first || p.group != StaffPermission.values[p.index - 1].group)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 14, bottom: 2),
-                    child: Text(
-                      p.group.toUpperCase(),
-                      style: text.labelSmall?.copyWith(
-                        color: AppColors.textDisabled,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                  ),
-                CheckboxListTile(
-                  value: _permissions.contains(p),
-                  onChanged: (v) => setState(() {
-                    if (v == true) {
-                      _permissions.add(p);
-                    } else {
-                      _permissions.remove(p);
-                    }
-                  }),
-                  contentPadding: EdgeInsets.zero,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  dense: true,
-                  activeColor: AppColors.accentFill,
-                  checkColor: AppColors.onAccent,
-                  title: Text(p.label, style: text.bodyMedium),
-                  subtitle: Text(
-                    p.description,
-                    style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-                  ),
-                ),
-              ],
-            ],
+    final groups = <String, List<StaffPermission>>{};
+    for (final p in StaffPermission.values) {
+      groups.putIfAbsent(p.group, () => []).add(p);
+    }
+    return _SheetFrame(
+      title: widget.position == null ? 'Nowe stanowisko' : widget.position!.name,
+      onClose: widget.onClose,
+      footer: Row(
+        children: [
+          if (widget.position != null) ...[
+            TextButton(
+              onPressed: _busy ? null : _delete,
+              style: TextButton.styleFrom(foregroundColor: AppColors.error, minimumSize: const Size(0, 44)),
+              child: const Text('Usuń'),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Expanded(
+            child: FilledButton(
+              onPressed: _busy ? null : _save,
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+              child: Text(widget.position == null ? 'Dodaj stanowisko' : 'Zapisz'),
+            ),
+          ),
+        ],
+      ),
+      children: [
+        _SheetField(
+          label: 'Nazwa',
+          child: TextField(
+            controller: _name,
+            autofocus: widget.position == null,
+            maxLength: 40,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: _sheetInput(hint: 'Barman, Kierownik zmiany, Hostessa'),
           ),
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
-          child: const Text('Anuluj'),
+        const SizedBox(height: 24),
+        _SheetHeading('Uprawnienia', trailing: '${_permissions.length} z ${StaffPermission.values.length}'),
+        const SizedBox(height: 4),
+        Text(
+          'Pracownik widzi i otwiera tylko te zakładki i przyciski, do których ma uprawnienia.',
+          style: text.bodySmall?.copyWith(color: AppColors.textMuted),
         ),
-        FilledButton(onPressed: _busy ? null : _save, child: const Text('Zapisz')),
+        const SizedBox(height: 12),
+        for (final MapEntry(key: group, value: list) in groups.entries) ...[
+          _PermissionGroup(
+            title: group,
+            permissions: list,
+            selected: _permissions,
+            onChanged: (p, on) => setState(() => on ? _permissions.add(p) : _permissions.remove(p)),
+            onAll: (on) => setState(() => on ? _permissions.addAll(list) : _permissions.removeAll(list)),
+          ),
+          const SizedBox(height: 10),
+        ],
       ],
+    );
+  }
+}
+
+/// Grupa uprawnień w oknie stanowiska (np. Sala, Zamówienia): karta z nazwą, „Zaznacz wszystkie”
+/// i polami wyboru z opisem.
+class _PermissionGroup extends StatelessWidget {
+  const _PermissionGroup({
+    required this.title,
+    required this.permissions,
+    required this.selected,
+    required this.onChanged,
+    required this.onAll,
+  });
+
+  final String title;
+  final List<StaffPermission> permissions;
+  final Set<StaffPermission> selected;
+  final void Function(StaffPermission p, bool on) onChanged;
+  final ValueChanged<bool> onAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final all = permissions.every(selected.contains);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 4, 6, 8),
+      decoration: BoxDecoration(color: AppColors.surfaceRaised, borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(title, style: text.labelLarge)),
+              TextButton(
+                onPressed: () => onAll(!all),
+                style: TextButton.styleFrom(minimumSize: const Size(0, 32), padding: const EdgeInsets.symmetric(horizontal: 8)),
+                child: Text(all ? 'Odznacz' : 'Zaznacz wszystkie'),
+              ),
+            ],
+          ),
+          for (final p in permissions)
+            InkWell(
+              onTap: () => onChanged(p, !selected.contains(p)),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 1),
+                      child: _Check(value: selected.contains(p), onChanged: (v) => onChanged(p, v ?? false)),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(p.label, style: text.bodyMedium),
+                          Text(p.description, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

@@ -2141,6 +2141,8 @@ class PanelRepository {
       'phone': phone.trim(),
       'color': color,
       'active': active,
+      // Włączony z powrotem nie jest już zwolniony (0075).
+      if (active) 'dismissed_at': null,
     };
     return _guard(() async {
       if (id != null) {
@@ -2273,6 +2275,14 @@ class PanelRepository {
     return _guard(() => _db.rpc<void>('panel_delete_vehicle_note', params: {'p_id': id}));
   }
 
+  /// Stan kilku pracowników naraz (0075): 'active', 'inactive' albo 'dismissed' (zwolniony: kończy zmianę,
+  /// znika z przyszłego grafiku, godziny zostają). Zwraca liczbę zmienionych.
+  Future<int> setStaffStatus(List<String> memberIds, String status) {
+    return _guard(
+      () => _db.rpc<int>('panel_set_staff_status', params: {'p_member_ids': memberIds, 'p_status': status}),
+    );
+  }
+
   Future<void> deleteStaffMember(String id) {
     return _guard(() => _db.from('staff_members').delete().eq('id', id));
   }
@@ -2323,7 +2333,8 @@ class PanelRepository {
     });
   }
 
-  Future<void> savePosition({
+  /// Zapisuje własne stanowisko i zwraca jego numer (nowy przy dodaniu).
+  Future<String> savePosition({
     required String restaurantId,
     String? id,
     required String name,
@@ -2334,11 +2345,14 @@ class PanelRepository {
       'name': name.trim(),
       'permissions': [for (final p in permissions) p.key],
     };
-    return _guard(
-      () => id == null
-          ? _db.from('staff_positions').insert(row)
-          : _db.from('staff_positions').update(row).eq('id', id),
-    );
+    return _guard(() async {
+      if (id != null) {
+        await _db.from('staff_positions').update(row).eq('id', id);
+        return id;
+      }
+      final created = await _db.from('staff_positions').insert(row).select('id').single();
+      return created['id'] as String;
+    });
   }
 
   Future<void> deletePosition(String id) {

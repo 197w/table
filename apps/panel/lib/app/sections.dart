@@ -32,6 +32,7 @@ enum PanelSection {
   ]),
   staff('Pracownicy', AppIcons.usersThree, [
     PanelTab(PanelRoutes.staff, 'Pracownicy', AppIcons.usersThree),
+    PanelTab(PanelRoutes.schedule, 'Grafik', AppIcons.calendarDots),
     PanelTab(PanelRoutes.teamStats, 'Statystyki', AppIcons.chartBarHorizontal),
     PanelTab(PanelRoutes.announcements, 'Informacje dla pracowników', AppIcons.megaphone),
   ]),
