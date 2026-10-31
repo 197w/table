@@ -280,26 +280,65 @@ class TableLogo extends StatelessWidget {
         ),
         borderRadius: BorderRadius.circular(size * 0.26),
       ),
-      child: CustomPaint(painter: _TableMarkPainter()),
+      child: const CustomPaint(painter: _TableMarkPainter()),
     );
   }
 }
 
+/// Sam stół ze znaku Table, bez tła, w jednym kolorze (np. biały w lewym rogu górnego paska panelu).
+/// [width] to szerokość blatu z zaokrąglonymi końcami; wysokość wynika z proporcji znaku.
+class TableMark extends StatelessWidget {
+  const TableMark({super.key, this.width = 28, this.color = Colors.white});
+
+  final double width;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+    size: Size(width, width * _TableMarkPainter.tightAspect),
+    painter: _TableMarkPainter(color: color, tight: true),
+  );
+}
+
 class _TableMarkPainter extends CustomPainter {
+  const _TableMarkPainter({this.color = Colors.white, this.tight = false});
+
+  final Color color;
+
+  /// Sam stół dopasowany do rozmiaru, bez marginesu ikony.
+  final bool tight;
+
+  // Proporcje znaku z design/logo/table-1024px.png (ułamki boku ikony).
+  static const _stroke = 0.052;
+  static const _left = 0.19;
+  static const _right = 0.81;
+  static const _top = 0.39;
+  static const _bottom = 0.70;
+  static const _legLeft = 0.27;
+  static const _legRight = 0.73;
+
+  /// Wysokość do szerokości samego stołu z zaokrąglonymi końcami kresek.
+  static const tightAspect = (_bottom - _top + _stroke) / (_right - _left + _stroke);
+
   @override
   void paint(Canvas canvas, Size size) {
+    canvas.save();
+    if (tight) {
+      canvas.scale(size.width / (_right - _left + _stroke));
+      canvas.translate(-_left + _stroke / 2, -_top + _stroke / 2);
+    } else {
+      canvas.scale(size.width, size.height);
+    }
     final paint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = size.width * 0.052
+      ..color = color
+      ..strokeWidth = _stroke
       ..strokeCap = StrokeCap.round;
-    final w = size.width;
-    final h = size.height;
-    // Proporcje znaku z design/logo/table-1024px.png.
-    canvas.drawLine(Offset(w * 0.19, h * 0.39), Offset(w * 0.81, h * 0.39), paint);
-    canvas.drawLine(Offset(w * 0.27, h * 0.39), Offset(w * 0.27, h * 0.70), paint);
-    canvas.drawLine(Offset(w * 0.73, h * 0.39), Offset(w * 0.73, h * 0.70), paint);
+    canvas.drawLine(const Offset(_left, _top), const Offset(_right, _top), paint);
+    canvas.drawLine(const Offset(_legLeft, _top), const Offset(_legLeft, _bottom), paint);
+    canvas.drawLine(const Offset(_legRight, _top), const Offset(_legRight, _bottom), paint);
+    canvas.restore();
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(_TableMarkPainter old) => old.color != color || old.tight != tight;
 }

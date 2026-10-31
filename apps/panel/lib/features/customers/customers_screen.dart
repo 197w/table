@@ -9,15 +9,6 @@ import '../../shared/panel_widgets.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
-enum _Sort {
-  recent('Ostatnia wizyta'),
-  visits('Wizyty'),
-  spent('Wydatki');
-
-  const _Sort(this.label);
-  final String label;
-}
-
 String _plural(int n, String one, String few, String many) {
   if (n == 1) return '1 $one';
   final isFew = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14);
@@ -42,7 +33,6 @@ class CustomersScreen extends ConsumerStatefulWidget {
 
 class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   final _search = TextEditingController();
-  var _sort = _Sort.recent;
   String? _selected;
 
   @override
@@ -54,7 +44,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   List<Customer> _visible(List<Customer> all) {
     final query = _search.text.trim().toLowerCase();
     final digits = query.replaceAll(RegExp(r'[^0-9]'), '');
-    final list = [
+    // Kolejność z bazy: ostatnia wizyta pierwsza.
+    return [
       for (final c in all)
         if (query.isEmpty ||
             c.name.toLowerCase().contains(query) ||
@@ -63,15 +54,6 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
             (digits.length >= 3 && (c.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '').contains(digits)))
           c,
     ];
-    switch (_sort) {
-      case _Sort.recent:
-        break;
-      case _Sort.visits:
-        list.sort((a, b) => (b.visits + b.orders).compareTo(a.visits + a.orders));
-      case _Sort.spent:
-        list.sort((a, b) => b.spentGrosze.compareTo(a.spentGrosze));
-    }
-    return list;
   }
 
   void _select(String? key) => setState(() => _selected = _selected == key ? null : key);
@@ -81,32 +63,12 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final restaurant = ref.watch(currentRestaurantProvider);
     if (restaurant == null) return const LoadingView();
     final async = ref.watch(customersProvider(restaurant.id));
-    final all = async.value ?? const <Customer>[];
-    final returning = all.where((c) => c.returning).length;
 
+    // Bez rzędu z sortowaniem i licznikami nad listą (31.10.2026, prośba użytkownika): liczby są w podsumowaniu.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        PageHeader(
-          below: Row(
-            children: [
-              SegmentedTabs<_Sort>(
-                options: [for (final s in _Sort.values) (s, s.label)],
-                selected: _sort,
-                onChanged: (s) => setState(() => _sort = s),
-              ),
-              const Spacer(),
-              if (all.isNotEmpty) ...[
-                PanelPill(_plural(all.length, 'klient', 'klientów', 'klientów'), icon: AppIcons.userList),
-                const SizedBox(width: 8),
-                PanelPill(
-                  _plural(returning, 'powracający', 'powracający', 'powracających'),
-                  icon: AppIcons.arrowsClockwise,
-                ),
-              ],
-            ],
-          ),
-        ),
+        const PageHeader(),
         Expanded(
           child: async.when(
             skipLoadingOnReload: true,
@@ -132,7 +94,6 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       child: _CustomerList(
                         search: _search,
                         customers: list,
-                        sort: _sort,
                         selectedKey: selected?.key,
                         onSearch: () => setState(() {}),
                         onSelect: _select,
@@ -162,12 +123,11 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   }
 }
 
-/// Lista klientów po lewej: wyszukiwanie i wiersze z imieniem, telefonem i liczbą według sortowania.
+/// Lista klientów po lewej: wyszukiwanie i wiersze z imieniem i telefonem.
 class _CustomerList extends StatelessWidget {
   const _CustomerList({
     required this.search,
     required this.customers,
-    required this.sort,
     required this.selectedKey,
     required this.onSearch,
     required this.onSelect,
@@ -175,7 +135,6 @@ class _CustomerList extends StatelessWidget {
 
   final TextEditingController search;
   final List<Customer> customers;
-  final _Sort sort;
   final String? selectedKey;
   final VoidCallback onSearch;
   final ValueChanged<String> onSelect;
@@ -218,11 +177,6 @@ class _CustomerList extends StatelessWidget {
                       final c = customers[i];
                       return _CustomerTile(
                         customer: c,
-                        trailing: switch (sort) {
-                          _Sort.recent => c.lastVisit == null ? '—' : Fmt.dayShort(c.lastVisit!),
-                          _Sort.visits => '${c.visits + c.orders}',
-                          _Sort.spent => c.spentGrosze > 0 ? Fmt.price(c.spentGrosze) : '—',
-                        },
                         selected: c.key == selectedKey,
                         onTap: () => onSelect(c.key),
                       );
@@ -236,10 +190,9 @@ class _CustomerList extends StatelessWidget {
 }
 
 class _CustomerTile extends StatelessWidget {
-  const _CustomerTile({required this.customer, required this.trailing, required this.selected, required this.onTap});
+  const _CustomerTile({required this.customer, required this.selected, required this.onTap});
 
   final Customer customer;
-  final String trailing;
   final bool selected;
   final VoidCallback onTap;
 
@@ -257,47 +210,36 @@ class _CustomerTile extends StatelessWidget {
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              c.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: text.titleSmall?.copyWith(color: selected ? AppColors.accent : null),
-                            ),
-                          ),
-                          if (c.fromApp) ...[
-                            const SizedBox(width: 6),
-                            Glyph(AppIcons.deviceMobile, size: 13, color: AppColors.accent),
-                          ],
-                          if (c.returning) ...[
-                            const SizedBox(width: 4),
-                            const Glyph(AppIcons.starFill, size: 12, color: Color(0xFFE0A21B)),
-                          ],
-                        ],
-                      ),
-                      Text(
-                        [
-                          c.phone == null ? 'Bez telefonu' : Fmt.phone(c.phone),
-                          ?c.company,
-                        ].join(' · '),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        c.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                        style: text.titleSmall?.copyWith(color: selected ? AppColors.accent : null),
                       ),
+                    ),
+                    if (c.fromApp) ...[
+                      const SizedBox(width: 6),
+                      Glyph(AppIcons.deviceMobile, size: 13, color: AppColors.accent),
                     ],
-                  ),
+                    if (c.returning) ...[
+                      const SizedBox(width: 4),
+                      const Glyph(AppIcons.starFill, size: 12, color: Color(0xFFE0A21B)),
+                    ],
+                  ],
                 ),
-                const SizedBox(width: 8),
                 Text(
-                  trailing,
+                  [
+                    c.phone == null ? 'Bez telefonu' : Fmt.phone(c.phone),
+                    ?c.company,
+                  ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
                 ),
               ],

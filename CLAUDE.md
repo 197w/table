@@ -235,8 +235,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 ## Panel restauracji
 
 - Logowanie e-mailem i hasłem. Obowiązkowe 2FA dodajemy przed wydaniem.
-- Układ jak w UniFi (`shell.dart`, `sections.dart`, 0.11.0). Górny pasek: w lewym rogu logo Table z nazwą (`_Brand`,
-  `TableLogo` z ekranu logowania, znak na środku nad ikonami bocznego paska; od 0.26.0, wcześniej był tu lokal), grupy zakładek (`PanelSection`, `_SectionTab`: same ikony bez ramek, wybrana w kolorze akcentu z nazwą):
+- Układ jak w UniFi (`shell.dart`, `sections.dart`, 0.11.0). Górny pasek: w lewym rogu sam biały stół ze znaku Table,
+  bez tła i bez napisu (`TableMark` z ekranu logowania, na środku nad ikonami bocznego paska; od 0.27.0 na prośbę
+  użytkownika, wcześniej był tu lokal), grupy zakładek (`PanelSection`, `_SectionTab`: same ikony bez ramek, wybrana w kolorze akcentu z nazwą):
   Rezerwacje (Rezerwacje), Zamówienia (Zamówienia, Historia zamówień `/historia`, Kompletowanie `/wydanie`,
   Odbiór `/odbior`), Kuchnia (Kuchnia), Dostawy (Dostawy, Flota),
   Pracownicy (Pracownicy: Zespół i Grafik, Statystyki zespołu `/zespol`, Informacje dla pracowników `/informacje`),
@@ -246,10 +247,11 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Kody rabatowe `/rabaty`, Eksport `/eksport`);
   Kropki nowości (`tabNewsProvider`, `TabNews`, `_NewsDot`): nowa rezerwacja z aplikacji, nowe zamówienie na dostawę
   albo odbiór, nowe danie do wydania; kropka na zakładce i jej grupie znika po wejściu do zakładki.
-  Po prawej nowa wersja, odliczanie do wylogowania, lokal (`_RestaurantSwitcher`: logo, kropka połączenia na żywo,
-  plan; strzałka i lista tylko przy kilku lokalach konta), motyw (systemowy: ikona monitora `AppIcons.monitor`),
-  obok niego ikona „Wyloguj” (gdy ktoś jest zalogowany, od 0.21.0) i kółko pracownika (inicjały; menu:
-  kod pracownika, „Zakończ zmianę”, „Wejdź na zmianę”, e-mail i wersja, wylogowanie konta restauracji).
+  „Table” na środku (szary napis, od 1400 px szerokości; zostaje, użytkownik go nie zmieniał). Po prawej nowa
+  wersja, odliczanie do wylogowania, motyw (systemowy: ikona monitora `AppIcons.monitor`), obok niego ikona „Wyloguj”
+  (gdy ktoś jest zalogowany, od 0.21.0), kółko pracownika (inicjały; menu: kod pracownika, „Zakończ zmianę”,
+  „Wejdź na zmianę”, e-mail i wersja, wylogowanie konta restauracji), a w samym prawym rogu lokal
+  (`_RestaurantSwitcher`: logo, kropka połączenia na żywo, plan; strzałka i lista tylko przy kilku lokalach konta).
   Kropka na „Informacje dla pracowników”, dopóki zalogowany pracownik ma nieprzeczytane informacje.
   Wąski pasek boczny: zakładki wybranej grupy (same ikony bez ramek, 30 px, nazwy w podpowiedziach po prawej, `tooltipOnRight`), na dole Ustawienia lokalu
   (`/ustawienia`), pod nimi Logi (`/logi`, od 31.10.2026), Dane lokalu i Edycja sali (`placeTabs`). Grupa i zakładki według uprawnień zalogowanego pracownika;
@@ -386,7 +388,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`allowEndOfDay`, `TimeOfDay(hour: 24)`, w bazie `time '24:00'`, kolumny i sprawdzenia `closes > opens` to przyjmują).
 - Klienci (`/klienci`, uprawnienie `customers`, 0045): `panel_customers` łączy rezerwacje (bez blokad) i dostarczone
   zamówienia na wynos po koncie w aplikacji, telefonie (ostatnie 9 cyfr) albo imieniu: wizyty, nieobecności,
-  zamówienia, wydatki, ostatnia wizyta, najbliższa rezerwacja. Układ: lista z wyszukiwaniem po lewej, po prawej
+  zamówienia, wydatki, ostatnia wizyta, najbliższa rezerwacja. Bez rzędu nad listą (sortowania i liczników) i bez
+  daty albo liczby przy kliencie na liście (31.10.2026, prośba użytkownika); lista w kolejności ostatniej wizyty,
+  liczby w podsumowaniu. Układ: lista z wyszukiwaniem po lewej, po prawej
   wybrany klient (liczby, historia `panel_customer_history`, notatki) albo podsumowanie wszystkich. Klucz klienta
   liczy `private.customer_key` (0047; od 0059 najpierw telefon: numer z konta w aplikacji albo wpisany, ostatnie
   9 cyfr `private.customer_phone_key`, potem konto, potem imię, więc ten sam numer z aplikacji, panelu i rezerwacji
