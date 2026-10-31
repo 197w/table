@@ -50,6 +50,7 @@ enum PanelSection {
     PanelTab(PanelRoutes.discounts, 'Kody rabatowe', AppIcons.sealPercent),
     PanelTab(PanelRoutes.export, 'Eksport', AppIcons.fileArrowDown),
     PanelTab(PanelRoutes.fraud, 'Analiza oszustw', AppIcons.shieldWarning),
+    PanelTab(PanelRoutes.activity, 'Logi', AppIcons.clockCounterClockwise),
   ]);
 
   const PanelSection(this.label, this.icon, this.tabs);

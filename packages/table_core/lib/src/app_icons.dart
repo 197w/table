@@ -125,6 +125,7 @@ abstract final class AppIcons {
   static const circleHalf = AppIconData('assets/icons/circle-half.svg');
   static const circleHalfTilt = AppIconData('assets/icons/circle-half-tilt.svg');
   static const clipboardText = AppIconData('assets/icons/clipboard-text.svg');
+  static const clockCounterClockwise = AppIconData('assets/icons/clock-counter-clockwise.svg');
   static const clock = AppIconData('assets/icons/clock.svg');
   static const clockBack = AppIconData('assets/icons/clock-counter-clockwise.svg');
   static const close = AppIconData('assets/icons/x.svg');
@@ -205,6 +206,7 @@ abstract final class AppIcons {
   static const usersThree = AppIconData('assets/icons/users-three.svg');
   static const van = AppIconData('assets/icons/van.svg');
   static const warning = AppIconData('assets/icons/warning-circle.svg');
+  static const xCircle = AppIconData('assets/icons/x-circle.svg');
   static const wifiOff = AppIconData('assets/icons/wifi-slash.svg');
   static const wrench = AppIconData('assets/icons/wrench.svg');
 

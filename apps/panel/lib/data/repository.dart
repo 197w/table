@@ -810,6 +810,29 @@ class PanelRepository {
     );
   }
 
+  /// Zdarzenia lokalu od [from] do [to] (Logi).
+  Future<List<ActivityEvent>> activity(String restaurantId, DateTime from, DateTime to) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>('panel_activity', params: {
+        'p_restaurant_id': restaurantId,
+        'p_from': from.toUtc().toIso8601String(),
+        'p_to': to.toUtc().toIso8601String(),
+      });
+      return [for (final r in rows) ActivityEvent.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
+  /// Stan lokalu w chwili [at] (Time Machine).
+  Future<TimeMachine> timeMachine(String restaurantId, DateTime at) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>(
+        'panel_time_machine',
+        params: {'p_restaurant_id': restaurantId, 'p_at': at.toUtc().toIso8601String()},
+      );
+      return TimeMachine.fromJson(json);
+    });
+  }
+
   /// Ocena ryzyka zamówień z aplikacji od [from] (analiza oszustw).
   Future<List<OrderRisk>> orderRisks(String restaurantId, DateTime from) {
     return _guard(() async {

@@ -98,7 +98,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
   Map i śledzenia dostawców nie ma od 0068 (usunięte na prośbę użytkownika, także mapa u gościa).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0071, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0072, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -210,7 +210,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Baza klientów (Klienci `/klienci`, Opinie),
   Management (Podsumowanie dnia `/podsumowanie`, Niezamknięte zamówienia `/niezamkniete`, Godziny pracy `/godziny`,
   Menu, Inwentaryzacja, Statystyki,
-  Kody rabatowe `/rabaty`, Eksport `/eksport`, Analiza oszustw `/oszustwa`);
+  Kody rabatowe `/rabaty`, Eksport `/eksport`, Analiza oszustw `/oszustwa`, Logi `/logi`);
   Kropki nowości (`tabNewsProvider`, `TabNews`, `_NewsDot`): nowa rezerwacja z aplikacji, nowe zamówienie na dostawę
   albo odbiór, nowe danie do wydania; kropka na zakładce i jej grupie znika po wejściu do zakładki.
   „Table” na środku; po prawej nowa wersja, odliczanie do wylogowania, motyw (systemowy: ikona monitora `AppIcons.monitor`),
@@ -287,6 +287,19 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   „Ustawienia lokalu” → „Dostawa i odbiór” (`restaurants.takeaway_max_items`, `takeaway_max_per_item`; trigger
   `order_items_takeaway_limits` tylko dla pozycji dodanych przez gościa), w Table koszyk blokuje „+” i pokazuje
   przekroczenie (`RestaurantDetail.cartLimitProblem`, `canAddMore`).
+- Logi i Time Machine (0072, Management → `/logi`, uprawnienie `activity`, w 0072 dostały je stanowiska z `day_close`
+  albo `staff`; `features/activity/activity_screen.dart`), w stylu UniFi Protect: po lewej pionowa oś doby z kropkami
+  zdarzeń w pasach grup (zmiany, rachunki, kuchnia, na wynos, rezerwacje, magazyn) i kreską wybranej chwili
+  (kliknięcie albo przeciągnięcie), w środku stan lokalu w tej chwili (liczby, sala z rachunkami i rezerwacjami na
+  `FloorCanvas`, rachunki z pozycjami i ich stanem z tamtej chwili, na wynos, na zmianie), po prawej zdarzenia do tej
+  chwili (kliknięcie przenosi do chwili zdarzenia). „Na żywo” trzyma chwilę na teraz (co 30 s, odświeżanie
+  z zamówieniami), „Historia” ma dzień (`StepSwitcher`). Nic nowego się nie zapisuje: `panel_activity` składa
+  zdarzenia z chwil przy zamówieniach, pozycjach (dodane, na kuchnię, gotowe, wydane, anulowane; to samo danie
+  łączy `private.merge_item_names`), płatnościach, dostawach, rezerwacjach, zmianach i inwentaryzacji, a
+  `panel_time_machine` odtwarza rachunki, rezerwacje (`table_holds`), zamówienia na wynos i zmianę w chwili.
+  Doszła tylko chwila anulowania pozycji (`order_items.cancelled_at`, trigger). Model zdarzenia z polskimi tytułami
+  jest w `table_core` (`ActivityEvent`), bo Table for employees ma „Logi” na karcie lokalu przy uprawnieniu
+  (`activity_screen.dart`: dziś albo wczoraj, filtr grup, co minutę; `panel_activity(p_member_id)`).
 - Dane lokalu: logo, dane, poziom cen, dane właściciela, godziny, dni wyjątkowe.
 - Flota (`/flota`, uprawnienie `fleet`, 0045): `vehicles` (auto, skuter, rower, inny; nazwa, rejestracja unikalna
   w lokalu, VIN 17 znaków bez I/O/Q unikalny w lokalu (0046), w użyciu), `panel_save_vehicle`,

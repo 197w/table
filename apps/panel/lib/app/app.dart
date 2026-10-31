@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:table_core/table_core.dart';
 
 import '../features/auth/login_screen.dart';
+import '../features/activity/activity_screen.dart';
 import '../features/customers/customers_screen.dart';
 import '../features/deliveries/deliveries_screen.dart';
 import '../features/fleet/fleet_screen.dart';
@@ -197,6 +198,7 @@ GoRouter _buildRouter(
           _page(PanelRoutes.discounts, const DiscountsScreen()),
           _page(PanelRoutes.export, const ExportScreen()),
           _page(PanelRoutes.fraud, const FraudScreen()),
+          _page(PanelRoutes.activity, const ActivityScreen()),
         ],
       ),
     ],
@@ -248,6 +250,7 @@ abstract final class PanelRoutes {
   static const discounts = '/rabaty';
   static const export = '/eksport';
   static const fraud = '/oszustwa';
+  static const activity = '/logi';
 }
 
 /// Uprawnienia, z których wystarczy jedno, żeby otworzyć zakładkę.
@@ -279,6 +282,7 @@ const _routePermissions = {
   PanelRoutes.discounts: {'discounts'},
   PanelRoutes.export: {'export'},
   PanelRoutes.fraud: {'fraud'},
+  PanelRoutes.activity: {'activity'},
 };
 
 /// Nazwy zakładek, np. w logowaniu do zakładki.
@@ -308,6 +312,7 @@ const panelTabLabels = {
   PanelRoutes.discounts: 'Kody rabatowe',
   PanelRoutes.export: 'Eksport',
   PanelRoutes.fraud: 'Analiza oszustw',
+  PanelRoutes.activity: 'Logi',
 };
 
 /// Zakładka (jej ścieżka) dla adresu. Null: adres poza zakładkami.

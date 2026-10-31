@@ -1137,7 +1137,8 @@ enum StaffPermission {
   dayClose('day_close', 'Podsumowanie dnia', 'Raporty z kasy i terminali, petty cash', 'Management'),
   discounts('discounts', 'Kody rabatowe', 'Tworzenie i wyłączanie kodów rabatowych', 'Management'),
   export('export', 'Eksport', 'Pliki dla księgowej: sprzedaż, VAT i czas pracy', 'Management'),
-  fraud('fraud', 'Analiza oszustw', 'Ocena ryzyka zamówień z aplikacji Table', 'Management');
+  fraud('fraud', 'Analiza oszustw', 'Ocena ryzyka zamówień z aplikacji Table', 'Management'),
+  activity('activity', 'Logi i Time Machine', 'Zdarzenia dnia i stan sali w wybranej chwili', 'Management');
 
   const StaffPermission(this.key, this.label, this.description, this.group);
 
@@ -4167,5 +4168,156 @@ class OrderRisk {
     clientIp: json['client_ip'] as String?,
     ipInfo: (json['ip_info'] as Map?)?.cast<String, dynamic>() ?? const {},
     flags: [for (final f in json['flags'] as List? ?? const []) RiskFlag.fromJson((f as Map).cast<String, dynamic>())],
+  );
+}
+
+// ---------------------------------------------------------------
+// Logi i Time Machine (0072)
+// ---------------------------------------------------------------
+
+/// Pozycja rachunku w wybranej chwili (stan z tamtej chwili: new, sent, ready, served, cancelled).
+class TmItem {
+  const TmItem({required this.name, required this.quantity, required this.price, required this.status, this.variant});
+
+  final String name;
+  final String? variant;
+  final int quantity;
+  final int price;
+  final String status;
+
+  factory TmItem.fromJson(Map<String, dynamic> json) => TmItem(
+    name: '${json['name']}',
+    variant: json['variant'] as String?,
+    quantity: _toInt(json['quantity']),
+    price: _toInt(json['price']),
+    status: '${json['status']}',
+  );
+}
+
+class TmBill {
+  const TmBill({
+    required this.orderId,
+    required this.label,
+    required this.openedAt,
+    required this.paid,
+    required this.items,
+    this.tableId,
+    this.openedBy,
+    this.guests,
+  });
+
+  final String orderId;
+  final String? tableId;
+  final String label;
+  final DateTime openedAt;
+  final String? openedBy;
+  final int? guests;
+
+  /// Wpłacone do tamtej chwili.
+  final int paid;
+  final List<TmItem> items;
+
+  int get total => items.where((i) => i.status != 'cancelled').fold(0, (s, i) => s + i.price * i.quantity);
+
+  factory TmBill.fromJson(Map<String, dynamic> json) => TmBill(
+    orderId: json['order_id'] as String,
+    tableId: json['table_id'] as String?,
+    label: '${json['label']}',
+    openedAt: _toDate(json['opened_at']),
+    openedBy: json['opened_by'] as String?,
+    guests: json['guests'] == null ? null : _toInt(json['guests']),
+    paid: _toInt(json['paid']),
+    items: [for (final i in json['items'] as List? ?? const []) TmItem.fromJson(i as Map<String, dynamic>)],
+  );
+}
+
+class TmReservation {
+  const TmReservation({
+    required this.name,
+    required this.party,
+    required this.startsAt,
+    required this.endsAt,
+    required this.seated,
+    required this.tableIds,
+  });
+
+  final String name;
+  final int party;
+  final DateTime startsAt;
+  final DateTime endsAt;
+  final bool seated;
+  final List<String> tableIds;
+
+  factory TmReservation.fromJson(Map<String, dynamic> json) => TmReservation(
+    name: '${json['name']}',
+    party: _toInt(json['party']),
+    startsAt: _toDate(json['starts_at']),
+    endsAt: _toDate(json['ends_at']),
+    seated: json['seated'] == true,
+    tableIds: [for (final t in json['table_ids'] as List? ?? const []) '$t'],
+  );
+}
+
+class TmTakeaway {
+  const TmTakeaway({required this.orderId, required this.label, required this.stage, required this.total, this.customer});
+
+  final String orderId;
+  final String label;
+  final String? customer;
+
+  /// placed, accepted, ready, on_the_way.
+  final String stage;
+  final int total;
+
+  String get stageLabel => switch (stage) {
+    'accepted' => 'w przygotowaniu',
+    'ready' => 'gotowe',
+    'on_the_way' => 'w drodze',
+    'delivered' => 'wydane',
+    _ => 'czeka na przyjęcie',
+  };
+
+  factory TmTakeaway.fromJson(Map<String, dynamic> json) => TmTakeaway(
+    orderId: json['order_id'] as String,
+    label: '${json['label']}',
+    customer: json['customer'] as String?,
+    stage: '${json['stage']}',
+    total: _toInt(json['total']),
+  );
+}
+
+/// Stan lokalu w wybranej chwili (`panel_time_machine`): rachunki przy stolikach, rezerwacje, zamówienia na wynos
+/// i osoby na zmianie.
+class TimeMachine {
+  const TimeMachine({
+    required this.at,
+    this.bills = const [],
+    this.reservations = const [],
+    this.takeaway = const [],
+    this.staff = const [],
+  });
+
+  final DateTime at;
+  final List<TmBill> bills;
+  final List<TmReservation> reservations;
+  final List<TmTakeaway> takeaway;
+
+  /// Imię i od kiedy na zmianie.
+  final List<(String, DateTime)> staff;
+
+  TmBill? billAt(String tableId) => bills.where((b) => b.tableId == tableId).firstOrNull;
+  TmReservation? reservationAt(String tableId) => reservations.where((r) => r.tableIds.contains(tableId)).firstOrNull;
+
+  factory TimeMachine.fromJson(Map<String, dynamic> json) => TimeMachine(
+    at: _toDate(json['at']),
+    bills: [for (final b in json['bills'] as List? ?? const []) TmBill.fromJson(b as Map<String, dynamic>)],
+    reservations: [
+      for (final r in json['reservations'] as List? ?? const []) TmReservation.fromJson(r as Map<String, dynamic>),
+    ],
+    takeaway: [for (final t in json['takeaway'] as List? ?? const []) TmTakeaway.fromJson(t as Map<String, dynamic>)],
+    staff: [
+      for (final s in json['staff'] as List? ?? const [])
+        ('${(s as Map)['name']}', _toDate(s['since'])),
+    ],
   );
 }

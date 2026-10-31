@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:table_core/table_core.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../app/reservation_alerts.dart';
@@ -794,6 +795,21 @@ final orderDueProvider = FutureProvider.autoDispose.family<OrderDue, String>(
 typedef VehicleQuery = ({String restaurantId, String? vehicleId});
 
 typedef RiskQuery = ({String restaurantId, int days});
+
+typedef MomentQuery = ({String restaurantId, DateTime at});
+
+/// Zdarzenia z dnia (Logi). Dziś odświeżają się z zamówieniami.
+final activityProvider = FutureProvider.autoDispose.family<List<ActivityEvent>, DayQuery>((ref, q) {
+  final day = dateOnly(q.day);
+  if (day == dateOnly(DateTime.now())) ref.watch(ordersLiveProvider(q.restaurantId).select((s) => s.version));
+  return ref.watch(repositoryProvider).activity(q.restaurantId, day, day.add(const Duration(days: 1)));
+});
+
+/// Stan lokalu w chwili (Time Machine). Chwila zaokrąglona do minuty, więc Na żywo nie pobiera co sekundę.
+final timeMachineProvider = FutureProvider.autoDispose.family<TimeMachine, MomentQuery>((ref, q) {
+  ref.watch(ordersLiveProvider(q.restaurantId).select((s) => s.version));
+  return ref.watch(repositoryProvider).timeMachine(q.restaurantId, q.at);
+});
 
 /// Zamówienia, których IP panel już próbował sprawdzić w tej sesji (bez powtórek przy każdym odświeżeniu).
 final _ipAttempted = <String>{};

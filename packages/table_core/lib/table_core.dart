@@ -2,6 +2,7 @@
 /// formatery, jednostki i konfiguracja Supabase.
 library;
 
+export 'src/activity_event.dart';
 export 'src/app_icons.dart';
 export 'src/env.dart';
 export 'src/failure.dart';
