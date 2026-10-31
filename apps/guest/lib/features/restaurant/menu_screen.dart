@@ -78,7 +78,7 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
   Widget build(BuildContext context) {
     final async = ref.watch(restaurantProvider(widget.restaurantId));
     return Scaffold(
-      appBar: AppBar(title: Text(async.value == null ? 'Menu' : 'Menu · ${async.value!.name}')),
+      appBar: AppBar(leading: glassLeading(context), title: Text(async.value == null ? 'Menu' : 'Menu · ${async.value!.name}')),
       body: async.when(
         loading: () => const LoadingView(),
         error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(restaurantProvider(widget.restaurantId))),

@@ -14,7 +14,7 @@ class GeneralSettingsScreen extends ConsumerWidget {
     final unit = ref.watch(distanceUnitProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Ogólne')),
+      appBar: AppBar(leading: glassLeading(context), title: const Text('Ogólne')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
@@ -58,7 +58,7 @@ class ThemeSettingsScreen extends ConsumerWidget {
     final setting = ref.watch(themeSettingProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Motyw')),
+      appBar: AppBar(leading: glassLeading(context), title: const Text('Motyw')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [

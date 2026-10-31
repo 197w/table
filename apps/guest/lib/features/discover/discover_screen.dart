@@ -546,6 +546,33 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // iOS 26: pigułka na natywnym Liquid Glass, wybrana w kolorze akcentu.
+    return GlassPill(
+      onPressed: onTap,
+      selected: selected,
+      semanticLabel: label,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      content: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Glyph(icon, size: 16, color: selected ? AppColors.onAccent : AppColors.textMuted),
+          const SizedBox(width: 7),
+          Text(
+            label,
+            style: TextStyle(
+              fontFamily: AppTheme.fontFamily,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: selected ? AppColors.onAccent : AppColors.text,
+            ),
+          ),
+        ],
+      ),
+      fallback: _fallback(context),
+    );
+  }
+
+  Widget _fallback(BuildContext context) {
     return Semantics(
       button: true,
       selected: selected,
@@ -654,6 +681,23 @@ class _ResultsBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
+          // iOS 26: dwa przyciski Liquid Glass, wybrany w kolorze akcentu.
+          if (nativeLiquidGlass)
+            for (final (value, symbol, label) in const [
+              (DiscoverLayout.cards, 'rectangle.grid.1x2', 'Karty ze zdjęciem'),
+              (DiscoverLayout.list, 'list.bullet', 'Zwarta lista'),
+            ])
+              GlassIconButton(
+                symbol: symbol,
+                label: label,
+                selected: layout == value,
+                onTap: () {
+                  if (layout != value) HapticFeedback.selectionClick();
+                  onLayout(value);
+                },
+                fallback: const SizedBox.shrink(),
+              )
+          else
           Container(
             padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(

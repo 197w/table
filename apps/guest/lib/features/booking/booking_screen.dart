@@ -249,6 +249,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: glassLeading(context),
         toolbarHeight: 64,
         titleSpacing: 0,
         title: Column(

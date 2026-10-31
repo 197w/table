@@ -59,6 +59,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
+        leading: glassLeading(context),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         title: const Text('Zeskanuj kod'),

@@ -8,7 +8,7 @@ import 'ui.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
-/// Ustawienia: moje konto, lokale z kodami do panelu i wylogowanie. Układ jak w aplikacji dla gości.
+/// Konto: moje konto, lokale z kodami do panelu i wylogowanie. Układ jak w aplikacji dla gości.
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -42,7 +42,7 @@ class SettingsScreen extends ConsumerWidget {
     final name = jobs.firstOrNull?.memberName;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Ustawienia')),
+      appBar: AppBar(leading: glassLeading(context), title: const Text('Konto')),
       body: ContentWidth(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),

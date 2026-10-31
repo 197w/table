@@ -24,7 +24,7 @@ class ReservationDetailScreen extends ConsumerWidget {
     final async = ref.watch(reservationDetailProvider(reservationId));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Szczegóły rezerwacji')),
+      appBar: AppBar(leading: glassLeading(context), title: const Text('Szczegóły rezerwacji')),
       body: async.when(
         loading: () => const LoadingView(),
         error: (e, _) => ErrorView(

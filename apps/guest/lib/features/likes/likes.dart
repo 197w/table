@@ -4,7 +4,6 @@ import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
 import '../../app/app.dart';
-import '../../app/liquid_glass.dart';
 import '../../app/preferences.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
@@ -21,8 +20,7 @@ class LikeButton extends ConsumerStatefulWidget {
   final String restaurantId;
   final String restaurantName;
 
-  /// Na iOS 26 natywny przycisk Liquid Glass (strona lokalu). Na kartach listy zostaje przycisk Fluttera,
-  /// bo natywny widok w każdej karcie spowalniałby przewijanie.
+  /// Na iOS 26 natywny przycisk Liquid Glass (strona lokalu i karty w Odkrywaj).
   final bool nativeGlass;
 
   @override
@@ -37,7 +35,7 @@ class _LikeButtonState extends ConsumerState<LikeButton> {
     if (ref.read(userIdProvider) == null) {
       showMessage(
         context,
-        'Zaloguj się, żeby polubić lokal i mieć go w „Moje” → Polubione.',
+        'Zaloguj się, żeby polubić lokal i mieć go w „Konto” → Polubione.',
         actionLabel: 'Zaloguj się',
         onAction: () => context.push(AppRoutes.withNext(AppRoutes.login, AppRoutes.restaurant(widget.restaurantId))),
       );
@@ -183,4 +181,15 @@ class LikedMark extends ConsumerWidget {
       child: Glyph(AppIcons.heartFill, size: 16, color: likeColor),
     );
   }
+}
+
+/// Konto → Polubione: polubione lokale (wcześniej zakładka w „Moje”).
+class LikedScreen extends StatelessWidget {
+  const LikedScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(leading: glassLeading(context), title: const Text('Polubione')),
+    body: const LikedRestaurantsList(),
+  );
 }

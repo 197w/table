@@ -8,9 +8,8 @@ import 'package:table_core/table_core.dart';
 
 import '../core/live_activity.dart';
 import '../data/providers.dart';
-import 'liquid_glass.dart';
 
-/// Dolna nawigacja: Odkrywaj, Rezerwacje, Ustawienia. Na iOS 26 systemowy pasek z Liquid Glass,
+/// Dolna nawigacja: Odkrywaj, Rezerwacje, Konto. Na iOS 26 systemowy pasek z Liquid Glass,
 /// na starszym iOS szkło rysowane przez Fluttera, na Androidzie Material. Na szerokim tablecie menu z boku.
 class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.navigationShell});
@@ -40,7 +39,7 @@ class AppShell extends ConsumerWidget {
           tabs: const [
             (label: 'Odkrywaj', symbol: 'safari', selectedSymbol: 'safari.fill'),
             (label: 'Rezerwacje', symbol: 'calendar', selectedSymbol: 'calendar'),
-            (label: 'Ustawienia', symbol: 'gearshape', selectedSymbol: 'gearshape.fill'),
+            (label: 'Konto', symbol: 'person.crop.circle', selectedSymbol: 'person.crop.circle.fill'),
           ],
         ),
       );
@@ -70,9 +69,9 @@ class AppShell extends ConsumerWidget {
                     label: Text('Rezerwacje'),
                   ),
                   NavigationRailDestination(
-                    icon: Glyph(AppIcons.gear),
-                    selectedIcon: Glyph(AppIcons.gearFill),
-                    label: Text('Ustawienia'),
+                    icon: Glyph(AppIcons.userCircle),
+                    selectedIcon: Glyph(AppIcons.userCircleFill),
+                    label: Text('Konto'),
                   ),
                 ],
               ),
@@ -109,9 +108,9 @@ class AppShell extends ConsumerWidget {
           tooltip: '',
         ),
         NavigationDestination(
-          icon: Glyph(AppIcons.gear),
-          selectedIcon: Glyph(AppIcons.gearFill),
-          label: 'Ustawienia',
+          icon: Glyph(AppIcons.userCircle),
+          selectedIcon: Glyph(AppIcons.userCircleFill),
+          label: 'Konto',
           tooltip: '',
         ),
       ],

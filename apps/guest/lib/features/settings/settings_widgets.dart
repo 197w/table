@@ -340,7 +340,7 @@ class SignedInOnly extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final loggedIn = ref.watch(userIdProvider) != null;
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(leading: glassLeading(context), title: Text(title)),
       body: loggedIn
           ? body
           : MessageView(

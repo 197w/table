@@ -9,7 +9,6 @@ import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../discover/restaurant_cards.dart';
-import '../../app/liquid_glass.dart';
 import '../likes/likes.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
@@ -61,7 +60,7 @@ class _RestaurantScreenState extends ConsumerState<RestaurantScreen> {
 
     return Scaffold(
       // Przy ładowaniu i błędzie zwykły pasek ze strzałką; strona lokalu ma własny nad zdjęciem.
-      appBar: r == null ? AppBar() : null,
+      appBar: r == null ? AppBar(leading: glassLeading(context), ) : null,
       body: async.when(
         skipLoadingOnReload: true,
         loading: () => const _Skeleton(),
@@ -1128,6 +1127,7 @@ class _BottomBar extends StatelessWidget {
     final dishes = r.menu.fold<int>(0, (sum, s) => sum + s.items.length);
     final order = r.canOrder && dishes > 0;
     final stacked = MediaQuery.textScalerOf(context).scale(16) > 20;
+    if (nativeLiquidGlass) return _glass(context, r, order, stacked);
     final primary = r.isPro
         ? FilledButton(onPressed: () => context.push(AppRoutes.booking(r.id)), child: const Text('Zarezerwuj stolik'))
         : FilledButton.icon(
@@ -1165,6 +1165,59 @@ class _BottomBar extends StatelessWidget {
                 ],
               ),
       ),
+    );
+  }
+}
+
+extension on _BottomBar {
+  /// iOS 26: przyciski na Liquid Glass bez paska pod spodem; główne działanie w kolorze akcentu.
+  Widget _glass(BuildContext context, RestaurantDetail r, bool order, bool stacked) {
+    final text = Theme.of(context).textTheme.labelLarge?.copyWith(fontSize: 16);
+    Widget label(AppIconData? icon, String title, Color color) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[Glyph(icon, size: 20, color: color), const SizedBox(width: 8)],
+        Flexible(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: text?.copyWith(color: color))),
+      ],
+    );
+    final primary = GlassPill(
+      height: 52,
+      selected: true,
+      onPressed: r.isPro ? () => context.push(AppRoutes.booking(r.id)) : onCall,
+      semanticLabel: r.isPro ? 'Zarezerwuj stolik' : 'Zadzwoń, żeby zarezerwować',
+      content: label(
+        r.isPro ? null : AppIcons.phone,
+        r.isPro ? 'Zarezerwuj stolik' : 'Zadzwoń, żeby zarezerwować',
+        AppColors.onAccent,
+      ),
+      fallback: const SizedBox.shrink(),
+    );
+    final secondary = order
+        ? GlassPill(
+            height: 52,
+            onPressed: () => context.push(AppRoutes.orderMenu(r.id)),
+            semanticLabel: 'Zamów',
+            content: label(r.deliveryEnabled ? AppIcons.moped : AppIcons.shoppingBag, 'Zamów', AppColors.text),
+            fallback: const SizedBox.shrink(),
+          )
+        : null;
+    return SafeArea(
+      minimum: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      child: secondary == null
+          ? SizedBox(width: double.infinity, child: primary)
+          : stacked
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [primary, const SizedBox(height: 8), secondary],
+            )
+          : Row(
+              children: [
+                Expanded(flex: 2, child: secondary),
+                const SizedBox(width: 10),
+                Expanded(flex: 3, child: primary),
+              ],
+            ),
     );
   }
 }

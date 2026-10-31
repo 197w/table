@@ -246,6 +246,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final inv = async.value;
     return Scaffold(
       appBar: AppBar(
+        leading: glassLeading(context),
         title: const Text('Inwentaryzacja'),
         actions: [IconButton(tooltip: 'Odśwież', onPressed: _reload, icon: const Glyph(AppIcons.refresh, size: 20))],
       ),

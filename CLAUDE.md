@@ -12,7 +12,7 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   iOS `pl.table.tableStaff`). Na tablecie (krótszy bok co najmniej 600 punktów, `isTabletScreen`) aplikacja zamiast
   siebie uruchamia pełny panel restauracji jak na komputerze (zależność `table_panel`, zadanie z Todoist: „na tabletach
   identycznie jak na komputerach”): konto lokalu, pracownicy kodem albo QR. Logowanie e-mailem jak w Table (0069; numer konta = numer u pracownika w panelu), skan wspólnego kodu QR z panelu
-  zaczyna zmianę i loguje w panelu. Dolne menu: Zamówienia, Dostawy, Zeskanuj, Grafik, Ustawienia. Grafik to lista dni z okresu lokalu
+  zaczyna zmianę i loguje w panelu. Dolne menu: Zamówienia, Dostawy, Zeskanuj, Grafik, Konto (dawniej Ustawienia). Grafik to lista dni z okresu lokalu
   (tydzień, 2 tygodnie albo miesiąc, `restaurants.schedule_period`, ustawia „Ustawienia lokalu”) ze zgłaszaniem godzin
   na cały okres naraz i „Moje godziny” na dole (miesiąc kalendarzowy ze strzałkami, do 3 miesięcy wstecz).
   Napisy dolnego menu: 11 px, bez powiększania czcionki z ustawień telefonu (S23 ma 1,15), żeby się nie zawijały. Kelner nabija zamówienia (stoliki, menu, wysyłka na kuchnię, wydanie,
@@ -164,13 +164,13 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `DateTile`, `relativeVisit` i `reservationStatus` w `features/reservations/booking_widgets.dart`, `StatusChip`
   i `ButtonPair` w `table_core`. „Moje” → Zamówienia: „W trakcie” i „Zakończone”,
   wiersz z kafelkiem rodzaju (dostawa / odbiór), numerem, kwotą i etapem z ikoną; szkielety zamiast kółka ładowania.
-  „Moje” → Polubione (0063, `features/likes/likes.dart`): serce na karcie lokalu w Odkrywaj (osobny przycisk nad
+  Konto → Polubione (0063, `features/likes/likes.dart`, od 10.2026 w Koncie pod kafelkiem konta, `LikedScreen`): serce na karcie lokalu w Odkrywaj (osobny przycisk nad
   kartą, poza jej opisem dla czytnika) i w pasku strony lokalu (`LikeButton`), w zwartych wierszach tylko znak
   polubienia (`LikedMark`); lista polubionych jako karty, ostatnio polubione pierwsze (`guest_liked_restaurants`,
   `likedRestaurantsProvider`). Polubienie od razu na ekranie (`LikedIdsNotifier`, przy błędzie wraca), w bazie
   `guest_set_like`; bez konta toast z „Zaloguj się”. Tabela `restaurant_likes` (gość czyta tylko swoje, lokal widzi
   same liczby w statystykach).
-  „Moje” → Kody (0066, `features/codes/codes.dart`): kody od lokali za zakończoną rezerwację albo zweryfikowaną opinię
+  Konto → Kody (0066, `features/codes/codes.dart`, `CodesScreen`): kody od lokali za zakończoną rezerwację albo zweryfikowaną opinię
   (zasady lokalu `guest_code_rules`, event `reservation`/`review`; triggery `reservations_guest_code`,
   `reviews_guest_code`, `private.issue_guest_code`). Kod jest osobisty, nie do udostępniania: widać go dopiero po
   „Aktywuj” (`guest_activate_code`), wtedy dostaje nowy tekst `T-XXXXXX` ważny 15 minut do pokazania kelnerowi
@@ -188,12 +188,18 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Tablet (10.2026): przy szerokości od 840 punktów menu z boku (`NavigationRail` w `shell.dart`, poza iOS 26 z natywnym
   paskiem), a ekrany z treścią (lokal, menu, rezerwacja, koszyk, zamówienie, ustawienia, logowanie) mają szerokość
   do 820 punktów na środku (`TabletWidth` w `app/tablet_width.dart`, owija trasy w `app.dart`).
-  Liquid Glass (`app/liquid_glass.dart`, u pracownika `lib/liquid_glass.dart`): na iOS 26 i nowszym dolne menu to
-  natywny UITabBar (`IOS26NativeTabBar` z `adaptive_platform_ui`, symbole SF), a „Wróć” i serce na stronie lokalu to
-  przyciski szkła (`GlassIconButton`); natywny pasek chowa się, gdy nad zakładką jest inny ekran. Android zostaje przy
-  Material. Dolne menu nie ma podpowiedzi po przytrzymaniu (`NavigationDestination(tooltip: '')`); podpowiedzi są
+  Dolne menu Table: Odkrywaj, Rezerwacje („Moje”: rezerwacje i zamówienia), Konto (dawniej Ustawienia; pod kafelkiem
+  konta Polubione i Kody).
+  Liquid Glass (wspólny moduł `table_core/src/liquid_glass.dart`, eksportowany z `table_core`): na iOS 26 i nowszym
+  dolne menu to natywny UITabBar (`NativeGlassTabBar`), „Wstecz” i „Zamknij” w każdym pasku u góry to przyciski szkła
+  (`AppBar(leading: glassLeading(context))`; poza iOS 26 null, czyli zwykły przycisk), a na szkle są też: filtry
+  w Odkrywaj (`GlassPill`, `DropdownPill` sam przechodzi na szkło), przełącznik kart i listy (`GlassIconButton`
+  z `selected`), serca na kartach i na stronie lokalu, „Zarezerwuj stolik”, „Zadzwoń, żeby zarezerwować” i „Zamów”
+  (bez paska pod spodem), u kelnera filtry działów menu. Wybrane: `prominentGlass` w kolorze akcentu z treścią
+  `AppColors.onAccent`. Natywny przycisk nie zmienia stylu po utworzeniu, więc klucz zawiera stan. Natywny pasek
+  chowa się, gdy nad zakładką jest inny ekran. Android zostaje przy Material. Dolne menu nie ma podpowiedzi po przytrzymaniu (`NavigationDestination(tooltip: '')`); podpowiedzi są
   tylko w lewym pasku panelu. Sprawdzić da się tylko na iPhonie z iOS 26 (Xcode 26).
-  Szczegóły rezerwacji: kafelek z datą i stan na górze. Ustawienia: przy „Ogólne” i „Motyw” widać bieżący wybór,
+  Szczegóły rezerwacji: kafelek z datą i stan na górze. Konto: przy „Ogólne” i „Motyw” widać bieżący wybór,
   wiersze co najmniej 56 px, nazwy w dwóch liniach zamiast ucinania. Pary przycisków przy dużej czcionce
   (`textScaler.scale(16) > 20`) stają jeden pod drugim. `textDisabled` (kontrast ok. 3:1) tylko na ozdoby,
   tekst i ikony z informacją w `textMuted`.
@@ -306,8 +312,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   łączy `private.merge_item_names`), płatnościach, dostawach, rezerwacjach, zmianach i inwentaryzacji, a
   `panel_time_machine` odtwarza rachunki, rezerwacje (`table_holds`), zamówienia na wynos i zmianę w chwili.
   Doszła tylko chwila anulowania pozycji (`order_items.cancelled_at`, trigger). Model zdarzenia z polskimi tytułami
-  jest w `table_core` (`ActivityEvent`), bo Table for employees ma „Logi” na karcie lokalu przy uprawnieniu
-  (`activity_screen.dart`: dziś albo wczoraj, filtr grup, co minutę; `panel_activity(p_member_id)`).
+  jest w `table_core` (`ActivityEvent`). Logów nie ma w aplikacji mobilnej (usunięte na prośbę użytkownika);
+  `panel_activity(p_member_id)` zostało w bazie.
 - Dane lokalu: logo, dane, poziom cen, dane właściciela, godziny, dni wyjątkowe.
 - Flota (`/flota`, uprawnienie `fleet`, 0045): `vehicles` (auto, skuter, rower, inny; nazwa, rejestracja unikalna
   w lokalu, VIN 17 znaków bez I/O/Q unikalny w lokalu (0046), w użyciu), `panel_save_vehicle`,

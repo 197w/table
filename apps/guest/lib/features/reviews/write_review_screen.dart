@@ -99,7 +99,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     final verified = widget.reservationId != null;
 
     return Scaffold(
-      appBar: AppBar(title: Text(name ?? 'Opinia')),
+      appBar: AppBar(leading: glassLeading(context), title: Text(name ?? 'Opinia')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [

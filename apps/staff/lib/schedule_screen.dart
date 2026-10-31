@@ -303,7 +303,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     };
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Grafik')),
+      appBar: AppBar(leading: glassLeading(context), title: const Text('Grafik')),
       body: RefreshIndicator(
         onRefresh: () async => ref
           ..invalidate(jobsProvider)

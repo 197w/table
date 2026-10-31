@@ -9,12 +9,11 @@ import 'package:table_core/table_core.dart';
 import 'data.dart';
 import 'deliveries_screen.dart';
 import 'home_screen.dart';
-import 'liquid_glass.dart';
 import 'schedule_screen.dart';
 import 'settings_screen.dart';
 import 'waiter_screens.dart';
 
-/// Dolne menu aplikacji: Zamówienia, Dostawy, Zeskanuj, Grafik, Ustawienia. Na iOS 26 systemowy pasek
+/// Dolne menu aplikacji: Zamówienia, Dostawy, Zeskanuj, Grafik, Konto. Na iOS 26 systemowy pasek
 /// z Liquid Glass, gdzie indziej Material.
 class StaffShell extends ConsumerStatefulWidget {
   const StaffShell({super.key});
@@ -99,7 +98,7 @@ class _StaffShellState extends ConsumerState<StaffShell> {
             (label: 'Dostawy', symbol: 'scooter', selectedSymbol: 'scooter'),
             (label: 'Zeskanuj', symbol: 'qrcode.viewfinder', selectedSymbol: 'qrcode.viewfinder'),
             (label: 'Grafik', symbol: 'calendar', selectedSymbol: 'calendar'),
-            (label: 'Ustawienia', symbol: 'gearshape', selectedSymbol: 'gearshape.fill'),
+            (label: 'Konto', symbol: 'person.crop.circle', selectedSymbol: 'person.crop.circle.fill'),
           ],
         ),
       );
@@ -131,7 +130,7 @@ class _StaffShellState extends ConsumerState<StaffShell> {
                 (AppIcons.moped, 'Dostawy'),
                 (AppIcons.qrCode, 'Zeskanuj'),
                 (AppIcons.calendarDots, 'Grafik'),
-                (AppIcons.gear, 'Ustawienia'),
+                (AppIcons.userCircle, 'Konto'),
               ])
                 NavigationDestination(
                   icon: Glyph(icon, size: 22),
@@ -162,7 +161,7 @@ class _OrdersTab extends ConsumerWidget {
     if (working != null) return WaiterTablesScreen(job: working);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Zamówienia')),
+      appBar: AppBar(leading: glassLeading(context), title: const Text('Zamówienia')),
       body: MessageView(
         icon: AppIcons.receipt,
         title: withOrders.isEmpty ? 'Brak uprawnienia do zamówień' : 'Zamówienia po rozpoczęciu zmiany',

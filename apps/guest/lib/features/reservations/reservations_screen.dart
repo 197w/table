@@ -7,15 +7,13 @@ import 'package:table_core/table_core.dart';
 import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
-import '../codes/codes.dart';
-import '../likes/likes.dart';
 import '../ordering/order_screens.dart';
 import 'booking_widgets.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
-/// Zakładka „Moje”: rezerwacje (najbliższa na dużej karcie, dalej nadchodzące, lista oczekujących i archiwum),
-/// zamówienia z dostawą albo na wynos, polubione lokale i osobiste kody rabatowe.
+/// Zakładka „Moje”: rezerwacje (najbliższa na dużej karcie, dalej nadchodzące, lista oczekujących i archiwum)
+/// oraz zamówienia z dostawą albo na wynos. Polubione i kody są w Koncie.
 class ReservationsScreen extends ConsumerWidget {
   const ReservationsScreen({super.key});
 
@@ -24,11 +22,11 @@ class ReservationsScreen extends ConsumerWidget {
     // Zakładka pokazuje prośbę o logowanie w miejscu, żeby gość nie tracił dolnego menu.
     if (ref.watch(sessionProvider) == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Rezerwacje')),
+        appBar: AppBar(leading: glassLeading(context), title: const Text('Rezerwacje')),
         body: MessageView(
           icon: AppIcons.lock,
           title: 'Zaloguj się, żeby zobaczyć rezerwacje',
-          message: 'Po zalogowaniu znajdziesz tu nadchodzące i minione wizyty, zamówienia i polubione lokale.',
+          message: 'Po zalogowaniu znajdziesz tu nadchodzące i minione wizyty oraz zamówienia.',
           actionLabel: 'Zaloguj się',
           onAction: () => context.push(AppRoutes.withNext(AppRoutes.login, AppRoutes.reservations)),
         ),
@@ -42,16 +40,15 @@ class ReservationsScreen extends ConsumerWidget {
 
     // Rezerwacje i zamówienia z dostawą albo na wynos w jednej zakładce.
     return DefaultTabController(
-      length: 4,
+      length: 2,
       child: Scaffold(
         appBar: AppBar(
+          leading: glassLeading(context),
           title: const Text('Moje'),
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Rezerwacje'),
               Tab(text: 'Zamówienia'),
-              Tab(text: 'Polubione'),
-              Tab(text: 'Kody'),
             ],
           ),
         ),
@@ -119,8 +116,6 @@ class ReservationsScreen extends ConsumerWidget {
               },
             ),
             const MyOrdersList(),
-            const LikedRestaurantsList(),
-            const MyCodesList(),
           ],
         ),
       ),

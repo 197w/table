@@ -49,7 +49,7 @@ class OrderMenuScreen extends ConsumerWidget {
     final text = Theme.of(context).textTheme;
 
     return Scaffold(
-      appBar: AppBar(title: Text(async.value == null ? 'Zamów' : 'Zamów · ${async.value!.name}')),
+      appBar: AppBar(leading: glassLeading(context), title: Text(async.value == null ? 'Zamów' : 'Zamów · ${async.value!.name}')),
       body: async.when(
         loading: () => const LoadingView(),
         error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(restaurantProvider(restaurantId))),
@@ -583,7 +583,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final profile = ref.watch(profileProvider).value;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Koszyk')),
+      appBar: AppBar(leading: glassLeading(context), title: const Text('Koszyk')),
       body: async.when(
         loading: () => const LoadingView(),
         error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(restaurantProvider(widget.restaurantId))),
@@ -964,7 +964,7 @@ class OrderDetailScreen extends ConsumerWidget {
     final text = Theme.of(context).textTheme;
     final async = ref.watch(guestOrderProvider(orderId));
     return Scaffold(
-      appBar: AppBar(title: Text(async.value == null ? 'Zamówienie' : 'Zamówienie #${async.value!.number}')),
+      appBar: AppBar(leading: glassLeading(context), title: Text(async.value == null ? 'Zamówienie' : 'Zamówienie #${async.value!.number}')),
       body: async.when(
         skipLoadingOnReload: true,
         loading: () => const LoadingView(),

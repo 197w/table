@@ -48,7 +48,7 @@ class WaiterTablesScreen extends ConsumerWidget {
     final tileHeight = 70 + MediaQuery.textScalerOf(context).scale(48);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Zamówienia')),
+      appBar: AppBar(leading: glassLeading(context), title: const Text('Zamówienia')),
       body: tables.when(
         loading: () => const _TablesSkeleton(),
         error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(tablesProvider(job.restaurantId))),
@@ -402,6 +402,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: glassLeading(context),
         title: Text(widget.table.title),
         actions: [
           if (order != null && order.total > 0)
@@ -1236,6 +1237,7 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
     final menu = ref.watch(menuProvider(widget.job.restaurantId));
     return Scaffold(
       appBar: AppBar(
+        leading: glassLeading(context),
         title: Text('Menu · ${widget.table.title}'),
         actions: [
           // Ile dań dodano z tego ekranu: słowo z ikoną, czytnik ekranu ogłasza zmianę.
@@ -1298,10 +1300,26 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
                       for (final s in withItems)
                         Padding(
                           padding: const EdgeInsets.only(right: 8),
-                          child: ChoiceChip(
-                            label: Text(s.name),
+                          // iOS 26: filtr działu na Liquid Glass, wybrany w kolorze akcentu.
+                          child: GlassPill(
+                            height: 40,
+                            onPressed: () => setState(() => _sectionId = s.id),
                             selected: s.id == current.id,
-                            onSelected: (_) => setState(() => _sectionId = s.id),
+                            semanticLabel: s.name,
+                            content: Text(
+                              s.name,
+                              style: TextStyle(
+                                fontFamily: AppTheme.fontFamily,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: s.id == current.id ? AppColors.onAccent : AppColors.text,
+                              ),
+                            ),
+                            fallback: ChoiceChip(
+                              label: Text(s.name),
+                              selected: s.id == current.id,
+                              onSelected: (_) => setState(() => _sectionId = s.id),
+                            ),
                           ),
                         ),
                     ],

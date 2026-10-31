@@ -51,7 +51,7 @@ class _AuthScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     return Scaffold(
-      appBar: AppBar(),
+      appBar: AppBar(leading: glassLeading(context), ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
@@ -186,7 +186,7 @@ class LoginScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(),
+      appBar: AppBar(leading: glassLeading(context), ),
       body: SafeArea(
         child: EmailAuthFlow(
           mode: EmailAuthMode.login,
@@ -211,7 +211,7 @@ class RegisterScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(),
+      appBar: AppBar(leading: glassLeading(context), ),
       body: SafeArea(
         child: EmailAuthFlow(
           mode: EmailAuthMode.register,
@@ -233,7 +233,7 @@ class AddEmailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Dodaj e-mail')),
+      appBar: AppBar(leading: glassLeading(context), title: const Text('Dodaj e-mail')),
       body: SafeArea(
         child: AddEmailFlow(
           onDone: () {

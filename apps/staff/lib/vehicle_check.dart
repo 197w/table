@@ -222,7 +222,7 @@ class _VehicleCheckScreenState extends ConsumerState<VehicleCheckScreen> {
     final text = Theme.of(context).textTheme;
     final async = ref.watch(vehicleStatusProvider(widget.job.memberId));
     return Scaffold(
-      appBar: AppBar(title: Text(widget.end ? 'Auto na koniec zmiany' : 'Auto przed pierwszym kursem')),
+      appBar: AppBar(leading: glassLeading(context), title: Text(widget.end ? 'Auto na koniec zmiany' : 'Auto przed pierwszym kursem')),
       body: async.when(
         loading: () => const CardsSkeleton(count: 2, tile: false),
         error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(vehicleStatusProvider(widget.job.memberId))),

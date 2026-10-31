@@ -83,7 +83,7 @@ class _AppBadge extends StatelessWidget {
   }
 }
 
-/// Stare konto bez e-maila: numer telefonu i kod SMS. Potem e-mail dodaje się w Ustawieniach.
+/// Stare konto bez e-maila: numer telefonu i kod SMS. Potem e-mail dodaje się w Koncie.
 class _SmsLogin extends ConsumerStatefulWidget {
   const _SmsLogin({required this.onBack});
 
@@ -170,7 +170,7 @@ class _SmsLoginState extends ConsumerState<_SmsLogin> {
           Text(
             sent
                 ? 'Wpisz kod z SMS-a wysłanego na $_sentTo.'
-                : 'Dla kont założonych numerem telefonu. Po zalogowaniu dodaj e-mail w Ustawieniach: '
+                : 'Dla kont założonych numerem telefonu. Po zalogowaniu dodaj e-mail w Koncie: '
                       'odtąd będziesz logować się e-mailem.',
             style: text.bodyLarge?.copyWith(color: AppColors.textMuted),
           ),
@@ -232,14 +232,14 @@ class _SmsLoginState extends ConsumerState<_SmsLogin> {
   }
 }
 
-/// Ustawienia → „Dodaj e-mail” (stare konto z logowania SMS).
+/// Konto → „Dodaj e-mail” (stare konto z logowania SMS).
 class AddEmailScreen extends ConsumerWidget {
   const AddEmailScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Dodaj e-mail')),
+      appBar: AppBar(leading: glassLeading(context), title: const Text('Dodaj e-mail')),
       body: SafeArea(
         child: ContentWidth(
           child: AddEmailFlow(

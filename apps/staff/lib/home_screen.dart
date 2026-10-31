@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
-import 'activity_screen.dart';
 import 'announcements_screen.dart';
 import 'inventory_screen.dart';
 import 'data.dart';
@@ -160,6 +159,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: glassLeading(context),
         title: const Text('Zeskanuj'),
         actions: [IconButton(tooltip: 'Odśwież', onPressed: _refresh, icon: const Glyph(AppIcons.refresh, size: 20))],
       ),
@@ -348,22 +348,6 @@ class _JobCard extends StatelessWidget {
                 ),
                 icon: const Glyph(AppIcons.clipboardText, size: 18),
                 label: const Text('Inwentaryzacja'),
-              ),
-            ],
-            // Zdarzenia lokalu dla osób z uprawnieniem „Logi i Time Machine”.
-            if (job.permissions.contains('activity')) ...[
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  side: BorderSide(color: AppColors.ringStrong),
-                ),
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(builder: (_) => ActivityScreen(job: job)),
-                ),
-                icon: const Glyph(AppIcons.clockCounterClockwise, size: 18),
-                label: const Text('Logi'),
               ),
             ],
             // Kelner nabija zamówienia z telefonu, ale tylko w trakcie zmiany. Przyciski jeden pod drugim:

@@ -36,7 +36,7 @@ class DeliveriesTab extends ConsumerWidget {
     final working = couriers.where((j) => j.working).firstOrNull;
     if (working == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Dostawy')),
+        appBar: AppBar(leading: glassLeading(context), title: const Text('Dostawy')),
         body: MessageView(
           icon: AppIcons.moped,
           title: couriers.isEmpty ? 'Nie rozwozisz zamówień' : 'Kursy po rozpoczęciu zmiany',
@@ -160,6 +160,7 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: glassLeading(context),
         title: const Text('Dostawy'),
         actions: [
           IconButton(

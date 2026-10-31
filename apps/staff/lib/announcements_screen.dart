@@ -96,7 +96,7 @@ class AnnouncementsScreen extends ConsumerWidget {
     final jobs = ref.watch(jobsProvider).value ?? const <Job>[];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Informacje')),
+      appBar: AppBar(leading: glassLeading(context), title: const Text('Informacje')),
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(announcementsProvider),
         child: async.when(
@@ -233,7 +233,7 @@ class _AnnouncementDetailState extends ConsumerState<AnnouncementDetail> {
     final text = Theme.of(context).textTheme;
     final a = widget.announcement;
     return Scaffold(
-      appBar: AppBar(title: const Text('Informacja')),
+      appBar: AppBar(leading: glassLeading(context), title: const Text('Informacja')),
       body: ContentWidth(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),

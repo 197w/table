@@ -265,3 +265,14 @@ class _CodeCardState extends ConsumerState<_CodeCard> {
     );
   }
 }
+
+/// Konto → Kody: osobiste kody rabatowe od lokali (wcześniej zakładka w „Moje”).
+class CodesScreen extends StatelessWidget {
+  const CodesScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(leading: glassLeading(context), title: const Text('Kody')),
+    body: const MyCodesList(),
+  );
+}

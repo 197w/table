@@ -9,7 +9,9 @@ import 'package:table_core/table_core.dart';
 
 import '../features/auth/auth_screens.dart';
 import '../features/booking/booking_screen.dart';
+import '../features/codes/codes.dart';
 import '../features/discover/discover_screen.dart';
+import '../features/likes/likes.dart';
 import '../features/ordering/order_screens.dart';
 import '../features/reservations/reservation_detail_screen.dart';
 import '../features/reservations/reservations_screen.dart';
@@ -207,6 +209,14 @@ GoRouter _buildRouter(Listenable refresh) {
                     ],
                   ),
                   GoRoute(
+                    path: 'polubione',
+                    builder: (_, _) => const TabletWidth(child: LikedScreen()),
+                  ),
+                  GoRoute(
+                    path: 'kody',
+                    builder: (_, _) => const TabletWidth(child: CodesScreen()),
+                  ),
+                  GoRoute(
                     path: 'adres',
                     builder: (_, _) =>
                         const TabletWidth(child: AddressScreen()),
@@ -366,6 +376,8 @@ abstract final class AppRoutes {
   static const reportBug = '/ustawienia/pomoc/zglos-blad';
   static const settingsAccount = '/ustawienia/konto';
   static const deliveryAddress = '/ustawienia/adres';
+  static const liked = '/ustawienia/polubione';
+  static const codes = '/ustawienia/kody';
   static const accountDetails = '/ustawienia/konto/szczegoly';
   static const loginInfo = '/ustawienia/konto/logowanie';
   static const changePassword = '/ustawienia/konto/logowanie/haslo';

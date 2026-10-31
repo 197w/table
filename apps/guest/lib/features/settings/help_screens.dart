@@ -14,7 +14,7 @@ class HelpScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Pomoc')),
+      appBar: AppBar(leading: glassLeading(context), title: const Text('Pomoc')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
@@ -88,7 +88,7 @@ class _ReportBugScreenState extends ConsumerState<ReportBugScreen> {
     final text = Theme.of(context).textTheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Zgłoś błąd')),
+      appBar: AppBar(leading: glassLeading(context), title: const Text('Zgłoś błąd')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [

@@ -20,6 +20,15 @@ class SettingsScreen extends ConsumerWidget {
     final theme = ref.watch(themeSettingProvider);
     final language = ref.watch(languageProvider);
     final unit = ref.watch(distanceUnitProvider);
+    final liked = loggedIn ? ref.watch(likedIdsProvider).value?.length : null;
+    final now = DateTime.now();
+    final codes = loggedIn
+        ? ref
+              .watch(myCodesProvider)
+              .value
+              ?.where((c) => c.statusAt(now) == GuestCodeStatus.available || c.statusAt(now) == GuestCodeStatus.active)
+              .length
+        : null;
 
     void open(String route, {bool needsAccount = false}) {
       if (needsAccount && !loggedIn) {
@@ -30,7 +39,7 @@ class SettingsScreen extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Ustawienia')),
+      appBar: AppBar(leading: glassLeading(context), title: const Text('Konto')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
@@ -38,6 +47,26 @@ class SettingsScreen extends ConsumerWidget {
             profile: profile,
             loggedIn: loggedIn,
             onTap: () => open(AppRoutes.accountDetails, needsAccount: true),
+          ),
+          const SizedBox(height: 20),
+          // Polubione lokale i osobiste kody od lokali, pod kafelkiem konta.
+          SettingsGroup(
+            children: [
+              SettingsRow(
+                icon: AppIcons.heart,
+                title: 'Polubione',
+                value: liked == null || liked == 0 ? null : '$liked',
+                locked: !loggedIn,
+                onTap: () => open(AppRoutes.liked, needsAccount: true),
+              ),
+              SettingsRow(
+                icon: AppIcons.sealPercent,
+                title: 'Kody',
+                value: codes == null || codes == 0 ? null : '$codes do wykorzystania',
+                locked: !loggedIn,
+                onTap: () => open(AppRoutes.codes, needsAccount: true),
+              ),
+            ],
           ),
           const SizedBox(height: 20),
           SettingsGroup(

@@ -91,6 +91,8 @@ abstract final class AppIcons {
   static const mapTrifold = AppIconData('assets/icons/map-trifold.svg');
   static const piggyBank = AppIconData('assets/icons/piggy-bank.svg');
   static const sealPercent = AppIconData('assets/icons/seal-percent.svg');
+  static const userCircle = AppIconData('assets/icons/user-circle.svg');
+  static const userCircleFill = AppIconData('assets/icons/user-circle-fill.svg');
   static const userCirclePlus = AppIconData('assets/icons/user-circle-plus.svg');
   static const bell = AppIconData('assets/icons/bell.svg');
   static const bicycle = AppIconData('assets/icons/bicycle.svg');
