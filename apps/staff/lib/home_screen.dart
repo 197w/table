@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
 import 'announcements_screen.dart';
+import 'inventory_screen.dart';
 import 'data.dart';
 import 'scan_screen.dart';
 import 'ui.dart';
@@ -332,6 +333,22 @@ class _JobCard extends StatelessWidget {
               ),
             ),
             if (code != null) ...[const SizedBox(height: 10), _CodeRow(code: code!)],
+            // Spis składników z telefonu, także poza zmianą.
+            if (job.permissions.contains('inventory_count')) ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  side: BorderSide(color: AppColors.ringStrong),
+                ),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(builder: (_) => InventoryScreen(job: job)),
+                ),
+                icon: const Glyph(AppIcons.clipboardText, size: 18),
+                label: const Text('Inwentaryzacja'),
+              ),
+            ],
             // Kelner nabija zamówienia z telefonu, ale tylko w trakcie zmiany. Przyciski jeden pod drugim:
             // „Zakończ zmianę” w połowie szerokości łamie się już przy czcionce telefonu powiększonej o 15%.
             if (job.working) ...[

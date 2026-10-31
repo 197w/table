@@ -283,6 +283,17 @@ final inventoryStockProvider = FutureProvider.autoDispose.family<List<InventoryS
   (ref, id) => (ref..cacheFor()).watch(repositoryProvider).inventoryStock(id),
 );
 
+final inventoryContainersProvider = FutureProvider.autoDispose.family<List<InventoryContainer>, String>(
+  (ref, id) => (ref..cacheFor()).watch(repositoryProvider).inventoryContainers(id),
+);
+
+/// Dostawy i usunięcia z ostatnich 60 dni.
+final inventoryDocsProvider = FutureProvider.autoDispose.family<List<InventoryDoc>, String>(
+  (ref, id) => (ref..cacheFor())
+      .watch(repositoryProvider)
+      .inventoryDocs(id, DateTime.now().subtract(const Duration(days: 60))),
+);
+
 final inventoryCountsProvider = FutureProvider.autoDispose.family<List<InventoryCount>, String>(
   (ref, id) => (ref..cacheFor()).watch(repositoryProvider).inventoryCounts(id),
 );

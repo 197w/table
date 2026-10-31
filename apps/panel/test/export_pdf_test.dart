@@ -28,4 +28,32 @@ void main() {
     );
     expect(ascii.decode(empty.sublist(0, 5)), '%PDF-');
   });
+
+  test('PDF z kilkoma tabelami (inwentaryzacja: spis, dostawy, usunięcia)', () async {
+    final bytes = await exportPdfDocument(
+      title: 'Inwentaryzacja',
+      restaurant: 'REVE',
+      period: 'Piątek, 30 października 2026',
+      notes: const ['Okres od 23.10'],
+      tables: const [
+        ExportTable(
+          title: 'Spis',
+          header: ['Składnik', 'Razem'],
+          rows: [
+            ['Mąka', '75 kg'],
+          ],
+          numeric: {1},
+        ),
+        ExportTable(
+          title: 'Dostawy w okresie',
+          header: ['Kiedy', 'Składniki'],
+          rows: [
+            ['Dziś, 07:00', 'Mąka: 2 worki = 50 kg'],
+          ],
+        ),
+        ExportTable(title: 'Usunięcia i przesunięcia w okresie', header: ['Kiedy', 'Powód'], rows: []),
+      ],
+    );
+    expect(ascii.decode(bytes.sublist(0, 5)), '%PDF-');
+  });
 }

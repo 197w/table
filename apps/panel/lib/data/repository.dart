@@ -1170,7 +1170,7 @@ class PanelRepository {
     return _guard(() async {
       final rows = await _db
           .from('inventory_items')
-          .select('id, name, unit, capacity, sort')
+          .select('id, name, unit, capacity, sort, location, pack_name, container_id')
           .eq('restaurant_id', restaurantId)
           .isFilter('deleted_at', null)
           .order('sort')
@@ -1186,9 +1186,23 @@ class PanelRepository {
     required String name,
     required InventoryUnit unit,
     required double capacity,
+    String? location,
+    String? packName,
+    String? containerId,
+    bool details = false,
   }) {
     return _guard(() async {
-      final fields = {'name': name.trim(), 'unit': unit.key, 'capacity': capacity};
+      final fields = {
+        'name': name.trim(),
+        'unit': unit.key,
+        'capacity': capacity,
+        // Okno dania w Menu zmienia tylko nazwę, jednostkę i pojemność.
+        if (details) ...{
+          'location': location?.trim().isEmpty ?? true ? null : location!.trim(),
+          'pack_name': packName?.trim().isEmpty ?? true ? null : packName!.trim(),
+          'container_id': containerId,
+        },
+      };
       try {
         if (id == null) {
           final created = await _db
@@ -1257,6 +1271,7 @@ class PanelRepository {
     double? packages, {
     double? loose,
     String? memberId,
+    String? containerId,
   }) {
     return _guard(
       () => _db.rpc<void>('panel_inventory_set', params: {
@@ -1265,7 +1280,83 @@ class PanelRepository {
         'p_quantity': packages,
         'p_member_id': memberId,
         'p_loose': loose,
+        'p_container_id': containerId,
       }),
+    );
+  }
+
+  /// Pojemniki do ważenia lokalu.
+  Future<List<InventoryContainer>> inventoryContainers(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db
+          .from('inventory_containers')
+          .select('id, name, tare_g')
+          .eq('restaurant_id', restaurantId)
+          .order('sort')
+          .order('name');
+      return rows.map(InventoryContainer.fromJson).toList();
+    });
+  }
+
+  Future<void> saveInventoryContainer(String restaurantId, {String? id, required String name, required double tareG}) {
+    return _guard(
+      () => _db.rpc<String>('panel_save_inventory_container', params: {
+        'p_restaurant_id': restaurantId,
+        'p_id': id,
+        'p_name': name,
+        'p_tare_g': tareG,
+      }),
+    );
+  }
+
+  Future<void> deleteInventoryContainer(String id) {
+    return _guard(() => _db.rpc<void>('panel_delete_inventory_container', params: {'p_id': id}));
+  }
+
+  /// Dostawy i usunięcia od [from], od najnowszych.
+  Future<List<InventoryDoc>> inventoryDocs(String restaurantId, DateTime from) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>(
+        'panel_inventory_docs',
+        params: {'p_restaurant_id': restaurantId, 'p_from': from.toUtc().toIso8601String()},
+      );
+      return [for (final r in rows) InventoryDoc.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
+  /// Dostawa albo usunięcie. [lines]: składnik, pełne opakowania i reszta (g, ml, szt.).
+  Future<void> saveInventoryDoc(
+    String restaurantId, {
+    required bool delivery,
+    required DateTime happenedAt,
+    required List<({String itemId, double? packages, double? loose})> lines,
+    RemovalReason? reason,
+    String? supplier,
+    String? documentNo,
+    String? note,
+    String? memberId,
+  }) {
+    return _guard(
+      () => _db.rpc<String>('panel_inventory_save_doc', params: {
+        'p_restaurant_id': restaurantId,
+        'p_kind': delivery ? 'delivery' : 'removal',
+        'p_lines': [
+          for (final l in lines) {'item_id': l.itemId, 'packages': l.packages, 'loose': l.loose},
+        ],
+        'p_happened_at': happenedAt.toUtc().toIso8601String(),
+        'p_reason': reason?.key,
+        'p_supplier': supplier,
+        'p_document_no': documentNo,
+        'p_note': note,
+        'p_member_id': memberId,
+      }),
+    );
+  }
+
+  /// Pomyłka w dostawie albo usunięciu: wpis znika, a stan wraca.
+  Future<void> deleteInventoryDoc(String id, {String? memberId}) {
+    return _guard(
+      () => _db.rpc<void>('panel_inventory_delete_doc', params: {'p_doc_id': id, 'p_member_id': memberId}),
     );
   }
 

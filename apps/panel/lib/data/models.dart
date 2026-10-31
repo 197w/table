@@ -2,6 +2,8 @@
 /// i tabelom z supabase/migrations.
 library;
 
+import 'package:table_core/table_core.dart';
+
 double? _toDouble(Object? value) {
   if (value == null) return null;
   if (value is num) return value.toDouble();
@@ -3483,7 +3485,15 @@ class ItemChange {
 
 /// Stan składnika teraz: ostatnia inwentaryzacja, w której go policzono, minus sprzedaż od tej chwili.
 class InventoryStock {
-  const InventoryStock({required this.itemId, required this.used, this.counted, this.countedAt, this.stock});
+  const InventoryStock({
+    required this.itemId,
+    required this.used,
+    this.delivered = 0,
+    this.removed = 0,
+    this.counted,
+    this.countedAt,
+    this.stock,
+  });
 
   final String itemId;
 
@@ -3494,6 +3504,10 @@ class InventoryStock {
   /// Zużycie ze sprzedaży od inwentaryzacji (albo od dodania składnika).
   final double used;
 
+  /// Dostawy i usunięcia od inwentaryzacji (0071).
+  final double delivered;
+  final double removed;
+
   /// Stan teraz. Null: bez inwentaryzacji nie wiadomo, od czego odjąć.
   final double? stock;
 
@@ -3502,6 +3516,8 @@ class InventoryStock {
     counted: _toDouble(json['counted']),
     countedAt: _toDateOrNull(json['counted_at']),
     used: _toDouble(json['used']) ?? 0,
+    delivered: _toDouble(json['delivered']) ?? 0,
+    removed: _toDouble(json['removed']) ?? 0,
     stock: _toDouble(json['stock']),
   );
 }
@@ -3527,33 +3543,6 @@ DateTime _addMonth(DateTime d) {
 /// Pierwszy dzień miesiąca daty [d].
 DateTime monthStart(DateTime d) => DateTime(d.year, d.month);
 
-/// Liczba po polsku, bez zbędnych zer: 0,7; 2,45; 12.
-String inventoryNumber(double value) {
-  final fixed = value.toStringAsFixed(3).replaceFirst(RegExp(r'\.?0+$'), '');
-  return (fixed == '-0' ? '0' : fixed).replaceAll('.', ',');
-}
-
-/// Jak [inventoryNumber], z odstępami co trzy cyfry, np. „52 500”.
-String inventoryGrouped(double value) {
-  final text = inventoryNumber(value);
-  final negative = text.startsWith('-');
-  final parts = (negative ? text.substring(1) : text).split(',');
-  final digits = parts.first;
-  final grouped = StringBuffer();
-  for (var i = 0; i < digits.length; i++) {
-    if (i > 0 && (digits.length - i) % 3 == 0) grouped.write('\u00a0');
-    grouped.write(digits[i]);
-  }
-  return '${negative ? '-' : ''}$grouped${parts.length > 1 ? ',${parts[1]}' : ''}';
-}
-
-/// Liczba wpisana z przecinkiem albo kropką. Null: to nie jest liczba.
-double? parseInventoryNumber(String text) {
-  final clean = text.replaceAll(RegExp(r'\s'), '').replaceAll(',', '.');
-  if (clean.isEmpty) return null;
-  return double.tryParse(clean);
-}
-
 /// Dzień następnej inwentaryzacji według okresu, licząc od dnia ostatniej. Null: jeszcze żadnej nie było.
 DateTime? nextInventoryDay(String period, DateTime? last) {
   if (last == null) return null;
@@ -3565,7 +3554,8 @@ DateTime? nextInventoryDay(String period, DateTime? last) {
   };
 }
 
-/// Składnik lokalu. Ilość w spisie wpisuje się w opakowaniach, np. 2,5 butelki po 0,7 l.
+/// Składnik lokalu. Ilość w spisie wpisuje się w opakowaniach (zgrzewki, worki, puszki) i resztą,
+/// np. 11 zgrzewek po 12 szt. i 9 butelek.
 class InventoryItem {
   const InventoryItem({
     required this.id,
@@ -3573,6 +3563,9 @@ class InventoryItem {
     required this.unit,
     required this.capacity,
     this.sort = 0,
+    this.location,
+    this.packName,
+    this.containerId,
   });
 
   final String id;
@@ -3583,8 +3576,20 @@ class InventoryItem {
   final double capacity;
   final int sort;
 
-  /// Opakowanie, np. „0,7 l” albo „24 szt.”.
-  String get package => '${inventoryNumber(capacity)} ${unit.label}';
+  /// Gdzie stoi w lokalu, np. „Chłodnia”, „Magazyn suchy”, „Bar” (spis jest pogrupowany po lokalizacji).
+  final String? location;
+
+  /// Nazwa opakowania: zgrzewka, worek, puszka. Null: „op.”.
+  final String? packName;
+
+  /// Zwykły pojemnik do ważenia reszty (g, kg). Null: bez pojemnika.
+  final String? containerId;
+
+  /// Ważony w gramach (tylko wtedy pojemnik odejmuje się od wagi).
+  bool get weighed => unit == InventoryUnit.g || unit == InventoryUnit.kg;
+
+  /// Opakowanie, np. „zgrzewka 12 szt.”, „worek 25 kg” albo „0,7 l”.
+  String get package => [?packName, '${inventoryNumber(capacity)} ${unit.label}'].join(' ');
 
   factory InventoryItem.fromJson(Map<String, dynamic> json) => InventoryItem(
     id: json['id'] as String,
@@ -3592,6 +3597,140 @@ class InventoryItem {
     unit: InventoryUnit.fromKey(json['unit']),
     capacity: _toDouble(json['capacity']) ?? 0,
     sort: _toInt(json['sort']),
+    location: json['location'] as String?,
+    packName: json['pack_name'] as String?,
+    containerId: json['container_id'] as String?,
+  );
+}
+
+/// Pojemnik do ważenia (mały, średni, duży). Przy „ważone w pojemniku” jego waga odejmuje się sama.
+class InventoryContainer {
+  const InventoryContainer({required this.id, required this.name, required this.tareG});
+
+  final String id;
+  final String name;
+
+  /// Waga pustego pojemnika w gramach.
+  final double tareG;
+
+  String get label => '$name (${inventoryGrouped(tareG)} g)';
+
+  factory InventoryContainer.fromJson(Map<String, dynamic> json) => InventoryContainer(
+    id: json['id'] as String,
+    name: json['name'] as String,
+    tareG: _toDouble(json['tare_g']) ?? 0,
+  );
+}
+
+/// Powód usunięcia składnika z lokalu (nie sprzedaż).
+enum RemovalReason {
+  transfer('transfer', 'Przekazanie do innego lokalu'),
+  giveBack('return', 'Zwrot do dostawcy'),
+  loss('loss', 'Strata (zepsute, zbite)'),
+  staff('staff', 'Posiłek pracowniczy'),
+  other('other', 'Inny powód');
+
+  const RemovalReason(this.key, this.label);
+
+  final String key;
+  final String label;
+
+  static RemovalReason? fromKey(Object? key) {
+    for (final r in values) {
+      if (r.key == key) return r;
+    }
+    return null;
+  }
+}
+
+/// Składnik w dostawie albo usunięciu.
+class InventoryDocLine {
+  const InventoryDocLine({
+    required this.itemId,
+    required this.name,
+    required this.unit,
+    required this.capacity,
+    required this.amount,
+    this.packName,
+    this.packages,
+    this.loose,
+  });
+
+  final String itemId;
+  final String name;
+  final InventoryUnit unit;
+  final double capacity;
+  final String? packName;
+  final double? packages;
+  final double? loose;
+
+  /// Razem w jednostce składnika.
+  final double amount;
+
+  /// „2 worki + 1500 g = 51,5 kg”.
+  String get text {
+    final parts = [
+      if ((packages ?? 0) > 0) packCount(packages!, packName),
+      if ((loose ?? 0) > 0) '${inventoryGrouped(loose!)} ${unit.portion.label}',
+    ];
+    final total = '${inventoryNumber(amount)} ${unit.label}';
+    if (parts.isEmpty || (parts.length == 1 && parts.first == total)) return total;
+    return '${parts.join(' + ')} = $total';
+  }
+
+  factory InventoryDocLine.fromJson(Map<String, dynamic> json) => InventoryDocLine(
+    itemId: json['item_id'] as String,
+    name: json['name'] as String,
+    unit: InventoryUnit.fromKey(json['unit']),
+    capacity: _toDouble(json['capacity']) ?? 0,
+    amount: _toDouble(json['amount']) ?? 0,
+    packName: json['pack_name'] as String?,
+    packages: _toDouble(json['packages']),
+    loose: _toDouble(json['loose']),
+  );
+}
+
+/// Dostawa (kiedy przyjechała, co przyjechało) albo usunięcie (powód i wyjaśnienie). Zmienia stan od razu.
+class InventoryDoc {
+  const InventoryDoc({
+    required this.id,
+    required this.delivery,
+    required this.happenedAt,
+    required this.lines,
+    this.reason,
+    this.supplier,
+    this.documentNo,
+    this.note,
+    this.createdBy,
+  });
+
+  final String id;
+
+  /// Dostawa. Fałsz: usunięcie.
+  final bool delivery;
+  final DateTime happenedAt;
+  final RemovalReason? reason;
+  final String? supplier;
+  final String? documentNo;
+  final String? note;
+  final String? createdBy;
+  final List<InventoryDocLine> lines;
+
+  /// „Dostawa · Makro · FV 12/10” albo „Usunięcie · Przekazanie do innego lokalu”.
+  String get title => delivery
+      ? ['Dostawa', ?supplier, ?documentNo].join(' · ')
+      : ['Usunięcie', if (reason != null) reason!.label].join(' · ');
+
+  factory InventoryDoc.fromJson(Map<String, dynamic> json) => InventoryDoc(
+    id: json['id'] as String,
+    delivery: json['kind'] == 'delivery',
+    happenedAt: _toDate(json['happened_at']),
+    reason: RemovalReason.fromKey(json['reason']),
+    supplier: json['supplier'] as String?,
+    documentNo: json['document_no'] as String?,
+    note: json['note'] as String?,
+    createdBy: json['created_by'] as String?,
+    lines: [for (final l in json['lines'] as List? ?? const []) InventoryDocLine.fromJson(l as Map<String, dynamic>)],
   );
 }
 
@@ -3608,6 +3747,15 @@ class InventoryLine {
     this.countedBy,
     this.used,
     this.expected,
+    this.previous,
+    this.delivered,
+    this.removed,
+    this.location,
+    this.packName,
+    this.container,
+    this.containerId,
+    this.tare,
+    this.gross,
   });
 
   final String itemId;
@@ -3630,8 +3778,21 @@ class InventoryLine {
   /// Zużycie ze sprzedaży od poprzedniej inwentaryzacji, w jednostce pozycji. Null: nie było poprzedniej.
   final double? used;
 
-  /// Stan wynikający z poprzedniej inwentaryzacji i sprzedaży.
+  /// Stan wynikający z poprzedniej inwentaryzacji, sprzedaży, dostaw i usunięć („powinno być”).
   final double? expected;
+
+  /// Poprzednia inwentaryzacja, dostawy i usunięcia od niej (w jednostce pozycji).
+  final double? previous;
+  final double? delivered;
+  final double? removed;
+  final String? location;
+  final String? packName;
+
+  /// Ważone w pojemniku: nazwa, waga pojemnika i waga z pojemnikiem (g). [loose] jest już bez pojemnika.
+  final String? container;
+  final String? containerId;
+  final double? tare;
+  final double? gross;
 
   double get total => quantity * capacity;
 
@@ -3652,6 +3813,15 @@ class InventoryLine {
     countedBy: json['counted_by'] as String?,
     used: _toDouble(json['used']),
     expected: _toDouble(json['expected']),
+    previous: _toDouble(json['previous']),
+    delivered: _toDouble(json['delivered']),
+    removed: _toDouble(json['removed']),
+    location: json['location'] as String?,
+    packName: json['pack_name'] as String?,
+    container: json['container'] as String?,
+    containerId: json['container_id'] as String?,
+    tare: _toDouble(json['tare']),
+    gross: _toDouble(json['gross']),
   );
 }
 
@@ -3664,9 +3834,17 @@ class InventoryCount {
     this.finishedAt,
     this.startedBy,
     this.finishedBy,
+    this.periodFrom,
+    this.docs = const [],
   });
 
   final String id;
+
+  /// Koniec poprzedniej inwentaryzacji (początek okresu dostaw i usunięć w [docs]).
+  final DateTime? periodFrom;
+
+  /// Dostawy i usunięcia od poprzedniej inwentaryzacji do tej, od najstarszych.
+  final List<InventoryDoc> docs;
   final DateTime startedAt;
   final DateTime? finishedAt;
   final String? startedBy;
@@ -3688,6 +3866,8 @@ class InventoryCount {
     finishedAt: _toDateOrNull(json['finished_at']),
     startedBy: json['started_by'] as String?,
     finishedBy: json['finished_by'] as String?,
+    periodFrom: _toDateOrNull(json['period_from']),
+    docs: [for (final d in json['docs'] as List? ?? const []) InventoryDoc.fromJson(d as Map<String, dynamic>)],
     lines: [
       for (final l in json['lines'] as List? ?? const []) InventoryLine.fromJson(l as Map<String, dynamic>),
     ],

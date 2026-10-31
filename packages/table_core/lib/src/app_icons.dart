@@ -159,6 +159,7 @@ abstract final class AppIcons {
   static const mapPin = AppIconData('assets/icons/map-pin.svg');
   static const megaphone = AppIconData('assets/icons/megaphone.svg');
   static const minus = AppIconData('assets/icons/minus.svg');
+  static const minusCircle = AppIconData('assets/icons/minus-circle.svg');
   static const money = AppIconData('assets/icons/money.svg');
   static const monitor = AppIconData('assets/icons/monitor.svg');
   static const moon = AppIconData('assets/icons/moon.svg');
@@ -178,6 +179,7 @@ abstract final class AppIcons {
   static const receipt = AppIconData('assets/icons/receipt.svg');
   static const shoppingBag = AppIconData('assets/icons/shopping-bag.svg');
   static const rectangle = AppIconData('assets/icons/rectangle.svg');
+  static const scales = AppIconData('assets/icons/scales.svg');
   static const refresh = AppIconData('assets/icons/arrow-clockwise.svg');
   static const search = AppIconData('assets/icons/magnifying-glass.svg');
   static const send = AppIconData('assets/icons/paper-plane-tilt.svg');
@@ -193,6 +195,7 @@ abstract final class AppIcons {
   static const sun = AppIconData('assets/icons/sun.svg');
   static const timer = AppIconData('assets/icons/timer.svg');
   static const trash = AppIconData('assets/icons/trash.svg');
+  static const truck = AppIconData('assets/icons/truck.svg');
   static const undo = AppIconData('assets/icons/arrow-counter-clockwise.svg');
   static const userCheck = AppIconData('assets/icons/user-check.svg');
   static const userGear = AppIconData('assets/icons/user-gear.svg');

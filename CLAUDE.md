@@ -98,7 +98,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
   Map i śledzenia dostawców nie ma od 0068 (usunięte na prośbę użytkownika, także mapa u gościa).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0070, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0071, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -541,7 +541,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `menu_availability` („Skończyło się”). Warianty (np. rozmiary, każdy z ceną), płatne dodatki, stawka VAT i „dostępne teraz”. Przy wariantach
   `price_grosze` to najniższa cena wariantu. „od” przed ceną tylko, gdy warianty mają różne ceny (`priceVaries`
   w modelach gościa, pracownika i panelu); jeden wariant (np. Tonic 200 ml) pokazuje samą cenę. „Skończyło się” może ustawić też kelner i kuchnia (`panel_set_menu_item_available`).
-- Inwentaryzacja (`/inwentaryzacja`, `features/inventory`): zakładki Spis, Składniki, Historia (`IconTabs`).
+- Inwentaryzacja (`/inwentaryzacja`, `features/inventory`): zakładki Spis, Składniki, Dostawy i usunięcia, Historia (`IconTabs`).
   Składniki (`inventory_items`: nazwa, jednostka ml/l/g/kg/szt, pojemność opakowania; usunięcie ustawia `deleted_at`,
   w historii zostają). Spis (`inventory_counts`, jeden otwarty na lokal, `inventory_count_lines` z ilością w opakowaniach
   oraz jednostką i pojemnością z chwili spisu): `panel_inventory_start`, `panel_inventory_set` (każda ilość zapisuje się
@@ -551,13 +551,31 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   i `inventory_count` („Wpisywanie ilości składników”), grupa „Inwentaryzacja”. W spisie pełne opakowania i obok reszta
   w g/ml/szt (`inventory_count_lines.packages`, `loose`; `quantity` = opakowania z resztą, 6 miejsc po przecinku),
   „Razem” w mniejszej jednostce (np. mąka 50 kg: 1 op. + 2500 g = 52 500 g).
+  Od 0071 (wszystko liczy się samo z ruchów `inventory_movements`, rodzaje sale, delivery, removal):
+  składnik ma lokalizację (`location`, spis i lista pogrupowane, podpowiedzi w oknie składnika), nazwę opakowania
+  (`pack_name`: zgrzewka, worek, puszka…, odmiana `packWord`/`packCount` w `table_core/inventory_format.dart`
+  razem z `inventoryNumber`) i zwykły pojemnik. Pojemniki do ważenia lokalu (`inventory_containers`, waga pustego
+  w g; Składniki → „Pojemniki”, `panel_save_inventory_container`): przy wadze w spisie wybór pojemnika, wpisuje się
+  wagę z pojemnikiem, a baza zapisuje bez niego (`inventory_count_lines.gross`, `tare`, `container_name`;
+  `panel_inventory_set(p_container_id)`). Spis pokazuje „Powinno być” (stan teraz) i różnicę w trakcie pisania.
+  Dostawy (kiedy przyjechały, dostawca, numer dokumentu) i usunięcia (powód: przekazanie do innego lokalu, zwrot,
+  strata, posiłek pracowniczy, inny; wyjaśnienie wymagane) to `inventory_docs` z `inventory_doc_lines`
+  (`panel_inventory_save_doc`, `panel_inventory_docs`, `panel_inventory_delete_doc` tylko `inventory_edit`); ruchy
+  mają datę wpisu, więc dostawa sprzed spisu się nie dubluje. `panel_inventory_stock` zwraca sprzedaż, dostawy
+  i usunięcia osobno, `panel_inventory_counts` w pozycjach poprzednio / sprzedaż / dostawy / usunięte / „powinno
+  być”, a w spisie `docs` od poprzedniej zakończonej inwentaryzacji (widać je na końcu spisu i w szczegółach).
+  Szczegóły w Historii mają „Zapisz PDF” (`inventory_pdf.dart`, `exportPdfDocument` z kilkoma tabelami: spis,
+  dostawy, usunięcia). Uprawnienia sprawdza `private.inventory_allowed` (konto panelu albo własny pracownik
+  z uprawnieniem). Table for employees: przycisk „Inwentaryzacja” na karcie lokalu przy `inventory_count`
+  (`inventory_screen.dart`, `staff_inventory` jednym zapytaniem; karty pogrupowane po lokalizacji, wyszukiwarka,
+  pojemnik jako wybór, różnica na żywo, „Zapisz” po zmianie, „Zakończ inwentaryzację” na dole).
 - Receptury (0037): w oknie dania w Menu sekcja „Składniki” (tylko w panelu): składnik z inwentaryzacji, ilość na
   porcję i jednostka (ml/l, g/kg, szt; `private.inventory_factor`), „Nowy składnik” dodaje go do Inwentaryzacji
   (insert z `menu_edit` albo `inventory_edit`). Tabela `menu_item_ingredients` (RLS: tylko obsługa lokalu, goście jej
   nie czytają), zapis `panel_set_menu_item_ingredients`. Trigger `order_items_inventory`: wysłanie pozycji (sent, ready,
   served) zapisuje zużycie w `inventory_movements` (ujemne, `kind = 'sale'`), anulowanie je usuwa. Stan teraz
   (`panel_inventory_stock`) = ostatnia inwentaryzacja składnika + ruchy od chwili, gdy go policzono. Historia pokazuje
-  sprzedaż, stan „wg sprzedaży” i różnicę. Dostaw jeszcze nie ma (różnica na plusie). Warianty dania mają tę samą recepturę.
+  sprzedaż, dostawy, usunięcia, stan „powinno być” i różnicę. Warianty dania mają tę samą recepturę.
 
 ## Zasady projektu
 

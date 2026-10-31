@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:table_panel/app/app.dart';
+import 'package:table_core/table_core.dart';
 import 'package:table_panel/data/models.dart';
 
 void main() {
@@ -31,7 +32,14 @@ void main() {
       'finished_at': null,
       'started_by': 'Anna Kowalska',
       'lines': [
-        {'item_id': 'i1', 'name': 'Wódka', 'unit': 'l', 'capacity': 0.7, 'quantity': 2.5, 'counted_by': 'Anna Kowalska'},
+        {
+          'item_id': 'i1',
+          'name': 'Wódka',
+          'unit': 'l',
+          'capacity': 0.7,
+          'quantity': 2.5,
+          'counted_by': 'Anna Kowalska',
+        },
       ],
     });
     expect(count.open, isTrue);
@@ -73,8 +81,13 @@ void main() {
 
   test('inwentaryzacja porównana ze sprzedażą', () {
     final line = InventoryLine.fromJson({
-      'item_id': 'i1', 'name': 'Wódka', 'unit': 'l', 'capacity': 0.7, 'quantity': 4,
-      'used': 1.2, 'expected': 3.0,
+      'item_id': 'i1',
+      'name': 'Wódka',
+      'unit': 'l',
+      'capacity': 0.7,
+      'quantity': 4,
+      'used': 1.2,
+      'expected': 3.0,
     });
     expect(line.total, closeTo(2.8, 1e-9));
     expect(line.difference, closeTo(-0.2, 1e-9));
@@ -83,9 +96,72 @@ void main() {
     expect(first.difference, isNull);
 
     final stock = InventoryStock.fromJson({
-      'item_id': 'i1', 'counted': 4.2, 'counted_at': '2026-09-23T08:10:00Z', 'used': 0.35, 'stock': 3.85,
+      'item_id': 'i1',
+      'counted': 4.2,
+      'counted_at': '2026-09-23T08:10:00Z',
+      'used': 0.35,
+      'stock': 3.85,
     });
     expect(stock.stock, 3.85);
     expect(InventoryStock.fromJson({'item_id': 'i3', 'used': 0}).stock, isNull);
+  });
+
+  test('opakowania po polsku: 1 worek, 2 worki, 5 worków, 2,5 worka', () {
+    expect(packCount(1, 'worek'), '1 worek');
+    expect(packCount(2, 'worek'), '2 worki');
+    expect(packCount(5, 'worek'), '5 worków');
+    expect(packCount(12, 'zgrzewka'), '12 zgrzewek');
+    expect(packCount(22, 'zgrzewka'), '22 zgrzewki');
+    expect(packCount(2.5, 'worek'), '2,5 worka');
+    expect(packCount(3, null), '3 op.');
+    expect(packCount(3, 'wiaderko'), '3 wiaderko');
+    expect(packWord('Puszka', null), 'puszek');
+  });
+
+  test('ruchy od inwentaryzacji: dostawy, usunięcia i pojemnik w spisie', () {
+    final line = InventoryLine.fromJson({
+      'item_id': 'm',
+      'name': 'Mąka',
+      'unit': 'kg',
+      'capacity': 25,
+      'quantity': 3,
+      'previous': 27.5,
+      'used': 0,
+      'delivered': 50,
+      'removed': 1.5,
+      'expected': 76,
+      'container': 'Średni',
+      'container_id': 'b',
+      'tare': 350,
+      'gross': 2850,
+      'loose': 2500,
+    });
+    expect(line.total, 75);
+    expect(line.difference, closeTo(-1, 1e-9));
+    expect(line.gross, 2850);
+
+    final doc = InventoryDoc.fromJson({
+      'id': 'd',
+      'kind': 'removal',
+      'happened_at': '2026-10-30T10:00:00Z',
+      'reason': 'transfer',
+      'note': 'Na Rynek',
+      'lines': [
+        {
+          'item_id': 'w',
+          'name': 'Woda',
+          'unit': 'szt',
+          'capacity': 12,
+          'pack_name': 'zgrzewka',
+          'packages': 2,
+          'loose': 3,
+          'amount': 27,
+        },
+        {'item_id': 'c', 'name': 'Cytryny', 'unit': 'szt', 'capacity': 1, 'loose': 5, 'amount': 5},
+      ],
+    });
+    expect(doc.title, 'Usunięcie · Przekazanie do innego lokalu');
+    expect(doc.lines.first.text, '2 zgrzewki + 3 szt. = 27 szt.');
+    expect(doc.lines.last.text, '5 szt.');
   });
 }

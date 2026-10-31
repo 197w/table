@@ -6,6 +6,7 @@ export 'src/app_icons.dart';
 export 'src/env.dart';
 export 'src/failure.dart';
 export 'src/formatters.dart';
+export 'src/inventory_format.dart';
 export 'src/theme.dart';
 export 'src/theme_fade.dart';
 export 'src/theme_setting.dart';

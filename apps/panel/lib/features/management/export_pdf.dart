@@ -26,22 +26,34 @@ const _accent = PdfColor.fromInt(0xFF007A5C);
 
 /// Plik PDF z tabelą eksportu: nagłówek z nazwą lokalu i miesiącem, tabela z sumą na końcu i numery stron.
 /// Szerokie tabele (sprzedaż z VAT) na stronie poziomej, mniejszą czcionką.
-Future<Uint8List> exportPdf(ExportTable table, {required String restaurant, required String period}) async {
+Future<Uint8List> exportPdf(ExportTable table, {required String restaurant, required String period}) =>
+    exportPdfDocument(title: table.title, restaurant: restaurant, period: period, tables: [table]);
+
+/// Dokument PDF z kilkoma tabelami (np. spis inwentaryzacji, dostawy i usunięcia). Przy kilku tabelach każda
+/// ma swój tytuł; [notes] to akapity pod nagłówkiem dokumentu.
+Future<Uint8List> exportPdfDocument({
+  required String title,
+  required String restaurant,
+  required String period,
+  required List<ExportTable> tables,
+  List<String> notes = const [],
+}) async {
   final fonts = await _loadFonts();
-  final wide = table.header.length > 8;
-  final size = table.header.length > 14 ? 6.2 : (wide ? 7.0 : 8.5);
+  final columns = tables.fold(0, (m, t) => t.header.length > m ? t.header.length : m);
+  final wide = columns > 8;
+  final size = columns > 14 ? 6.2 : (wide ? 7.0 : 8.5);
   final now = DateTime.now();
   String two(int n) => n.toString().padLeft(2, '0');
   final created = '${now.day}.${two(now.month)}.${now.year}, ${two(now.hour)}:${two(now.minute)}';
 
   final doc = pw.Document(
-    title: '${table.title} – $restaurant – $period',
+    title: '$title – $restaurant – $period',
     author: 'Table',
     creator: 'Panel Table',
     theme: pw.ThemeData.withFont(base: fonts.regular, bold: fonts.bold),
   );
 
-  pw.Widget cell(String text, int column, {bool bold = false, bool header = false}) {
+  pw.Widget cell(ExportTable table, String text, int column, {bool bold = false, bool header = false}) {
     final right = table.numeric.contains(column);
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3.5),
@@ -54,6 +66,39 @@ Future<Uint8List> exportPdf(ExportTable table, {required String restaurant, requ
           color: header ? _muted : _ink,
         ),
       ),
+    );
+  }
+
+  pw.Widget tableWidget(ExportTable table) {
+    if (table.rows.isEmpty) {
+      return pw.Text(
+        tables.length == 1 ? 'Brak danych w tym miesiącu.' : 'Brak.',
+        style: const pw.TextStyle(fontSize: 10, color: _muted),
+      );
+    }
+    return pw.Table(
+      border: const pw.TableBorder(horizontalInside: pw.BorderSide(color: _line, width: 0.5)),
+      columnWidths: {
+        for (var i = 0; i < table.header.length; i++)
+          i: table.numeric.contains(i) ? const pw.FlexColumnWidth(1) : const pw.FlexColumnWidth(1.4),
+      },
+      children: [
+        // Nagłówek tabeli powtarza się na każdej stronie.
+        pw.TableRow(
+          repeat: true,
+          decoration: const pw.BoxDecoration(color: _headerFill),
+          children: [for (final (i, h) in table.header.indexed) cell(table, h, i, header: true)],
+        ),
+        for (final row in table.rows) pw.TableRow(children: [for (final (i, v) in row.indexed) cell(table, v, i)]),
+        if (table.footer case final footer?)
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(
+              color: _headerFill,
+              border: pw.Border(top: pw.BorderSide(color: _ink, width: 0.8)),
+            ),
+            children: [for (final (i, v) in footer.indexed) cell(table, v, i, bold: true)],
+          ),
+      ],
     );
   }
 
@@ -71,19 +116,13 @@ Future<Uint8List> exportPdf(ExportTable table, {required String restaurant, requ
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pw.Text(
-                          table.title,
-                          style: pw.TextStyle(font: fonts.bold, fontSize: 16, color: _ink),
-                        ),
+                        pw.Text(title, style: pw.TextStyle(font: fonts.bold, fontSize: 16, color: _ink)),
                         pw.SizedBox(height: 3),
                         pw.Text('$restaurant · $period', style: const pw.TextStyle(fontSize: 9.5, color: _muted)),
                       ],
                     ),
                   ),
-                  pw.Text(
-                    'Table',
-                    style: pw.TextStyle(font: fonts.bold, fontSize: 12, color: _accent),
-                  ),
+                  pw.Text('Table', style: pw.TextStyle(font: fonts.bold, fontSize: 12, color: _accent)),
                 ],
               ),
             )
@@ -102,33 +141,20 @@ Future<Uint8List> exportPdf(ExportTable table, {required String restaurant, requ
         ),
       ),
       build: (context) => [
-        if (table.rows.isEmpty)
-          pw.Text('Brak danych w tym miesiącu.', style: const pw.TextStyle(fontSize: 10, color: _muted))
-        else
-          pw.Table(
-            border: const pw.TableBorder(horizontalInside: pw.BorderSide(color: _line, width: 0.5)),
-            columnWidths: {
-              for (var i = 0; i < table.header.length; i++)
-                i: table.numeric.contains(i) ? const pw.FlexColumnWidth(1) : const pw.FlexColumnWidth(1.4),
-            },
-            children: [
-              // Nagłówek tabeli powtarza się na każdej stronie.
-              pw.TableRow(
-                repeat: true,
-                decoration: const pw.BoxDecoration(color: _headerFill),
-                children: [for (final (i, h) in table.header.indexed) cell(h, i, header: true)],
-              ),
-              for (final row in table.rows) pw.TableRow(children: [for (final (i, v) in row.indexed) cell(v, i)]),
-              if (table.footer case final footer?)
-                pw.TableRow(
-                  decoration: const pw.BoxDecoration(
-                    color: _headerFill,
-                    border: pw.Border(top: pw.BorderSide(color: _ink, width: 0.8)),
-                  ),
-                  children: [for (final (i, v) in footer.indexed) cell(v, i, bold: true)],
-                ),
-            ],
+        for (final note in notes)
+          pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 6),
+            child: pw.Text(note, style: const pw.TextStyle(fontSize: 9, color: _muted)),
           ),
+        if (notes.isNotEmpty) pw.SizedBox(height: 6),
+        for (final (i, table) in tables.indexed) ...[
+          if (tables.length > 1)
+            pw.Padding(
+              padding: pw.EdgeInsets.only(top: i == 0 ? 0 : 16, bottom: 6),
+              child: pw.Text(table.title, style: pw.TextStyle(font: fonts.bold, fontSize: 11.5, color: _ink)),
+            ),
+          tableWidget(table),
+        ],
       ],
     ),
   );
