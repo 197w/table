@@ -101,7 +101,7 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                order.cash
+                order.cash || order.cardOnDelivery
                     ? 'Gość zobaczy w aplikacji, że zamówienie zostało odrzucone.'
                     : 'Gość zapłacił kartą online. Zwrot zrobi operator płatności (w trybie testowym nic nie pobrano).',
               ),
@@ -417,6 +417,8 @@ class _OrderCardState extends State<_OrderCard> {
                 style: muted,
               ),
             if (o.address != null) Text(o.address!, style: text.titleSmall),
+            if (o.addressNote != null)
+              Text('Do adresu: ${o.addressNote}', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
             if (o.note != null)
               Text(o.note!, style: text.bodySmall?.copyWith(color: _cashColor, fontStyle: FontStyle.italic)),
             if (o.staffNote != null)
@@ -454,16 +456,12 @@ class _OrderCardState extends State<_OrderCard> {
                 Glyph(
                   o.prepaid ? AppIcons.checkCircle : (o.cash ? AppIcons.money : AppIcons.creditCard),
                   size: 16,
-                  color: o.cash && !o.prepaid ? _cashColor : AppColors.accent,
+                  color: o.payOnDelivery ? _cashColor : AppColors.accent,
                 ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    o.prepaid
-                        ? 'Opłacone wcześniej (przyjęte w panelu)'
-                        : o.cash
-                        ? 'Do zapłaty ${delivery ? 'u dostawcy' : 'przy odbiorze'}'
-                        : 'Karta online · opłacone${o.testPayment ? ' (test)' : ''}',
+                    o.payOnDelivery ? 'Do zapłaty: ${o.paymentLabel.toLowerCase()}' : o.paymentLabel,
                     style: muted,
                   ),
                 ),
@@ -557,7 +555,7 @@ class _OrderCardState extends State<_OrderCard> {
           Text('Czas przygotowania', style: Theme.of(context).textTheme.labelMedium?.copyWith(color: AppColors.textMuted)),
           const SizedBox(height: 6),
           SegmentedTabs<int>(
-            options: const [(15, '15 min'), (30, '30'), (45, '45'), (60, '60')],
+            options: const [(15, '15 min'), (30, '30 min'), (45, '45 min'), (60, '60 min')],
             selected: _minutes,
             onChanged: (m) => setState(() => _minutes = m),
           ),
@@ -605,7 +603,11 @@ class _OrderCardState extends State<_OrderCard> {
           FilledButton(
             style: FilledButton.styleFrom(minimumSize: compact),
             onPressed: busy ? null : widget.onHanded,
-            child: Text(o.cash && !o.prepaid ? 'Wydane · pobrano ${Fmt.price(o.totalGrosze)}' : 'Wydane gościowi'),
+            child: Text(
+              o.payOnDelivery
+                  ? 'Wydane · ${o.cash ? 'pobrano gotówką' : 'zapłacono kartą'} ${Fmt.price(o.totalGrosze)}'
+                  : 'Wydane gościowi',
+            ),
           ),
         ];
       case TakeawayStage.ready:

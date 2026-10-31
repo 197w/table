@@ -18,26 +18,206 @@ class SheetOption<T> {
   final Color? color;
 }
 
-/// Okno od dołu w stylu iOS (10.2026, wzór od użytkownika: wybór sposobu zamówienia): zaokrąglona karta
-/// odsunięta od krawędzi ekranu, okrągłe „Zamknij” w lewym górnym rogu (na iOS 26 Liquid Glass), duży tytuł,
-/// opis i opcje jako wiersze z ikoną i strzałką. Zwraca wartość wybranej opcji albo null po zamknięciu.
+/// Okno od dołu w stylu iOS (10.2026, wzór od użytkownika: wybór sposobu zamówienia z aplikacji McDonald's):
+/// zaokrąglona karta odsunięta od krawędzi ekranu, okrągłe „Zamknij” w lewym górnym rogu (na iOS 26 Liquid Glass),
+/// duży tytuł i opis. Tak wyglądają wszystkie okna w Table i Table for employees (od 31.10.2026): pytania
+/// ([showConfirmSheet]), wybór ([showOptionSheet]), komunikaty ([showMessageSheet]), wpisanie tekstu
+/// ([showTextSheet]) i większe okna z własną treścią ([showTableSheet]).
+class TableSheet extends StatelessWidget {
+  const TableSheet({
+    super.key,
+    required this.child,
+    this.title,
+    this.message,
+    this.icon,
+    this.iconColor,
+    this.scrollable = true,
+    this.avoidKeyboard = true,
+  });
+
+  /// Treść pod tytułem.
+  final Widget child;
+  final String? title;
+  final String? message;
+
+  /// Duża ikona nad tytułem (komunikaty).
+  final AppIconData? icon;
+  final Color? iconColor;
+
+  /// Tytuł i treść przewijają się razem. False: treść sama się przewija (np. lista) i ma własne odstępy.
+  final bool scrollable;
+
+  /// Karta podnosi się nad klawiaturę. False: treść robi to sama.
+  final bool avoidKeyboard;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final dark = AppColors.palette.brightness == Brightness.dark;
+    final head = <Widget>[
+      if (icon case final i?) ...[
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Glyph(i.duotone, size: 48, color: iconColor ?? AppColors.accent),
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
+      if (title case final t?)
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Semantics(
+            header: true,
+            child: Text(t, style: text.headlineSmall?.copyWith(fontWeight: FontWeight.w600)),
+          ),
+        ),
+      if (message case final m?) ...[
+        const SizedBox(height: 6),
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Text(m, style: text.bodyLarge?.copyWith(color: AppColors.textMuted)),
+        ),
+      ],
+      if (title != null || message != null) const SizedBox(height: 22),
+    ];
+    final Widget body = scrollable
+        ? SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 20, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [...head, child],
+            ),
+          )
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (head.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 20, 0),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: head),
+                ),
+              Flexible(child: child),
+            ],
+          );
+    return Padding(
+      padding: EdgeInsets.only(bottom: avoidKeyboard ? MediaQuery.viewInsetsOf(context).bottom : 0),
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+        // Karta kończy się nad paskiem systemu, więc treść nie dolicza go drugi raz (viewPadding).
+        child: MediaQuery.removeViewPadding(
+          context: context,
+          removeBottom: true,
+          child: Material(
+            color: dark ? AppColors.surfaceRaised : AppColors.surface,
+            borderRadius: BorderRadius.circular(36),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: GlassIconButton(
+                      symbol: 'xmark',
+                      label: 'Zamknij',
+                      native: true,
+                      onTap: () => Navigator.maybePop(context),
+                      fallback: _CloseCircle(onTap: () => Navigator.maybePop(context)),
+                    ),
+                  ),
+                ),
+                Flexible(child: body),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Okno od dołu z własną treścią (np. filtry, koszyk, zamknięcie rachunku) w ramce [TableSheet]: „Zamknij” u góry,
+/// a treść z [builder] sama ma odstępy, przewijanie i miejsce na klawiaturę.
+Future<T?> showTableSheet<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  bool isDismissible = true,
+  bool enableDrag = true,
+}) {
+  return showModalBottomSheet<T>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    isDismissible: isDismissible,
+    enableDrag: enableDrag,
+    backgroundColor: Colors.transparent,
+    elevation: 0,
+    builder: (context) => TableSheet(scrollable: false, avoidKeyboard: false, child: builder(context)),
+  );
+}
+
+Future<T?> _sheet<T>(BuildContext context, WidgetBuilder builder) => showModalBottomSheet<T>(
+  context: context,
+  isScrollControlled: true,
+  useSafeArea: true,
+  backgroundColor: Colors.transparent,
+  elevation: 0,
+  builder: builder,
+);
+
+/// Wybór jednej z opcji: wiersze z ikoną i strzałką. Zwraca wartość wybranej opcji albo null po zamknięciu.
 Future<T?> showOptionSheet<T>({
   required BuildContext context,
   required String title,
   required List<SheetOption<T>> options,
   String? message,
 }) {
-  return showModalBottomSheet<T>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: Colors.transparent,
-    elevation: 0,
-    builder: (context) => _OptionSheet<T>(title: title, message: message, options: options),
+  return _sheet<T>(
+    context,
+    (context) => TableSheet(
+      title: title,
+      message: message,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (i, o) in options.indexed) ...[
+            if (i > 0) const SizedBox(height: 12),
+            _OptionRow(option: o, onTap: () => Navigator.pop(context, o.value)),
+          ],
+        ],
+      ),
+    ),
   );
 }
 
-/// Komunikat w tym samym oknie od dołu: duża ikona, tytuł, opis i jeden przycisk (np. „Zmiana zakończona”).
+/// Pytanie przed działaniem (np. „Odwołać rezerwację?”): jedna opcja z ikoną, zamknięcie to „nie”.
+/// True: potwierdzone.
+Future<bool> showConfirmSheet({
+  required BuildContext context,
+  required String title,
+  required String action,
+  required AppIconData icon,
+  String? message,
+  String? actionHint,
+  Color? color,
+}) async {
+  final ok = await showOptionSheet<bool>(
+    context: context,
+    title: title,
+    message: message,
+    options: [SheetOption(value: true, icon: icon, title: action, subtitle: actionHint, color: color)],
+  );
+  return ok ?? false;
+}
+
+/// Komunikat: duża ikona, tytuł, opis i jeden przycisk (np. „Zmiana zakończona”).
 Future<void> showMessageSheet({
   required BuildContext context,
   required String title,
@@ -46,111 +226,104 @@ Future<void> showMessageSheet({
   Color? color,
   String button = 'Gotowe',
 }) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: Colors.transparent,
-    elevation: 0,
-    builder: (context) => _OptionSheet<void>(
+  return _sheet<void>(
+    context,
+    (context) => TableSheet(
       title: title,
       message: message,
-      options: const [],
       icon: icon,
-      color: color,
-      button: button,
+      iconColor: color,
+      child: FilledButton(
+        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+        onPressed: () => Navigator.pop(context),
+        child: Text(button),
+      ),
     ),
   );
 }
 
-class _OptionSheet<T> extends StatelessWidget {
-  const _OptionSheet({
+/// Wpisanie krótkiego tekstu (np. uwaga na tydzień). Zwraca tekst po „Zapisz” albo null po zamknięciu.
+Future<String?> showTextSheet({
+  required BuildContext context,
+  required String title,
+  required String label,
+  String? message,
+  String initial = '',
+  String? hint,
+  int maxLength = 300,
+  String action = 'Zapisz',
+}) {
+  return _sheet<String>(
+    context,
+    (_) => _TextSheet(
+      title: title,
+      message: message,
+      label: label,
+      initial: initial,
+      hint: hint,
+      maxLength: maxLength,
+      action: action,
+    ),
+  );
+}
+
+class _TextSheet extends StatefulWidget {
+  const _TextSheet({
     required this.title,
-    required this.options,
+    required this.label,
+    required this.initial,
+    required this.maxLength,
+    required this.action,
     this.message,
-    this.icon,
-    this.color,
-    this.button,
+    this.hint,
   });
 
   final String title;
   final String? message;
-  final List<SheetOption<T>> options;
-
-  /// Komunikat: duża ikona nad tytułem i przycisk na dole.
-  final AppIconData? icon;
-  final Color? color;
-  final String? button;
+  final String label;
+  final String initial;
+  final String? hint;
+  final int maxLength;
+  final String action;
 
   @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final dark = AppColors.palette.brightness == Brightness.dark;
-    return SafeArea(
-      top: false,
-      minimum: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-      child: Material(
-        color: dark ? AppColors.surfaceRaised : AppColors.surface,
-        borderRadius: BorderRadius.circular(36),
-        clipBehavior: Clip.antiAlias,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 20, 22),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: GlassIconButton(
-                  symbol: 'xmark',
-                  label: 'Zamknij',
-                  native: true,
-                  onTap: () => Navigator.maybePop(context),
-                  fallback: _CloseCircle(onTap: () => Navigator.maybePop(context)),
-                ),
-              ),
-              const SizedBox(height: 18),
-              if (icon case final i?) ...[
-                Padding(
-                  padding: const EdgeInsets.only(left: 4),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Glyph(i.duotone, size: 48, color: color ?? AppColors.accent),
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
-              Padding(
-                padding: const EdgeInsets.only(left: 4),
-                child: Semantics(
-                  header: true,
-                  child: Text(title, style: text.headlineSmall?.copyWith(fontWeight: FontWeight.w600)),
-                ),
-              ),
-              if (message case final m?) ...[
-                const SizedBox(height: 6),
-                Padding(
-                  padding: const EdgeInsets.only(left: 4),
-                  child: Text(m, style: text.bodyLarge?.copyWith(color: AppColors.textMuted)),
-                ),
-              ],
-              const SizedBox(height: 22),
-              for (final (i, o) in options.indexed) ...[
-                if (i > 0) const SizedBox(height: 12),
-                _OptionRow(option: o, onTap: () => Navigator.pop(context, o.value)),
-              ],
-              if (button case final b?)
-                FilledButton(
-                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(b),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
+  State<_TextSheet> createState() => _TextSheetState();
+}
+
+class _TextSheetState extends State<_TextSheet> {
+  late final _controller = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
+
+  @override
+  Widget build(BuildContext context) => TableSheet(
+    title: widget.title,
+    message: widget.message,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _controller,
+          autofocus: true,
+          maxLength: widget.maxLength,
+          maxLines: 3,
+          minLines: 1,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: InputDecoration(labelText: widget.label, hintText: widget.hint),
+        ),
+        const SizedBox(height: 12),
+        FilledButton(
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+          onPressed: () => Navigator.pop(context, _controller.text.trim()),
+          child: Text(widget.action),
+        ),
+      ],
+    ),
+  );
 }
 
 /// Okrągłe „Zamknij” rysowane przez Fluttera (Android i iOS przed 26).

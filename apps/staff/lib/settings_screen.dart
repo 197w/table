@@ -13,22 +13,15 @@ class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   Future<void> _signOut(BuildContext context, WidgetRef ref) async {
-    final ok = await showDialog<bool>(
+    final ok = await showConfirmSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Wylogować się?'),
-        content: const Text('Żeby wrócić, zalogujesz się ponownie e-mailem, kodem z e-maila i hasłem.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Anuluj')),
-          FilledButton(
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Wyloguj'),
-          ),
-        ],
-      ),
+      title: 'Wylogować się?',
+      message: 'Żeby wrócić, zalogujesz się ponownie e-mailem, kodem z e-maila i hasłem.',
+      icon: AppIcons.signOut,
+      action: 'Wyloguj się',
+      color: AppColors.error,
     );
-    if (ok == true) await ref.read(staffRepositoryProvider).signOut();
+    if (ok) await ref.read(staffRepositoryProvider).signOut();
   }
 
   @override

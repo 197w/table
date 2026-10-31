@@ -371,11 +371,8 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
 
   Future<void> _close(WOrder order) async {
     // Arkusz sam zamyka rachunek: całość, równo na osoby albo za wybrane pozycje.
-    final closed = await showModalBottomSheet<bool>(
+    final closed = await showTableSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
       builder: (context) => _SettleSheet(restaurantId: _rid, orderId: order.id, memberId: widget.job.memberId),
     );
     ref.invalidate(openOrdersProvider(_rid));
@@ -744,11 +741,8 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
   Future<void> _discount({required bool remove}) async {
     String? code;
     if (!remove) {
-      code = await showModalBottomSheet<String>(
+      code = await showTableSheet<String>(
         context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        showDragHandle: true,
         builder: (_) => _DiscountSheet(restaurantId: widget.restaurantId),
       );
       if (code == null || !mounted) return;
@@ -1165,11 +1159,8 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
     }
     _Choice choice = const _Choice();
     if (item.hasOptions || withOptions) {
-      final picked = await showModalBottomSheet<_Choice>(
+      final picked = await showTableSheet<_Choice>(
         context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        showDragHandle: true,
         builder: (_) => _OptionsSheet(item: item),
       );
       if (picked == null || !mounted) return;
@@ -1180,10 +1171,8 @@ class _MenuPickerScreenState extends ConsumerState<MenuPickerScreen> {
       final open = (ref.read(openOrdersProvider(widget.job.restaurantId)).value ?? const <WOrder>[])
           .any((o) => o.tableId == widget.table.id);
       if (!open) {
-        final answer = await showModalBottomSheet<({int? guests})>(
+        final answer = await showTableSheet<({int? guests})>(
           context: context,
-          useSafeArea: true,
-          showDragHandle: true,
           builder: (_) => _GuestsSheet(title: widget.table.title),
         );
         if (answer == null || !mounted) return;

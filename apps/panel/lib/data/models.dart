@@ -661,12 +661,13 @@ class RestaurantProfile {
   }
 }
 
-/// Dostawa i odbiór osobisty lokalu. Karta online jest zawsze, gotówkę lokal włącza sam.
+/// Dostawa i odbiór osobisty lokalu. Karta online jest zawsze, gotówkę i kartę przy odbiorze lokal włącza sam.
 class DeliverySettings {
   const DeliverySettings({
     this.deliveryEnabled = false,
     this.pickupEnabled = false,
     this.cash = true,
+    this.card = true,
     this.feeGrosze = 0,
     this.minGrosze = 0,
     this.area,
@@ -680,6 +681,9 @@ class DeliverySettings {
 
   /// Gotówka przy dostawie albo odbiorze.
   final bool cash;
+
+  /// Karta przy odbiorze: dostawcy przy drzwiach albo w lokalu (0074, `takeaway_card`).
+  final bool card;
   final int feeGrosze;
 
   /// Minimalna wartość zamówienia z dostawą (bez opłaty za dostawę).
@@ -702,6 +706,7 @@ class DeliverySettings {
     deliveryEnabled: json['delivery_enabled'] == true,
     pickupEnabled: json['pickup_enabled'] == true,
     cash: json['takeaway_cash'] != false,
+    card: json['takeaway_card'] != false,
     feeGrosze: _toInt(json['delivery_fee_grosze']),
     minGrosze: _toInt(json['delivery_min_grosze']),
     area: json['delivery_area'] as String?,
@@ -1966,8 +1971,10 @@ class TakeawayOrder {
     required this.feeGrosze,
     required this.cash,
     required this.paid,
+    this.cardOnDelivery = false,
     this.testPayment = false,
     this.address,
+    this.addressNote,
     this.note,
     this.promisedAt,
     this.acceptedAt,
@@ -2024,12 +2031,20 @@ class TakeawayOrder {
   final String customerName;
   final String customerPhone;
   final String? address;
+
+  /// Uwagi do adresu (kod do klatki, piętro), tylko przy dostawie (0074).
+  final String? addressNote;
+
+  /// Uwagi do zamówienia.
   final String? note;
   final List<OrderItem> items;
   final int feeGrosze;
 
-  /// Gotówka przy dostawie/odbiorze (inaczej karta online).
+  /// Gotówka przy dostawie/odbiorze.
   final bool cash;
+
+  /// Karta przy dostawie/odbiorze (terminal dostawcy albo w lokalu, 0074).
+  final bool cardOnDelivery;
   final bool paid;
   final bool testPayment;
   final DateTime? promisedAt;
@@ -2062,12 +2077,14 @@ class TakeawayOrder {
     customerName: json['customer_name'] as String? ?? '',
     customerPhone: json['customer_phone'] as String? ?? '',
     address: json['delivery_address'] as String?,
+    addressNote: (json['address_note'] as String?)?.ifEmpty,
     note: json['delivery_note'] as String?,
     items: [
       for (final i in json['order_items'] as List? ?? const []) OrderItem.fromJson(i as Map<String, dynamic>),
     ]..sort((a, b) => a.createdAt.compareTo(b.createdAt)),
     feeGrosze: _toInt(json['delivery_fee_grosze']),
     cash: json['payment_choice'] == 'cash',
+    cardOnDelivery: json['payment_choice'] == 'card_on_delivery',
     paid: json['payment_status'] == 'paid',
     testPayment: json['payment_test'] == true,
     promisedAt: _toDateOrNull(json['promised_at']),
@@ -2103,10 +2120,24 @@ class TakeawayOrder {
     house: house ?? '',
     city: city ?? '',
     note: note ?? '',
+    addressNote: addressNote ?? '',
     staffNote: staffNote ?? '',
-    paid: prepaid || (paid && !cash),
+    paid: prepaid || (paid && !cash && !cardOnDelivery),
+    cardOnDelivery: cardOnDelivery,
     scheduledFor: scheduledFor,
   );
+
+  /// Płaci przy dostawie albo odbiorze (gotówką albo kartą), a nie z góry.
+  bool get payOnDelivery => (cash || cardOnDelivery) && !prepaid;
+
+  /// Jak gość płaci, np. „Gotówka u dostawcy”, „Karta przy odbiorze”, „Karta online · opłacone”.
+  String get paymentLabel {
+    final at = kind == OrderKind.delivery ? 'u dostawcy' : 'przy odbiorze';
+    if (prepaid) return 'Opłacone wcześniej (przyjęte w panelu)';
+    if (cash) return 'Gotówka $at';
+    if (cardOnDelivery) return 'Karta $at';
+    return 'Karta online · opłacone${testPayment ? ' (test)' : ''}';
+  }
 }
 
 /// Dane klienta zamówienia przyjmowanego w panelu. Wymagane: imię i nazwisko albo nazwa lokalu, telefon,
@@ -2121,8 +2152,10 @@ class TakeawayCustomer {
     this.house = '',
     this.city = '',
     this.note = '',
+    this.addressNote = '',
     this.staffNote = '',
     this.paid,
+    this.cardOnDelivery = false,
     this.scheduledFor,
   });
 
@@ -2138,8 +2171,14 @@ class TakeawayCustomer {
   final String note;
   final String staffNote;
 
+  /// Uwagi do adresu (kod do klatki, piętro), tylko przy dostawie.
+  final String addressNote;
+
   /// Null: jeszcze nie wybrano.
   final bool? paid;
+
+  /// Do opłacenia kartą przy dostawie/odbiorze (inaczej gotówką).
+  final bool cardOnDelivery;
 
   /// Na którą godzinę (odbiór albo dostawa). Null: jak najszybciej.
   final DateTime? scheduledFor;
@@ -2166,8 +2205,10 @@ class TakeawayCustomer {
     'house': house.trim(),
     'city': city.trim(),
     'note': note.trim(),
+    'address_note': addressNote.trim(),
     'staff_note': staffNote.trim(),
     'paid': paid,
+    'payment': cardOnDelivery ? 'card_on_delivery' : 'cash',
     'scheduled_for': scheduledFor?.toUtc().toIso8601String(),
   };
 }

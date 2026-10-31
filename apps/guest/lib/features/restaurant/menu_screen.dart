@@ -349,19 +349,19 @@ class MenuItemTile extends StatelessWidget {
             label: 'Powiększ zdjęcie: ${item.name}',
             excludeSemantics: true,
             child: GestureDetector(
-              onTap: () => showDialog<void>(
+              onTap: () => showTableSheet<void>(
                 context: context,
-                builder: (_) => Dialog(
-                  clipBehavior: Clip.antiAlias,
-                  insetPadding: const EdgeInsets.all(16),
+                builder: (_) => SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      InteractiveViewer(child: Image.network(photo, fit: BoxFit.contain)),
-                      Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Text(item.name, style: text.titleMedium),
+                      Text(item.name, style: text.headlineSmall?.copyWith(fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 14),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(22),
+                        child: InteractiveViewer(child: Image.network(photo, fit: BoxFit.contain)),
                       ),
                     ],
                   ),

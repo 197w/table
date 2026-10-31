@@ -179,24 +179,14 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
   Future<void> _finish(StaffInventory inv) async {
     final missing = inv.items.where((i) => !i.counted).length;
-    final ok = await showDialog<bool>(
+    final ok = await showConfirmSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Zakończyć inwentaryzację?'),
-        content: Text(
-          missing == 0
-              ? 'Wpisane ilości staną się aktualnym stanem składników.'
-              : 'Bez ilości: ${missing == 1 ? 'jeden składnik' : '$missing składników'}. Zostaną pominięte.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Wróć')),
-          FilledButton(
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Zakończ'),
-          ),
-        ],
-      ),
+      title: 'Zakończyć inwentaryzację?',
+      message: missing == 0
+          ? 'Wpisane ilości staną się aktualnym stanem składników.'
+          : 'Bez ilości: ${missing == 1 ? 'jeden składnik' : '$missing składników'}. Zostaną pominięte.',
+      icon: AppIcons.clipboardText,
+      action: 'Zakończ inwentaryzację',
     );
     if (ok != true) return;
     setState(() => _busy = true);

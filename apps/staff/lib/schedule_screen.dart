@@ -111,11 +111,8 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   }
 
   Future<void> _hours(List<Job> jobs, DateTime day, [PlannedShift? existing]) async {
-    final saved = await showModalBottomSheet<bool>(
+    final saved = await showTableSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
       builder: (_) => HoursSheet(jobs: jobs, day: day, existing: existing),
     );
     if (saved != null) ref.invalidate(schedulePeriodProvider);
@@ -127,11 +124,8 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   }
 
   Future<void> _whole(List<Job> jobs, List<DateTime> days, Map<DateTime, PlannedShift> byDay) async {
-    final count = await showModalBottomSheet<int>(
+    final count = await showTableSheet<int>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
       builder: (_) => _PeriodSheet(jobs: jobs, days: days, existing: byDay),
     );
     if (count != null && count > 0) {
@@ -169,29 +163,14 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
 
   /// Uwaga na tydzień dla przełożonego (np. „w środę egzamin”).
   Future<void> _weekNote(List<Job> jobs, DateTime week, String? current) async {
-    final controller = TextEditingController(text: current ?? '');
-    final note = await showDialog<String>(
+    final note = await showTextSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Uwaga na tydzień ${week.day}.${_two(week.month)}'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 300,
-          maxLines: 3,
-          decoration: const InputDecoration(hintText: 'Na przykład: w środę mam egzamin'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Anuluj')),
-          FilledButton(
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Zapisz'),
-          ),
-        ],
-      ),
+      title: 'Uwaga na tydzień ${week.day}.${_two(week.month)}',
+      message: 'Przełożony zobaczy ją w grafiku.',
+      label: 'Uwaga',
+      hint: 'Na przykład: w środę mam egzamin',
+      initial: current ?? '',
     );
-    controller.dispose();
     if (note == null || jobs.isEmpty) return;
     try {
       await ref.read(staffRepositoryProvider).setWeekNote(jobs.first.memberId, week, note);
@@ -215,10 +194,8 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     }
     final editable = (entry.pending || entry.unavailable) && !day.isBefore(today) && !closed;
     final answerable = entry.proposed && !day.isBefore(today);
-    await showModalBottomSheet<void>(
+    await showTableSheet<void>(
       context: context,
-      useSafeArea: true,
-      showDragHandle: true,
       builder: (context) {
         final keyboard = MediaQuery.viewInsetsOf(context).bottom;
         final system = MediaQuery.viewPaddingOf(context).bottom;

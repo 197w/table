@@ -361,6 +361,7 @@ class RestaurantDetail {
     this.deliveryEnabled = false,
     this.pickupEnabled = false,
     this.takeawayCash = true,
+    this.takeawayCard = true,
     this.deliveryFeeGrosze = 0,
     this.deliveryMinGrosze = 0,
     this.deliveryArea,
@@ -426,6 +427,9 @@ class RestaurantDetail {
 
   /// Gotówka u dostawcy albo przy odbiorze. Karta online jest zawsze.
   final bool takeawayCash;
+
+  /// Karta przy odbiorze: dostawcy przy drzwiach albo w lokalu (0074).
+  final bool takeawayCard;
   final int deliveryFeeGrosze;
   final int deliveryMinGrosze;
   final String? deliveryArea;
@@ -494,6 +498,7 @@ class RestaurantDetail {
       deliveryEnabled: json['delivery_enabled'] == true,
       pickupEnabled: json['pickup_enabled'] == true,
       takeawayCash: json['takeaway_cash'] != false,
+      takeawayCard: json['takeaway_card'] != false,
       deliveryFeeGrosze: _toInt(json['delivery_fee_grosze']),
       deliveryMinGrosze: _toInt(json['delivery_min_grosze']),
       deliveryArea: json['delivery_area'] as String?,
@@ -1140,11 +1145,18 @@ enum OrderKind {
 
 enum PaymentChoice {
   card('card_online', 'Karta online'),
+  cardOnDelivery('card_on_delivery', 'Karta przy odbiorze'),
   cash('cash', 'Gotówka');
 
   const PaymentChoice(this.db, this.label);
   final String db;
   final String label;
+
+  static PaymentChoice from(Object? value) => switch (value) {
+    'cash' => PaymentChoice.cash,
+    'card_on_delivery' => PaymentChoice.cardOnDelivery,
+    _ => PaymentChoice.card,
+  };
 }
 
 /// Etap zamówienia widziany przez gościa.
@@ -1270,7 +1282,7 @@ class GuestOrder {
             GuestOrderItem.fromJson(i),
       ],
       feeGrosze: _toInt(json['delivery_fee_grosze']),
-      payment: json['payment_choice'] == 'cash' ? PaymentChoice.cash : PaymentChoice.card,
+      payment: PaymentChoice.from(json['payment_choice']),
       paid: json['payment_status'] == 'paid',
       testPayment: json['payment_test'] == true,
       address: json['delivery_address'] as String?,

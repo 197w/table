@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'option_sheet.dart';
 import 'theme.dart';
 
 /// Wybór godziny jak w iOS: przewijane kółka godzin i minut z podświetlonym pasem pośrodku.
@@ -22,14 +23,8 @@ Future<TimeOfDay?> showTimeWheel(
     allowEndOfDay: allowEndOfDay,
     title: title,
   );
-  if (phone) {
-    return showModalBottomSheet<TimeOfDay>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (_) => SafeArea(top: false, child: picker),
-    );
-  }
+  // Telefon: to samo okno od dołu co reszta okien w aplikacjach ([showTableSheet]).
+  if (phone) return showTableSheet<TimeOfDay>(context: context, builder: (_) => picker);
   return showDialog<TimeOfDay>(
     context: context,
     builder: (_) => Dialog(child: SizedBox(width: 320, child: picker)),

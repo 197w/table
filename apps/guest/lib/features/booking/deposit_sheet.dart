@@ -8,11 +8,8 @@ const _tabular = [FontFeature.tabularFigures()];
 
 /// Płatność zadatku za rezerwację. Zwraca true po opłaceniu.
 Future<bool> payDeposit(BuildContext context, {required String reservationId, required int amountGrosze}) async {
-  final paid = await showModalBottomSheet<bool>(
+  final paid = await showTableSheet<bool>(
     context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    showDragHandle: true,
     builder: (_) => _DepositSheet(reservationId: reservationId, amountGrosze: amountGrosze),
   );
   return paid == true;

@@ -256,8 +256,12 @@ class _TakeawayFormState extends ConsumerState<TakeawayForm> {
   late final _house = TextEditingController(text: widget.initial.house);
   late final _city = TextEditingController(text: widget.initial.city);
   late final _note = TextEditingController(text: widget.initial.note);
+  late final _addressNote = TextEditingController(text: widget.initial.addressNote);
   late final _staffNote = TextEditingController(text: widget.initial.staffNote);
   late bool? _paid = widget.initial.paid;
+
+  /// Do opłacenia kartą przy dostawie/odbiorze (inaczej gotówką).
+  late bool _card = widget.initial.cardOnDelivery;
 
   /// Na którą godzinę. Null: jak najszybciej.
   late DateTime? _when = widget.initial.scheduledFor?.toLocal();
@@ -275,7 +279,7 @@ class _TakeawayFormState extends ConsumerState<TakeawayForm> {
   @override
   void dispose() {
     _debounce?.cancel();
-    for (final c in [_phone, _name, _company, _nip, _street, _house, _city, _note, _staffNote]) {
+    for (final c in [_phone, _name, _company, _nip, _street, _house, _city, _note, _addressNote, _staffNote]) {
       c.dispose();
     }
     super.dispose();
@@ -290,8 +294,10 @@ class _TakeawayFormState extends ConsumerState<TakeawayForm> {
     house: _house.text,
     city: _city.text,
     note: _note.text,
+    addressNote: widget.kind == OrderKind.delivery ? _addressNote.text : '',
     staffNote: _staffNote.text,
     paid: _paid,
+    cardOnDelivery: _paid == false && _card,
     scheduledFor: _when,
   );
 
@@ -450,12 +456,14 @@ class _TakeawayFormState extends ConsumerState<TakeawayForm> {
               Expanded(flex: 3, child: field(_city, 'Miasto', required: true)),
             ],
           ),
+          const SizedBox(height: 12),
+          field(_addressNote, 'Uwagi do adresu', hint: 'np. domofon 14, drugie piętro', maxLength: 300),
         ],
         const SizedBox(height: 12),
         field(
           _note,
           'Komentarz do zamówienia',
-          hint: delivery ? 'np. domofon 14, drugie piętro' : 'np. odbiór o 18:30',
+          hint: delivery ? 'np. bez cebuli, sztućce dla dwóch osób' : 'np. odbiór o 18:30',
           maxLength: 300,
           lines: 2,
         ),
@@ -571,11 +579,26 @@ class _TakeawayFormState extends ConsumerState<TakeawayForm> {
             Expanded(
               child: _PayChoice(
                 icon: AppIcons.money,
-                label: 'Do opłacenia',
-                hint: delivery ? 'Klient płaci dostawcy.' : 'Klient płaci przy odbiorze.',
-                selected: _paid == false,
+                label: 'Gotówka',
+                hint: delivery ? 'Klient płaci dostawcy gotówką.' : 'Klient płaci gotówką przy odbiorze.',
+                selected: _paid == false && !_card,
                 onTap: () {
                   _paid = false;
+                  _card = false;
+                  _changed();
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _PayChoice(
+                icon: AppIcons.creditCard,
+                label: 'Karta przy odbiorze',
+                hint: delivery ? 'Klient płaci kartą u dostawcy.' : 'Klient płaci kartą przy odbiorze.',
+                selected: _paid == false && _card,
+                onTap: () {
+                  _paid = false;
+                  _card = true;
                   _changed();
                 },
               ),
@@ -772,6 +795,7 @@ class TakeawayCustomerCard extends ConsumerWidget {
               ),
             ),
           if (o.address != null) line(AppIcons.mapPin, o.address!),
+          if (o.addressNote != null) line(AppIcons.info, 'Do adresu: ${o.addressNote}', color: AppColors.textMuted),
           if (o.scheduledFor case final at?)
             line(
               AppIcons.calendarDots,
@@ -781,8 +805,11 @@ class TakeawayCustomerCard extends ConsumerWidget {
           if (o.note != null) line(AppIcons.chatText, o.note!, color: _amber),
           if (o.staffNote != null) line(AppIcons.lock, 'Dla pracowników: ${o.staffNote}', color: AppColors.textMuted),
           line(
-            o.prepaid ? AppIcons.checkCircle : AppIcons.money,
-            o.prepaid ? 'Opłacone' : (o.kind == OrderKind.delivery ? 'Do opłacenia u dostawcy' : 'Do opłacenia przy odbiorze'),
+            o.prepaid ? AppIcons.checkCircle : (o.cardOnDelivery ? AppIcons.creditCard : AppIcons.money),
+            o.prepaid
+                ? 'Opłacone'
+                : '${o.cardOnDelivery ? 'Kartą' : 'Gotówką'} '
+                      '${o.kind == OrderKind.delivery ? 'u dostawcy' : 'przy odbiorze'}',
             color: o.prepaid ? AppColors.accent : _amber,
           ),
         ],

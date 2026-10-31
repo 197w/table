@@ -129,25 +129,16 @@ Future<void> _call(BuildContext context, String phone) async {
 }
 
 Future<void> _cancel(BuildContext context, WidgetRef ref, Reservation reservation) async {
-  final confirmed = await showDialog<bool>(
+  final confirmed = await showConfirmSheet(
     context: context,
-    builder: (context) => AlertDialog(
-      backgroundColor: AppColors.surface,
-      title: const Text('Odwołać rezerwację?'),
-      content: Text(
-        '${reservation.restaurantName}, ${Fmt.dateTime(reservation.startsAt)}. Stolik wróci do puli wolnych miejsc.',
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Zostaw')),
-        TextButton(
-          onPressed: () => Navigator.pop(context, true),
-          style: TextButton.styleFrom(foregroundColor: AppColors.error),
-          child: const Text('Odwołaj'),
-        ),
-      ],
-    ),
+    title: 'Odwołać rezerwację?',
+    message: '${reservation.restaurantName}, ${Fmt.dateTime(reservation.startsAt)}. '
+        'Stolik wróci do puli wolnych miejsc.',
+    icon: AppIcons.calendarX,
+    action: 'Odwołaj rezerwację',
+    color: AppColors.error,
   );
-  if (confirmed != true) return;
+  if (!confirmed) return;
   try {
     await ref.read(repositoryProvider).cancelReservation(reservation.id);
     ref.invalidate(myReservationsProvider);

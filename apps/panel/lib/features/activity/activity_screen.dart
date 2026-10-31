@@ -196,43 +196,42 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     final events = ref.watch(activityProvider(query)).value ?? const <ActivityEvent>[];
     final data = dayAsync.value;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        PageHeader(
-          below: Row(
-            children: [
-              SegmentedTabs<bool>(
-                options: const [(true, 'Na żywo'), (false, 'Historia')],
-                selected: _live,
-                onChanged: (live) => live ? _goLive() : setState(() => _live = false),
-              ),
-              const SizedBox(width: 12),
-              if (!_live)
-                StepSwitcher(
-                  label: '${Fmt.capitalize(Fmt.dayShort(_day))}${_day == today ? ' · dziś' : ''}',
-                  labelWidth: 150,
-                  previousTooltip: 'Poprzedni dzień',
-                  nextTooltip: 'Następny dzień',
-                  onPrevious: () => _shiftDay(-1),
-                  onNext: _day == today ? null : () => _shiftDay(1),
-                  resetTooltip: 'Wróć do teraz',
-                  onReset: _goLive,
-                  extras: [(AppIcons.calendar, 'Wybierz dzień', _pickDay)],
-                ),
-              const Spacer(),
-              if (_live) const PanelPill('Na żywo', dotColor: Color(0xFF2FB673)),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-            child: Row(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: _railWidth,
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SizedBox(
-                  width: 196,
+                // Tryb i dzień nad osią czasu (wcześniej w pasku nad całym ekranem).
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: SegmentedTabs<bool>(
+                    options: const [(true, 'Na żywo'), (false, 'Historia')],
+                    selected: _live,
+                    onChanged: (live) => live ? _goLive() : setState(() => _live = false),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: StepSwitcher(
+                    label: _day == today ? 'Dziś' : Fmt.capitalize(Fmt.dayShort(_day)),
+                    labelWidth: 118,
+                    previousTooltip: 'Poprzedni dzień',
+                    nextTooltip: 'Następny dzień',
+                    onPrevious: () => _shiftDay(-1),
+                    onNext: _day == today ? null : () => _shiftDay(1),
+                    resetTooltip: 'Wróć do teraz',
+                    onReset: _live ? null : _goLive,
+                    extras: [(AppIcons.calendar, 'Wybierz dzień', _pickDay)],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
                   child: _TimeRail(
                     day: _day,
                     at: _at,
@@ -247,40 +246,37 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
                     },
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: data == null
-                      ? dayAsync.hasError
-                            ? ErrorView(
-                                error: dayAsync.error!,
-                                onRetry: () => ref.invalidate(timeMachineDayProvider(query)),
-                              )
-                            : const LoadingView()
-                      : _Snapshot(
-                          restaurantId: rid,
-                          tm: data.at(_at),
-                          events: [
-                            for (final e in events.reversed)
-                              if (!e.at.isAfter(_at)) e,
-                          ],
-                          tab: _tab,
-                          onTab: (t) => setState(() => _tab = t),
-                          zone: _zone,
-                          onZone: (z) => setState(() => _zone = z),
-                          selectedOrder: _selectedOrder,
-                          selectedTable: _selectedTable,
-                          onSelect: _selectOrder,
-                          onEvent: (e) {
-                            _pick(e.at);
-                            if (e.orderId != null) setState(() => _selectedOrder = e.orderId);
-                          },
-                        ),
-                ),
               ],
             ),
           ),
-        ),
-      ],
+          const SizedBox(width: 16),
+          Expanded(
+            child: data == null
+                ? dayAsync.hasError
+                      ? ErrorView(error: dayAsync.error!, onRetry: () => ref.invalidate(timeMachineDayProvider(query)))
+                      : const LoadingView()
+                : _Snapshot(
+                    restaurantId: rid,
+                    tm: data.at(_at),
+                    events: [
+                      for (final e in events.reversed)
+                        if (!e.at.isAfter(_at)) e,
+                    ],
+                    tab: _tab,
+                    onTab: (t) => setState(() => _tab = t),
+                    zone: _zone,
+                    onZone: (z) => setState(() => _zone = z),
+                    selectedOrder: _selectedOrder,
+                    selectedTable: _selectedTable,
+                    onSelect: _selectOrder,
+                    onEvent: (e) {
+                      _pick(e.at);
+                      if (e.orderId != null) setState(() => _selectedOrder = e.orderId);
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -288,6 +284,9 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
 // ---------------------------------------------------------------
 // Oś czasu
 // ---------------------------------------------------------------
+
+/// Szerokość kolumny z osią czasu (mieści przełącznik dnia z kalendarzem).
+const _railWidth = 240.0;
 
 /// Kreska wybranej chwili: tyle punktów od góry osi.
 const _playY = 52.0;
@@ -389,7 +388,6 @@ class _TimeRailState extends State<_TimeRail> with SingleTickerProviderStateMixi
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final today = dateOnly(DateTime.now());
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -400,16 +398,9 @@ class _TimeRailState extends State<_TimeRail> with SingleTickerProviderStateMixi
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-            child: Text(
-              widget.day == today ? 'Dziś' : Fmt.capitalize(Fmt.dayShort(widget.day)),
-              style: text.labelMedium?.copyWith(color: AppColors.textMuted),
-            ),
-          ),
           // Skala: minus, suwak, plus.
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
+            padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
             child: Row(
               children: [
                 _RailButton(icon: AppIcons.minus, tooltip: 'Dłuższy czas', onTap: () => _zoomBy(1 / 1.5)),
@@ -432,101 +423,105 @@ class _TimeRailState extends State<_TimeRail> with SingleTickerProviderStateMixi
               ],
             ),
           ),
+          Divider(height: 1, color: AppColors.ring),
+          // Godzinę u góry i ikony przycina granica osi: nic nie wchodzi na przyciski skali.
           Expanded(
-            child: LayoutBuilder(
-              builder: (context, c) {
-                final h = c.maxHeight;
-                final clusters = _clusters(h);
-                return Listener(
-                  onPointerSignal: (signal) {
-                    if (signal is! PointerScrollEvent) return;
-                    final dy = signal.scrollDelta.dy;
-                    if (HardwareKeyboard.instance.isControlPressed) {
-                      _zoomBy(math.exp(-dy / 400));
-                    } else {
-                      _fling.stop();
-                      // Kółko w dół: wcześniejsze chwile (jak przewijanie listy w dół).
-                      _emit(_moved(_current, -dy));
-                    }
-                  },
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onVerticalDragStart: (_) => _fling.stop(),
-                    onVerticalDragUpdate: (d) => _emit(_moved(_current, d.delta.dy)),
-                    onVerticalDragEnd: (d) {
-                      final v = d.primaryVelocity ?? 0;
-                      if (v.abs() < 120) return;
-                      _flingFrom = _current;
-                      _fling.value = 0;
-                      _fling.animateWith(FrictionSimulation(0.12, 0, v));
+            child: ClipRect(
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final h = c.maxHeight;
+                  final clusters = _clusters(h);
+                  return Listener(
+                    onPointerSignal: (signal) {
+                      if (signal is! PointerScrollEvent) return;
+                      final dy = signal.scrollDelta.dy;
+                      if (HardwareKeyboard.instance.isControlPressed) {
+                        _zoomBy(math.exp(-dy / 400));
+                      } else {
+                        _fling.stop();
+                        // Kółko w dół: wcześniejsze chwile (jak przewijanie listy w dół).
+                        _emit(_moved(_current, -dy));
+                      }
                     },
-                    onTapUp: (d) {
-                      _fling.stop();
-                      _emit(_moved(widget.at, _playY - d.localPosition.dy));
-                    },
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.grab,
-                      child: Stack(
-                        clipBehavior: Clip.hardEdge,
-                        children: [
-                          Positioned.fill(
-                            child: CustomPaint(
-                              painter: _RailPainter(
-                                day: widget.day,
-                                at: widget.at,
-                                latest: widget.latest,
-                                zoom: widget.zoom,
-                                line: AppColors.ring,
-                                label: AppColors.textMuted,
-                                accent: AppColors.accent,
-                                shade: AppColors.surfaceRaised,
-                                textStyle: text.labelSmall ?? const TextStyle(fontSize: 11),
-                              ),
-                            ),
-                          ),
-                          for (final cl in clusters)
-                            Positioned(
-                              left: _axisX - 5,
-                              top: cl.y - 12,
-                              child: _EventMarker(
-                                cluster: cl,
-                                future: cl.first.at.isAfter(widget.at),
-                                onTap: () {
-                                  _fling.stop();
-                                  widget.onEvent(cl.first);
-                                },
-                              ),
-                            ),
-                          // Wybrana chwila: kreska przez całą oś i godzina z sekundami.
-                          Positioned(
-                            left: 6,
-                            top: _playY - 13,
-                            child: IgnorePointer(
-                              child: Container(
-                                height: 26,
-                                padding: const EdgeInsets.symmetric(horizontal: 10),
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: AppColors.accent,
-                                  borderRadius: BorderRadius.circular(13),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onVerticalDragStart: (_) => _fling.stop(),
+                      onVerticalDragUpdate: (d) => _emit(_moved(_current, d.delta.dy)),
+                      onVerticalDragEnd: (d) {
+                        final v = d.primaryVelocity ?? 0;
+                        if (v.abs() < 120) return;
+                        _flingFrom = _current;
+                        _fling.value = 0;
+                        _fling.animateWith(FrictionSimulation(0.12, 0, v));
+                      },
+                      onTapUp: (d) {
+                        _fling.stop();
+                        _emit(_moved(widget.at, _playY - d.localPosition.dy));
+                      },
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.grab,
+                        child: Stack(
+                          clipBehavior: Clip.hardEdge,
+                          children: [
+                            Positioned.fill(
+                              child: CustomPaint(
+                                painter: _RailPainter(
+                                  day: widget.day,
+                                  at: widget.at,
+                                  latest: widget.latest,
+                                  zoom: widget.zoom,
+                                  line: AppColors.ring,
+                                  label: AppColors.textMuted,
+                                  accent: AppColors.accent,
+                                  shade: AppColors.surfaceRaised,
+                                  textStyle: text.labelSmall ?? const TextStyle(fontSize: 11),
                                 ),
-                                child: Text(
-                                  _hms(widget.at),
-                                  style: text.labelLarge?.copyWith(
-                                    color: AppColors.onAccent,
-                                    fontWeight: FontWeight.w600,
-                                    fontFeatures: _tabular,
+                              ),
+                            ),
+                            for (final cl in clusters)
+                              Positioned(
+                                left: _axisX - 5,
+                                top: cl.y - 12,
+                                child: _EventMarker(
+                                  cluster: cl,
+                                  future: cl.first.at.isAfter(widget.at),
+                                  onTap: () {
+                                    _fling.stop();
+                                    widget.onEvent(cl.first);
+                                  },
+                                ),
+                              ),
+                            // Wybrana chwila: kreska przez całą oś i godzina z sekundami.
+                            Positioned(
+                              left: 6,
+                              top: _playY - 13,
+                              child: IgnorePointer(
+                                child: Container(
+                                  height: 26,
+                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.accent,
+                                    borderRadius: BorderRadius.circular(13),
+                                  ),
+                                  child: Text(
+                                    _hms(widget.at),
+                                    style: text.labelLarge?.copyWith(
+                                      color: AppColors.onAccent,
+                                      fontWeight: FontWeight.w600,
+                                      fontFeatures: _tabular,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
           ),
         ],
@@ -664,7 +659,10 @@ class _RailPainter extends CustomPainter {
     return _labels.putIfAbsent(
       key,
       () => TextPainter(
-        text: TextSpan(text: s, style: textStyle.copyWith(color: label, fontFeatures: _tabular)),
+        text: TextSpan(
+          text: s,
+          style: textStyle.copyWith(color: label, fontFeatures: _tabular),
+        ),
         textDirection: TextDirection.ltr,
       )..layout(),
     );
@@ -787,7 +785,7 @@ class _Snapshot extends ConsumerWidget {
 
     return LayoutBuilder(
       builder: (context, c) {
-        final planHeight = (c.maxHeight * 0.44).clamp(220.0, 460.0);
+        final planHeight = (c.maxHeight * 0.56).clamp(260.0, 680.0);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -901,12 +899,13 @@ class _PlanCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.ring),
       ),
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(
-            height: 40,
+            // Jedna strefa: niski wiersz z samym podsumowaniem, więcej miejsca na plan.
+            height: zones.length > 1 ? 40 : 24,
             child: Row(
               children: [
                 if (zones.length > 1)
@@ -930,7 +929,7 @@ class _PlanCard extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Expanded(
             child: FloorCanvas(
               zone: zone,
@@ -1156,7 +1155,10 @@ class _ListCard extends StatelessWidget {
     ];
     final scale = math.max(
       1,
-      tm.bills.fold(0, (m, b) => math.max(m, b.items.where((i) => i.status != 'cancelled').fold(0, (s, i) => s + i.quantity))),
+      tm.bills.fold(
+        0,
+        (m, b) => math.max(m, b.items.where((i) => i.status != 'cancelled').fold(0, (s, i) => s + i.quantity)),
+      ),
     );
     final text = Theme.of(context).textTheme;
     final body = text.bodyMedium?.copyWith(fontFeatures: _tabular);
@@ -1180,7 +1182,9 @@ class _ListCard extends StatelessWidget {
           children: [
             _TableBadge(label: t?.label ?? '?', color: bill != null || res != null ? color : null),
             const SizedBox(width: 10),
-            Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: body)),
+            Flexible(
+              child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: body),
+            ),
           ],
         ),
         Text(t == null ? '—' : Fmt.capitalize(t.zone), maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
@@ -1219,7 +1223,10 @@ class _ListCard extends StatelessWidget {
         ),
         bill == null ? Text('—', style: muted) : _ItemsBar(items: bill.items, scale: scale),
         Text(bill == null ? '—' : Fmt.price(bill.total), style: bill == null ? muted : body),
-        Text(bill == null || bill.paid == 0 ? '—' : Fmt.price(bill.paid), style: bill == null || bill.paid == 0 ? muted : body),
+        Text(
+          bill == null || bill.paid == 0 ? '—' : Fmt.price(bill.paid),
+          style: bill == null || bill.paid == 0 ? muted : body,
+        ),
       ]);
       return _row(
         selected: selected,
@@ -1227,7 +1234,10 @@ class _ListCard extends StatelessWidget {
         child: selected && bill != null && bill.items.isNotEmpty
             ? Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [row, _BillItems(bill: bill)],
+                children: [
+                  row,
+                  _BillItems(bill: bill),
+                ],
               )
             : row,
       );
@@ -1256,15 +1266,17 @@ class _ListCard extends StatelessWidget {
         onTap: () => onSelect(o.orderId),
         child: _cells(cols, [
           Text(o.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: body),
+          Text(switch (o.kind) {
+            'delivery' => 'Dostawa',
+            'pickup' => 'Odbiór',
+            _ => '—',
+          }, style: muted),
           Text(
-            switch (o.kind) {
-              'delivery' => 'Dostawa',
-              'pickup' => 'Odbiór',
-              _ => '—',
-            },
-            style: muted,
+            o.customer ?? '—',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: o.customer == null ? muted : body,
           ),
-          Text(o.customer ?? '—', maxLines: 1, overflow: TextOverflow.ellipsis, style: o.customer == null ? muted : body),
           Row(
             children: [
               Container(
@@ -1273,7 +1285,9 @@ class _ListCard extends StatelessWidget {
                 decoration: BoxDecoration(color: color, shape: BoxShape.circle),
               ),
               const SizedBox(width: 8),
-              Flexible(child: Text(o.stageLabel, style: body?.copyWith(color: color))),
+              Flexible(
+                child: Text(o.stageLabel, style: body?.copyWith(color: color)),
+              ),
             ],
           ),
           Text(o.openedAt == null ? '—' : _hm(o.openedAt!), style: body),
@@ -1323,10 +1337,7 @@ class _ListCard extends StatelessWidget {
                 width: 24,
                 height: 24,
                 alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(7),
-                ),
+                decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(7)),
                 child: Glyph(activityIcon(e), size: 13, color: color),
               ),
               const SizedBox(width: 10),
@@ -1420,7 +1431,10 @@ class _ItemsBar extends StatelessWidget {
                       children: [
                         for (final s in _itemStatuses)
                           if (counts[s]! > 0)
-                            Expanded(flex: counts[s]!, child: ColoredBox(color: _itemStatus(s).$2)),
+                            Expanded(
+                              flex: counts[s]!,
+                              child: ColoredBox(color: _itemStatus(s).$2),
+                            ),
                       ],
                     ),
                   ),

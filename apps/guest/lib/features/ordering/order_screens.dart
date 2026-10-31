@@ -28,11 +28,8 @@ class OrderMenuScreen extends ConsumerWidget {
   Future<void> _add(BuildContext context, WidgetRef ref, MenuItem item) async {
     final line = item.variants.isEmpty && item.addons.isEmpty
         ? CartLine(menuItemId: item.id, name: item.name, unitPriceGrosze: item.priceGrosze, quantity: 1)
-        : await showModalBottomSheet<CartLine>(
+        : await showTableSheet<CartLine>(
             context: context,
-            isScrollControlled: true,
-            useSafeArea: true,
-            showDragHandle: true,
             builder: (_) => _OptionsSheet(item: item),
           );
     if (line == null) return;
@@ -154,7 +151,11 @@ class _OrderInfo extends StatelessWidget {
             '${r.deliveryMinGrosze > 0 ? ' · min. ${Fmt.price(r.deliveryMinGrosze)}' : ''}',
       if (r.pickupEnabled) 'Odbiór osobisty: ${r.address}',
       if (r.deliveryArea != null) r.deliveryArea!,
-      r.takeawayCash ? 'Płatność kartą online albo gotówką' : 'Płatność kartą online',
+      'Płatność: ${[
+        'kartą online',
+        if (r.takeawayCard) 'kartą przy odbiorze',
+        if (r.takeawayCash) 'gotówką',
+      ].join(', ')}',
     ];
     return Container(
       padding: const EdgeInsets.all(14),
@@ -398,7 +399,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _phone = TextEditingController();
   final _street = TextEditingController();
   final _city = TextEditingController();
+  /// Uwagi do zamówienia (dla lokalu), przy dostawie i odbiorze.
   final _note = TextEditingController();
+
+  /// Uwagi do adresu (kod do klatki, piętro, opis budynku), tylko przy dostawie.
+  final _addressNote = TextEditingController();
   bool _busy = false;
   bool _prefilled = false;
 
@@ -409,6 +414,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     _street.dispose();
     _city.dispose();
     _note.dispose();
+    _addressNote.dispose();
     _slots.dispose();
     super.dispose();
   }
@@ -418,11 +424,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     _prefilled = true;
     _name.text = profile?.firstName ?? profile?.fullName ?? '';
     _phone.text = profile?.phone == null ? '' : Fmt.phone(profile!.phone);
-    // Adres z ustawień (Ustawienia → Adres dostawy), a kod do klatki i opis budynku jako uwaga dla dostawcy.
+    // Adres z ustawień (Konto → Adres dostawy), a kod do klatki i opis budynku jako uwagi do adresu dla dostawcy
+    // (przy odbiorze osobistym ich nie ma).
     if (profile != null && profile.hasAddress) {
       _street.text = profile.addressLine;
       _city.text = profile.cityLine;
-      if (profile.deliveryHint case final hint?) _note.text = hint;
+      if (profile.deliveryHint case final hint?) _addressNote.text = hint;
     } else {
       _city.text = r.city;
     }
@@ -464,16 +471,15 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         phone: _phone.text,
         address: kind == OrderKind.delivery ? '${_street.text.trim()}, ${_city.text.trim()}' : null,
         note: _note.text,
+        addressNote: kind == OrderKind.delivery ? _addressNote.text : null,
         scheduledFor: _scheduled ? _when : null,
       );
       if (_payment == PaymentChoice.card) {
         if (!mounted) return;
-        final paid = await showModalBottomSheet<bool>(
+        final paid = await showTableSheet<bool>(
           context: context,
           isDismissible: false,
           enableDrag: false,
-          useSafeArea: true,
-          showDragHandle: true,
           builder: (_) => _CardPaymentSheet(orderId: id, totalGrosze: subtotal + (kind == OrderKind.delivery ? r.deliveryFeeGrosze : 0)),
         );
         if (paid != true) {
@@ -599,7 +605,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           }
           _prefill(profile, r);
           final kind = _kind ??= r.deliveryEnabled ? OrderKind.delivery : OrderKind.pickup;
-          if (!r.takeawayCash) _payment = PaymentChoice.card;
+          if ((_payment == PaymentChoice.cash && !r.takeawayCash) ||
+              (_payment == PaymentChoice.cardOnDelivery && !r.takeawayCard)) {
+            _payment = PaymentChoice.card;
+          }
           final subtotal = cart.fold(0, (s, l) => s + l.totalGrosze);
           final fee = kind == OrderKind.delivery ? r.deliveryFeeGrosze : 0;
           final belowMin = kind == OrderKind.delivery && subtotal < r.deliveryMinGrosze;
@@ -690,6 +699,16 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 ),
                 const SizedBox(height: 10),
                 TextField(controller: _city, decoration: const InputDecoration(labelText: 'Miasto')),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _addressNote,
+                  maxLength: 300,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    labelText: 'Uwagi do adresu (opcjonalnie)',
+                    hintText: 'Na przykład: kod do klatki 12, drugie piętro',
+                  ),
+                ),
               ] else ...[
                 const SizedBox(height: 8),
                 Text('Odbiór: ${r.address}, ${r.city}', style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
@@ -698,9 +717,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               TextField(
                 controller: _note,
                 maxLength: 300,
-                decoration: InputDecoration(
-                  labelText: 'Uwagi (opcjonalnie)',
-                  hintText: kind == OrderKind.delivery ? 'Na przykład: domofon 12, drugie piętro' : 'Na przykład: bez cebuli',
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: 'Uwagi do zamówienia (opcjonalnie)',
+                  hintText: 'Na przykład: bez cebuli, sztućce dla dwóch osób',
                 ),
               ),
               const SizedBox(height: 8),
@@ -713,6 +733,18 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 selected: _payment == PaymentChoice.card,
                 onTap: () => setState(() => _payment = PaymentChoice.card),
               ),
+              if (r.takeawayCard) ...[
+                const SizedBox(height: 8),
+                _PaymentOption(
+                  icon: AppIcons.creditCard,
+                  title: 'Karta przy odbiorze',
+                  subtitle: kind == OrderKind.delivery
+                      ? 'Płacisz kartą dostawcy przy drzwiach'
+                      : 'Płacisz kartą w lokalu przy odbiorze',
+                  selected: _payment == PaymentChoice.cardOnDelivery,
+                  onTap: () => setState(() => _payment = PaymentChoice.cardOnDelivery),
+                ),
+              ],
               if (r.takeawayCash) ...[
                 const SizedBox(height: 8),
                 _PaymentOption(
@@ -931,23 +963,15 @@ class OrderDetailScreen extends ConsumerWidget {
   final String orderId;
 
   Future<void> _cancel(BuildContext context, WidgetRef ref, GuestOrder order) async {
-    final ok = await showDialog<bool>(
+    final ok = await showConfirmSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text('Odwołać zamówienie #${order.number}?'),
-        content: Text(order.paid ? 'Pieniądze wrócą na kartę.' : 'Lokal jeszcze go nie przyjął.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Zostaw')),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Odwołaj'),
-          ),
-        ],
-      ),
+      title: 'Odwołać zamówienie #${order.number}?',
+      message: order.paid ? 'Pieniądze wrócą na kartę.' : 'Lokal jeszcze go nie przyjął.',
+      icon: AppIcons.xCircle,
+      action: 'Odwołaj zamówienie',
+      color: AppColors.error,
     );
-    if (ok != true) return;
+    if (!ok) return;
     try {
       await ref.read(repositoryProvider).cancelOrder(order.id);
       ref
@@ -1051,9 +1075,14 @@ class OrderDetailScreen extends ConsumerWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          o.payment == PaymentChoice.cash
-                              ? 'Gotówka ${o.kind == OrderKind.delivery ? 'u dostawcy' : 'przy odbiorze'}'
-                              : 'Karta online · ${o.paid ? 'opłacone' : 'nieopłacone'}${o.testPayment ? ' (test)' : ''}',
+                          switch (o.payment) {
+                            PaymentChoice.cash => 'Gotówka ${o.kind == OrderKind.delivery ? 'u dostawcy' : 'przy odbiorze'}',
+                            PaymentChoice.cardOnDelivery =>
+                              'Karta ${o.kind == OrderKind.delivery ? 'u dostawcy' : 'przy odbiorze'}'
+                                  '${o.paid ? ' · opłacone' : ''}',
+                            PaymentChoice.card =>
+                              'Karta online · ${o.paid ? 'opłacone' : 'nieopłacone'}${o.testPayment ? ' (test)' : ''}',
+                          },
                           style: text.bodySmall?.copyWith(color: AppColors.textMuted),
                         ),
                       ],

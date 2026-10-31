@@ -86,26 +86,16 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
   }
 
   Future<void> _delivered(Course course) async {
-    final ok = await showDialog<bool>(
+    final ok = await showConfirmSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Dostarczone #${course.number}?'),
-        content: Text(
-          course.cash
-              ? 'Pobrałeś od gościa ${Fmt.price(course.totalGrosze)} gotówką?'
-              : 'Zamówienie jest opłacone kartą online. Nic nie pobierasz.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Jeszcze nie')),
-          FilledButton(
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(course.cash ? 'Tak, pobrałem' : 'Dostarczone'),
-          ),
-        ],
-      ),
+      title: 'Dostarczone #${course.number}?',
+      message: course.collect
+          ? 'Pobrałeś od gościa ${Fmt.price(course.totalGrosze)} ${course.cash ? 'gotówką' : 'kartą'}?'
+          : 'Zamówienie jest opłacone. Nic nie pobierasz.',
+      icon: course.collect ? (course.cash ? AppIcons.money : AppIcons.creditCard) : AppIcons.checkCircle,
+      action: course.collect ? 'Tak, pobrałem ${Fmt.price(course.totalGrosze)}' : 'Dostarczone',
     );
-    if (ok != true) return;
+    if (!ok) return;
     HapticFeedback.mediumImpact();
     await _run(
       () => ref.read(deliveriesRepositoryProvider).delivered(course.id, widget.job.memberId),
@@ -115,10 +105,8 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
 
   Future<void> _handOver(Course course, DeliveryBoard board) async {
     final others = board.queue.where((q) => q.memberId != widget.job.memberId).toList();
-    final choice = await showModalBottomSheet<String>(
+    final choice = await showTableSheet<String>(
       context: context,
-      useSafeArea: true,
-      showDragHandle: true,
       builder: (context) => _HandOverSheet(course: course, others: others),
     );
     if (choice == null) return;
@@ -473,6 +461,10 @@ class _CourseCard extends StatelessWidget {
             ],
             const SizedBox(height: 12),
             Text(c.address, style: text.titleLarge),
+            if (c.addressNote != null) ...[
+              const SizedBox(height: 4),
+              Text(c.addressNote!, style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
+            ],
             if (c.note != null) ...[
               const SizedBox(height: 6),
               // Uwaga gościa: ikona dymku i ciepły kolor, żeby nie zginęła pod adresem.
@@ -615,7 +607,9 @@ class _PaymentBox extends StatelessWidget {
     final (color, icon, title) = c.prepaid
         ? (AppColors.accent, AppIcons.checkCircle, 'Opłacone · ${Fmt.price(c.totalGrosze)}. Nic nie pobierasz.')
         : c.cash
-        ? (_cash, AppIcons.money, 'Pobierz ${Fmt.price(c.totalGrosze)}')
+        ? (_cash, AppIcons.money, 'Pobierz ${Fmt.price(c.totalGrosze)} gotówką')
+        : c.cardOnDelivery
+        ? (_cash, AppIcons.creditCard, 'Pobierz ${Fmt.price(c.totalGrosze)} kartą (terminal)')
         : (AppColors.accent, AppIcons.creditCard, 'Opłacone kartą online · ${Fmt.price(c.totalGrosze)}');
     return Container(
       padding: const EdgeInsets.all(14),
@@ -633,7 +627,7 @@ class _PaymentBox extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: text.titleMedium?.copyWith(color: color, fontFeatures: _tabular)),
-                if (!c.cash && c.testPayment)
+                if (!c.collect && !c.prepaid && c.testPayment)
                   Text('Płatność testowa', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
               ],
             ),
@@ -833,7 +827,9 @@ void showOnCar(DeliveryBoard board, String memberId) {
             phone: course.customerPhone,
             payment: course.cash
                 ? 'Pobierz ${Fmt.price(course.totalGrosze)} gotówką'
-                : 'Opłacone kartą online',
+                : course.cardOnDelivery
+                ? 'Pobierz ${Fmt.price(course.totalGrosze)} kartą'
+                : 'Opłacone',
             items: switch (course.items.fold(0, (s, i) => s + i.quantity)) {
               1 => '1 pozycja',
               final n when n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) => '$n pozycje',

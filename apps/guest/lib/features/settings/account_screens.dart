@@ -421,30 +421,17 @@ class AdvancedSettingsScreen extends ConsumerWidget {
   }
 
   Future<void> _deleteAccount(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showConfirmSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Usunąć konto?'),
-        content: const Text(
-          'Usuniemy twoje konto i profil. Opinie zostaną jako anonimowe, bez twojego imienia. '
+      title: 'Usunąć konto?',
+      message: 'Usuniemy twoje konto i profil. Opinie zostaną jako anonimowe, bez twojego imienia. '
           'Nadchodzące rezerwacje odwołaj wcześniej, bo restauracja nadal będzie na ciebie czekać. '
           'Tej operacji nie da się cofnąć.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Anuluj'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Usuń konto'),
-          ),
-        ],
-      ),
+      icon: AppIcons.trash,
+      action: 'Usuń konto',
+      color: AppColors.error,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     try {
       await ref.read(repositoryProvider).deleteAccount();

@@ -130,22 +130,16 @@ class _CodeCardState extends ConsumerState<_CodeCard> {
   }
 
   Future<void> _activate() async {
-    final ok = await showDialog<bool>(
+    final ok = await showConfirmSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Aktywować kod?'),
-        content: Text(
-          'Kod będzie ważny 15 minut. Aktywuj go przy stoliku w ${widget.code.restaurantName}, '
+      title: 'Aktywować kod?',
+      message: 'Kod będzie ważny 15 minut. Aktywuj go przy stoliku w ${widget.code.restaurantName}, '
           'zanim poprosisz o rachunek, i pokaż kelnerowi.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Nie teraz')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Aktywuj')),
-        ],
-      ),
+      icon: AppIcons.sealPercent,
+      action: 'Aktywuj kod',
+      actionHint: 'Ważny 15 minut od teraz',
     );
-    if (ok != true || !mounted) return;
+    if (!ok || !mounted) return;
     setState(() => _busy = true);
     try {
       final result = await ref.read(repositoryProvider).activateCode(widget.code.id);

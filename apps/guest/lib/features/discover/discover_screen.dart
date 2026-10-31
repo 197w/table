@@ -490,11 +490,8 @@ class _FilterRow extends ConsumerWidget {
             icon: AppIcons.sliders,
             label: count == 0 ? 'Filtry' : 'Filtry · $count',
             selected: count > 0,
-            onTap: () => showModalBottomSheet<void>(
+            onTap: () => showTableSheet<void>(
               context: context,
-              isScrollControlled: true,
-              useSafeArea: true,
-              showDragHandle: true,
               builder: (_) => _FilterSheet(hasLocation: hasLocation),
             ),
           ),

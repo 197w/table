@@ -37,6 +37,13 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   okrągłe „Zamknij” w lewym górnym rogu, duży tytuł, opcje jako wiersze z ikoną i strzałką): „Zakończ w aplikacji”
   albo „Zeskanuj kod z panelu”; potem „Zmiana zakończona” z godzinami w tym samym oknie (`showMessageSheet`, też
   po zeskanowaniu kodu startu albo końca zmiany).
+  Wszystkie okna w Table i Table for employees mają ten styl (od 31.10.2026, prośba użytkownika): wspólna ramka
+  `TableSheet` w `option_sheet.dart`. Pytania przed działaniem to `showConfirmSheet` (np. „Odwołać rezerwację?”,
+  „Wylogować się?”, „Dostarczone #12?”: jedna opcja z ikoną, zamknięcie = nie), wybór `showOptionSheet`, komunikat
+  `showMessageSheet`, wpisanie tekstu `showTextSheet` (uwaga na tydzień), a większe okna z własną treścią (filtry,
+  warianty dania, płatność kartą, zadatek, lista oczekujących, godziny w grafiku, zamknięcie rachunku, rabat, goście,
+  oddanie kursu, zdjęcie dania, kółka godzin na telefonie) `showTableSheet`. Nie używać `showDialog`, `AlertDialog`
+  ani gołego `showModalBottomSheet` w aplikacjach mobilnych. Panel na komputerze zostaje przy swoich oknach.
   Informacje od kierownika (0062, `announcements_screen.dart`): karta na „Zeskanuj” (nowe wyróżnione, najnowsza),
   lista z ostatnich 60 dni ze wszystkich lokali pracownika (`staff_announcements`, `announcementsProvider` co 2 min)
   i cała informacja; otwarcie oznacza ją jako przeczytaną (`staff_read_announcement`). Dyspozycyjność może trwać przez
@@ -108,7 +115,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
   Map i śledzenia dostawców nie ma od 0068 (usunięte na prośbę użytkownika, także mapa u gościa).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0073, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0074, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -318,7 +325,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   przekroczenie (`RestaurantDetail.cartLimitProblem`, `canAddMore`).
 - Logi i Time Machine (0072, pasek boczny pod „Ustawienia lokalu” → `/logi`, uprawnienie `activity` w grupie Lokal,
   w 0072 dostały je stanowiska z `day_close` albo `staff`; `features/activity/activity_screen.dart`). Wygląd
-  i działanie jak Time Machine w UniFi z filmu w Todoist (od 31.10.2026): po lewej oś czasu, która przesuwa się pod
+  i działanie jak Time Machine w UniFi z filmu w Todoist (od 31.10.2026): po lewej „Na żywo / Historia” i dzień
+  (`StepSwitcher` z kalendarzem), pod nimi oś czasu przycięta do swojej karty (godziny nie wchodzą na przyciski
+  skali), bez paska nad całym ekranem, więc plan sali ma ponad połowę wysokości. Oś przesuwa się pod
   stałą kreską z godziną i sekundami u góry (wcześniejsze chwile niżej; przeciąganie z bezwładnością, kółko myszy,
   Ctrl + kółko albo suwak −/+ zmienia skalę, kliknięcie wybiera chwilę), na osi ikony zdarzeń w kolorach grup
   (bliskie razem z liczbą, podpowiedź z listą, kliknięcie przenosi do zdarzenia). Po prawej na samej górze plan sali
@@ -542,9 +551,14 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   z podziałem Wszystkie / W restauracji / Dostawy / Odbiór osobisty (`HistoryKind`, z liczbą) i kwotą z dostawą.
   Paragon fiskalny jeszcze na kasie, integrację z drukarką fiskalną robimy później.
 - Dostawy i odbiór osobisty (0039, 0040, tylko Pro): lokal włącza je w „Ustawienia lokalu” → „Dostawa i odbiór”
-  (`delivery_enabled`, `pickup_enabled`, `takeaway_cash` = gotówka, opłata, minimalne zamówienie, obszar). Gość zamawia
-  w aplikacji Table (przycisk „Zamów” w lokalu, koszyk, `guest_place_order`; ceny liczy baza z menu), płaci kartą online
-  albo gotówką. Operatora płatności jeszcze nie ma: `private.app_settings.payments_mode = 'test'`, karta opłaca się
+  (`delivery_enabled`, `pickup_enabled`, `takeaway_cash` = gotówka, `takeaway_card` = karta przy odbiorze (0074,
+  domyślnie włączona), opłata, minimalne zamówienie, obszar). Gość zamawia w aplikacji Table (przycisk „Zamów”
+  w lokalu, koszyk, `guest_place_order`; ceny liczy baza z menu), płaci kartą online, kartą przy odbiorze
+  (`payment_choice = 'card_on_delivery'`: dostawcy przy drzwiach albo w lokalu; wydanie i dostarczenie zapisują
+  płatność jako kartę, więc podsumowanie dnia liczy ją z terminalami) albo gotówką. Panel w „Nowe zamówienie”: Opłacone,
+  Gotówka albo Karta przy odbiorze (`payment` w danych klienta). Uwagi do adresu (kod do klatki, piętro; z „Adres
+  dostawy” w Koncie) to osobne pole tylko przy dostawie (`orders.address_note`, `p_address_note`), a „Uwagi do
+  zamówienia” (`delivery_note`) są przy dostawie i odbiorze; dostawca i panel widzą je osobno. Operatora płatności jeszcze nie ma: `private.app_settings.payments_mode = 'test'`, karta opłaca się
   w trybie testowym (`guest_pay_order_test`, `payment_test`). Zamówienie: `orders.kind` delivery/pickup,
   `fulfillment`: awaiting_payment → placed → accepted → ready → on_the_way → delivered (albo rejected/cancelled),
   numer dnia `number`. Panel „Dostawy” (`/dostawy`, uprawnienie `orders`, dźwięk i powiadomienie przy nowym):

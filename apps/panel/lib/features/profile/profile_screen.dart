@@ -1737,6 +1737,7 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
         'delivery_enabled': _s.deliveryEnabled,
         'pickup_enabled': _s.pickupEnabled,
         'takeaway_cash': _s.cash,
+        'takeaway_card': _s.card,
         'delivery_fee_grosze': fee,
         'delivery_min_grosze': min,
         'delivery_area': _area.text.trim().isEmpty ? null : _area.text.trim(),
@@ -1779,6 +1780,8 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
           toggle('Odbiór osobisty', _s.pickupEnabled, (v) => setState(() => _s = _copy(pickup: v))),
           const SizedBox(height: 6),
           toggle('Gotówka', _s.cash, (v) => setState(() => _s = _copy(cash: v))),
+          const SizedBox(height: 6),
+          toggle('Karta przy odbiorze', _s.card, (v) => setState(() => _s = _copy(card: v))),
           const SizedBox(height: 14),
           Row(
             children: [
@@ -1853,10 +1856,11 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
     );
   }
 
-  DeliverySettings _copy({bool? delivery, bool? pickup, bool? cash}) => DeliverySettings(
+  DeliverySettings _copy({bool? delivery, bool? pickup, bool? cash, bool? card}) => DeliverySettings(
     deliveryEnabled: delivery ?? _s.deliveryEnabled,
     pickupEnabled: pickup ?? _s.pickupEnabled,
     cash: cash ?? _s.cash,
+    card: card ?? _s.card,
     feeGrosze: _s.feeGrosze,
     minGrosze: _s.minGrosze,
     area: _s.area,

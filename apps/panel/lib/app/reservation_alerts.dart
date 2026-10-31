@@ -39,7 +39,7 @@ class ReservationAlerts {
       order.customerName,
       ?order.address,
       Fmt.price(order.totalGrosze),
-      order.cash ? 'gotówka' : 'karta online',
+      order.cash ? 'gotówka' : (order.cardOnDelivery ? 'karta przy odbiorze' : 'karta online'),
     ].join(' · ');
     Toasts.instance.show(
       details,

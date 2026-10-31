@@ -113,28 +113,15 @@ class _BodyState extends ConsumerState<_Body> {
 
   Future<void> _cancel() async {
     final d = widget.detail;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showConfirmSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Odwołać rezerwację?'),
-        content: Text(
-          '${d.restaurantName}, ${Fmt.dateTime(d.startsAt)}. Stolik wróci do puli wolnych miejsc.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Zostaw'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Odwołaj'),
-          ),
-        ],
-      ),
+      title: 'Odwołać rezerwację?',
+      message: '${d.restaurantName}, ${Fmt.dateTime(d.startsAt)}. Stolik wróci do puli wolnych miejsc.',
+      icon: AppIcons.calendarX,
+      action: 'Odwołaj rezerwację',
+      color: AppColors.error,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     setState(() => _cancelling = true);
     try {

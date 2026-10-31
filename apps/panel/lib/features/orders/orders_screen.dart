@@ -2018,7 +2018,7 @@ class _TakeawayPanel extends StatelessWidget {
                   Text('Czas przygotowania', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
                   const SizedBox(height: 6),
                   SegmentedTabs<int>(
-                    options: const [(15, '15 min'), (30, '30'), (45, '45'), (60, '60')],
+                    options: const [(15, '15 min'), (30, '30 min'), (45, '45 min'), (60, '60 min')],
                     selected: minutes,
                     onChanged: onMinutes,
                   ),

@@ -177,7 +177,7 @@ class Repository {
             .select(
               'id, name, cuisine, price_level, description, address, city, phone, plan, is_example, logo_url, max_party_size, '
               'deposit_min_party, deposit_per_person_grosze, '
-              'delivery_enabled, pickup_enabled, takeaway_cash, delivery_fee_grosze, delivery_min_grosze, delivery_area, '
+              'delivery_enabled, pickup_enabled, takeaway_cash, takeaway_card, delivery_fee_grosze, delivery_min_grosze, delivery_area, '
               'kitchen_lead_pickup_min, kitchen_lead_delivery_min, cover_url, takeaway_max_items, takeaway_max_per_item, '
               'opening_hours(weekday, opens, closes), '
               'menu_sections(id, name, position, menu_items(id, name, description, price_grosze, allergens, position, variants, addons, available, photo_url))',
@@ -571,6 +571,7 @@ class Repository {
     required String phone,
     String? address,
     String? note,
+    String? addressNote,
     DateTime? scheduledFor,
   }) {
     return _guard(() async {
@@ -584,6 +585,8 @@ class Repository {
         'p_address': address,
         'p_note': note,
         'p_scheduled_for': scheduledFor?.toUtc().toIso8601String(),
+        // Uwagi do adresu tylko przy dostawie (0074); bez nich parametr nie idzie, jak w starszych wersjach.
+        if (addressNote != null && addressNote.trim().isNotEmpty) 'p_address_note': addressNote.trim(),
       });
       return json['id'] as String;
     });

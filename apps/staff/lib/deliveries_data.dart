@@ -77,6 +77,8 @@ class Course {
     required this.paid,
     required this.totalGrosze,
     required this.items,
+    this.cardOnDelivery = false,
+    this.addressNote,
     this.note,
     this.testPayment = false,
     this.promisedAt,
@@ -104,10 +106,21 @@ class Course {
   final String customerName;
   final String customerPhone;
   final String address;
+
+  /// Uwagi do adresu od gościa (kod do klatki, piętro), 0074.
+  final String? addressNote;
+
+  /// Uwagi do zamówienia.
   final String? note;
 
   /// Gość płaci gotówką przy drzwiach.
   final bool cash;
+
+  /// Gość płaci kartą przy drzwiach (terminal dostawcy), 0074.
+  final bool cardOnDelivery;
+
+  /// Pobierasz pieniądze przy drzwiach (gotówką albo kartą).
+  bool get collect => (cash || cardOnDelivery) && !prepaid;
 
   /// Opłacone z góry kartą online.
   final bool paid;
@@ -136,7 +149,9 @@ class Course {
     customerPhone: j['customer_phone'] as String? ?? '',
     address: j['delivery_address'] as String? ?? '',
     note: j['delivery_note'] as String?,
+    addressNote: (j['address_note'] as String?)?.trim().isEmpty ?? true ? null : j['address_note'] as String,
     cash: j['payment_choice'] == 'cash',
+    cardOnDelivery: j['payment_choice'] == 'card_on_delivery',
     paid: j['payment_status'] == 'paid',
     testPayment: j['payment_test'] == true,
     totalGrosze: _toInt(j['total_grosze']),

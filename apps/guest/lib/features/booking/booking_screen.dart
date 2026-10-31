@@ -94,11 +94,8 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     var from = times.first;
     var to = times.last;
     final note = TextEditingController();
-    final ok = await showModalBottomSheet<bool>(
+    final ok = await showTableSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
       builder: (context) => StatefulBuilder(
         builder: (context, setSheet) {
           final text = Theme.of(context).textTheme;

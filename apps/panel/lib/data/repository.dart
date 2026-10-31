@@ -305,7 +305,7 @@ class PanelRepository {
             'cover_url, '
             'deposit_min_party, deposit_per_person_grosze, '
             'schedule_period, schedule_deadline_dow, schedule_deadline_time, inventory_period, delivery_enabled, '
-            'pickup_enabled, takeaway_cash, delivery_platforms, takeaway_max_items, takeaway_max_per_item, '
+            'pickup_enabled, takeaway_cash, takeaway_card, delivery_platforms, takeaway_max_items, takeaway_max_per_item, '
             'delivery_fee_grosze, delivery_min_grosze, delivery_area, opening_hours(weekday, opens, closes)',
           )
           .eq('id', restaurantId)
@@ -625,6 +625,7 @@ class PanelRepository {
   static const _takeawayColumns =
       'id, kind, number, fulfillment, opened_at, closed_at, customer_name, customer_company, customer_nip, '
       'customer_phone, delivery_address, address_street, address_house, address_city, delivery_note, staff_note, '
+      'address_note, '
       'delivery_fee_grosze, payment_choice, payment_status, payment_test, promised_at, accepted_at, picked_up_at, '
       'scheduled_for, kitchen_at, '
       'courier_member, reject_reason, course_id, guest_id, courier:staff_members!orders_courier_member_fkey(name), '
