@@ -416,8 +416,16 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   nie zweryfikuje (weryfikacja: `update restaurants set listed = true`, poprawić też położenie `location`).
   Ja nadal nie zakładam kont ani nie wymyślam haseł: konto zakłada sama restauracja albo użytkownik.
 - Pracownicy nie mają kont w panelu. Dodaje ich osoba z uprawnieniem `staff` w „Pracownicy” → „Zespół”
-  (kafelki albo lista, przełącznik po prawej w wierszu zakładek; szczegóły ze statystykami `panel_member_stats`).
-  Zakładki Zespół, Grafik i Czas pracy to same ikony (`IconTabs` w `panel_widgets.dart`): wybrana rozsuwa się z nazwą.
+  (szczegóły ze statystykami `panel_member_stats`). Zakładka „Pracownicy” wygląda jak „People” w UniFi (od 0.28.0,
+  wzór od użytkownika; `staff_screen.dart`): po lewej panel (312 px, zwijany strzałką) z zakładkami Zespół / Grafik /
+  Stanowiska (`SegmentedTabs(expand: true)`, według uprawnień `staff`/`staff_logins`, `schedule`, `positions`),
+  wyszukiwaniem (imię albo telefon), „Dodaj pracownika” („Dodaj stanowisko” w Stanowiskach) i filtrami z liczbą osób
+  (`_FilterSection`: Stanowisko, Stan: Na zmianie / Aktywni / Nieaktywni, na start zaznaczone Aktywni; Konto
+  w aplikacji: Połączone / Niepołączone; pusta grupa nie filtruje). Filtry działają też w Grafiku. Po prawej Zespół
+  jako tabela (`_TeamTable`: imię z odznakami ALL / Ty / Nieaktywny, telefon, stanowisko jako znaczek z „+1” za
+  dodatkowe, Teraz: zielona kropka „od 18:50”, godziny w tym tygodniu, kod), Grafik z okresem i „Edytuj” nad
+  siatką, Stanowiska jako tabela (`_PositionsTable`: nazwa, systemowe z kłódką, uprawnienia, liczba pracowników,
+  zmiana i usunięcie własnych; wcześniej okno „Stanowiska”). Kafelków zespołu już nie ma.
   `SegmentedTabs` i `IconTabs` mają wspólne podświetlenie (`_SlidingSegments`), które przesuwa się do wybranej opcji. Każdy pracownik ma czterocyfrowy kod, unikalny w lokalu
   (nadaje go baza przy dodaniu, trigger `staff_members_code`; zmiana: `panel_set_staff_code`, wpisany albo losowy).
   Kod widać stale w szczegółach (uprawnienie `staff_logins`, „Kody pracowników”, `panel_staff_codes`) i w aplikacji

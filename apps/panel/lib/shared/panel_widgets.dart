@@ -491,7 +491,8 @@ class SegmentedTabs<T> extends StatelessWidget {
   final T selected;
   final ValueChanged<T> onChanged;
 
-  /// Na całą dostępną szerokość, opcje po równo (np. nad osią czasu w Logach).
+  /// Na całą dostępną szerokość (np. nad osią czasu w Logach, w panelu Pracowników): każda opcja dostaje
+  /// swoją szerokość i równą część zapasu, a napisy mają mniejszy margines, żeby zmieściły się trzy.
   final bool expand;
 
   @override
@@ -504,6 +505,7 @@ class SegmentedTabs<T> extends StatelessWidget {
           _TextSegment(
             label: label,
             selected: value == selected,
+            padding: expand ? 6 : 14,
             onTap: () => onChanged(value),
           ),
       ],
@@ -755,22 +757,29 @@ class _RenderIndicatorRow extends RenderBox
   double? computeDistanceToActualBaseline(TextBaseline baseline) =>
       defaultComputeDistanceToHighestActualBaseline(baseline);
 
-  /// Ograniczenia opcji: swoja szerokość albo równa część całej szerokości.
-  BoxConstraints _childConstraints(BoxConstraints constraints) {
+  /// Ograniczenia każdej opcji: swoja szerokość, a przy [_expand] swoja szerokość i równa część wolnego miejsca
+  /// (gdy miejsca brakuje, wszystkie po równo).
+  List<BoxConstraints> _childConstraints(BoxConstraints constraints) {
+    final loose = BoxConstraints(maxHeight: constraints.maxHeight);
     if (!_expand || !constraints.hasBoundedWidth || childCount == 0) {
-      return BoxConstraints(maxHeight: constraints.maxHeight);
+      return List.filled(childCount, loose);
     }
-    final share = constraints.maxWidth / childCount;
-    return BoxConstraints(minWidth: share, maxWidth: share, maxHeight: constraints.maxHeight);
+    final own = [for (final c in _children) c.getMaxIntrinsicWidth(constraints.maxHeight)];
+    final extra = (constraints.maxWidth - own.fold(0.0, (a, b) => a + b)) / childCount;
+    return [
+      for (final w in own)
+        BoxConstraints.tightFor(width: extra >= 0 ? w + extra : constraints.maxWidth / childCount)
+            .copyWith(maxHeight: constraints.maxHeight),
+    ];
   }
 
   @override
   Size computeDryLayout(covariant BoxConstraints constraints) {
-    final loose = _childConstraints(constraints);
+    final each = _childConstraints(constraints);
     var width = 0.0;
     var height = 0.0;
-    for (final c in _children) {
-      final s = c.getDryLayout(loose);
+    for (final (i, c) in _children.indexed) {
+      final s = c.getDryLayout(each[i]);
       width += s.width;
       height = math.max(height, s.height);
     }
@@ -779,10 +788,10 @@ class _RenderIndicatorRow extends RenderBox
 
   @override
   void performLayout() {
-    final loose = _childConstraints(constraints);
+    final each = _childConstraints(constraints);
     var height = 0.0;
-    for (final c in _children) {
-      c.layout(loose, parentUsesSize: true);
+    for (final (i, c) in _children.indexed) {
+      c.layout(each[i], parentUsesSize: true);
       height = math.max(height, c.size.height);
     }
     var x = 0.0;
@@ -833,11 +842,14 @@ Color _segmentColor({required bool selected, required bool hovered, Color? selec
 
 /// Opcja z samym napisem.
 class _TextSegment extends StatefulWidget {
-  const _TextSegment({required this.label, required this.selected, required this.onTap});
+  const _TextSegment({required this.label, required this.selected, required this.onTap, this.padding = 14});
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+
+  /// Margines napisu z lewej i prawej.
+  final double padding;
 
   @override
   State<_TextSegment> createState() => _TextSegmentState();
@@ -862,7 +874,7 @@ class _TextSegmentState extends State<_TextSegment> {
           child: PanelPress(
             scale: 0.95,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              padding: EdgeInsets.symmetric(horizontal: widget.padding, vertical: 7),
               child: TweenAnimationBuilder<Color?>(
                 tween: ColorTween(end: _segmentColor(selected: widget.selected, hovered: _hovered)),
                 duration: const Duration(milliseconds: 200),
@@ -870,6 +882,9 @@ class _TextSegmentState extends State<_TextSegment> {
                 builder: (context, color, _) => Text(
                   widget.label,
                   textAlign: TextAlign.center,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
                   style: text.labelLarge?.copyWith(color: color),
                 ),
               ),
