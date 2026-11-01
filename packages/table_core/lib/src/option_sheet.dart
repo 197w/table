@@ -19,8 +19,9 @@ class SheetOption<T> {
 }
 
 /// Okno od dołu w stylu iOS (10.2026, wzór od użytkownika: wybór sposobu zamówienia z aplikacji McDonald's):
-/// zaokrąglona karta odsunięta od krawędzi ekranu, okrągłe „Zamknij” w lewym górnym rogu (na iOS 26 Liquid Glass),
-/// duży tytuł i opis. Tak wyglądają wszystkie okna w Table i Table for employees (od 31.10.2026): pytania
+/// karta na całą szerokość telefonu aż do dołu ekranu, zaokrąglona u góry (1.11.2026, prośba użytkownika; wcześniej
+/// odsunięta od krawędzi), okrągłe „Zamknij” w lewym górnym rogu (na iOS 26 szkło Liquid Glass), duży tytuł i opis.
+/// Treść kończy się nad paskiem systemu, a tło karty sięga pod niego. Tak wyglądają wszystkie okna w Table i Table for employees (od 31.10.2026): pytania
 /// ([showConfirmSheet]), wybór ([showOptionSheet]), komunikaty ([showMessageSheet]), wpisanie tekstu
 /// ([showTextSheet]) i większe okna z własną treścią ([showTableSheet]).
 class TableSheet extends StatelessWidget {
@@ -105,17 +106,17 @@ class TableSheet extends StatelessWidget {
           );
     return Padding(
       padding: EdgeInsets.only(bottom: avoidKeyboard ? MediaQuery.viewInsetsOf(context).bottom : 0),
-      child: SafeArea(
-        top: false,
-        minimum: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-        // Karta kończy się nad paskiem systemu, więc treść nie dolicza go drugi raz (viewPadding).
-        child: MediaQuery.removeViewPadding(
-          context: context,
-          removeBottom: true,
-          child: Material(
-            color: dark ? AppColors.surfaceRaised : AppColors.surface,
-            borderRadius: BorderRadius.circular(36),
-            clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: dark ? AppColors.surfaceRaised : AppColors.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(36)),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          // Pasek systemu na dole (przy otwartej klawiaturze zero, bo wtedy karta stoi nad nią).
+          padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+          // Ramka już odsunęła treść od paska systemu, więc treść nie dolicza go drugi raz (viewPadding).
+          child: MediaQuery.removeViewPadding(
+            context: context,
+            removeBottom: true,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -124,10 +125,13 @@ class TableSheet extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
                   child: Align(
                     alignment: Alignment.centerLeft,
+                    // Szkło rysowane przez Fluttera, nie natywny przycisk: okno jedzie od dołu, a drugie okno
+                    // (np. kółka godzin nad „Zgłoś godziny”) je przykrywa. Natywny widok w takim miejscu psuł
+                    // na iPhonie rysowanie treści okna (puste kółka godzin, 1.11.2026).
                     child: GlassIconButton(
                       symbol: 'xmark',
+                      icon: AppIcons.close,
                       label: 'Zamknij',
-                      native: true,
                       onTap: () => Navigator.maybePop(context),
                       fallback: _CloseCircle(onTap: () => Navigator.maybePop(context)),
                     ),

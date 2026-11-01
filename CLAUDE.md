@@ -33,8 +33,9 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   (`_dayStatus`), bez przygaszania przezroczystością, uwaga na tydzień pod nazwą tygodnia, „Moje godziny” na karcie.
   Ustawienia jak u gościa. Podgląd ekranów: test golden poza repozytorium, jak przy panelu.
   „Zakończ zmianę” (31.10.2026, wzór od użytkownika: okno wyboru sposobu zamówienia z aplikacji McDonald's) otwiera
-  okno od dołu (`showOptionSheet` w `table_core/src/option_sheet.dart`: karta z zaokrągleniem odsunięta od krawędzi,
-  okrągłe „Zamknij” w lewym górnym rogu, duży tytuł, opcje jako wiersze z ikoną i strzałką): „Zakończ w aplikacji”
+  okno od dołu (`showOptionSheet` w `table_core/src/option_sheet.dart`: karta na całą szerokość telefonu aż do
+  dołu ekranu, zaokrąglona u góry, treść nad paskiem systemu (od 1.11.2026, prośba użytkownika; wcześniej karta
+  odsunięta od krawędzi), okrągłe „Zamknij” w lewym górnym rogu, duży tytuł, opcje jako wiersze z ikoną i strzałką): „Zakończ w aplikacji”
   albo „Zeskanuj kod z panelu”; potem „Zmiana zakończona” z godzinami w tym samym oknie (`showMessageSheet`, też
   po zeskanowaniu kodu startu albo końca zmiany).
   Wszystkie okna w Table i Table for employees mają ten styl (od 31.10.2026, prośba użytkownika): wspólna ramka
@@ -206,12 +207,14 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Natywne kontrolki UIKit tylko tam, gdzie stoją w miejscu i nic z Fluttera ich nie przykrywa: dolne menu
   (`NativeGlassTabBar`, natywny UITabBar), „Wstecz” i „Zamknij” w każdym pasku u góry
   (`AppBar(leading: glassLeading(context))`; poza iOS 26 null, czyli zwykły przycisk), „Wróć” i serce w pasku strony
-  lokalu, „Zamknij” w oknie od dołu (`GlassIconButton(native: true)`). Reszta to szkło rysowane przez Fluttera
+  lokalu. Reszta to szkło rysowane przez Fluttera
   w tym samym stylu (`GlassSurface`: półprzezroczysta warstwa, jasna krawędź, cień; `frosted` gęstsze na zdjęciu,
   `blur` z rozmyciem nad przewijaną treścią): filtry w Odkrywaj (`GlassPill`, `DropdownPill` sam przechodzi na
   szkło), przełącznik kart i listy (`GlassIconButton` z `icon` i `selected`), serca na kartach
   (`LikeButton(glass: true)`), „Zarezerwuj stolik”, „Zadzwoń, żeby zarezerwować” i „Zamów” (z rozmyciem, bez paska
-  pod spodem), u kelnera filtry działów menu. Powód (31.10.2026, „aplikacje są zlagowane”): we Flutterze 3.47 na iOS
+  pod spodem), u kelnera filtry działów menu, „Zamknij” w oknie od dołu (`GlassIconButton` z `icon`; natywny
+  przycisk w oknie, które jedzie od dołu i które przykrywa drugie okno, psuł na iPhonie rysowanie treści okna:
+  puste kółka godzin, 1.11.2026). Powód (31.10.2026, „aplikacje są zlagowane”): we Flutterze 3.47 na iOS
   każda klatka z natywnym widokiem czeka na wątek główny, a każdy napis Fluttera na natywnym szkle to osobna warstwa
   wielkości ekranu rysowana w każdej klatce; kilkanaście pigułek i serc w przewijanej liście zacinało obie aplikacje.
   Nie dodawać natywnych kontrolek w listach ani pod treścią Fluttera. Wybrane: kolor akcentu z treścią

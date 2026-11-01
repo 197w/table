@@ -695,12 +695,12 @@ class _PeriodSheet extends ConsumerStatefulWidget {
 }
 
 class _PeriodSheetState extends ConsumerState<_PeriodSheet> {
-  late final Map<DateTime, bool> _on = {for (final d in widget.days) d: widget.existing[d] != null};
+  late final Map<DateTime, bool> _on = {for (final d in widget.days) d: _hoursOf(d) != null};
   late final Map<DateTime, TimeOfDay> _starts = {
-    for (final d in widget.days) d: _parse(widget.existing[d]?.starts ?? '10:00'),
+    for (final d in widget.days) d: _parse(_hoursOf(d)?.starts ?? '10:00'),
   };
   late final Map<DateTime, TimeOfDay> _ends = {
-    for (final d in widget.days) d: _parse(widget.existing[d]?.ends ?? '18:00'),
+    for (final d in widget.days) d: _parse(_hoursOf(d)?.ends ?? '18:00'),
   };
   late String _memberId = widget.jobs.first.memberId;
   bool _busy = false;
@@ -711,6 +711,14 @@ class _PeriodSheetState extends ConsumerState<_PeriodSheet> {
   }
 
   static String _fmt(TimeOfDay t) => '${_two(t.hour)}:${_two(t.minute)}';
+
+  /// Zgłoszenie z godzinami w tym dniu. „Nie mogę” nie ma godzin (puste `starts`), więc liczy się jak dzień
+  /// bez zgłoszenia: wyłączony, z domyślnymi godzinami. Wcześniej puste godziny wywracały okno (szary prostokąt
+  /// na iPhonie, 1.11.2026).
+  PlannedShift? _hoursOf(DateTime day) => switch (widget.existing[day]) {
+    final e? when !e.unavailable => e,
+    _ => null,
+  };
 
   Future<void> _pick(DateTime day, bool start) async {
     final picked = await showTimeWheel(
@@ -737,17 +745,14 @@ class _PeriodSheetState extends ConsumerState<_PeriodSheet> {
         return;
       }
     }
-    // Wyłączony dzień ze zgłoszeniem wycofuje je. Niezmienionych dni nie wysyłamy drugi raz.
+    // Wyłączony dzień ze zgłoszeniem wycofuje je („Nie mogę” zostaje). Niezmienionych dni nie wysyłamy drugi raz.
     final withdrawn = [
       for (final d in widget.days)
-        if (!(_on[d] ?? false) && widget.existing[d] != null) widget.existing[d]!,
+        if (!(_on[d] ?? false)) ?_hoursOf(d),
     ];
     final changed = [
       for (final d in chosen)
-        if (widget.existing[d] == null ||
-            widget.existing[d]!.starts != _fmt(_starts[d]!) ||
-            widget.existing[d]!.ends != _fmt(_ends[d]!))
-          d,
+        if (_hoursOf(d) case final e when e == null || e.starts != _fmt(_starts[d]!) || e.ends != _fmt(_ends[d]!)) d,
     ];
     if (chosen.isEmpty && withdrawn.isEmpty) {
       showMessage(context, 'Zaznacz dni, w które możesz pracować.');
