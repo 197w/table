@@ -1094,7 +1094,7 @@ class _RecipeEditor extends StatelessWidget {
               ),
               IconButton(
                 tooltip: 'Usuń',
-                icon: Glyph(AppIcons.close, size: 16, color: AppColors.textMuted),
+                icon: const Glyph(AppIcons.close, size: 16),
                 onPressed: () {
                   rows.remove(row);
                   onChanged();
@@ -1199,7 +1199,7 @@ class _OptionsEditor extends StatelessWidget {
               ),
               IconButton(
                 tooltip: 'Usuń',
-                icon: Glyph(AppIcons.close, size: 16, color: AppColors.textMuted),
+                icon: const Glyph(AppIcons.close, size: 16),
                 onPressed: () {
                   rows.remove(row);
                   onChanged();

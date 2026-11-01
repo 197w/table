@@ -151,7 +151,7 @@ class PanelPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     return Container(
-      height: 36,
+      height: 40,
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -238,10 +238,10 @@ class PanelCard extends StatelessWidget {
   }
 }
 
-/// Przycisk z samą ikoną do akcji w nagłówku, na przykład „Nowa rezerwacja”.
-/// W ciemnym motywie jest biały z białą poświatą: ikona główna w kolorze marki,
-/// pozostałe szare. W jasnym motywie główny jest miętowy, a reszta obrysowana.
-class GlowButton extends StatelessWidget {
+/// Przycisk z samą ikoną do akcji w nagłówku, na przykład „Nowa rezerwacja”. Sama ikona, bez tła,
+/// obwódki i poświaty (1.11.2026, prośba użytkownika), jak ikony w menu bocznym: główna akcja
+/// w kolorze akcentu, pozostałe szare, a najechana myszą jaśnieje.
+class GlowButton extends StatefulWidget {
   const GlowButton({
     super.key,
     required this.icon,
@@ -259,62 +259,46 @@ class GlowButton extends StatelessWidget {
   final bool primary;
   final double iconSize;
 
-  /// Szara ikona na białym przycisku w ciemnym motywie.
-  static const _grey = Color(0xFF7A7A7A);
+  @override
+  State<GlowButton> createState() => _GlowButtonState();
+}
+
+class _GlowButtonState extends State<GlowButton> {
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
-    final dark = AppColors.palette.brightness == Brightness.dark;
-    const radius = BorderRadius.all(Radius.circular(12));
-
-    final Color background;
-    final Color iconColor;
-    final List<BoxShadow> glow;
-    BorderSide side = BorderSide.none;
-    if (dark) {
-      background = Colors.white;
-      // Na białym tle jasna mięta ginie, więc marka występuje w ciemniejszym odcieniu.
-      iconColor = primary ? AppPalette.light.accent : _grey;
-      glow = [
-        BoxShadow(color: Colors.white.withValues(alpha: 0.16), blurRadius: 14),
-      ];
-    } else if (primary) {
-      background = AppColors.accentFill;
-      iconColor = AppColors.onAccent;
-      glow = [
-        BoxShadow(
-          color: AppColors.accentFill.withValues(alpha: 0.45),
-          blurRadius: 12,
-          offset: const Offset(0, 3),
-        ),
-      ];
-    } else {
-      background = AppColors.background;
-      iconColor = AppColors.textMuted;
-      side = BorderSide(color: AppColors.ringStrong);
-      glow = [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.08),
-          blurRadius: 6,
-          offset: const Offset(0, 2),
-        ),
-      ];
-    }
-
+    final enabled = widget.onPressed != null;
+    final color = !enabled
+        ? AppColors.textDisabled
+        : widget.primary
+        ? AppColors.accent
+        : (_hovered ? AppColors.text : AppColors.textMuted);
     return Tooltip(
-      message: tooltip,
-      child: DecoratedBox(
-        decoration: BoxDecoration(borderRadius: radius, boxShadow: glow),
-        child: Material(
-          color: background,
-          shape: RoundedRectangleBorder(borderRadius: radius, side: side),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onPressed,
+      message: widget.tooltip,
+      child: MouseRegion(
+        cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onPressed,
+          child: PanelPress(
+            scale: 0.9,
             child: SizedBox(
-              width: 44,
+              width: 40,
               height: 40,
-              child: Center(child: Glyph(icon, size: iconSize, color: iconColor)),
+              child: Center(
+                child: TweenAnimationBuilder<Color?>(
+                  tween: ColorTween(end: color),
+                  duration: const Duration(milliseconds: 180),
+                  builder: (context, c, _) => Glyph(
+                    widget.primary ? widget.icon.duotone : widget.icon,
+                    size: widget.iconSize + 4,
+                    color: c,
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -323,7 +307,8 @@ class GlowButton extends StatelessWidget {
   }
 }
 
-/// Kolorowa kostka z ikoną, jak w kaflach liczb i nagłówkach kart.
+/// Ikona w kolorze miary, jak w kaflach liczb i nagłówkach kart. Sama ikona, bez kolorowej kostki
+/// i cienia (1.11.2026, prośba użytkownika: ikony bez tła).
 class IconBadge extends StatelessWidget {
   const IconBadge(this.icon, {super.key, required this.color, this.size = 34});
 
@@ -332,24 +317,7 @@ class IconBadge extends StatelessWidget {
   final double size;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(size / 3),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.35),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Glyph(icon.duotone, size: size * 0.52, color: Colors.white),
-    );
-  }
+  Widget build(BuildContext context) => Glyph(icon.duotone, size: size * 0.7, color: color);
 }
 
 /// Barwy kafli liczb. Każda miara ma swój kolor, ten sam co jej słupki na wykresie.
@@ -361,8 +329,7 @@ abstract final class TileColors {
   static const rose = Color(0xFFD9455F);
 }
 
-/// Liczba z opisem, na przykład „14 gości”. Z ikoną w kolorowej kostce
-/// i zmianą względem poprzedniego okresu.
+/// Liczba z opisem, na przykład „14 gości”. Z kolorową ikoną i zmianą względem poprzedniego okresu.
 class StatTile extends StatelessWidget {
   const StatTile({
     super.key,
@@ -382,7 +349,7 @@ class StatTile extends StatelessWidget {
   final String? hint;
   final bool accent;
 
-  /// Kolor kostki z ikoną.
+  /// Kolor ikony.
   final Color? color;
 
   /// Zmiana w procentach względem poprzedniego okresu. Null, gdy nie ma z czym porównać.
@@ -418,7 +385,7 @@ class StatTile extends StatelessWidget {
               children: [
                 if (icon != null) ...[
                   IconBadge(icon!, color: color ?? AppColors.accentFill),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                 ],
                 Expanded(
                   child: Text(
@@ -518,8 +485,9 @@ class SegmentedTabs<T> extends StatelessWidget {
   }
 }
 
-/// Zakładki jako same ikony. Wybrana rozsuwa się i pokazuje nazwę obok ikony, a podświetlenie
-/// płynie do niej od poprzedniej. Pozostałe mają nazwę w podpowiedzi po najechaniu myszą.
+/// Zakładki jako same ikony, bez pigułki i podświetlenia z obwódką (1.11.2026, prośba użytkownika), jak grupy
+/// w górnym pasku: wybrana jest w kolorze akcentu i rozsuwa się, pokazując nazwę obok ikony. Pozostałe mają
+/// nazwę w podpowiedzi po najechaniu myszą.
 class IconTabs<T> extends StatelessWidget {
   const IconTabs({
     super.key,
@@ -538,8 +506,8 @@ class IconTabs<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _SlidingSegments(
-      selectedIndex: options.indexWhere((o) => o.$1 == selected),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         for (final (i, (value, icon, label)) in options.indexed)
           _IconSegment(
@@ -1005,7 +973,7 @@ class _IconSegmentState extends State<_IconSegment> {
                               widget.label,
                               maxLines: 1,
                               softWrap: false,
-                              style: text.labelLarge?.copyWith(color: AppColors.text),
+                              style: text.labelLarge?.copyWith(color: AppColors.accent, fontWeight: FontWeight.w600),
                             ),
                           ),
                         ),
@@ -1020,6 +988,119 @@ class _IconSegmentState extends State<_IconSegment> {
       ),
     );
     return selected ? tab : Tooltip(message: widget.tooltip ?? widget.label, child: tab);
+  }
+}
+
+/// Grupa ustawień jak w UniFi: tytuł (i opis) nad kartą, a w karcie wiersze ([SettingsRow]) oddzielone
+/// cienką linią. [footer], na przykład „Zapisz”, stoi po prawej pod ostatnim wierszem.
+class SettingsSection extends StatelessWidget {
+  const SettingsSection({
+    super.key,
+    required this.title,
+    required this.children,
+    this.description,
+    this.footer,
+  });
+
+  final String title;
+  final String? description;
+  final List<Widget> children;
+  final Widget? footer;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    Widget line() => Divider(height: 1, thickness: 1, color: AppColors.ring);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: text.titleMedium),
+              if (description != null) ...[
+                const SizedBox(height: 2),
+                Text(description!, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+              ],
+            ],
+          ),
+        ),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final (i, child) in children.indexed) ...[if (i > 0) line(), child],
+              if (footer != null) ...[
+                line(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  child: Align(alignment: Alignment.centerRight, child: footer),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Wiersz ustawień: nazwa i opis po lewej, przełącznik, pole albo wybór po prawej ([trailing]).
+/// [below] to treść pod wierszem na całą szerokość, na przykład podpowiedzi do kliknięcia.
+class SettingsRow extends StatelessWidget {
+  const SettingsRow({super.key, required this.title, this.description, this.trailing, this.below, this.muted = false});
+
+  final String title;
+  final String? description;
+  final Widget? trailing;
+  final Widget? below;
+
+  /// Szary napis, na przykład „Brak platform”.
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ConstrainedBox(
+            // Wiersze z przełącznikiem i z polem mają tę samą wysokość.
+            constraints: const BoxConstraints(minHeight: 40),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
+                        style: text.bodyMedium?.copyWith(
+                          color: muted ? AppColors.textMuted : AppColors.text,
+                          fontWeight: muted ? null : FontWeight.w500,
+                        ),
+                      ),
+                      if (description != null) ...[
+                        const SizedBox(height: 2),
+                        Text(description!, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+                      ],
+                    ],
+                  ),
+                ),
+                if (trailing != null) ...[const SizedBox(width: 24), trailing!],
+              ],
+            ),
+          ),
+          if (below != null) ...[const SizedBox(height: 12), below!],
+        ],
+      ),
+    );
   }
 }
 

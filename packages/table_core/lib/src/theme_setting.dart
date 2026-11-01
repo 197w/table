@@ -3,7 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_icons.dart';
 
 enum AppThemeSetting {
-  system('Systemowy', AppIcons.monitor),
+  // Ikona jak przełącznik motywu w UniFi (1.11.2026, prośba użytkownika; wcześniej monitor).
+  system('Systemowy', AppIcons.toggles),
   light('Jasny', AppIcons.sun),
   dark('Ciemny', AppIcons.moon);
 

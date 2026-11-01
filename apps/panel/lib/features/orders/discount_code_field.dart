@@ -134,7 +134,6 @@ class _DiscountCodeFieldState extends ConsumerState<DiscountCodeField> {
           const SizedBox(width: 8),
           OutlinedButton(
             onPressed: _busy ? null : () => _apply(controller.text),
-            style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
             child: const Text('Dodaj'),
           ),
         ],

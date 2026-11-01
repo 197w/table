@@ -211,7 +211,6 @@ class _SettleDialogState extends ConsumerState<SettleDialog> {
               child: OutlinedButton(
                 onPressed: () => setState(() => c.text = groszeToText((base * pct / 100).round())),
                 style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(0, 36),
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                 ),
                 child: Text('$pct%'),

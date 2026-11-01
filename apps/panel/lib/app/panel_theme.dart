@@ -28,7 +28,12 @@ abstract final class PanelPalette {
 
 /// Motyw Table dopasowany do komputera: niższe przyciski o szerokości treści,
 /// gęstsze pola formularzy i wyraźny kursor nad elementami klikalnymi.
+/// Przyciski, pola i przyciski z ikoną mają jedną wysokość [controlHeight] (1.11.2026, prośba użytkownika:
+/// przyciski obok pól były niższe od nich i wyglądało to brzydko).
 abstract final class PanelTheme {
+  /// Wysokość przycisków, pól tekstowych i przycisków z ikoną.
+  static const controlHeight = 40.0;
+
   static ThemeData build(AppPalette p) {
     final base = AppTheme.build(p);
     final dark = p.brightness == Brightness.dark;
@@ -40,10 +45,12 @@ abstract final class PanelTheme {
       fontWeight: FontWeight.w600,
     );
     const padding = EdgeInsets.symmetric(horizontal: 16);
-    const size = Size(0, 40);
+    const size = Size(0, controlHeight);
 
     return base.copyWith(
       visualDensity: VisualDensity.standard,
+      // Bez dodatkowego pola dotyku do 48 px (na tabletach): przyciski mają tyle, ile widać, i równają się z polami.
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       // Suwaki list mają odstęp od końców i boku, żeby nie wychodziły poza zaokrąglone rogi kart.
       scrollbarTheme: const ScrollbarThemeData(
         mainAxisMargin: 12,
@@ -99,28 +106,37 @@ abstract final class PanelTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: p.accent,
-          minimumSize: const Size(0, 36),
+          minimumSize: size,
           padding: const EdgeInsets.symmetric(horizontal: 14),
           shape: const StadiumBorder(),
           textStyle: buttonText,
         ),
       ),
+      // Przycisk z ikoną to sama ikona, bez tła i obwódki, także po kliknięciu (1.11.2026, prośba użytkownika),
+      // jak ikony w menu bocznym. Najechana myszą jaśnieje.
       iconButtonTheme: IconButtonThemeData(
-        style: IconButton.styleFrom(
-          foregroundColor: p.textMuted,
-          backgroundColor: dark ? p.surface : p.background,
-          minimumSize: const Size(36, 36),
-          shape: RoundedRectangleBorder(
-            borderRadius: radius10,
-            side: BorderSide(color: dark ? p.ring : p.ringStrong),
+        style: ButtonStyle(
+          foregroundColor: WidgetStateProperty.resolveWith(
+            (s) => s.contains(WidgetState.disabled)
+                ? p.textDisabled
+                : (s.contains(WidgetState.hovered) || s.contains(WidgetState.pressed) ? p.text : p.textMuted),
           ),
+          backgroundColor: const WidgetStatePropertyAll(Colors.transparent),
+          overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+          side: const WidgetStatePropertyAll(BorderSide.none),
+          minimumSize: const WidgetStatePropertyAll(Size.square(controlHeight)),
+          shape: const WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: radius10)),
+          mouseCursor: const WidgetStatePropertyAll(SystemMouseCursors.click),
         ),
       ),
       inputDecorationTheme: base.inputDecorationTheme.copyWith(
         isDense: true,
         filled: true,
         fillColor: dark ? p.surface : p.background,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        // Pole w jednej linii ma wysokość przycisku obok (8 + 24 + 8).
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        prefixIconConstraints: const BoxConstraints(minWidth: controlHeight, minHeight: controlHeight),
+        suffixIconConstraints: const BoxConstraints(minWidth: controlHeight, minHeight: controlHeight),
         border: const OutlineInputBorder(
           borderRadius: radius10,
           borderSide: BorderSide.none,

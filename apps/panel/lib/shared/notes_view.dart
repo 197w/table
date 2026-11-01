@@ -209,7 +209,7 @@ class _NoteTileState extends State<_NoteTile> {
                 tooltip: 'Usuń notatkę',
                 visualDensity: VisualDensity.compact,
                 onPressed: widget.onDelete,
-                icon: Glyph(AppIcons.trash, size: 16, color: AppColors.textMuted),
+                icon: const Glyph(AppIcons.trash, size: 16),
               ),
             ),
           ],

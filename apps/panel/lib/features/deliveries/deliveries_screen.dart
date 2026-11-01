@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+import '../../app/panel_theme.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
@@ -527,7 +528,7 @@ class _OrderCardState extends State<_OrderCard> {
   List<Widget> _actions(BuildContext context) {
     final o = widget.order;
     final busy = widget.busy;
-    const compact = Size(0, 44);
+    const compact = Size(0, PanelTheme.controlHeight);
     switch (o.stage) {
       case TakeawayStage.placed when o.scheduledFor != null:
         // Na godzinę: bez czasu przygotowania, kuchnia dostanie zamówienie z wyprzedzeniem z ustawień kuchni.

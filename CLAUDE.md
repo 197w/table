@@ -147,7 +147,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`Glyph` zamiast `Icon`, stałe `AppIcons`, SVG w `assets/icons`, nowe: `npx better-icons get ph:<nazwa>`;
   każda ikona ma też wersję duotone w `assets/icons/duotone` (`ph:<nazwa>-duotone`, `AppIcons.x.duotone`):
   wybrane zakładki i dolne menu, powiadomienia, puste ekrany, kafle `IconBadge`). Własne ikony w stylu Phosphor
-  (obrys 16 na 256, też w duotone): `cursor`, `corners-out`, `dining-table`, `wall` (pasek edytora sali).
+  (obrys 16 na 256, też w duotone): `cursor`, `corners-out`, `dining-table`, `wall` (pasek edytora sali),
+  `toggles` (dwa przełączniki jak w UniFi: motyw systemowy, `AppThemeSetting.system`, od 1.11.2026).
 - `apps/guest/lib`: `app` (router, dolne menu, preferencje), `core` (mapy, lokalizacja), `data`, `features`
   (m.in. `ordering`: zamawianie z dostawą i na wynos).
   Odkrywaj (`features/discover`, nowy wygląd z 10.2026): powitanie na całą szerokość, wyszukiwarka
@@ -253,7 +254,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Kropki nowości (`tabNewsProvider`, `TabNews`, `_NewsDot`): nowa rezerwacja z aplikacji, nowe zamówienie na dostawę
   albo odbiór, nowe danie do wydania; kropka na zakładce i jej grupie znika po wejściu do zakładki.
   „Table” na środku (szary napis, od 1400 px szerokości; zostaje, użytkownik go nie zmieniał). Po prawej nowa
-  wersja, odliczanie do wylogowania, motyw (systemowy: ikona monitora `AppIcons.monitor`), obok niego ikona „Wyloguj”
+  wersja, odliczanie do wylogowania, motyw (systemowy: dwa przełączniki `AppIcons.toggles` jak w UniFi, od 1.11.2026; wcześniej monitor), obok niego ikona „Wyloguj”
   (gdy ktoś jest zalogowany, od 0.21.0), kółko pracownika (inicjały; menu: kod pracownika, „Zakończ zmianę”,
   „Wejdź na zmianę”, e-mail i wersja, wylogowanie konta restauracji), a w samym prawym rogu lokal
   (`_RestaurantSwitcher`: logo, kropka połączenia na żywo, plan; strzałka i lista tylko przy kilku lokalach konta).
@@ -263,8 +264,20 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   ostatnia grupa zostaje wybrana na stronach lokalu (`panelSectionProvider`). Bez hamburgera i bez paska nad zakładką.
   Pod nagłówkiem zakładki (`PageHeader`) i pod paskiem Kuchni i Kompletowania nie ma linii (31.10.2026, prośba
   użytkownika): treść zaczyna się zaraz pod zakładkami.
-- Ustawienia lokalu: rezerwacje w aplikacji (co ile minut, największa grupa), zadatek przy rezerwacji, grafik pracowników,
-  okres inwentaryzacji, dostawa i odbiór, platformy dostaw (0067). Karta „Ten komputer” (preferencje tego komputera):
+  Ikony bez tła (1.11.2026, prośba użytkownika): przycisk z ikoną (`IconButton`, motyw w `panel_theme.dart`) to sama
+  ikona bez tła, obwódki i podświetlenia po kliknięciu, najechana jaśnieje (w przyciskach nie ustawiamy koloru ikony,
+  żeby działało); `GlowButton` w nagłówkach też sama ikona (główna akcja w kolorze akcentu, duotone); `IconBadge`
+  w kaflach liczb i nagłówkach kart to kolorowa ikona bez kostki; `IconTabs` bez pigułki: wybrana ikona w kolorze
+  akcentu z nazwą obok, jak grupy w górnym pasku. Jedna wysokość kontrolek 40 px (`PanelTheme.controlHeight`):
+  przyciski wszystkich rodzajów, przyciski z ikoną, pola w jednej linii (padding 8 + 24 + 8), ikony w polach,
+  `PanelPill`; bez powiększania pola dotyku do 48 px (`materialTapTargetSize: shrinkWrap`). Wyjątki: duże przyciski
+  dotykowe Kompletowania (48) i małe przyciski tekstowe w wierszach (32).
+- Ustawienia lokalu jako lista jak w UniFi (1.11.2026, prośba użytkownika; `SettingsSection` i `SettingsRow`
+  w `panel_widgets.dart`): jedna kolumna sekcji (do 860 px, na środku), tytuł sekcji nad kartą, w karcie wiersze
+  oddzielone linią: nazwa (i opis) po lewej, przełącznik, pole albo wybór po prawej, „Zapisz” pod ostatnim wierszem.
+  Kolejno: rezerwacje w aplikacji (co ile minut, największa grupa), zadatek przy rezerwacji, dostawa i odbiór,
+  platformy dostaw (0067; każda platforma to wiersz z koszem, na końcu „Dodaj platformę” z podpowiedziami),
+  grafik pracowników, okres inwentaryzacji i „Ten komputer” (preferencje tego komputera):
   „Automatyczne uruchamianie w pełnym ekranie” (`StartFullscreenNotifier`, klucz `panel_pelny_ekran_przy_starcie`).
   Bez niej panel startuje zmaksymalizowany (`main.dart`), nie w małym oknie; wyjście z pełnego ekranu kuchni wraca
   do pełnego ekranu, gdy ta opcja jest włączona.
@@ -451,7 +464,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   uprawnienia, liczba pracowników); kliknięte stanowisko pokazuje się w miejscu tabeli (`_RoleEditor(inline: true)`:
   „‹ Stanowiska”, nazwa i uprawnienia w dwóch kolumnach, „Usuń” i „Zapisz” u góry, obok kto ma to stanowisko;
   systemowe tylko do podglądu).
-  `SegmentedTabs` i `IconTabs` mają wspólne podświetlenie (`_SlidingSegments`), które przesuwa się do wybranej opcji. Każdy pracownik ma czterocyfrowy kod, unikalny w lokalu
+  `SegmentedTabs` ma podświetlenie (`_SlidingSegments`), które przesuwa się do wybranej opcji (`IconTabs` od 1.11.2026 bez pigułki). Każdy pracownik ma czterocyfrowy kod, unikalny w lokalu
   (nadaje go baza przy dodaniu, trigger `staff_members_code`; zmiana: `panel_set_staff_code`, wpisany albo losowy).
   Kod widać stale w szczegółach (uprawnienie `staff_logins`, „Kody pracowników”, `panel_staff_codes`) i w aplikacji
   pracownika (`staff_my_codes`). Kod leży zaszyfrowany w Supabase Vault (`staff_codes.code_secret`), logowanie szuka

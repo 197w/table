@@ -108,7 +108,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
           IconButton(
             tooltip: 'Szukaj po imieniu, telefonie albo adresie',
             onPressed: () => setState(() => _searchOpen = true),
-            icon: Glyph(AppIcons.search, size: 20, color: AppColors.textMuted),
+            icon: const Glyph(AppIcons.search, size: 20),
           ),
           const SizedBox(width: 4),
           _daySwitcher(today),
@@ -131,7 +131,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
         suffixIcon: IconButton(
           tooltip: _search.text.isEmpty ? 'Zamknij wyszukiwanie' : 'Wyczyść',
           onPressed: _clearSearch,
-          icon: Glyph(AppIcons.close, size: 16, color: AppColors.textMuted),
+          icon: const Glyph(AppIcons.close, size: 16),
         ),
       ),
     ),
@@ -198,7 +198,11 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     final all = async.value ?? const <PanelOrder>[];
 
     // Podział na restaurację, dostawy i odbiór osobisty (z liczbą zamówień), obok filtr opłacone/anulowane.
-    Widget filters() => Row(
+    // Przy otwartym wyszukiwaniu w wąskim oknie zakładki przewijają się w bok, zamiast wychodzić pod pole.
+    Widget filters() => SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         SegmentedTabs<HistoryKind>(
           options: [
@@ -218,6 +222,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
           onChanged: (f) => setState(() => _filter = f),
         ),
       ],
+      ),
     );
 
     return Column(
@@ -228,8 +233,8 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
             padding: const EdgeInsets.fromLTRB(32, 0, 32, 16),
             child: Row(
               children: [
-                filters(),
-                const Spacer(),
+                Flexible(child: Align(alignment: Alignment.centerLeft, child: filters())),
+                const SizedBox(width: 12),
                 ..._searchOrDay(today),
               ],
             ),

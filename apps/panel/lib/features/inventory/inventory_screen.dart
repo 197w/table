@@ -994,7 +994,7 @@ class _ItemsTable extends StatelessWidget {
                                 IconButton(
                                   tooltip: 'Zmień',
                                   onPressed: () => onEdit(item),
-                                  icon: Glyph(AppIcons.pencil, size: 16, color: AppColors.textMuted),
+                                  icon: const Glyph(AppIcons.pencil, size: 16),
                                 ),
                               ],
                             ),

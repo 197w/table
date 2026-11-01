@@ -253,12 +253,12 @@ class _AnnouncementCard extends StatelessWidget {
                 IconButton(
                   tooltip: 'Zmień',
                   onPressed: onEdit,
-                  icon: Glyph(AppIcons.pencil, size: 18, color: AppColors.textMuted),
+                  icon: const Glyph(AppIcons.pencil, size: 18),
                 ),
                 IconButton(
                   tooltip: 'Usuń',
                   onPressed: onDelete,
-                  icon: Glyph(AppIcons.trash, size: 18, color: AppColors.textMuted),
+                  icon: const Glyph(AppIcons.trash, size: 18),
                 ),
               ],
             ],

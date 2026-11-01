@@ -122,52 +122,44 @@ class SettingsScreen extends ConsumerWidget {
           child: async.when(
             loading: () => const LoadingView(),
             error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(profileProvider(restaurant.id))),
+            // Lista jak ustawienia w UniFi (1.11.2026, prośba użytkownika): jedna kolumna sekcji,
+            // w wierszach nazwa po lewej i przełącznik albo pole po prawej.
             data: (profile) => SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
+              padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 860),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final (i, section) in [
                         _ReservationSettingsCard(
                           key: ValueKey('rezerwacje-${profile.id}'),
                           profile: profile,
                           editable: restaurant.canManage,
                         ),
-                        const SizedBox(height: 20),
                         _DepositCard(
                           key: ValueKey('zadatek-${profile.id}'),
                           profile: profile,
                           editable: restaurant.canManage,
                         ),
-                        const SizedBox(height: 20),
-                        _SchedulePeriodCard(profile: profile, editable: restaurant.canManage),
-                        const SizedBox(height: 20),
-                        _InventoryPeriodCard(profile: profile, editable: canInventory),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
                         _DeliveryCard(
                           key: ValueKey('dostawa-${profile.id}'),
                           profile: profile,
                           editable: restaurant.canManage,
                           pro: restaurant.isPro,
                         ),
-                        const SizedBox(height: 20),
                         _PlatformsCard(profile: profile, editable: restaurant.canManage),
-                        const SizedBox(height: 20),
+                        _SchedulePeriodCard(profile: profile, editable: restaurant.canManage),
+                        _InventoryPeriodCard(profile: profile, editable: canInventory),
                         const _ThisComputerCard(),
+                      ].indexed) ...[
+                        if (i > 0) const SizedBox(height: 32),
+                        section,
                       ],
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -226,75 +218,64 @@ class _PlatformsCardState extends ConsumerState<_PlatformsCard> {
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
     final names = widget.profile.delivery.deliveryPlatforms;
     final missing = [
       for (final s in _suggestions)
         if (!names.any((n) => n.toLowerCase() == s.toLowerCase())) s,
     ];
-    return PanelCard(
+    return SettingsSection(
       title: 'Platformy dostaw',
-      icon: AppIcons.moped,
-      iconColor: TileColors.amber,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'W podsumowaniu dnia przy każdej platformie wpiszesz kwotę sprzedaży. Liczy się osobno, '
-            'poza kasą fiskalną i obrotem w panelu.',
-            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+      description: 'W podsumowaniu dnia przy każdej platformie wpiszesz kwotę sprzedaży. Liczy się osobno, '
+          'poza kasą fiskalną i obrotem w panelu.',
+      children: [
+        if (names.isEmpty) const SettingsRow(title: 'Brak platform', muted: true),
+        for (final n in names)
+          SettingsRow(
+            title: n,
+            trailing: widget.editable
+                ? IconButton(
+                    tooltip: 'Usuń $n',
+                    onPressed: _busy ? null : () => _save([...names]..remove(n)),
+                    icon: const Glyph(AppIcons.trash, size: 18),
+                  )
+                : null,
           ),
-          const SizedBox(height: 12),
-          if (names.isEmpty)
-            Text('Brak platform.', style: text.bodyMedium?.copyWith(color: AppColors.textMuted))
-          else
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+        if (widget.editable)
+          SettingsRow(
+            title: 'Dodaj platformę',
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                for (final n in names)
-                  InputChip(
-                    label: Text(n),
-                    onDeleted: widget.editable && !_busy ? () => _save([...names]..remove(n)) : null,
-                    deleteButtonTooltipMessage: 'Usuń $n',
-                  ),
-              ],
-            ),
-          if (widget.editable) ...[
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
+                SizedBox(
+                  width: 220,
                   child: TextField(
                     controller: _name,
                     enabled: !_busy,
                     maxLength: 40,
                     onSubmitted: _add,
-                    decoration: const InputDecoration(labelText: 'Dodaj platformę', isDense: true, counterText: ''),
+                    decoration: const InputDecoration(hintText: 'Nazwa platformy', counterText: ''),
                   ),
                 ),
                 const SizedBox(width: 8),
                 OutlinedButton(onPressed: _busy ? null : () => _add(_name.text), child: const Text('Dodaj')),
               ],
             ),
-            if (missing.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final s in missing)
-                    ActionChip(
-                      avatar: const Glyph(AppIcons.plus, size: 14),
-                      label: Text(s),
-                      onPressed: _busy ? null : () => _add(s),
-                    ),
-                ],
-              ),
-            ],
-          ],
-        ],
-      ),
+            below: missing.isEmpty
+                ? null
+                : Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final m in missing)
+                        ActionChip(
+                          avatar: const Glyph(AppIcons.plus, size: 14),
+                          label: Text(m),
+                          onPressed: _busy ? null : () => _add(m),
+                        ),
+                    ],
+                  ),
+          ),
+      ],
     );
   }
 }
@@ -305,36 +286,21 @@ class _ThisComputerCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final text = Theme.of(context).textTheme;
     final fullscreen = ref.watch(startFullscreenProvider);
-    return PanelCard(
+    return SettingsSection(
       title: 'Ten komputer',
-      icon: AppIcons.monitor,
-      iconColor: TileColors.violet,
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Automatyczne uruchamianie w pełnym ekranie', style: text.titleSmall),
-                const SizedBox(height: 2),
-                Text(
-                  fullscreen
-                      ? 'Panel startuje bez ramki okna i paska zadań. Wyłącz, żeby wrócić do okna.'
-                      : 'Panel otwiera się na całe okno. Włącz, żeby startował na pełnym ekranie, bez paska zadań.',
-                  style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-          Switch(
+      children: [
+        SettingsRow(
+          title: 'Automatyczne uruchamianie w pełnym ekranie',
+          description: fullscreen
+              ? 'Panel startuje bez ramki okna i paska zadań. Wyłącz, żeby wrócić do okna.'
+              : 'Panel otwiera się na całe okno. Włącz, żeby startował na pełnym ekranie, bez paska zadań.',
+          trailing: Switch(
             value: fullscreen,
             onChanged: (v) => ref.read(startFullscreenProvider.notifier).set(v),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -375,57 +341,76 @@ class _ReservationSettingsCardState extends ConsumerState<_ReservationSettingsCa
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final enabled = widget.editable && !_busy;
-    return PanelCard(
+    return SettingsSection(
       title: 'Rezerwacje w aplikacji',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(child: Text('Co ile minut goście wybierają godzinę', style: text.bodyMedium)),
-              IgnorePointer(
-                ignoring: !enabled,
-                child: SegmentedTabs<int>(
-                  options: const [(15, '15 min'), (30, '30 min')],
-                  selected: _interval,
-                  onChanged: (v) => setState(() => _interval = v),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: Text('Największa grupa w jednej rezerwacji', style: text.bodyMedium)),
-              IconButton(
-                tooltip: 'Mniej osób',
-                icon: const Glyph(AppIcons.minus, size: 16),
-                onPressed: enabled && _maxParty > 1 ? () => setState(() => _maxParty--) : null,
-              ),
-              SizedBox(
-                width: 64,
-                child: Text(
-                  Fmt.people(_maxParty),
-                  textAlign: TextAlign.center,
-                  style: text.labelLarge?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-                ),
-              ),
-              IconButton(
-                tooltip: 'Więcej osób',
-                icon: const Glyph(AppIcons.plus, size: 16),
-                onPressed: enabled && _maxParty < 30 ? () => setState(() => _maxParty++) : null,
-              ),
-            ],
-          ),
-          if (widget.editable) ...[
-            const SizedBox(height: 16),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton(onPressed: _busy ? null : _save, child: const Text('Zapisz')),
+      footer: widget.editable ? FilledButton(onPressed: _busy ? null : _save, child: const Text('Zapisz')) : null,
+      children: [
+        SettingsRow(
+          title: 'Co ile minut goście wybierają godzinę',
+          trailing: IgnorePointer(
+            ignoring: !enabled,
+            child: SegmentedTabs<int>(
+              options: const [(15, '15 min'), (30, '30 min')],
+              selected: _interval,
+              onChanged: (v) => setState(() => _interval = v),
             ),
-          ],
-        ],
-      ),
+          ),
+        ),
+        SettingsRow(
+          title: 'Największa grupa w jednej rezerwacji',
+          trailing: _PeopleStepper(
+            value: _maxParty,
+            min: 1,
+            enabled: enabled,
+            onChanged: (v) => setState(() => _maxParty = v),
+            style: text.labelLarge,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Liczba osób z przyciskami „mniej” i „więcej” (1–30).
+class _PeopleStepper extends StatelessWidget {
+  const _PeopleStepper({
+    required this.value,
+    required this.min,
+    required this.enabled,
+    required this.onChanged,
+    required this.style,
+  });
+
+  final int value;
+  final int min;
+  final bool enabled;
+  final ValueChanged<int> onChanged;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: 'Mniej osób',
+          icon: const Glyph(AppIcons.minus, size: 18),
+          onPressed: enabled && value > min ? () => onChanged(value - 1) : null,
+        ),
+        SizedBox(
+          width: 72,
+          child: Text(
+            Fmt.people(value),
+            textAlign: TextAlign.center,
+            style: style?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Więcej osób',
+          icon: const Glyph(AppIcons.plus, size: 18),
+          onPressed: enabled && value < 30 ? () => onChanged(value + 1) : null,
+        ),
+      ],
     );
   }
 }
@@ -483,78 +468,46 @@ class _DepositCardState extends ConsumerState<_DepositCard> {
     final text = Theme.of(context).textTheme;
     final enabled = widget.editable && !_busy;
     final perPerson = parseGrosze(_amount.text);
-    return PanelCard(
+    return SettingsSection(
       title: 'Zadatek przy rezerwacji',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(child: Text('Gość płaci zadatek w aplikacji Table', style: text.bodyMedium)),
-              Switch(value: _on, onChanged: enabled ? (v) => setState(() => _on = v) : null),
-            ],
+      footer: widget.editable ? FilledButton(onPressed: _busy ? null : _save, child: const Text('Zapisz')) : null,
+      children: [
+        SettingsRow(
+          title: 'Gość płaci zadatek w aplikacji Table',
+          trailing: Switch(value: _on, onChanged: enabled ? (v) => setState(() => _on = v) : null),
+        ),
+        if (_on) ...[
+          SettingsRow(
+            title: 'Od ilu osób',
+            trailing: _PeopleStepper(
+              value: _minParty,
+              min: 1,
+              enabled: enabled,
+              onChanged: (v) => setState(() => _minParty = v),
+              style: text.labelLarge,
+            ),
           ),
-          if (_on) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(child: Text('Od ilu osób', style: text.bodyMedium)),
-                IconButton(
-                  tooltip: 'Mniej osób',
-                  icon: const Glyph(AppIcons.minus, size: 16),
-                  onPressed: enabled && _minParty > 1 ? () => setState(() => _minParty--) : null,
-                ),
-                SizedBox(
-                  width: 64,
-                  child: Text(
-                    Fmt.people(_minParty),
-                    textAlign: TextAlign.center,
-                    style: text.labelLarge?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Więcej osób',
-                  icon: const Glyph(AppIcons.plus, size: 16),
-                  onPressed: enabled && _minParty < 30 ? () => setState(() => _minParty++) : null,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(child: Text('Kwota za osobę', style: text.bodyMedium)),
-                SizedBox(
-                  width: 140,
-                  child: TextField(
-                    controller: _amount,
-                    enabled: enabled,
-                    onChanged: (_) => setState(() {}),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
-                    textAlign: TextAlign.right,
-                    decoration: const InputDecoration(suffixText: 'zł', isDense: true),
-                  ),
-                ),
-              ],
-            ),
-            if (perPerson != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Na przykład ${Fmt.people(_minParty)}: ${Fmt.price(perPerson * _minParty)}. '
-                'Odwołanie zwraca zadatek, nieobecność nie.',
-                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+          SettingsRow(
+            title: 'Kwota za osobę',
+            description: perPerson == null
+                ? null
+                : 'Na przykład ${Fmt.people(_minParty)}: ${Fmt.price(perPerson * _minParty)}. '
+                      'Odwołanie zwraca zadatek, nieobecność nie.',
+            trailing: SizedBox(
+              width: 140,
+              child: TextField(
+                controller: _amount,
+                enabled: enabled,
+                onChanged: (_) => setState(() {}),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+                textAlign: TextAlign.right,
+                decoration: const InputDecoration(suffixText: 'zł'),
               ),
-            ],
-          ],
-          if (widget.editable) ...[
-            const SizedBox(height: 16),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton(onPressed: _busy ? null : _save, child: const Text('Zapisz')),
             ),
-          ],
+          ),
         ],
-      ),
+      ],
     );
   }
 }
@@ -588,19 +541,21 @@ class _InventoryPeriodCardState extends ConsumerState<_InventoryPeriodCard> {
 
   @override
   Widget build(BuildContext context) {
-    return PanelCard(
+    return SettingsSection(
       title: 'Inwentaryzacja',
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: IgnorePointer(
-          ignoring: !widget.editable || _busy,
-          child: SegmentedTabs<String>(
-            options: inventoryPeriods,
-            selected: widget.profile.inventoryPeriod,
-            onChanged: _set,
+      children: [
+        SettingsRow(
+          title: 'Co ile lokal robi inwentaryzację',
+          trailing: IgnorePointer(
+            ignoring: !widget.editable || _busy,
+            child: SegmentedTabs<String>(
+              options: inventoryPeriods,
+              selected: widget.profile.inventoryPeriod,
+              onChanged: _set,
+            ),
           ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -1069,7 +1024,7 @@ class _ExceptionsCard extends ConsumerWidget {
                       if (editable)
                         IconButton(
                           tooltip: 'Usuń dzień wyjątkowy',
-                          icon: Glyph(AppIcons.trash, size: 16, color: AppColors.textMuted),
+                          icon: const Glyph(AppIcons.trash, size: 16),
                           onPressed: () => _delete(context, ref, e),
                         ),
                     ],
@@ -1227,7 +1182,7 @@ class _TimeButton extends StatelessWidget {
     return OutlinedButton(
       onPressed: onTap,
       style: OutlinedButton.styleFrom(
-        minimumSize: const Size(74, 36),
+        minimumSize: const Size(74, 40),
         padding: const EdgeInsets.symmetric(horizontal: 10),
       ),
       child: Text(
@@ -1533,18 +1488,14 @@ class _SchedulePeriodCardState extends ConsumerState<_SchedulePeriodCard> {
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    return PanelCard(
+    return SettingsSection(
       title: 'Grafik pracowników',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Na jaki okres pracownicy zgłaszają w aplikacji Table for employees, od której do której mogą pracować.',
-            style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 12),
-          IgnorePointer(
+      children: [
+        SettingsRow(
+          title: 'Okres zgłaszania',
+          description: 'Na jaki okres pracownicy zgłaszają w aplikacji Table for employees, od której do której '
+              'mogą pracować.',
+          trailing: IgnorePointer(
             ignoring: !widget.editable || _busy,
             child: SegmentedTabs<String>(
               options: const [('week', 'Tydzień'), ('two_weeks', '2 tygodnie'), ('month', 'Miesiąc')],
@@ -1554,24 +1505,20 @@ class _SchedulePeriodCardState extends ConsumerState<_SchedulePeriodCard> {
               },
             ),
           ),
-          const SizedBox(height: 16),
-          Text('Termin zgłaszania dyspozycyjności', style: text.titleSmall),
-          const SizedBox(height: 4),
-          Text(
-            'Do kiedy pracownicy wpisują godziny na następny okres. Po terminie wpisywanie w aplikacji się wyłącza, '
-            'a dni bez zgłoszenia są „Niedostępny”.',
-            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 10),
-          IgnorePointer(
+        ),
+        SettingsRow(
+          title: 'Termin zgłaszania dyspozycyjności',
+          description: 'Do kiedy pracownicy wpisują godziny na następny okres. Po terminie wpisywanie w aplikacji '
+              'się wyłącza, a dni bez zgłoszenia są „Niedostępny”.',
+          trailing: IgnorePointer(
             ignoring: !widget.editable || _busy,
             child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 SizedBox(
-                  width: 240,
+                  width: 210,
                   child: DropdownButtonFormField<int?>(
                     initialValue: widget.profile.scheduleDeadlineDow,
-                    decoration: const InputDecoration(labelText: 'Dzień przed okresem', isDense: true),
                     icon: const Glyph(AppIcons.caretDown, size: 16),
                     items: [
                       const DropdownMenuItem(value: null, child: Text('Bez terminu')),
@@ -1581,18 +1528,19 @@ class _SchedulePeriodCardState extends ConsumerState<_SchedulePeriodCard> {
                     onChanged: (v) => _save({'schedule_deadline_dow': v}, 'Termin zgłaszania zapisany.'),
                   ),
                 ),
-                const SizedBox(width: 12),
-                if (widget.profile.scheduleDeadlineDow != null)
+                if (widget.profile.scheduleDeadlineDow != null) ...[
+                  const SizedBox(width: 8),
                   OutlinedButton.icon(
                     onPressed: _pickDeadlineTime,
                     icon: const Glyph(AppIcons.clock, size: 16),
                     label: Text('do ${widget.profile.scheduleDeadlineTime}'),
                   ),
+                ],
               ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -1755,104 +1703,58 @@ class _DeliveryCardState extends ConsumerState<_DeliveryCard> {
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
     final enabled = widget.editable && widget.pro && !_busy;
-    Widget toggle(String title, bool value, ValueChanged<bool> onChanged) => Row(
-      children: [
-        Expanded(child: Text(title, style: text.titleSmall)),
-        Switch(value: value, onChanged: enabled ? onChanged : null),
-      ],
+    SettingsRow toggle(String title, bool value, ValueChanged<bool> onChanged) => SettingsRow(
+      title: title,
+      trailing: Switch(value: value, onChanged: enabled ? onChanged : null),
     );
-    return PanelCard(
+    SettingsRow field(String title, TextEditingController controller, {String? suffix, String? hint, String? description, double width = 160, int? maxLength, bool number = false}) =>
+        SettingsRow(
+          title: title,
+          description: description,
+          trailing: SizedBox(
+            width: width,
+            child: TextField(
+              controller: controller,
+              enabled: enabled,
+              maxLength: maxLength,
+              keyboardType: number ? TextInputType.number : null,
+              textAlign: suffix == null ? TextAlign.start : TextAlign.right,
+              decoration: InputDecoration(suffixText: suffix, hintText: hint, counterText: ''),
+            ),
+          ),
+        );
+    return SettingsSection(
       title: 'Dostawa i odbiór',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (!widget.pro) ...[
-            Text(
-              'Zamówienia z dostawą i na wynos są w planie Pro.',
-              style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 12),
-          ],
-          toggle('Dostawa', _s.deliveryEnabled, (v) => setState(() => _s = _copy(delivery: v))),
-          const SizedBox(height: 6),
-          toggle('Odbiór osobisty', _s.pickupEnabled, (v) => setState(() => _s = _copy(pickup: v))),
-          const SizedBox(height: 6),
-          toggle('Gotówka', _s.cash, (v) => setState(() => _s = _copy(cash: v))),
-          const SizedBox(height: 6),
-          toggle('Karta przy odbiorze', _s.card, (v) => setState(() => _s = _copy(card: v))),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _fee,
-                  enabled: enabled,
-                  decoration: const InputDecoration(labelText: 'Opłata za dostawę', suffixText: 'zł'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _min,
-                  enabled: enabled,
-                  decoration: const InputDecoration(labelText: 'Minimalne zamówienie', suffixText: 'zł'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _area,
-            enabled: enabled,
-            maxLength: 120,
-            decoration: const InputDecoration(labelText: 'Obszar dostawy dla gości', hintText: 'Na przykład: Białystok, do 5 km'),
-          ),
-          const SizedBox(height: 4),
-          // Analiza oszustw: limity zamówień z aplikacji Table (puste = bez limitu).
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _maxItems,
-                  enabled: enabled,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Najwięcej sztuk w zamówieniu',
-                    hintText: 'bez limitu',
-                    suffixText: 'szt.',
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _maxPerItem,
-                  enabled: enabled,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Najwięcej sztuk jednego dania',
-                    hintText: 'bez limitu',
-                    suffixText: 'szt.',
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Limity dotyczą zamówień gości w aplikacji Table. Zamówienia wpisane w panelu ich nie mają.',
-            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 8),
-          if (widget.editable && widget.pro)
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton(onPressed: _busy ? null : _save, child: const Text('Zapisz')),
-            ),
-        ],
-      ),
+      description: widget.pro ? null : 'Zamówienia z dostawą i na wynos są w planie Pro.',
+      footer: widget.editable && widget.pro
+          ? FilledButton(onPressed: _busy ? null : _save, child: const Text('Zapisz'))
+          : null,
+      children: [
+        toggle('Dostawa', _s.deliveryEnabled, (v) => setState(() => _s = _copy(delivery: v))),
+        toggle('Odbiór osobisty', _s.pickupEnabled, (v) => setState(() => _s = _copy(pickup: v))),
+        toggle('Gotówka', _s.cash, (v) => setState(() => _s = _copy(cash: v))),
+        toggle('Karta przy odbiorze', _s.card, (v) => setState(() => _s = _copy(card: v))),
+        field('Opłata za dostawę', _fee, suffix: 'zł'),
+        field('Minimalne zamówienie', _min, suffix: 'zł'),
+        field(
+          'Obszar dostawy dla gości',
+          _area,
+          hint: 'Na przykład: Białystok, do 5 km',
+          width: 300,
+          maxLength: 120,
+        ),
+        // Analiza oszustw: limity zamówień z aplikacji Table (puste = bez limitu).
+        field(
+          'Najwięcej sztuk w zamówieniu',
+          _maxItems,
+          suffix: 'szt.',
+          hint: 'bez limitu',
+          number: true,
+          description: 'Limity dotyczą zamówień gości w aplikacji Table. Zamówienia wpisane w panelu ich nie mają.',
+        ),
+        field('Najwięcej sztuk jednego dania', _maxPerItem, suffix: 'szt.', hint: 'bez limitu', number: true),
+      ],
     );
   }
 

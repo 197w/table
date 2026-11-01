@@ -157,7 +157,7 @@ class InventoryDocTile extends StatelessWidget {
             IconButton(
               tooltip: 'Usuń wpis (pomyłka)',
               onPressed: onDelete,
-              icon: Glyph(AppIcons.trash, size: 16, color: AppColors.textMuted),
+              icon: const Glyph(AppIcons.trash, size: 16),
             ),
         ],
       ),
@@ -453,7 +453,7 @@ class _InventoryDocDialogState extends ConsumerState<InventoryDocDialog> {
                             : () => setState(() {
                                 _lines.removeAt(i).dispose();
                               }),
-                        icon: Glyph(AppIcons.close, size: 16, color: AppColors.textMuted),
+                        icon: const Glyph(AppIcons.close, size: 16),
                       ),
                     ],
                   ),
@@ -552,12 +552,12 @@ class InventoryContainersDialog extends ConsumerWidget {
                     IconButton(
                       tooltip: 'Zmień',
                       onPressed: () => _edit(context, ref, b),
-                      icon: Glyph(AppIcons.pencil, size: 16, color: AppColors.textMuted),
+                      icon: const Glyph(AppIcons.pencil, size: 16),
                     ),
                     IconButton(
                       tooltip: 'Usuń',
                       onPressed: () => _delete(context, ref, b),
-                      icon: Glyph(AppIcons.trash, size: 16, color: AppColors.textMuted),
+                      icon: const Glyph(AppIcons.trash, size: 16),
                     ),
                   ],
                 ),

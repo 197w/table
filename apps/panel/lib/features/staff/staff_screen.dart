@@ -1755,7 +1755,6 @@ class _SelectionBar extends StatelessWidget {
         style: OutlinedButton.styleFrom(
           foregroundColor: color,
           side: color == null ? null : BorderSide(color: color.withValues(alpha: 0.6)),
-          minimumSize: const Size(0, 36),
           padding: const EdgeInsets.symmetric(horizontal: 14),
         ),
         icon: Glyph(icon, size: 16, color: color),
@@ -1781,7 +1780,7 @@ class _SelectionBar extends StatelessWidget {
           IconButton(
             tooltip: 'Odznacz wszystkich',
             onPressed: onClear,
-            icon: Glyph(AppIcons.close, size: 16, color: AppColors.textMuted),
+            icon: const Glyph(AppIcons.close, size: 16),
           ),
         ],
       ),
@@ -2044,7 +2043,6 @@ class _MemberDetailsState extends ConsumerState<_MemberDetails> {
                   const SizedBox(width: 12),
                   FilledButton.tonal(
                     onPressed: () => _changeCode(member),
-                    style: FilledButton.styleFrom(minimumSize: const Size(0, 42)),
                     child: const Text('Zmień kod'),
                   ),
                 ],
@@ -2816,7 +2814,7 @@ class _HoursDialogState extends State<_HoursDialog> {
         (existing!.requestedStarts != _fmt(_starts) || existing.requestedEnds != _fmt(_ends));
     Widget timeButton(TimeOfDay t, bool start) => OutlinedButton(
       onPressed: () => _pick(start),
-      style: OutlinedButton.styleFrom(minimumSize: const Size(96, 44)),
+      style: OutlinedButton.styleFrom(minimumSize: const Size(96, 40)),
       child: Text(_fmt(t), style: const TextStyle(fontFeatures: _tabular, fontSize: 16)),
     );
 
@@ -3218,7 +3216,7 @@ class _SheetFrame extends StatelessWidget {
                   IconButton(
                     tooltip: 'Zamknij',
                     onPressed: onClose,
-                    icon: Glyph(AppIcons.close, size: 18, color: AppColors.textMuted),
+                    icon: const Glyph(AppIcons.close, size: 18),
                   ),
                 ],
               ),
@@ -3640,7 +3638,7 @@ class _MemberSheetState extends ConsumerState<_MemberSheet> {
           if (editing) ...[
             TextButton(
               onPressed: _busy ? null : _delete,
-              style: TextButton.styleFrom(foregroundColor: AppColors.error, minimumSize: const Size(0, 44)),
+              style: TextButton.styleFrom(foregroundColor: AppColors.error),
               child: const Text('Usuń'),
             ),
             const SizedBox(width: 8),
@@ -3973,14 +3971,13 @@ class _RoleEditorState extends ConsumerState<_RoleEditor> {
         ? null
         : TextButton(
             onPressed: _busy ? null : _delete,
-            style: TextButton.styleFrom(foregroundColor: AppColors.error, minimumSize: const Size(0, 44)),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: const Text('Usuń'),
           );
     final save = system
         ? null
         : FilledButton(
             onPressed: _busy ? null : _save,
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
             child: Text(position == null ? 'Dodaj stanowisko' : 'Zapisz'),
           );
 
@@ -4284,12 +4281,10 @@ class _CodeEditDialogState extends ConsumerState<_CodeEditDialog> {
         ),
         OutlinedButton(
           onPressed: _busy ? null : () => _save(random: true),
-          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
           child: const Text('Wylosuj'),
         ),
         FilledButton(
           onPressed: _busy ? null : () => _save(random: false),
-          style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
           child: const Text('Zapisz kod'),
         ),
       ],

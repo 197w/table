@@ -202,6 +202,8 @@ abstract final class AppIcons {
   static const storefront = AppIconData('assets/icons/storefront.svg');
   static const sun = AppIconData('assets/icons/sun.svg');
   static const timer = AppIconData('assets/icons/timer.svg');
+  // Dwa przełączniki jak w UniFi: motyw systemowy.
+  static const toggles = AppIconData('assets/icons/toggles.svg');
   static const trash = AppIconData('assets/icons/trash.svg');
   static const truck = AppIconData('assets/icons/truck.svg');
   static const undo = AppIconData('assets/icons/arrow-counter-clockwise.svg');

@@ -1725,7 +1725,6 @@ class _SelectionInspector extends StatelessWidget {
       child: OutlinedButton(
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
-          minimumSize: const Size(0, 36),
           padding: const EdgeInsets.symmetric(horizontal: 6),
         ),
         child: Text(label, maxLines: 1, overflow: TextOverflow.fade, softWrap: false),

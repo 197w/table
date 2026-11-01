@@ -579,7 +579,7 @@ class _RailButton extends StatelessWidget {
     visualDensity: VisualDensity.compact,
     iconSize: 16,
     onPressed: onTap,
-    icon: Glyph(icon, size: 16, color: AppColors.textMuted),
+    icon: Glyph(icon, size: 16),
   );
 }
 

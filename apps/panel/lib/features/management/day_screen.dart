@@ -441,7 +441,7 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
                             removed.$1.dispose();
                             removed.$2.dispose();
                           }),
-                    icon: Glyph(AppIcons.trash, size: 16, color: AppColors.textMuted),
+                    icon: const Glyph(AppIcons.trash, size: 16),
                   ),
                 ],
               ),
@@ -673,7 +673,7 @@ class _PettyCardState extends ConsumerState<_PettyCard> {
                       tooltip: 'Usuń',
                       visualDensity: VisualDensity.compact,
                       onPressed: () => _delete(e),
-                      icon: Glyph(AppIcons.trash, size: 15, color: AppColors.textMuted),
+                      icon: const Glyph(AppIcons.trash, size: 15),
                     ),
                   ],
                 ),

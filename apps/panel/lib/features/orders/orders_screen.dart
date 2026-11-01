@@ -711,7 +711,6 @@ class _TablesPanel extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
             child: FilledButton.icon(
               onPressed: onNewOrder,
-              style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
               icon: const Glyph(AppIcons.plus, size: 18),
               label: const Text('Nowe zamówienie'),
             ),
@@ -1227,7 +1226,7 @@ class _ItemTile extends StatelessWidget {
                               padding: EdgeInsets.zero,
                               style: IconButton.styleFrom(backgroundColor: Colors.transparent, side: BorderSide.none),
                               onPressed: onOptions,
-                              icon: Glyph(item.hasOptions ? AppIcons.sliders : AppIcons.notePencil, size: 15, color: AppColors.textMuted),
+                              icon: Glyph(item.hasOptions ? AppIcons.sliders : AppIcons.notePencil, size: 15),
                             ),
                           ),
                       ],

@@ -528,7 +528,7 @@ class _CustomerDetail extends ConsumerWidget {
         IconButton(
           tooltip: 'Zamknij',
           onPressed: onClose,
-          icon: Glyph(AppIcons.close, size: 18, color: AppColors.textMuted),
+          icon: const Glyph(AppIcons.close, size: 18),
         ),
       ],
     );
