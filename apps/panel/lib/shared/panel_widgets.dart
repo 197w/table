@@ -307,6 +307,34 @@ class _GlowButtonState extends State<GlowButton> {
   }
 }
 
+/// Kosz do usuwania: zawsze czerwony (1.11.2026, prośba użytkownika), najechany wyraźniejszy, wyłączony szary.
+/// Bez tła, jak inne przyciski z ikoną (podświetlenie przy kliknięciu wyłącza motyw).
+class DeleteButton extends StatelessWidget {
+  const DeleteButton({super.key, required this.onPressed, this.tooltip = 'Usuń', this.size = 16, this.compact = false});
+
+  final VoidCallback? onPressed;
+  final String tooltip;
+  final double size;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    tooltip: tooltip,
+    visualDensity: compact ? VisualDensity.compact : null,
+    style: ButtonStyle(
+      foregroundColor: WidgetStateProperty.resolveWith(
+        (s) => s.contains(WidgetState.disabled)
+            ? AppColors.textDisabled
+            : (s.contains(WidgetState.hovered) || s.contains(WidgetState.pressed)
+                  ? Color.lerp(AppColors.error, AppColors.text, 0.25)
+                  : AppColors.error),
+      ),
+    ),
+    onPressed: onPressed,
+    icon: Glyph(AppIcons.trash, size: size),
+  );
+}
+
 /// Ikona w kolorze miary, jak w kaflach liczb i nagłówkach kart. Sama ikona, bez kolorowej kostki
 /// i cienia (1.11.2026, prośba użytkownika: ikony bez tła).
 class IconBadge extends StatelessWidget {

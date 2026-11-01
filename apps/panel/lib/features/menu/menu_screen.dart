@@ -530,9 +530,8 @@ class _ItemRow extends ConsumerWidget {
               icon: const Glyph(AppIcons.pencil, size: 16),
               onPressed: onEdit,
             ),
-            IconButton(
+            DeleteButton(
               tooltip: 'Usuń',
-              icon: Glyph(AppIcons.trash, size: 16, color: AppColors.error),
               onPressed: onDelete,
             ),
           ],

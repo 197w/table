@@ -974,8 +974,8 @@ class _StaffLayout extends ConsumerWidget {
               ),
             ),
             Positioned(
-              left: width - 14,
-              top: 22,
+              left: width - 10,
+              top: 18,
               child: _EdgeButton(open: open, onTap: () => ref.read(_panelProvider.notifier).setOpen(!open)),
             ),
           ],
@@ -985,28 +985,46 @@ class _StaffLayout extends ConsumerWidget {
   }
 }
 
-/// Okrągły przycisk na kresce panelu: zwija go albo rozwija.
-class _EdgeButton extends StatelessWidget {
+/// Uchwyt na kresce panelu: wąski prostokąt z zaokrąglonymi rogami (1.11.2026, prośba użytkownika; wcześniej
+/// kółko), zwija panel albo go rozwija. Bez podświetlenia tła: najechana strzałka jaśnieje.
+class _EdgeButton extends StatefulWidget {
   const _EdgeButton({required this.open, required this.onTap});
 
   final bool open;
   final VoidCallback onTap;
 
   @override
+  State<_EdgeButton> createState() => _EdgeButtonState();
+}
+
+class _EdgeButtonState extends State<_EdgeButton> {
+  bool _hover = false;
+
+  @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: open ? 'Zwiń panel' : 'Pokaż panel',
-      child: Material(
-        color: AppColors.surface,
-        shape: CircleBorder(side: BorderSide(color: AppColors.ringStrong)),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: SizedBox(
-            width: 28,
-            height: 28,
+      message: widget.open ? 'Zwiń panel' : 'Pokaż panel',
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            width: 20,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: _hover ? AppColors.textMuted : AppColors.ringStrong),
+            ),
             child: Center(
-              child: Glyph(open ? AppIcons.caretLeft : AppIcons.caretRight, size: 14, color: AppColors.textMuted),
+              child: Glyph(
+                widget.open ? AppIcons.caretLeft : AppIcons.caretRight,
+                size: 13,
+                color: _hover ? AppColors.text : AppColors.textMuted,
+              ),
             ),
           ),
         ),
@@ -2587,7 +2605,7 @@ class _DayCell extends StatelessWidget {
               // Bez zgłoszenia pracownik jest niedostępny: można mu tylko wysłać propozycję.
               ? Center(
                   child: changed
-                      ? Glyph(AppIcons.trash, size: 14, color: AppColors.textDisabled)
+                      ? Glyph(AppIcons.trash, size: 14, color: AppColors.error)
                       : outside
                       ? const SizedBox.shrink()
                       : Text('Niedostępny', style: text.labelSmall?.copyWith(color: AppColors.textDisabled)),
@@ -3153,10 +3171,9 @@ class _PositionsTable extends ConsumerWidget {
                                               icon: const Glyph(AppIcons.pencil, size: 16),
                                               onPressed: () => onOpen(p),
                                             ),
-                                            IconButton(
+                                            DeleteButton(
                                               tooltip: 'Usuń',
-                                              visualDensity: VisualDensity.compact,
-                                              icon: Glyph(AppIcons.trash, size: 16, color: AppColors.error),
+                                              compact: true,
                                               onPressed: () => _deletePosition(context, ref, restaurantId, p),
                                             ),
                                           ],

@@ -183,8 +183,8 @@ class _NoteTileState extends State<_NoteTile> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AppColors.ring),
         ),
+        // Kosz na środku wysokości notatki.
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: Column(
@@ -205,11 +205,10 @@ class _NoteTileState extends State<_NoteTile> {
             AnimatedOpacity(
               opacity: _hover ? 1 : 0,
               duration: const Duration(milliseconds: 120),
-              child: IconButton(
+              child: DeleteButton(
                 tooltip: 'Usuń notatkę',
-                visualDensity: VisualDensity.compact,
+                compact: true,
                 onPressed: widget.onDelete,
-                icon: const Glyph(AppIcons.trash, size: 16),
               ),
             ),
           ],

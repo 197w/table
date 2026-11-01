@@ -154,10 +154,9 @@ class InventoryDocTile extends StatelessWidget {
             ),
           ),
           if (onDelete != null)
-            IconButton(
+            DeleteButton(
               tooltip: 'Usuń wpis (pomyłka)',
               onPressed: onDelete,
-              icon: const Glyph(AppIcons.trash, size: 16),
             ),
         ],
       ),
@@ -554,10 +553,9 @@ class InventoryContainersDialog extends ConsumerWidget {
                       onPressed: () => _edit(context, ref, b),
                       icon: const Glyph(AppIcons.pencil, size: 16),
                     ),
-                    IconButton(
+                    DeleteButton(
                       tooltip: 'Usuń',
                       onPressed: () => _delete(context, ref, b),
-                      icon: const Glyph(AppIcons.trash, size: 16),
                     ),
                   ],
                 ),

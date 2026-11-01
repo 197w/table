@@ -432,7 +432,7 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
                   ),
                   const SizedBox(width: 10),
                   SizedBox(width: 200, child: _MoneyField(controller: amount, label: 'Kwota', onChanged: refresh)),
-                  IconButton(
+                  DeleteButton(
                     tooltip: 'Usuń terminal',
                     onPressed: _terminals.length == 1
                         ? null
@@ -441,7 +441,6 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
                             removed.$1.dispose();
                             removed.$2.dispose();
                           }),
-                    icon: const Glyph(AppIcons.trash, size: 16),
                   ),
                 ],
               ),
@@ -669,11 +668,11 @@ class _PettyCardState extends ConsumerState<_PettyCard> {
                       '${e.out ? '−' : '+'}${Fmt.price(e.amountGrosze)}',
                       style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
                     ),
-                    IconButton(
+                    DeleteButton(
                       tooltip: 'Usuń',
-                      visualDensity: VisualDensity.compact,
+                      compact: true,
                       onPressed: () => _delete(e),
-                      icon: const Glyph(AppIcons.trash, size: 15),
+                      size: 15,
                     ),
                   ],
                 ),

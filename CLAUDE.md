@@ -266,7 +266,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   użytkownika): treść zaczyna się zaraz pod zakładkami.
   Ikony bez tła (1.11.2026, prośba użytkownika): przycisk z ikoną (`IconButton`, motyw w `panel_theme.dart`) to sama
   ikona bez tła, obwódki i podświetlenia po kliknięciu, najechana jaśnieje (w przyciskach nie ustawiamy koloru ikony,
-  żeby działało); `GlowButton` w nagłówkach też sama ikona (główna akcja w kolorze akcentu, duotone); `IconBadge`
+  żeby działało); kosz to zawsze `DeleteButton` (czerwony, wyłączony szary; w notatkach na środku wysokości); `GlowButton` w nagłówkach też sama ikona (główna akcja w kolorze akcentu, duotone); `IconBadge`
   w kaflach liczb i nagłówkach kart to kolorowa ikona bez kostki; `IconTabs` bez pigułki: wybrana ikona w kolorze
   akcentu z nazwą obok, jak grupy w górnym pasku. Jedna wysokość kontrolek 40 px (`PanelTheme.controlHeight`):
   przyciski wszystkich rodzajów, przyciski z ikoną, pola w jednej linii (padding 8 + 24 + 8), ikony w polach,
@@ -359,8 +359,14 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   w tej chwili (`FloorCanvas`: rachunek z kwotą, rezerwacja; podsumowanie sali w rogu), pod nim legenda (stan stolika
   i stan pozycji), a pod nią tabela jak porty w UniFi: zakładki Stoliki (wszystkie stoliki: kwadracik z numerem
   w kolorze stanu, strefa, stan, od, goście, kelner, pasek pozycji w kolorach stanu, kwota, wpłacone; kliknięcie
-  rozwija pozycje i zaznacza stolik na planie), Na wynos, Na zmianie i Zdarzenia (do tej chwili). Kafli z liczbami
-  już nie ma. Time Machine bez czekania (0073): `panel_time_machine_day` zwraca raz całą dobę z chwilami (rachunki
+  rozwija pozycje i zaznacza stolik na planie), Na wynos i Na zmianie. Kafli z liczbami już nie ma.
+  Zdarzenia (od 1.11.2026, prośba użytkownika): stale cała doba w kolumnie po prawej (`_LogCard`, `_DayLog`,
+  360 px; przy treści węższej niż 1240 px zakładka „Zdarzenia” w tabeli), najnowsze u góry jak na osi, ikona
+  w kolorze grupy bez tła, tytuł i szczegóły. Wybrana chwila to kreska z godziną między zdarzeniami: te do niej
+  zwykłe, ostatnie przed nią zaznaczone (tło i kreska akcentu), późniejsze zamglone (przezroczystość 0,35 i lekkie
+  rozmycie); nagłówek „9 z 20 do 14:32”. Lista przewija się do kreski tylko wtedy, gdy kreska przeskoczy zdarzenie
+  i wyjdzie poza widok (na żywo nowe zdarzenia nie zabierają czytanego miejsca). Kliknięcie zdarzenia przewija oś
+  do jego chwili co do mikrosekundy (czasy z bazy mają mikrosekundy). Time Machine bez czekania (0073): `panel_time_machine_day` zwraca raz całą dobę z chwilami (rachunki
   z pozycjami i płatnościami, rezerwacje, na wynos z etapami, zmiany), stan w chwili liczy panel
   (`TimeMachineDay.at`, `timeMachineDayProvider`), więc przewijanie osi zmienia plan i tabelę od razu.
   „Na żywo” trzyma chwilę na teraz (co sekundę; dziś dane odświeżają się z zamówieniami), „Historia” ma dzień
@@ -443,7 +449,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   właściciela, zmienia lokal całego panelu), „Dodaj pracownika” („Dodaj stanowisko” w Stanowiskach) i filtrami
   z liczbą osób (`_FilterSection`: Stanowisko; Stan: Na zmianie / Aktywni / Nieaktywni / Zwolnieni, na start
   zaznaczeni Aktywni; pusta grupa nie filtruje; pola wyboru `_Check` bez okrągłej poświaty po najechaniu). Panel
-  zwija okrągły przycisk na kresce między panelem a treścią (`_EdgeButton` w `_StaffLayout`), z animacją: panel
+  zwija uchwyt na kresce między panelem a treścią (`_EdgeButton` w `_StaffLayout`: prostokąt 20×40 z zaokrąglonymi
+  rogami, od 1.11.2026 na prośbę użytkownika, wcześniej kółko), z animacją: panel
   odjeżdża w lewo i gaśnie, przycisk jedzie z kreską (280 ms, przy „Ogranicz ruch” od razu). Filtry, zwinięte grupy i zwinięcie panelu są wspólne dla Pracowników i Grafiku
   (`_panelProvider`). Grafik to osobna podzakładka (`ScheduleScreen`, `/grafik`) z tym samym panelem: wybór okresu
   i „Edytuj” / „Anuluj” / „Zapisz” są w panelu zamiast „Dodaj pracownika”, siatka bez zmian. Po prawej Zespół jako

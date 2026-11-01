@@ -1,6 +1,13 @@
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
+import 'package:table_panel/app/panel_theme.dart';
 import 'package:table_panel/data/models.dart';
+import 'package:table_panel/data/providers.dart';
+import 'package:table_panel/features/activity/activity_screen.dart';
 
 void main() {
   test('logi: zdarzenia po polsku i grupy na osi czasu', () {
@@ -170,5 +177,63 @@ void main() {
 
     final closed = day.at(DateTime.parse('2026-10-30T14:00:00Z'));
     expect(closed.bills, isEmpty);
+  });
+
+  testWidgets('logi: wszystkie zdarzenia dnia, późniejsze niż wybrana chwila zamglone', (tester) async {
+    await initializeDateFormatting('pl');
+    await tester.runAsync(() async {
+      final loader = FontLoader('packages/table_core/Geist');
+      for (final weight in ['Regular', 'Medium', 'SemiBold']) {
+        loader.addFont(rootBundle.load('packages/table_core/assets/fonts/Geist-$weight.ttf'));
+      }
+      await loader.load();
+    });
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    AppColors.use(PanelPalette.dark);
+    final now = DateTime.now();
+    final events = [
+      for (final (ago, label) in [(4, 'Stolik 1'), (3, 'Stolik 2'), (2, 'Stolik 3'), (1, 'Stolik 4')])
+        ActivityEvent(at: now.subtract(Duration(minutes: ago)), kind: 'order_open', label: label),
+    ];
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentRestaurantProvider.overrideWithValue(
+            const PanelRestaurant(id: 'r1', name: 'Lokal', city: 'Kraków', isPro: true, role: StaffRole.owner),
+          ),
+          zonesProvider.overrideWith((ref, id) async => const <FloorZone>[]),
+          tablesProvider.overrideWith((ref, id) async => const <DiningTable>[]),
+          elementsProvider.overrideWith((ref, id) async => const <FloorElement>[]),
+          timeMachineDayProvider.overrideWith((ref, q) async => TimeMachineDay.fromJson(const {})),
+          activityProvider.overrideWith((ref, q) async => events),
+        ],
+        child: MaterialApp(
+          theme: PanelTheme.build(PanelPalette.dark),
+          home: const Scaffold(body: ActivityScreen()),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    double opacityOf(String label) {
+      final fog = find.ancestor(of: find.text('Otwarty rachunek · $label'), matching: find.byType(Opacity));
+      return fog.evaluate().isEmpty ? 1 : tester.widget<Opacity>(fog.first).opacity;
+    }
+
+    // Na żywo: wszystkie zdarzenia zwykłe.
+    for (final e in events) {
+      expect(opacityOf(e.label!), 1);
+    }
+
+    // Kliknięte zdarzenie wybiera swoją chwilę: wszystkie zostają na liście, późniejsze są zamglone.
+    await tester.tap(find.text('Otwarty rachunek · Stolik 2'));
+    await tester.pumpAndSettle();
+    expect([for (final e in events) opacityOf(e.label!)], [1, 1, lessThan(1), lessThan(1)]);
+    expect(find.textContaining('2 z 4 do'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
   });
 }

@@ -255,10 +255,10 @@ class _AnnouncementCard extends StatelessWidget {
                   onPressed: onEdit,
                   icon: const Glyph(AppIcons.pencil, size: 18),
                 ),
-                IconButton(
+                DeleteButton(
                   tooltip: 'Usuń',
                   onPressed: onDelete,
-                  icon: const Glyph(AppIcons.trash, size: 18),
+                  size: 18,
                 ),
               ],
             ],

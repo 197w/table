@@ -169,10 +169,9 @@ class WaitlistDialog extends ConsumerWidget {
                                 onPressed: () => _offer(context, ref, e),
                                 child: Text(e.offered ? 'Zmień godzinę' : 'Zaproponuj godzinę'),
                               ),
-                              IconButton(
+                              DeleteButton(
                                 tooltip: 'Usuń z listy',
                                 onPressed: () => _remove(context, ref, e),
-                                icon: Glyph(AppIcons.trash, size: 16, color: AppColors.error),
                               ),
                             ],
                           ),

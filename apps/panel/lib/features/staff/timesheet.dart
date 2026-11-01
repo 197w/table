@@ -202,9 +202,8 @@ class ShiftTile extends ConsumerWidget {
               icon: const Glyph(AppIcons.pencil, size: 16),
               onPressed: () => openShiftDialog(context, members, shift: s),
             ),
-            IconButton(
+            DeleteButton(
               tooltip: 'Usuń',
-              icon: Glyph(AppIcons.trash, size: 16, color: AppColors.error),
               onPressed: () => _deleteShift(context, ref, s, name),
             ),
           ],

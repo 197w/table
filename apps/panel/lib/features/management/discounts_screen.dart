@@ -220,10 +220,9 @@ class DiscountsScreen extends ConsumerWidget {
                                             onPressed: canEdit ? () => _edit(context, ref, restaurant.id, c) : null,
                                             icon: const Glyph(AppIcons.pencil, size: 16),
                                           ),
-                                          IconButton(
+                                          DeleteButton(
                                             tooltip: 'Usuń',
                                             onPressed: canEdit ? () => _delete(context, ref, restaurant.id, c) : null,
-                                            icon: Glyph(AppIcons.trash, size: 16, color: AppColors.error),
                                           ),
                                         ],
                                       ),

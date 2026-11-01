@@ -233,10 +233,10 @@ class _PlatformsCardState extends ConsumerState<_PlatformsCard> {
           SettingsRow(
             title: n,
             trailing: widget.editable
-                ? IconButton(
+                ? DeleteButton(
                     tooltip: 'Usuń $n',
                     onPressed: _busy ? null : () => _save([...names]..remove(n)),
-                    icon: const Glyph(AppIcons.trash, size: 18),
+                    size: 18,
                   )
                 : null,
           ),
@@ -1022,9 +1022,8 @@ class _ExceptionsCard extends ConsumerWidget {
                         ),
                       ),
                       if (editable)
-                        IconButton(
+                        DeleteButton(
                           tooltip: 'Usuń dzień wyjątkowy',
-                          icon: const Glyph(AppIcons.trash, size: 16),
                           onPressed: () => _delete(context, ref, e),
                         ),
                     ],
