@@ -146,7 +146,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `ButtonPair` (dwa przyciski, przy dużej czcionce jeden pod drugim)...), `app_icons.dart`
   (`Glyph` zamiast `Icon`, stałe `AppIcons`, SVG w `assets/icons`, nowe: `npx better-icons get ph:<nazwa>`;
   każda ikona ma też wersję duotone w `assets/icons/duotone` (`ph:<nazwa>-duotone`, `AppIcons.x.duotone`):
-  wybrane zakładki i dolne menu, powiadomienia, puste ekrany, kafle `IconBadge`).
+  wybrane zakładki i dolne menu, powiadomienia, puste ekrany, kafle `IconBadge`). Własne ikony w stylu Phosphor
+  (obrys 16 na 256, też w duotone): `cursor`, `corners-out`, `dining-table`, `wall` (pasek edytora sali).
 - `apps/guest/lib`: `app` (router, dolne menu, preferencje), `core` (mapy, lokalizacja), `data`, `features`
   (m.in. `ordering`: zamawianie z dostawą i na wynos).
   Odkrywaj (`features/discover`, nowy wygląd z 10.2026): powitanie na całą szerokość, wyszukiwarka
@@ -410,7 +411,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Dzisiaj / 7 dni / 14 dni / W tym miesiącu (`TeamPeriod`, `p_from` albo `p_days` albo `p_month`).
 - Zakładki nie mają tytułów ani opisów (`PageHeader`: tylko akcje i rząd zakładek); nazwę widać w menu bocznym.
   Przyciski (`actions`) stoją po prawej w tym samym rzędzie co zakładki i filtry (`below`); osobny rząd nad nimi
-  tylko z `actionsInRow: false` (Edycja sali).
+  tylko z `actionsInRow: false`. Edycja sali ma same akcje (strefy są na planie).
   Przejście między zakładkami menu (`_tabPage` w `app.dart`) i zakładkami w ekranie (`TabContent`) ma ten sam ruch:
   wygaszenie i wjazd o kilka pikseli z dołu (`PanelMotion`, 220 ms). W Rezerwacjach wybór dnia, „Gość z ulicy”
   i „Nowa rezerwacja” są nad listą po prawej (z liczbą rezerwacji i gości), a „Na żywo”, odświeżanie i dźwięk
@@ -534,6 +535,27 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   powiadomienie Windows tylko, gdy okno panelu jest w tle.
 - Plan sali: strefy w `floor_zones`, stoliki w `dining_tables` z pozycją środka w cm (`x_cm`, `y_cm`),
   obrotem i kształtem. Stolika z przyszłymi rezerwacjami nie da się usunąć (trigger), trzeba go wyłączyć.
+- Edycja sali działa jak UniFi Design Center (od 1.11.2026, prośba użytkownika; `floor_screen.dart`, obsługa myszy,
+  dotyku i klawiatury w `floor_plan_input.dart`, geometria w `plan_geometry.dart`). Plan na całą kartę, nad nim
+  pływające panele: strefy i „+” w lewym górnym rogu, po prawej właściwości (nic nie zaznaczone: „Dodaj na plan”
+  z gotowymi stolikami 2-, 4-, 6-osobowym, okrągłym, miejscem i elementem stałym do przeciągnięcia albo kliknięcia,
+  pod nim Strefa; kilka zaznaczonych: wyrównanie, równe odstępy, Duplikuj, Usuń), w lewym dolnym rogu Cofnij,
+  Ponów, Dopasuj, Przybliż, Oddal i podziałka, na dole pasek narzędzi (`IconTabs`): Zaznacz V, Przesuń widok H,
+  Ściana W, Element stały R, Stolik T, Miejsce M, z podpowiedzią nad paskiem. Widok (`PlanView`: skala px/cm
+  i początek strefy) zmienia tylko obraz: kółko myszy przybliża wokół kursora, gładzik i dwa palce przesuwają
+  i przybliżają, spacja, środkowy przycisk albo „Przesuń widok” przesuwa, Ctrl+0 dopasowuje, Ctrl+plus/minus.
+  Zaznaczanie: klik, Shift albo Ctrl dodaje, ramka po pustym miejscu (obiekty, które przecina), Ctrl+A.
+  Przeciąganie przesuwa całe zaznaczenie co 10 cm z liniami prowadzącymi do krawędzi i środków innych obiektów
+  i strefy (Alt bez przyciągania), strzałki o 10 cm (Shift 50, Alt 1). Jeden zaznaczony ma uchwyty: rogi i boki
+  (wymiary co 5 cm, przeciwna krawędź stoi), kółko obrotu nad krzesłami (co 15°, Shift co 1°), krzesła; cienka
+  ściana ma uchwyty tylko na końcach. Krawędzie strefy (prawa, dolna, róg) zmieniają jej wymiary co 10 cm, a w edycji
+  wymiary strefy są przy górnej i lewej krawędzi. Ściana to element stały 12 cm (`wallElement`, wydłużony o pół
+  grubości, żeby narożniki się domykały, kąt 0–179°): klik w kolejne narożniki, kąt co 15° (Shift dowolny),
+  przyciąganie do końców innych ścian, Enter, Esc, dwuklik albo prawy przycisk kończy. Delete usuwa zaznaczenie
+  (pyta tylko o zapisane stoliki), Ctrl+C/V/D kopiuje kilka obiektów naraz, Ctrl+Z i Ctrl+Shift+Z albo Ctrl+Y.
+  Na żywo ten sam plan: klik stolika pokazuje jego rezerwacje, przeciąganie przesuwa widok. Rezerwacje i Logi
+  używają `FloorCanvas` bez widoku (strefa dopasowana do miejsca). Zmiana nazwy strefy przenosi też jej elementy,
+  a usunięcie pustej strefy usuwa jej elementy stałe.
 - Kliknięcie stolika na planie w „Rezerwacjach” otwiera menu tylko w obszarze planu, obok stolika i jego krzeseł.
   W menu „Nowa rezerwacja” otwiera okno z tym stolikiem. W „Nowej rezerwacji” stolik: „Dobierz automatycznie”
   albo „Wybierz stolik”. „Edycja sali” pokazuje zajętość stolików tylko teraz (bez innej godziny).

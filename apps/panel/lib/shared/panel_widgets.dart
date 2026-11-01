@@ -526,21 +526,26 @@ class IconTabs<T> extends StatelessWidget {
     required this.options,
     required this.selected,
     required this.onChanged,
+    this.tooltips,
   });
 
   final List<(T, AppIconData, String)> options;
   final T selected;
   final ValueChanged<T> onChanged;
 
+  /// Podpowiedzi po najechaniu zamiast samych nazw, w kolejności opcji (np. ze skrótem klawiszowym).
+  final List<String>? tooltips;
+
   @override
   Widget build(BuildContext context) {
     return _SlidingSegments(
       selectedIndex: options.indexWhere((o) => o.$1 == selected),
       children: [
-        for (final (value, icon, label) in options)
+        for (final (i, (value, icon, label)) in options.indexed)
           _IconSegment(
             icon: icon,
             label: label,
+            tooltip: tooltips?.elementAtOrNull(i),
             selected: value == selected,
             onTap: () => onChanged(value),
           ),
@@ -927,10 +932,12 @@ class _IconSegment extends StatefulWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.tooltip,
   });
 
   final AppIconData icon;
   final String label;
+  final String? tooltip;
   final bool selected;
   final VoidCallback onTap;
 
@@ -1012,7 +1019,7 @@ class _IconSegmentState extends State<_IconSegment> {
         ),
       ),
     );
-    return selected ? tab : Tooltip(message: widget.label, child: tab);
+    return selected ? tab : Tooltip(message: widget.tooltip ?? widget.label, child: tab);
   }
 }
 

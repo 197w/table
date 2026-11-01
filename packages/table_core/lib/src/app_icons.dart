@@ -138,8 +138,12 @@ abstract final class AppIcons {
   static const confetti = AppIconData('assets/icons/confetti.svg');
   static const cookingPot = AppIconData('assets/icons/cooking-pot.svg');
   static const copy = AppIconData('assets/icons/copy.svg');
+  // Własne ikony w stylu Phosphor (obrys 16 na 256): zaznaczanie, dopasowanie do ekranu, stolik z krzesłami i ściana.
+  static const cornersOut = AppIconData('assets/icons/corners-out.svg');
   static const creditCard = AppIconData('assets/icons/credit-card.svg');
+  static const cursor = AppIconData('assets/icons/cursor.svg');
   static const deviceMobile = AppIconData('assets/icons/device-mobile.svg');
+  static const diningTable = AppIconData('assets/icons/dining-table.svg');
   static const doorOpen = AppIconData('assets/icons/door-open.svg');
   static const envelope = AppIconData('assets/icons/envelope-simple.svg');
   static const dotsVertical = AppIconData('assets/icons/dots-three-vertical.svg');
@@ -184,6 +188,7 @@ abstract final class AppIcons {
   static const rectangle = AppIconData('assets/icons/rectangle.svg');
   static const scales = AppIconData('assets/icons/scales.svg');
   static const refresh = AppIconData('assets/icons/arrow-clockwise.svg');
+  static const redo = AppIconData('assets/icons/arrow-clockwise.svg');
   static const search = AppIconData('assets/icons/magnifying-glass.svg');
   static const send = AppIconData('assets/icons/paper-plane-tilt.svg');
   static const shieldWarning = AppIconData('assets/icons/shield-warning.svg');
@@ -207,6 +212,7 @@ abstract final class AppIcons {
   static const users = AppIconData('assets/icons/users.svg');
   static const usersThree = AppIconData('assets/icons/users-three.svg');
   static const van = AppIconData('assets/icons/van.svg');
+  static const wall = AppIconData('assets/icons/wall.svg');
   static const warning = AppIconData('assets/icons/warning-circle.svg');
   static const xCircle = AppIconData('assets/icons/x-circle.svg');
   static const wifiOff = AppIconData('assets/icons/wifi-slash.svg');

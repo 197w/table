@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
 import '../../data/models.dart';
+import 'plan_geometry.dart';
 
 /// Średnica krzesła na planie, w centymetrach.
 const chairDiameterCm = 38.0;
@@ -117,12 +118,21 @@ ChairPos attachChair(DiningTable t, ChairPos c) {
 List<ChairPos> chairsOf(DiningTable t) =>
     t.chairs == null ? autoChairs(t) : [for (final c in t.chairs!) attachChair(t, c)];
 
-Offset _rotate(Offset p, double degrees) {
-  final a = degrees * math.pi / 180;
-  return Offset(
-    p.dx * math.cos(a) - p.dy * math.sin(a),
-    p.dx * math.sin(a) + p.dy * math.cos(a),
+/// Stolik o nowych wymiarach blatu. Własne krzesła przesuwają się razem z krawędziami blatu.
+DiningTable resizedTable(DiningTable t, int widthCm, int heightCm) {
+  final resized = t.copyWith(
+    widthCm: widthCm,
+    heightCm: t.shape == TableShape.round ? widthCm : heightCm,
   );
+  final chairs = t.chairs;
+  if (chairs == null) return resized;
+  return resized.copyWith(chairs: [
+    for (final c in chairs)
+      attachChair(
+        resized,
+        ChairPos(c.x * resized.widthCm / t.widthCm, c.y * resized.heightCm / t.heightCm),
+      ),
+  ]);
 }
 
 bool get _lightTheme => AppColors.palette.brightness == Brightness.light;
@@ -147,7 +157,8 @@ Color elementFill(BuildContext context) =>
     : const Color(0xFFD6D9D7);
 
 /// Strefa sali narysowana w skali: stałe elementy, stoliki z krzesłami i miejsca do rezerwacji.
-/// Pozycje w bazie są w centymetrach, skala dopasowuje strefę do dostępnego miejsca.
+/// Pozycje w bazie są w centymetrach. Bez [view] skala dopasowuje strefę do dostępnego miejsca,
+/// z [view] plan stoi tam, gdzie go przybliżono i przesunięto (Edycja sali, jak UniFi Design Center).
 class FloorCanvas extends StatelessWidget {
   const FloorCanvas({
     super.key,
@@ -168,6 +179,10 @@ class FloorCanvas extends StatelessWidget {
     this.onDragChair,
     this.onDragChairEnd,
     this.onTapTableAt,
+    this.view,
+    this.interactive = true,
+    this.selectedIds = const {},
+    this.hoveredId,
   });
 
   final FloorZone zone;
@@ -177,6 +192,18 @@ class FloorCanvas extends StatelessWidget {
 
   /// Klucz zaznaczonego stolika albo elementu.
   final String? selectedId;
+
+  /// Kilka zaznaczonych naraz (zaznaczanie ramką albo z Shift).
+  final Set<String> selectedIds;
+
+  /// Obiekt pod kursorem: lekka obwódka w kolorze akcentu.
+  final String? hoveredId;
+
+  /// Przybliżenie i przesunięcie planu. Null: strefa dopasowana do miejsca i na środku.
+  final PlanView? view;
+
+  /// False: plan tylko rysuje, a myszą i dotykiem zajmuje się edytor nad nim.
+  final bool interactive;
   final bool showGrid;
   final ValueChanged<DiningTable> onTapTable;
   final VoidCallback? onTapEmpty;
@@ -202,14 +229,18 @@ class FloorCanvas extends StatelessWidget {
 
   static String keyOf(DiningTable t) => t.id ?? t.draftKey ?? t.label;
 
+  bool _isSelected(String key) => key == selectedId || selectedIds.contains(key);
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, c) {
-        final scale = math.min(
-          c.maxWidth / zone.widthCm,
-          c.maxHeight / zone.heightCm,
-        );
+        final view = this.view;
+        final scale = view?.scale ??
+            math.min(
+              c.maxWidth / zone.widthCm,
+              c.maxHeight / zone.heightCm,
+            );
         final width = zone.widthCm * scale;
         final height = zone.heightCm * scale;
 
@@ -218,50 +249,62 @@ class FloorCanvas extends StatelessWidget {
           if (keyOf(t) == chairEditKey && !t.isSeat) chairTable = t;
         }
 
-        return Center(
-          child: SizedBox(
-            width: width,
-            height: height,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onTapEmpty,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      // W ciemnym motywie podłoga sali jest ciemniejsza od karty,
-                      // więc plan wygląda jak wgłębienie, a nie kolejne pudełko.
-                      decoration: BoxDecoration(
-                        color: _lightTheme ? AppColors.surface : AppColors.background,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: _lightTheme ? planLine : AppColors.ring),
+        Widget plan = SizedBox(
+          width: width,
+          height: height,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTapEmpty,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned.fill(
+                  child: DecoratedBox(
+                    // W ciemnym motywie podłoga sali jest ciemniejsza od karty,
+                    // więc plan wygląda jak wgłębienie, a nie kolejne pudełko.
+                    decoration: BoxDecoration(
+                      color: _lightTheme ? AppColors.surface : AppColors.background,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: _lightTheme ? planLine : AppColors.ring),
+                    ),
+                    child: showGrid
+                        ? CustomPaint(
+                            painter: _GridPainter(scale: scale, color: planGrid),
+                          )
+                        : null,
+                  ),
+                ),
+                for (final e in elements) _element(context, e, scale),
+                for (final t in tables) _table(context, t, scale),
+                if (chairTable != null) ..._chairHandles(chairTable, scale),
+                if (showGrid && view == null)
+                  Positioned(
+                    right: 8,
+                    bottom: 6,
+                    child: Text(
+                      '${_meters(zone.widthCm)} × ${_meters(zone.heightCm)} m · kratka 50 cm',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.textDisabled,
                       ),
-                      child: showGrid
-                          ? CustomPaint(
-                              painter: _GridPainter(scale: scale, color: planGrid),
-                            )
-                          : null,
                     ),
                   ),
-                  for (final e in elements) _element(context, e, scale),
-                  for (final t in tables) _table(context, t, scale),
-                  if (chairTable != null) ..._chairHandles(chairTable, scale),
-                  if (showGrid)
-                    Positioned(
-                      right: 8,
-                      bottom: 6,
-                      child: Text(
-                        '${_meters(zone.widthCm)} × ${_meters(zone.heightCm)} m · kratka 50 cm',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textDisabled,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+              ],
             ),
           ),
+        );
+        if (!interactive) plan = IgnorePointer(child: plan);
+        if (view == null) return Center(child: plan);
+        return Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            Positioned(
+              left: view.origin.dx,
+              top: view.origin.dy,
+              width: width,
+              height: height,
+              child: plan,
+            ),
+          ],
         );
       },
     );
@@ -271,7 +314,8 @@ class FloorCanvas extends StatelessWidget {
     final w = e.widthCm * scale;
     final h = e.heightCm * scale;
     final extent = math.sqrt(w * w + h * h);
-    final selected = e.key == selectedId;
+    final selected = _isSelected(e.key);
+    final hovered = !selected && e.key == hoveredId;
     final fill = elementFill(context);
 
     return Positioned(
@@ -298,7 +342,9 @@ class FloorCanvas extends StatelessWidget {
                   borderRadius: e.shape == TableShape.round
                       ? null
                       : BorderRadius.circular(math.min(4, math.min(w, h) / 2)),
-                  border: selected ? Border.all(color: AppColors.accent, width: 2) : null,
+                  border: selected
+                      ? Border.all(color: AppColors.accent, width: 2)
+                      : (hovered ? Border.all(color: AppColors.accent.withValues(alpha: 0.5), width: 1.5) : null),
                 ),
               ),
             ),
@@ -310,7 +356,8 @@ class FloorCanvas extends StatelessWidget {
 
   Widget _table(BuildContext context, DiningTable t, double scale) {
     final look = lookOf(t);
-    final selected = keyOf(t) == selectedId;
+    final selected = _isSelected(keyOf(t));
+    final hovered = !selected && keyOf(t) == hoveredId;
     final chairs = chairsOf(t);
     const r = chairDiameterCm / 2;
 
@@ -340,8 +387,10 @@ class FloorCanvas extends StatelessWidget {
                 chairs: chairs,
                 scale: scale,
                 fill: look.fill,
-                stroke: selected ? AppColors.accent : look.stroke,
-                strokeWidth: selected ? 2.5 : look.strokeWidth,
+                stroke: selected
+                    ? AppColors.accent
+                    : (hovered ? Color.lerp(look.stroke, AppColors.accent, 0.6)! : look.stroke),
+                strokeWidth: selected ? 2.5 : (hovered ? math.max(2, look.strokeWidth) : look.strokeWidth),
                 chairColor: planChair,
                 dimmed: look.dimmed,
               ),
@@ -425,7 +474,7 @@ class FloorCanvas extends StatelessWidget {
     return [
       for (var i = 0; i < chairs.length; i++)
         () {
-          final p = _rotate(Offset(chairs[i].x, chairs[i].y), t.rotation.toDouble());
+          final p = rotateOffset(Offset(chairs[i].x, chairs[i].y), t.rotation.toDouble());
           return Positioned(
             left: (t.xCm + p.dx) * scale - size / 2,
             top: (t.yCm + p.dy) * scale - size / 2,
@@ -437,7 +486,7 @@ class FloorCanvas extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 onPanUpdate: onDragChair == null
                     ? null
-                    : (d) => onDragChair!(t, i, _rotate(d.delta / scale, -t.rotation.toDouble())),
+                    : (d) => onDragChair!(t, i, rotateOffset(d.delta / scale, -t.rotation.toDouble())),
                 onPanEnd: onDragChairEnd == null ? null : (_) => onDragChairEnd!(t),
                 child: Container(
                   decoration: BoxDecoration(
@@ -471,6 +520,19 @@ class _GridPainter extends CustomPainter {
     final thin = Paint()
       ..color = color
       ..strokeWidth = 1;
+    // Po mocnym przybliżeniu dochodzi bledsza kratka co 10 cm.
+    final minor = 10 * scale;
+    if (minor >= 12) {
+      final faint = Paint()
+        ..color = color.withValues(alpha: color.a * 0.45)
+        ..strokeWidth = 1;
+      for (var i = 1; i * minor < size.width; i++) {
+        if (i % 5 != 0) canvas.drawLine(Offset(i * minor, 0), Offset(i * minor, size.height), faint);
+      }
+      for (var i = 1; i * minor < size.height; i++) {
+        if (i % 5 != 0) canvas.drawLine(Offset(0, i * minor), Offset(size.width, i * minor), faint);
+      }
+    }
     final step = 50 * scale;
     if (step < 6) return;
     for (var x = step; x < size.width; x += step) {
