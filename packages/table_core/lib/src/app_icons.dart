@@ -126,6 +126,8 @@ abstract final class AppIcons {
   static const circle = AppIconData('assets/icons/circle.svg');
   static const circleHalf = AppIconData('assets/icons/circle-half.svg');
   static const circleHalfTilt = AppIconData('assets/icons/circle-half-tilt.svg');
+  // Pierścień z wypełnioną prawą połową w środku (jak w UniFi): motyw systemowy. Własny rysunek, nie Phosphor.
+  static const circleHalfInset = AppIconData('assets/icons/circle-half-inset.svg');
   static const clipboardText = AppIconData('assets/icons/clipboard-text.svg');
   static const clockCounterClockwise = AppIconData('assets/icons/clock-counter-clockwise.svg');
   static const clock = AppIconData('assets/icons/clock.svg');
@@ -202,8 +204,6 @@ abstract final class AppIcons {
   static const storefront = AppIconData('assets/icons/storefront.svg');
   static const sun = AppIconData('assets/icons/sun.svg');
   static const timer = AppIconData('assets/icons/timer.svg');
-  // Dwa przełączniki jak w UniFi: motyw systemowy.
-  static const toggles = AppIconData('assets/icons/toggles.svg');
   static const trash = AppIconData('assets/icons/trash.svg');
   static const truck = AppIconData('assets/icons/truck.svg');
   static const undo = AppIconData('assets/icons/arrow-counter-clockwise.svg');

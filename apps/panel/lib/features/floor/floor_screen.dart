@@ -37,7 +37,7 @@ enum _Tool {
 
   /// Podpowiedź nad paskiem, gdy narzędzie jest wybrane.
   String? get hint => switch (this) {
-    _Tool.select => null,
+    _Tool.select => 'Przeciągnij puste miejsce, żeby przesunąć widok, z Shift: zaznacz kilka. Prawy przycisk: menu.',
     _Tool.pan => 'Przeciągnij, żeby przesunąć widok. Kółko myszy przybliża.',
     _Tool.wall => 'Klikaj kolejne narożniki. Enter, Esc albo dwuklik kończy ścianę, Shift: dowolny kąt.',
     _Tool.element => 'Przeciągnij, żeby narysować prostokąt. Samo kliknięcie wstawia 2 × 0,6 m.',
@@ -154,6 +154,9 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
   final List<String> _deletedZones = [];
   bool _dirty = false;
   bool _saving = false;
+
+  /// Kopia robocza wczyta się z bazy, gdy dane skończą się ładować (po zapisie albo „Odrzuć zmiany”).
+  bool _reload = false;
 
   // Schowek edytora: skopiowane stoliki, miejsca i elementy stałe.
   List<Object> _clipboard = const [];
@@ -291,66 +294,61 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     _guides = (x: null, y: null);
   }
 
-  void _startEditing(
+  /// Kopia robocza układu z bazy. Kierownik edytuje od razu (od 2.11.2026, bez „Edytuj układ”), więc wczytuje
+  /// się w build: na start, po zapisie i po „Odrzuć zmiany”. Widok i wybrana strefa zostają.
+  void _loadDraft(
     List<FloorZone> zones,
     List<DiningTable> tables,
     List<FloorElement> elements,
   ) {
-    final all = orderedZones(zones, tables);
-    setState(() {
-      _zones = all;
-      _tables = [...tables];
-      _elements = [...elements];
-      _deletedTables.clear();
-      _deletedElements.clear();
-      _deletedZones.clear();
-      _history.clear();
-      _future.clear();
-      _lastAction = null;
-      _dirty = false;
-      _mode = _Mode.edit;
-      _selection.clear();
-      _resetTools();
-    });
-    _canvasFocus.requestFocus();
-  }
-
-  Future<void> _stopEditing() async {
-    if (_dirty) {
-      final ok = await confirm(
-        context,
-        title: 'Odrzucić zmiany?',
-        message: 'Niezapisane zmiany w układzie sali zostaną utracone.',
-        action: 'Odrzuć',
-        destructive: true,
-      );
-      if (!ok) return;
-    }
-    setState(() {
-      _mode = _Mode.live;
-      _dirty = false;
-      _selection.clear();
-      _history.clear();
-      _future.clear();
-      _resetTools();
+    _zones = orderedZones(zones, tables);
+    _tables = [...tables];
+    _elements = [...elements];
+    _deletedTables.clear();
+    _deletedElements.clear();
+    _deletedZones.clear();
+    _history.clear();
+    _future.clear();
+    _lastAction = null;
+    _dirty = false;
+    _reload = false;
+    _mode = _Mode.edit;
+    _selection.clear();
+    _resetTools();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _canvasFocus.requestFocus();
     });
   }
 
+  /// „Odrzuć zmiany”: po potwierdzeniu kopia robocza wraca do układu z bazy.
+  Future<void> _discard() async {
+    if (!_dirty) return;
+    final ok = await confirm(
+      context,
+      title: 'Odrzucić zmiany?',
+      message: 'Niezapisane zmiany w układzie sali zostaną utracone.',
+      action: 'Odrzuć',
+      destructive: true,
+    );
+    if (!ok || !mounted) return;
+    setState(() => _reload = true);
+  }
+
+  /// Zmiana stolika z panelu po prawej. Nie zmienia zaznaczenia: pole zatwierdzone przy wyjściu z niego
+  /// (kliknięcie innego stolika) nie może zabrać zaznaczenia z powrotem.
   void _update(DiningTable table, DiningTable Function(DiningTable) change) {
     final key = FloorCanvas.keyOf(table);
     _remember('stolik-$key');
     setState(() {
+      DiningTable? changed;
       _tables = [
         for (final t in _tables)
-          if (FloorCanvas.keyOf(t) == key) _selectAfter(change(t)) else t,
+          if (FloorCanvas.keyOf(t) == key) changed = change(t) else t,
       ];
+      // Stolik bez id i klucza szkicu ma klucz z numeru: zaznaczenie idzie za nowym numerem.
+      if (changed != null && _selection.remove(key)) _selection.add(FloorCanvas.keyOf(changed));
       _dirty = true;
     });
-  }
-
-  DiningTable _selectAfter(DiningTable t) {
-    _select(FloorCanvas.keyOf(t));
-    return t;
   }
 
   /// Pierwszy wolny numer z przedrostkiem, od [start]: S5, M2.
@@ -454,7 +452,6 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
         for (final e in _elements)
           if (e.key == element.key) change(e) else e,
       ];
-      _select(element.key);
       _dirty = true;
     });
   }
@@ -575,6 +572,23 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     if (_selection.isEmpty) return;
     _remember('strzałki');
     setState(() => _shiftSelection(zone, (_) => delta));
+  }
+
+  /// Obraca każdy zaznaczony obiekt wokół jego środka (menu pod prawym przyciskiem myszy).
+  void _rotateSelection(int degrees) {
+    if (_selection.isEmpty) return;
+    int turned(int r) => (r + degrees) % 360;
+    _remember();
+    setState(() {
+      _tables = [
+        for (final t in _tables)
+          _selection.contains(FloorCanvas.keyOf(t)) ? t.copyWith(rotation: turned(t.rotation)) : t,
+      ];
+      _elements = [
+        for (final e in _elements) _selection.contains(e.key) ? e.copyWith(rotation: turned(e.rotation)) : e,
+      ];
+      _dirty = true;
+    });
   }
 
   /// Wyrównuje zaznaczone obiekty do krawędzi albo środka ich wspólnego obrysu.
@@ -768,13 +782,10 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
         ..invalidate(tablesProvider(restaurantId))
         ..invalidate(elementsProvider(restaurantId));
       if (!mounted) return;
+      // Edycja trwa dalej na świeżych danych z bazy (nowe stoliki mają już id).
       setState(() {
-        _mode = _Mode.live;
         _dirty = false;
-        _selection.clear();
-        _history.clear();
-        _future.clear();
-        _resetTools();
+        _reload = true;
       });
       showMessage(context, 'Układ sali zapisany.');
     } catch (e) {
@@ -820,16 +831,17 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     }
     if (!zonesAsync.hasValue || !tablesAsync.hasValue) return const LoadingView();
 
+    // Kierownik edytuje od razu; reszta obsługi widzi salę na żywo z rezerwacjami.
+    final loading = zonesAsync.isLoading || tablesAsync.isLoading || elementsAsync.isLoading;
+    if (restaurant.canManage && (_mode == _Mode.live || _reload) && !loading) {
+      _loadDraft(zonesAsync.value!, tablesAsync.value!, elementsAsync.value ?? const []);
+    }
     final editing = _mode == _Mode.edit;
+    if (restaurant.canManage && !editing) return const LoadingView();
     _floorUnsaved = editing && _dirty;
     final zones = editing ? _zones : zonesAsync.value!;
     final tables = editing ? _tables : tablesAsync.value!;
     final elements = editing ? _elements : (elementsAsync.value ?? const <FloorElement>[]);
-    void startEditing() => _startEditing(
-      zonesAsync.value!,
-      tablesAsync.value!,
-      elementsAsync.value ?? const [],
-    );
 
     // Stoliki ze strefą, której nie ma w tabeli stref, pokazujemy w strefie o domyślnych wymiarach.
     final zoneList = orderedZones(zones, tables);
@@ -841,20 +853,15 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
           actions: [
             if (editing) ...[
               TextButton(
-                onPressed: _saving ? null : _stopEditing,
+                onPressed: _saving || !_dirty ? null : _discard,
                 style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
-                child: const Text('Anuluj'),
+                child: const Text('Odrzuć zmiany'),
               ),
               FilledButton(
                 onPressed: _saving || !_dirty ? null : () => _save(restaurant.id),
                 child: const Text('Zapisz układ'),
               ),
-            ] else if (restaurant.canManage && zoneList.isNotEmpty)
-              OutlinedButton.icon(
-                onPressed: startEditing,
-                icon: const Glyph(AppIcons.pencil, size: 16),
-                label: const Text('Edytuj układ'),
-              ),
+            ],
           ],
         ),
         Expanded(
@@ -862,13 +869,11 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
               ? MessageView(
                   icon: AppIcons.squaresFour,
                   title: 'Sala jest pusta',
-                  message: restaurant.canManage
+                  message: editing
                       ? 'Dodaj strefę, na przykład „sala”, a potem rozstaw w niej stoliki.'
                       : 'Kierownik lokalu jeszcze nie narysował sali.',
-                  actionLabel: restaurant.canManage ? 'Edytuj układ' : null,
-                  onAction: restaurant.canManage
-                      ? startEditing
-                      : null,
+                  actionLabel: editing ? 'Dodaj strefę' : null,
+                  onAction: editing ? _addZone : null,
                 )
               : Padding(
                   padding: const EdgeInsets.fromLTRB(32, 0, 32, 24),
@@ -894,7 +899,8 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
     72,
     76,
     math.max(160, size.width - _panelWidth - 40),
-    math.max(140, size.height - (editing ? 88 : 32)),
+    // W edycji pod planem jest pasek narzędzi i nad nim podpowiedź.
+    math.max(140, size.height - (editing ? 124 : 32)),
   );
 
   /// Widok dla strefy: dopasowany przy pierwszym rysowaniu, po zmianie strefy i po zmianie
@@ -945,10 +951,15 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
             fitScale: PlanView.fit(zone, area).scale,
             editing: editing,
           );
-          final hint = editing ? (_spaceDown ? _Tool.pan.hint : _tool.hint) : null;
+          // Podpowiedź zaznaczania tylko wtedy, gdy nic nie jest zaznaczone, żeby nie zasłaniała pracy.
+          final tool = _spaceDown ? _Tool.pan : _tool;
+          final hint = editing && !(tool == _Tool.select && _selection.isNotEmpty) ? tool.hint : null;
           return Stack(
             children: [
-              Positioned.fill(child: _plan(zone, inZone, zoneElements, reservations, editing, view)),
+              // Plan rysuje się przy każdym ruchu myszy; osobna warstwa nie odrysowuje paneli z cieniem.
+              Positioned.fill(
+                child: RepaintBoundary(child: _plan(zone, inZone, zoneElements, reservations, editing, view)),
+              ),
               Positioned(
                 left: 16,
                 top: 16,
@@ -1408,20 +1419,24 @@ class _Floating extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (card) {
-      return DecoratedBox(
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(22), boxShadow: shadow(context)),
-        child: child,
+      return RepaintBoundary(
+        child: DecoratedBox(
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(22), boxShadow: shadow(context)),
+          child: child,
+        ),
       );
     }
-    return Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: AppColors.ring),
-        boxShadow: shadow(context),
+    return RepaintBoundary(
+      child: Container(
+        padding: padding,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: AppColors.ring),
+          boxShadow: shadow(context),
+        ),
+        child: child,
       ),
-      child: child,
     );
   }
 }
@@ -1870,15 +1885,21 @@ class _ZoneInspectorState extends State<_ZoneInspector> {
     super.dispose();
   }
 
+  /// Zatwierdza pola po Enter albo wyjściu z pola. Zły wpis wraca do bieżącej wartości.
   void _apply() {
+    final z = widget.zone;
     final w = parseInt(_width.text);
     final h = parseInt(_height.text);
     final name = _name.text.trim();
     if (name.isEmpty || w == null || h == null || w < 200 || h < 200 || w > 10000 || h > 10000) {
       showMessage(context, 'Podaj nazwę i wymiary strefy od 200 do 10 000 cm.');
+      _name.text = z.name;
+      _width.text = '${z.widthCm}';
+      _height.text = '${z.heightCm}';
       return;
     }
-    widget.onChanged(widget.zone.copyWith(name: name, widthCm: w, heightCm: h));
+    if (name == z.name && w == z.widthCm && h == z.heightCm) return;
+    widget.onChanged(z.copyWith(name: name, widthCm: w, heightCm: h));
   }
 
   @override
@@ -1889,21 +1910,22 @@ class _ZoneInspectorState extends State<_ZoneInspector> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            controller: _name,
-            decoration: const InputDecoration(labelText: 'Nazwa strefy'),
-            onSubmitted: (_) => _apply(),
+          _Commit(
+            onCommit: _apply,
+            child: TextField(
+              controller: _name,
+              decoration: const InputDecoration(labelText: 'Nazwa strefy'),
+              onSubmitted: (_) => _apply(),
+            ),
           ),
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(child: _NumberField(controller: _width, label: 'Szerokość', suffix: 'cm', onSubmitted: _apply)),
+              Expanded(child: _NumberField(controller: _width, label: 'Szerokość', suffix: 'cm', onCommit: _apply)),
               const SizedBox(width: 10),
-              Expanded(child: _NumberField(controller: _height, label: 'Głębokość', suffix: 'cm', onSubmitted: _apply)),
+              Expanded(child: _NumberField(controller: _height, label: 'Głębokość', suffix: 'cm', onCommit: _apply)),
             ],
           ),
-          const SizedBox(height: 12),
-          OutlinedButton(onPressed: _apply, child: const Text('Zastosuj')),
           const SizedBox(height: 18),
           Text(
             'Stolików w strefie: ${widget.tableCount}. Kliknij stolik na planie, żeby zmienić jego wymiary, liczbę miejsc '
@@ -1968,13 +1990,18 @@ class _TableInspectorState extends State<_TableInspector> {
     super.dispose();
   }
 
+  /// Wymiary po Enter albo wyjściu z pola. Zły wpis wraca do bieżących wymiarów.
   void _applySize() {
+    final t = widget.table;
     final w = parseInt(_width.text);
-    final h = parseInt(_height.text);
+    final h = t.shape == TableShape.round ? w : parseInt(_height.text);
     if (w == null || h == null || w < 30 || h < 30 || w > 1000 || h > 1000) {
       showMessage(context, 'Wymiary blatu od 30 do 1000 cm.');
+      _width.text = '${t.widthCm}';
+      _height.text = '${t.heightCm}';
       return;
     }
+    if (w == t.widthCm && h == t.heightCm) return;
     widget.onChanged((t) => resizedTable(t, w, h));
   }
 
@@ -2063,23 +2090,18 @@ class _TableInspectorState extends State<_TableInspector> {
                   controller: _width,
                   label: t.shape == TableShape.round ? 'Średnica' : 'Szerokość',
                   suffix: 'cm',
-                  onSubmitted: _applySize,
+                  onCommit: _applySize,
                 ),
               ),
               if (t.shape == TableShape.rect) ...[
                 const SizedBox(width: 10),
                 Expanded(
-                  child: _NumberField(controller: _height, label: 'Głębokość', suffix: 'cm', onSubmitted: _applySize),
+                  child: _NumberField(controller: _height, label: 'Głębokość', suffix: 'cm', onCommit: _applySize),
                 ),
               ],
             ],
           ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(onPressed: _applySize, child: const Text('Zastosuj wymiary')),
-          ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 14),
           if (t.shape == TableShape.rect)
             _RotationField(
               value: t.rotation,
@@ -2193,28 +2215,50 @@ class _TableInspectorState extends State<_TableInspector> {
   }
 }
 
+/// Zatwierdza wpis przy wyjściu z pola (kliknięcie planu, Tab), jak w UniFi Design Center: bez „Zastosuj”.
+class _Commit extends StatelessWidget {
+  const _Commit({required this.onCommit, required this.child});
+
+  final VoidCallback onCommit;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Focus(
+    canRequestFocus: false,
+    skipTraversal: true,
+    onFocusChange: (focused) {
+      if (!focused) onCommit();
+    },
+    child: child,
+  );
+}
+
+/// Pole liczby z jednostką. Wartość zatwierdza Enter albo wyjście z pola.
 class _NumberField extends StatelessWidget {
   const _NumberField({
     required this.controller,
     required this.label,
     required this.suffix,
-    required this.onSubmitted,
+    required this.onCommit,
   });
 
   final TextEditingController controller;
   final String label;
   final String suffix;
-  final VoidCallback onSubmitted;
+  final VoidCallback onCommit;
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      keyboardType: TextInputType.number,
-      inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(5)],
-      style: const TextStyle(fontFeatures: _tabular),
-      decoration: InputDecoration(labelText: label, suffixText: suffix),
-      onSubmitted: (_) => onSubmitted(),
+    return _Commit(
+      onCommit: onCommit,
+      child: TextField(
+        controller: controller,
+        keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(5)],
+        style: const TextStyle(fontFeatures: _tabular),
+        decoration: InputDecoration(labelText: label, suffixText: suffix),
+        onSubmitted: (_) => onCommit(),
+      ),
     );
   }
 }
@@ -2367,17 +2411,19 @@ class _ElementInspectorState extends State<_ElementInspector> {
     super.dispose();
   }
 
+  /// Wymiary po Enter albo wyjściu z pola. Zły wpis wraca do bieżących wymiarów.
   void _applySize() {
+    final e = widget.element;
     final w = parseInt(_width.text);
-    final h = parseInt(_height.text);
+    final h = e.shape == TableShape.round ? w : parseInt(_height.text);
     if (w == null || h == null || w < 5 || h < 5 || w > 5000 || h > 5000) {
       showMessage(context, 'Wymiary elementu od 5 do 5000 cm.');
+      _width.text = '${e.widthCm}';
+      _height.text = '${e.heightCm}';
       return;
     }
-    widget.onChanged((e) => e.copyWith(
-      widthCm: w,
-      heightCm: widget.element.shape == TableShape.round ? w : h,
-    ));
+    if (w == e.widthCm && h == e.heightCm) return;
+    widget.onChanged((x) => x.copyWith(widthCm: w, heightCm: h));
   }
 
   @override
@@ -2427,22 +2473,18 @@ class _ElementInspectorState extends State<_ElementInspector> {
                   controller: _width,
                   label: e.shape == TableShape.round ? 'Średnica' : 'Szerokość',
                   suffix: 'cm',
-                  onSubmitted: _applySize,
+                  onCommit: _applySize,
                 ),
               ),
               if (e.shape == TableShape.rect) ...[
                 const SizedBox(width: 10),
                 Expanded(
-                  child: _NumberField(controller: _height, label: 'Głębokość', suffix: 'cm', onSubmitted: _applySize),
+                  child: _NumberField(controller: _height, label: 'Głębokość', suffix: 'cm', onCommit: _applySize),
                 ),
               ],
             ],
           ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(onPressed: _applySize, child: const Text('Zastosuj wymiary')),
-          ),
+          const SizedBox(height: 14),
           if (e.shape == TableShape.rect)
             _RotationField(
               value: e.rotation,

@@ -179,7 +179,7 @@ void main() {
     expect(closed.bills, isEmpty);
   });
 
-  testWidgets('logi: wszystkie zdarzenia dnia, późniejsze niż wybrana chwila zamglone', (tester) async {
+  testWidgets('logi: lista zdarzeń dnia z filtrami, w Time Machine późniejsze zamglone', (tester) async {
     await initializeDateFormatting('pl');
     await tester.runAsync(() async {
       final loader = FontLoader('packages/table_core/Geist');
@@ -223,12 +223,23 @@ void main() {
       return fog.evaluate().isEmpty ? 1 : tester.widget<Opacity>(fog.first).opacity;
     }
 
-    // Na żywo: wszystkie zdarzenia zwykłe.
-    for (final e in events) {
-      expect(opacityOf(e.label!), 1);
-    }
+    // Lista jak Pracownicy: wszystkie zdarzenia dnia, najnowsze u góry, filtry z liczbą i wyszukiwanie.
+    final rows = find.textContaining('Otwarty rachunek');
+    expect(rows, findsNWidgets(4));
+    double top(String label) => tester.getTopLeft(find.text('Otwarty rachunek · $label')).dy;
+    expect(top('Stolik 4'), lessThan(top('Stolik 1')));
+    expect(find.text('Rachunki i płatności (4)'), findsOneWidget);
+    final search = find.widgetWithText(TextField, 'Szukaj zdarzenia');
+    await tester.enterText(search, 'stolik 3');
+    await tester.pump();
+    expect(rows, findsOneWidget);
+    await tester.enterText(search, '');
+    await tester.pump();
+    await tester.tap(find.text('Kuchnia (0)'));
+    await tester.pump();
+    expect(rows, findsNWidgets(4), reason: 'pusta grupa filtrów jest nieklikalna');
 
-    // Kliknięte zdarzenie wybiera swoją chwilę: wszystkie zostają na liście, późniejsze są zamglone.
+    // Kliknięte zdarzenie otwiera Time Machine w swojej chwili: wszystkie zostają na liście, późniejsze są zamglone.
     await tester.tap(find.text('Otwarty rachunek · Stolik 2'));
     await tester.pumpAndSettle();
     expect([for (final e in events) opacityOf(e.label!)], [1, 1, lessThan(1), lessThan(1)]);

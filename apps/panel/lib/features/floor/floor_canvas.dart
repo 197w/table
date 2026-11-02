@@ -427,7 +427,10 @@ class FloorCanvas extends StatelessWidget {
                   onPanEnd: onDragEnd == null ? null : (_) => onDragEnd!(t),
                   child: Opacity(
                     opacity: look.dimmed ? 0.5 : 1,
-                    child: Center(
+                    // Podpis może wystawać poza mały blat (miejsce przy barze w małej skali), bez błędu układu.
+                    child: OverflowBox(
+                      maxWidth: double.infinity,
+                      maxHeight: double.infinity,
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [

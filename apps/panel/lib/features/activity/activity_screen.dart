@@ -12,6 +12,7 @@ import 'package:table_core/table_core.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
+import '../../shared/side_panel.dart';
 import '../floor/floor_canvas.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
@@ -29,6 +30,16 @@ Color activityColor(ActivityGroup g) => switch (g) {
   ActivityGroup.takeaway => TileColors.violet,
   ActivityGroup.reservations => AppColors.accent,
   ActivityGroup.stock => TileColors.rose,
+};
+
+/// Nazwa grupy zdarzeń w filtrach Logów.
+String activityGroupLabel(ActivityGroup g) => switch (g) {
+  ActivityGroup.staff => 'Zmiany pracowników',
+  ActivityGroup.bills => 'Rachunki i płatności',
+  ActivityGroup.kitchen => 'Kuchnia',
+  ActivityGroup.takeaway => 'Na wynos i dostawy',
+  ActivityGroup.reservations => 'Rezerwacje',
+  ActivityGroup.stock => 'Magazyn',
 };
 
 AppIconData activityIcon(ActivityEvent e) => switch (e.kind) {
@@ -83,13 +94,19 @@ int _compareLabels(String a, String b) {
 
 enum _ListTab { tables, takeaway, staff, events }
 
-/// Logi (pod „Ustawienia lokalu”, uprawnienie `activity`), jak Time Machine w UniFi: po lewej oś czasu, która
-/// przesuwa się pod stałą kreską wybranej chwili (przeciąganie z bezwładnością, kółko myszy, Ctrl + kółko zmienia
-/// skalę, kliknięcie albo ikona zdarzenia przenosi do chwili), u góry plan sali w tej chwili, pod nim legenda
-/// i tabela: stoliki z rachunkami, na wynos i osoby na zmianie, a po prawej stale wszystkie zdarzenia dnia
-/// (późniejsze niż wybrana chwila zamglone; na węższym ekranie zakładka „Zdarzenia” w tabeli). Cała doba
-/// przychodzi z bazy naraz (`timeMachineDayProvider`), a stan w chwili liczy panel, więc wszystko zmienia się
-/// od razu. „Na żywo” trzyma chwilę na teraz (co sekundę), „Historia” ma dzień.
+/// Zakładki w panelu po lewej: lista zdarzeń i Time Machine.
+enum _View { log, machine }
+
+/// Logi (pod „Ustawienia lokalu”, uprawnienie `activity`) w układzie jak Pracownicy (2.11.2026, prośba użytkownika):
+/// po lewej zwijany panel z zakładkami „Zdarzenia” i „Time Machine”, wyszukiwaniem, dniem i filtrami (rodzaj
+/// zdarzenia, osoba) z liczbami, po prawej tabela wszystkich zdarzeń dnia, najnowsze u góry. Kliknięte zdarzenie
+/// otwiera Time Machine w jego chwili, jak w UniFi: oś czasu, która przesuwa się pod stałą kreską wybranej chwili
+/// (przeciąganie z bezwładnością, kółko myszy, Ctrl + kółko zmienia skalę, kliknięcie albo ikona zdarzenia
+/// przenosi do chwili), plan sali w tej chwili, pod nim legenda i tabela: stoliki z rachunkami, na wynos i osoby
+/// na zmianie, a po prawej zdarzenia dnia (późniejsze niż wybrana chwila zamglone; na węższym ekranie zakładka
+/// „Zdarzenia” w tabeli). Filtry z panelu działają też na oś i zdarzenia w Time Machine. Cała doba przychodzi
+/// z bazy naraz (`timeMachineDayProvider`), a stan w chwili liczy panel, więc wszystko zmienia się od razu.
+/// „Na żywo” trzyma chwilę na teraz (co sekundę), „Historia” ma dzień.
 class ActivityScreen extends ConsumerStatefulWidget {
   const ActivityScreen({super.key});
 
@@ -109,6 +126,14 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> with SingleTick
   String? _selectedTable;
   _ListTab _tab = _ListTab.tables;
   Timer? _clock;
+
+  // Panel po lewej: zakładka, wyszukiwanie, zaznaczone filtry (puste: wszystko), zwinięte grupy i zwinięcie panelu.
+  _View _view = _View.log;
+  final _search = TextEditingController();
+  final _groups = <ActivityGroup>{};
+  final _people = <String>{};
+  final _closed = <String>{};
+  bool _panelOpen = true;
 
   /// Płynne przewinięcie osi do klikniętego zdarzenia (zamiast przeskoku): od [_glideFrom] do [_glideTarget].
   late final _glide = AnimationController(vsync: this)..addListener(_onGlide);
@@ -133,7 +158,64 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> with SingleTick
   void dispose() {
     _clock?.cancel();
     _glide.dispose();
+    _search.dispose();
     super.dispose();
+  }
+
+  /// Zdarzenie pasuje do wyszukiwania (tytuł, szczegóły, osoba) i do zaznaczonych filtrów.
+  bool _matches(ActivityEvent e, String query) {
+    if (_groups.isNotEmpty && !_groups.contains(e.group)) return false;
+    if (_people.isNotEmpty && !_people.contains(e.member ?? '')) return false;
+    if (query.isEmpty) return true;
+    return [e.title, ?e.detail, ?e.member, ?e.names].any((t) => t.toLowerCase().contains(query));
+  }
+
+  void _toggle<T>(Set<T> set, T value) => setState(() => set.contains(value) ? set.remove(value) : set.add(value));
+
+  /// Grupy filtrów w panelu: rodzaj zdarzenia (kropka w kolorze z osi) i osoba, z liczbą zdarzeń dnia.
+  List<Widget> _filterSections(List<ActivityEvent> all) {
+    final people = <String, int>{};
+    for (final e in all) {
+      people.update(e.member ?? '', (n) => n + 1, ifAbsent: () => 1);
+    }
+    final names = people.keys.where((n) => n.isNotEmpty).toList()..sort();
+    return [
+      FilterSection(
+        title: 'Rodzaj',
+        first: true,
+        open: !_closed.contains('group'),
+        onToggle: () => _toggle(_closed, 'group'),
+        options: [
+          for (final g in ActivityGroup.values)
+            (
+              label: activityGroupLabel(g),
+              count: all.where((e) => e.group == g).length,
+              checked: _groups.contains(g),
+              onChanged: (_) => _toggle(_groups, g),
+              dot: activityColor(g),
+            ),
+        ],
+      ),
+      if (people.isNotEmpty)
+        FilterSection(
+          title: 'Osoba',
+          open: !_closed.contains('people'),
+          onToggle: () => _toggle(_closed, 'people'),
+          options: [
+            for (final n in names)
+              (label: n, count: people[n]!, checked: _people.contains(n), onChanged: (_) => _toggle(_people, n), dot: null),
+            // Zdarzenia bez osoby: z aplikacji gości, kuchnia, rezerwacje.
+            if (people.containsKey(''))
+              (
+                label: 'Bez osoby',
+                count: people['']!,
+                checked: _people.contains(''),
+                onChanged: (_) => _toggle(_people, ''),
+                dot: null,
+              ),
+          ],
+        ),
+    ];
   }
 
   void _goLive() {
@@ -224,6 +306,17 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> with SingleTick
     if (e.orderId != null) setState(() => _selectedOrder = e.orderId);
   }
 
+  /// Zdarzenie z tabeli: Time Machine w jego chwili, bez przewijania (oś dopiero się pokazuje).
+  void _openInMachine(ActivityEvent e) {
+    _glide.stop();
+    setState(() {
+      _view = _View.machine;
+      _live = false;
+      _at = _clamp(e.at);
+      if (e.orderId != null) _selectedOrder = e.orderId;
+    });
+  }
+
   void _selectOrder(String? orderId, {String? tableId, String? zone}) {
     setState(() {
       final same = orderId != null ? orderId == _selectedOrder : tableId == _selectedTable;
@@ -241,11 +334,77 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> with SingleTick
     final today = dateOnly(DateTime.now());
     final query = (restaurantId: rid, day: _day);
     final dayAsync = ref.watch(timeMachineDayProvider(query));
-    final events = ref.watch(activityProvider(query)).value ?? const <ActivityEvent>[];
+    final eventsAsync = ref.watch(activityProvider(query));
+    final all = eventsAsync.value ?? const <ActivityEvent>[];
+    final search = _search.text.trim().toLowerCase();
+    final events = [for (final e in all) if (_matches(e, search)) e];
     final data = dayAsync.value;
 
+    final panel = SidePanel(
+      header: SegmentedTabs<_View>(
+        options: const [(_View.log, 'Zdarzenia'), (_View.machine, 'Time Machine')],
+        icons: const [AppIcons.list, AppIcons.clockCounterClockwise],
+        selected: _view,
+        expand: true,
+        onChanged: (v) => setState(() => _view = v),
+      ),
+      search: _search,
+      searchHint: 'Szukaj zdarzenia',
+      onSearch: () => setState(() {}),
+      actions: [
+        StepSwitcher(
+          label: _day == today ? 'Dziś' : Fmt.capitalize(Fmt.dayShort(_day)),
+          expand: true,
+          previousTooltip: 'Poprzedni dzień',
+          nextTooltip: 'Następny dzień',
+          onPrevious: () => _shiftDay(-1),
+          onNext: _day == today ? null : () => _shiftDay(1),
+          resetTooltip: 'Wróć do teraz',
+          onReset: _live ? null : _goLive,
+          extras: [(AppIcons.calendar, 'Wybierz dzień', _pickDay)],
+        ),
+      ],
+      children: _filterSections(all),
+    );
+
+    final content = switch (_view) {
+      _View.log => eventsAsync.when(
+        skipLoadingOnReload: true,
+        loading: () => const LoadingView(),
+        error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(activityProvider(query))),
+        data: (_) => Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 32, 16),
+          child: _EventTable(
+            events: events.reversed.toList(),
+            empty: all.isEmpty
+                ? 'Tego dnia nic się nie wydarzyło.'
+                : 'Nic nie znaleziono. Zmień wyszukiwanie albo filtry po lewej.',
+            selectedOrder: _selectedOrder,
+            onOpen: _openInMachine,
+          ),
+        ),
+      ),
+      _View.machine => _machine(rid, query, dayAsync, data, events),
+    };
+
+    return SidePanelLayout(
+      open: _panelOpen,
+      onToggle: () => setState(() => _panelOpen = !_panelOpen),
+      panel: panel,
+      content: TabContent(tab: '$_view', child: content),
+    );
+  }
+
+  /// Time Machine: oś czasu, plan i tabela w wybranej chwili, a obok zdarzenia dnia.
+  Widget _machine(
+    String rid,
+    ({String restaurantId, DateTime day}) query,
+    AsyncValue<TimeMachineDay> dayAsync,
+    TimeMachineDay? data,
+    List<ActivityEvent> events,
+  ) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
       child: LayoutBuilder(
         builder: (context, c) {
           // Zdarzenia dnia stoją stale w kolumnie po prawej; bez miejsca na nią są zakładką pod planem.
@@ -265,24 +424,12 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> with SingleTick
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Tryb i dzień nad osią czasu, na całą szerokość jej karty.
+                    // Tryb nad osią czasu, na całą szerokość jej karty (dzień jest w panelu po lewej).
                     SegmentedTabs<bool>(
                       options: const [(true, 'Na żywo'), (false, 'Historia')],
                       selected: _live,
                       expand: true,
                       onChanged: (live) => live ? _goLive() : setState(() => _live = false),
-                    ),
-                    const SizedBox(height: 10),
-                    StepSwitcher(
-                      label: _day == today ? 'Dziś' : Fmt.capitalize(Fmt.dayShort(_day)),
-                      expand: true,
-                      previousTooltip: 'Poprzedni dzień',
-                      nextTooltip: 'Następny dzień',
-                      onPrevious: () => _shiftDay(-1),
-                      onNext: _day == today ? null : () => _shiftDay(1),
-                      resetTooltip: 'Wróć do teraz',
-                      onReset: _live ? null : _goLive,
-                      extras: [(AppIcons.calendar, 'Wybierz dzień', _pickDay)],
                     ),
                     const SizedBox(height: 12),
                     Expanded(
@@ -342,7 +489,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> with SingleTick
 // Oś czasu
 // ---------------------------------------------------------------
 
-/// Szerokość kolumny z osią czasu (mieści przełącznik dnia z kalendarzem).
+/// Szerokość kolumny z osią czasu.
 const _railWidth = 240.0;
 
 /// Kreska wybranej chwili: tyle punktów od góry osi.
@@ -1164,7 +1311,7 @@ class _ListCard extends StatelessWidget {
                 : ListView.separated(
                     padding: EdgeInsets.zero,
                     itemCount: count,
-                    separatorBuilder: (_, _) => Divider(height: 1, color: AppColors.ring.withValues(alpha: 0.6)),
+                    separatorBuilder: (_, _) => Divider(height: 1, color: AppColors.ring.withValues(alpha: AppColors.ring.a * 0.6)),
                     itemBuilder: row,
                   ),
             ),
@@ -1814,6 +1961,154 @@ class _LogRow extends StatelessWidget {
                   ),
                 ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------
+// Tabela zdarzeń (zakładka „Zdarzenia”)
+// ---------------------------------------------------------------
+
+/// Stałe szerokości wąskich kolumn tabeli zdarzeń; zdarzenie i szczegóły dzielą resztę.
+const _timeWidth = 92.0;
+const _personWidth = 168.0;
+const _amountWidth = 104.0;
+
+/// Wszystkie zdarzenia dnia jako tabela jak „People” w UniFi: godzina, zdarzenie z ikoną w kolorze rodzaju,
+/// szczegóły, osoba i kwota. Kliknięcie wiersza otwiera Time Machine w chwili zdarzenia.
+class _EventTable extends StatelessWidget {
+  const _EventTable({
+    required this.events,
+    required this.empty,
+    required this.selectedOrder,
+    required this.onOpen,
+  });
+
+  /// Od najnowszego.
+  final List<ActivityEvent> events;
+
+  /// Napis, gdy nie ma czego pokazać.
+  final String empty;
+  final String? selectedOrder;
+  final ValueChanged<ActivityEvent> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 40,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                tableHead(context, 'Godzina', 0, width: _timeWidth),
+                tableHead(context, 'Zdarzenie', 3),
+                tableHead(context, 'Szczegóły', 3),
+                tableHead(context, 'Osoba', 0, width: _personWidth),
+                tableHead(context, 'Kwota', 0, align: TextAlign.right, width: _amountWidth),
+              ],
+            ),
+          ),
+        ),
+        Divider(height: 1, color: AppColors.ring),
+        Expanded(
+          child: events.isEmpty
+              ? Center(child: Text(empty, style: text.bodyMedium?.copyWith(color: AppColors.textMuted)))
+              : ListView.separated(
+                  itemCount: events.length,
+                  separatorBuilder: (_, _) => Divider(height: 1, color: AppColors.ring),
+                  itemBuilder: (context, i) {
+                    final e = events[i];
+                    return _EventRow(
+                      event: e,
+                      selected: e.orderId != null && e.orderId == selectedOrder,
+                      onTap: () => onOpen(e),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EventRow extends StatelessWidget {
+  const _EventRow({required this.event, required this.selected, required this.onTap});
+
+  final ActivityEvent event;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final e = event;
+    final muted = text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular);
+    final detail = e.detail;
+    // Kwota tylko przy rachunkach, płatnościach i zamówieniach (dostawa towaru ma liczbę składników).
+    final amount = e.amount;
+    return Material(
+      color: selected ? AppColors.accentFill.withValues(alpha: 0.08) : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          height: 52,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                SizedBox(width: _timeWidth, child: Text(_hms(e.at), style: muted)),
+                Expanded(
+                  flex: 3,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Row(
+                      children: [
+                        Glyph(activityIcon(e), size: 16, color: activityColor(e.group)),
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Text(
+                            e.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Tooltip(
+                      message: detail ?? '',
+                      waitDuration: const Duration(milliseconds: 600),
+                      child: Text(detail ?? '—', maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: _personWidth,
+                  child: Text(e.member ?? '—', maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
+                ),
+                SizedBox(
+                  width: _amountWidth,
+                  child: Text(
+                    amount == null ? '—' : Fmt.price(amount),
+                    textAlign: TextAlign.right,
+                    style: amount == null ? muted : text.bodyMedium?.copyWith(fontFeatures: _tabular),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

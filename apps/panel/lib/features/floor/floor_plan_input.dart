@@ -1,8 +1,12 @@
 part of 'floor_screen.dart';
 
 // Obsługa planu w Edycji sali jak w UniFi Design Center: kółko myszy przybliża wokół kursora,
-// przeciąganie pustego miejsca zaznacza ramką (na żywo i palcem przesuwa widok), spacja albo środkowy
-// przycisk przesuwa widok, a narzędzia z paska rysują ściany i elementy oraz stawiają stoliki.
+// przeciąganie pustego miejsca przesuwa widok (z Shift albo Ctrl zaznacza ramką), spacja albo środkowy
+// przycisk też przesuwa widok, prawy przycisk otwiera menu obiektu, a narzędzia z paska rysują ściany
+// i elementy oraz stawiają stoliki. Stolik łapie się za blat albo za krzesło.
+
+/// Pozycje menu pod prawym przyciskiem myszy.
+enum _MenuAction { duplicate, rotate, copy, delete, paste, selectAll, fit }
 
 /// Plan z ostatniego rysowania: mysz i klawiatura liczą na tym samym widoku, który widać.
 class _PlanFrame {
@@ -70,9 +74,18 @@ class _PanGesture extends _Gesture {
 }
 
 class _MoveGesture extends _Gesture {
-  _MoveGesture(super.pointer, {required this.startCm, required this.starts, required this.bounds});
+  _MoveGesture(
+    super.pointer, {
+    required this.startCm,
+    required this.starts,
+    required this.bounds,
+    required this.anchor,
+  });
 
   final Offset startCm;
+
+  /// Środek złapanego obiektu na początku gestu: bez linii prowadzących staje on na kratce co 10 cm.
+  final Offset anchor;
 
   /// Środki przesuwanych obiektów na początku gestu.
   final Map<String, Offset> starts;
@@ -202,11 +215,19 @@ extension _PlanInput on _FloorScreenState {
   Offset _snap(Offset cm) =>
       _alt ? Offset(cm.dx.roundToDouble(), cm.dy.roundToDouble()) : snapPoint(cm, 10);
 
-  /// Stolik albo element pod punktem planu, od wierzchu. Na żywo tylko stoliki.
+  /// Stolik albo element pod punktem planu, od wierzchu. Najpierw blaty, potem krzesła (krzesło należy
+  /// do swojego stolika, więc za nie też się go łapie), na końcu elementy stałe. Na żywo tylko stoliki.
   Object? _hitItem(_PlanFrame f, Offset cm) {
     final tolerance = 4 / f.view.scale;
-    for (final t in _zoneTables(f).reversed) {
+    final tables = _zoneTables(f).reversed.toList();
+    for (final t in tables) {
       if (PlanBox.of(t).contains(cm, tolerance: tolerance)) return t;
+    }
+    for (final t in tables) {
+      final box = PlanBox.of(t);
+      for (final c in chairsOf(t)) {
+        if ((box.toPlan(Offset(c.x, c.y)) - cm).distance <= chairDiameterCm / 2 + tolerance) return t;
+      }
     }
     if (!f.editing) return null;
     for (final e in _zoneElements(f).reversed) {
@@ -276,7 +297,7 @@ extension _PlanInput on _FloorScreenState {
     for (final h in _handles(f)) {
       if (h.isZone) continue;
       final d = (h.px - px).distance;
-      if (h.chair == null && d <= 8) return h;
+      if (h.chair == null && d <= 10) return h;
       if (h.chair != null && chair == null && d <= chairDiameterCm / 2 * f.view.scale + 3) chair = h;
     }
     return chair;
@@ -325,8 +346,12 @@ extension _PlanInput on _FloorScreenState {
     _pointerPx = px;
 
     if (e.buttons & kSecondaryMouseButton != 0) {
-      // Prawy przycisk kończy rysowanie ściany.
-      if (_wallStart != null) _set(() => _wallStart = null);
+      // Prawy przycisk kończy rysowanie ściany, a przy zaznaczaniu otwiera menu obiektu albo planu.
+      if (_wallStart != null) {
+        _finishWall();
+      } else if (f.editing && _tool == _Tool.select && _gesture == null) {
+        _contextMenu(f, e.position, cm);
+      }
       return;
     }
     if (e.buttons & kMiddleMouseButton != 0 || _spaceDown || (f.editing && _tool == _Tool.pan)) {
@@ -413,8 +438,8 @@ extension _PlanInput on _FloorScreenState {
     switch (g) {
       case _Press():
         if ((px - g.downPx).distance < (g.touch ? 8 : 4)) return;
-        if (!f.editing || (g.touch && g.hitKey == null)) {
-          // Na żywo i palcem po pustym miejscu przeciąganie przesuwa widok.
+        if (!f.editing || (g.hitKey == null && !g.additive)) {
+          // Puste miejsce (i wszystko na żywo) przesuwa widok jak mapę; ramka zaznaczania tylko z Shift albo Ctrl.
           final pan = _PanGesture(g.pointer, g.downPx);
           _gesture = pan;
           _panTo(pan, px);
@@ -423,11 +448,14 @@ extension _PlanInput on _FloorScreenState {
           final items = _selectedItems().where((item) => _inZone(item, f)).toList();
           if (items.isEmpty) return;
           _remember();
+          final starts = {for (final item in items) _keyOf(item): PlanBox.of(item).center};
+          final bounds = items.map((i) => PlanBox.of(i).bounds).reduce((a, b) => a.expandToInclude(b));
           final move = _MoveGesture(
             g.pointer,
             startCm: g.downCm,
-            starts: {for (final item in items) _keyOf(item): PlanBox.of(item).center},
-            bounds: items.map((i) => PlanBox.of(i).bounds).reduce((a, b) => a.expandToInclude(b)),
+            starts: starts,
+            bounds: bounds,
+            anchor: starts[key] ?? bounds.center,
           );
           _gesture = move;
           _moveTo(f, move, cm);
@@ -530,8 +558,9 @@ extension _PlanInput on _FloorScreenState {
         cursor = _handleCursor(handle);
       } else {
         key = item == null ? null : _keyOf(item);
+        // Puste miejsce: rączka, bo przeciąganie przesuwa widok (z Shift albo Ctrl ramka zaznaczania).
         cursor = item == null
-            ? (f.editing ? SystemMouseCursors.basic : SystemMouseCursors.grab)
+            ? (f.editing && (_shift || _ctrl) ? SystemMouseCursors.precise : SystemMouseCursors.grab)
             : (f.editing ? SystemMouseCursors.move : SystemMouseCursors.click);
       }
     }
@@ -618,7 +647,7 @@ extension _PlanInput on _FloorScreenState {
   }
 
   /// Przesuwa zaznaczenie za kursorem: krawędzie i środki przyciągają się do innych obiektów
-  /// i strefy (linie prowadzące), a bez nich przesunięcie idzie co 10 cm. Alt wyłącza przyciąganie.
+  /// i strefy (linie prowadzące), a bez nich złapany obiekt staje na kratce co 10 cm. Alt wyłącza przyciąganie.
   void _moveTo(_PlanFrame f, _MoveGesture m, Offset cm) {
     final zone = _zoneNow(f);
     var d = cm - m.startCm;
@@ -635,9 +664,10 @@ extension _PlanInput on _FloorScreenState {
         Size(zone.widthCm.toDouble(), zone.heightCm.toDouble()),
         6 / f.view.scale,
       );
+      final a = m.anchor;
       d = Offset(
-        s.dx == null ? snapTo(d.dx, 10) : d.dx + s.dx!,
-        s.dy == null ? snapTo(d.dy, 10) : d.dy + s.dy!,
+        s.dx == null ? snapTo(a.dx + d.dx, 10) - a.dx : d.dx + s.dx!,
+        s.dy == null ? snapTo(a.dy + d.dy, 10) - a.dy : d.dy + s.dy!,
       );
       guideX = s.guideX;
       guideY = s.guideY;
@@ -815,7 +845,14 @@ extension _PlanInput on _FloorScreenState {
     return inside(_snap(cm));
   }
 
-  /// Kolejny narożnik ściany. Dwuklik kończy ścianę, a narzędzie zostaje, żeby zacząć następną.
+  /// Koniec rysowania ściany (Enter, Esc, dwuklik, prawy przycisk): powrót do zaznaczania,
+  /// żeby kolejne kliknięcie nie zaczynało przypadkiem nowej ściany. Następną zaczyna W.
+  void _finishWall() => _set(() {
+    _wallStart = null;
+    if (_tool == _Tool.wall) _tool = _Tool.select;
+  });
+
+  /// Kolejny narożnik ściany. Dwuklik kończy ścianę.
   void _wallClick(_PlanFrame f, Offset px, Offset cm) {
     final now = DateTime.now();
     final doubleClick = (px - _lastWallClickPx).distance < 6 &&
@@ -823,7 +860,7 @@ extension _PlanInput on _FloorScreenState {
     _lastWallClick = now;
     _lastWallClickPx = px;
     if (doubleClick) {
-      _set(() => _wallStart = null);
+      _finishWall();
       return;
     }
     final point = _wallPoint(f, cm);
@@ -848,6 +885,85 @@ extension _PlanInput on _FloorScreenState {
     });
   }
 
+  /// Menu pod prawym przyciskiem: na obiekcie (zaznacza go, jeśli nie był zaznaczony) duplikowanie, obrót
+  /// o 90°, kopiowanie i usuwanie, a na pustym miejscu wklejanie, zaznaczanie wszystkiego i dopasowanie widoku.
+  Future<void> _contextMenu(_PlanFrame f, Offset global, Offset cm) async {
+    final hit = _hitItem(f, cm);
+    if (hit != null && !_selection.contains(_keyOf(hit))) _set(() => _select(_keyOf(hit)));
+    final onItems = hit != null && _selection.isNotEmpty;
+    final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final at = overlay.globalToLocal(global);
+    final text = Theme.of(context).textTheme;
+
+    PopupMenuItem<_MenuAction> item(_MenuAction value, AppIconData icon, String label, String? shortcut,
+        {bool enabled = true, bool danger = false}) {
+      final color = !enabled ? AppColors.textDisabled : (danger ? AppColors.error : AppColors.text);
+      return PopupMenuItem(
+        value: value,
+        enabled: enabled,
+        height: 40,
+        child: Row(
+          children: [
+            Glyph(icon, size: 16, color: color),
+            const SizedBox(width: 12),
+            Expanded(child: Text(label, style: text.labelLarge?.copyWith(color: color))),
+            if (shortcut != null)
+              Text(shortcut, style: text.labelMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular)),
+          ],
+        ),
+      );
+    }
+
+    final choice = await showMenu<_MenuAction>(
+      context: context,
+      position: RelativeRect.fromRect(at & const Size(1, 1), Offset.zero & overlay.size),
+      color: AppColors.surface,
+      constraints: const BoxConstraints(minWidth: 240),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: AppColors.ring),
+      ),
+      items: onItems
+          ? [
+              item(_MenuAction.duplicate, AppIcons.copy, 'Duplikuj', 'Ctrl+D'),
+              item(_MenuAction.rotate, AppIcons.refresh, 'Obróć o 90°', null),
+              item(_MenuAction.copy, AppIcons.clipboardText, 'Kopiuj', 'Ctrl+C'),
+              const PopupMenuDivider(),
+              item(
+                _MenuAction.delete,
+                AppIcons.trash,
+                _selection.length > 1 ? 'Usuń zaznaczone (${_selection.length})' : 'Usuń',
+                'Delete',
+                danger: true,
+              ),
+            ]
+          : [
+              item(_MenuAction.paste, AppIcons.clipboardText, 'Wklej', 'Ctrl+V', enabled: _clipboard.isNotEmpty),
+              item(_MenuAction.selectAll, AppIcons.cursor, 'Zaznacz wszystko', 'Ctrl+A'),
+              item(_MenuAction.fit, AppIcons.cornersOut, 'Dopasuj widok', 'Ctrl+0'),
+            ],
+    );
+    if (choice == null || !mounted) return;
+    final zone = _zoneNow(f);
+    switch (choice) {
+      case _MenuAction.duplicate:
+        _paste(_selectedItems(), zone);
+      case _MenuAction.rotate:
+        _rotateSelection(90);
+      case _MenuAction.copy:
+        _copy();
+      case _MenuAction.delete:
+        await _deleteSelection();
+      case _MenuAction.paste:
+        _paste(_clipboard, zone);
+      case _MenuAction.selectAll:
+        _selectAll();
+      case _MenuAction.fit:
+        _fit();
+    }
+    _canvasFocus.requestFocus();
+  }
+
   void _setTool(_PlanFrame f, _Tool tool) {
     _set(() {
       _tool = tool;
@@ -856,7 +972,7 @@ extension _PlanInput on _FloorScreenState {
     if (_pointerPx case final px?) _hover(f, px);
   }
 
-  /// Esc: przerywa rysowanie, potem wraca do zaznaczania, a na końcu odznacza.
+  /// Esc: przerywa rysowanie (ściana wraca też do zaznaczania), potem wraca do zaznaczania, a na końcu odznacza.
   void _escape() {
     _set(() {
       if (_gesture is _DrawGesture) {
@@ -865,6 +981,7 @@ extension _PlanInput on _FloorScreenState {
         _measure = null;
       } else if (_wallStart != null) {
         _wallStart = null;
+        _tool = _Tool.select;
       } else if (_tool != _Tool.select) {
         _tool = _Tool.select;
       } else {
@@ -911,7 +1028,7 @@ extension _PlanInput on _FloorScreenState {
       case LogicalKeyboardKey.delete || LogicalKeyboardKey.backspace:
         if (first) _deleteSelection();
       case LogicalKeyboardKey.enter || LogicalKeyboardKey.numpadEnter:
-        _set(() => _wallStart = null);
+        _finishWall();
       case LogicalKeyboardKey.keyV || LogicalKeyboardKey.keyS:
         _setTool(f, _Tool.select);
       case LogicalKeyboardKey.keyH:
@@ -1129,8 +1246,8 @@ class _PlanOverlay extends CustomPainter {
       if (h.rotate) {
         if (h.from case final from?) canvas.drawLine(from, h.px, line);
         canvas
-          ..drawCircle(h.px, 5, fill)
-          ..drawCircle(h.px, 5, stroke);
+          ..drawCircle(h.px, 6, fill)
+          ..drawCircle(h.px, 6, stroke);
         continue;
       }
       final r = Rect.fromCenter(center: h.px, width: 9, height: 9);

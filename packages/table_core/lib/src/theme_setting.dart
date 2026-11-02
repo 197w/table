@@ -3,8 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_icons.dart';
 
 enum AppThemeSetting {
-  // Ikona jak przełącznik motywu w UniFi (1.11.2026, prośba użytkownika; wcześniej monitor).
-  system('Systemowy', AppIcons.toggles),
+  // Pierścień z połową w środku jak w UniFi (2.11.2026, wzór od użytkownika; wcześniej przełączniki i monitor).
+  system('Systemowy', AppIcons.circleHalfInset),
   light('Jasny', AppIcons.sun),
   dark('Ciemny', AppIcons.moon);
 

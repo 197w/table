@@ -148,7 +148,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   każda ikona ma też wersję duotone w `assets/icons/duotone` (`ph:<nazwa>-duotone`, `AppIcons.x.duotone`):
   wybrane zakładki i dolne menu, powiadomienia, puste ekrany, kafle `IconBadge`). Własne ikony w stylu Phosphor
   (obrys 16 na 256, też w duotone): `cursor`, `corners-out`, `dining-table`, `wall` (pasek edytora sali),
-  `toggles` (dwa przełączniki jak w UniFi: motyw systemowy, `AppThemeSetting.system`, od 1.11.2026).
+  `circle-half-inset` (pierścień z wypełnioną prawą połową w środku jak w UniFi: motyw systemowy,
+  `AppThemeSetting.system`, od 2.11.2026; wcześniej przełączniki `toggles` i monitor).
 - `apps/guest/lib`: `app` (router, dolne menu, preferencje), `core` (mapy, lokalizacja), `data`, `features`
   (m.in. `ordering`: zamawianie z dostawą i na wynos).
   Odkrywaj (`features/discover`, nowy wygląd z 10.2026): powitanie na całą szerokość, wyszukiwarka
@@ -254,7 +255,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Kropki nowości (`tabNewsProvider`, `TabNews`, `_NewsDot`): nowa rezerwacja z aplikacji, nowe zamówienie na dostawę
   albo odbiór, nowe danie do wydania; kropka na zakładce i jej grupie znika po wejściu do zakładki.
   „Table” na środku (szary napis, od 1400 px szerokości; zostaje, użytkownik go nie zmieniał). Po prawej nowa
-  wersja, odliczanie do wylogowania, motyw (systemowy: dwa przełączniki `AppIcons.toggles` jak w UniFi, od 1.11.2026; wcześniej monitor), obok niego ikona „Wyloguj”
+  wersja, odliczanie do wylogowania, motyw (systemowy: pierścień z połową `AppIcons.circleHalfInset` jak w UniFi, od 2.11.2026; wcześniej przełączniki i monitor), obok niego ikona „Wyloguj”
   (gdy ktoś jest zalogowany, od 0.21.0), kółko pracownika (inicjały; menu: kod pracownika, „Zakończ zmianę”,
   „Wejdź na zmianę”, e-mail i wersja, wylogowanie konta restauracji), a w samym prawym rogu lokal
   (`_RestaurantSwitcher`: logo, kropka połączenia na żywo, plan; strzałka i lista tylko przy kilku lokalach konta).
@@ -348,8 +349,14 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   przekroczenie (`RestaurantDetail.cartLimitProblem`, `canAddMore`).
 - Logi i Time Machine (0072, pasek boczny pod „Ustawienia lokalu” → `/logi`, uprawnienie `activity` w grupie Lokal,
   w 0072 dostały je stanowiska z `day_close` albo `staff`; `features/activity/activity_screen.dart`). Wygląd
-  i działanie jak Time Machine w UniFi z filmu w Todoist (od 31.10.2026): po lewej „Na żywo / Historia” i dzień
-  (`StepSwitcher` z kalendarzem), oba na całą szerokość osi (`expand: true`), pod nimi oś czasu (godziny 18 px od
+  i działanie jak Time Machine w UniFi z filmu w Todoist (od 31.10.2026). Od 2.11.2026 (prośba użytkownika) Logi mają
+  układ jak Pracownicy (`SidePanelLayout`, `SidePanel`): po lewej zwijany panel z zakładkami „Zdarzenia” / „Time
+  Machine” (`_View`), wyszukiwaniem (tytuł, szczegóły, osoba), dniem (`StepSwitcher` z kalendarzem) i filtrami
+  z liczbą zdarzeń dnia (`FilterSection`: Rodzaj z kropką w kolorze grupy, `activityGroupLabel`; Osoba, w tym „Bez
+  osoby”; puste grupy nie filtrują). „Zdarzenia” (domyślna) to tabela jak Zespół (`_EventTable`: godzina z sekundami,
+  zdarzenie z ikoną w kolorze grupy, szczegóły, osoba, kwota), najnowsze u góry; kliknięcie wiersza otwiera Time
+  Machine w chwili zdarzenia i zaznacza jego rachunek (`_openInMachine`). Filtry działają też na oś i zdarzenia
+  w Time Machine. Time Machine: nad osią „Na żywo / Historia” na całą szerokość osi (`expand: true`), pod nim oś czasu (godziny 18 px od
   lewej krawędzi, równo z godziną na kresce; godziny pod pigułką z sekundami się nie rysują) przycięta do swojej karty (godziny nie wchodzą na przyciski
   skali), bez paska nad całym ekranem, więc plan sali ma ponad połowę wysokości. Oś przesuwa się pod
   stałą kreską z godziną i sekundami u góry (wcześniejsze chwile niżej; przeciąganie z bezwładnością, kółko myszy,
@@ -359,9 +366,10 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   w tej chwili (`FloorCanvas`: rachunek z kwotą, rezerwacja; podsumowanie sali w rogu), pod nim legenda (stan stolika
   i stan pozycji), a pod nią tabela jak porty w UniFi: zakładki Stoliki (wszystkie stoliki: kwadracik z numerem
   w kolorze stanu, strefa, stan, od, goście, kelner, pasek pozycji w kolorach stanu, kwota, wpłacone; kliknięcie
-  rozwija pozycje i zaznacza stolik na planie), Na wynos i Na zmianie. Kafli z liczbami już nie ma.
-  Zdarzenia (od 1.11.2026, prośba użytkownika): stale cała doba w kolumnie po prawej (`_LogCard`, `_DayLog`,
-  360 px; przy treści węższej niż 1240 px zakładka „Zdarzenia” w tabeli), najnowsze u góry jak na osi, ikona
+  rozwija pozycje i zaznacza stolik na planie; kreski między wierszami to `ring` z 60% jego krycia, nie 60% bieli),
+  Na wynos i Na zmianie. Kafli z liczbami już nie ma.
+  Zdarzenia w Time Machine (od 1.11.2026, prośba użytkownika): stale cała doba w kolumnie po prawej (`_LogCard`, `_DayLog`,
+  360 px; przy treści węższej niż 1240 px, czyli zwykle przy rozwiniętym panelu, zakładka „Zdarzenia” w tabeli), najnowsze u góry jak na osi, ikona
   w kolorze grupy bez tła, tytuł i szczegóły. Wybrana chwila to kreska z godziną między zdarzeniami: te do niej
   zwykłe, ostatnie przed nią zaznaczone (tło i kreska akcentu), późniejsze zamglone (przezroczystość 0,35 i lekkie
   rozmycie); nagłówek „9 z 20 do 14:32”. Lista przewija się do kreski tylko wtedy, gdy kreska przeskoczy zdarzenie
@@ -442,14 +450,15 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Ja nadal nie zakładam kont ani nie wymyślam haseł: konto zakłada sama restauracja albo użytkownik.
 - Pracownicy nie mają kont w panelu. Dodaje ich osoba z uprawnieniem `staff` w „Pracownicy” → „Zespół”
   (szczegóły ze statystykami `panel_member_stats`). Zakładka „Pracownicy” wygląda jak „People” w UniFi (od 0.28.0,
-  wzory od użytkownika; `staff_screen.dart`). Po lewej panel (`_StaffPanel`, 288 px) z zakładkami Zespół / Stanowiska
+  wzory od użytkownika; `staff_screen.dart`; panel, filtry i uchwyt są wspólne z Logami w `shared/side_panel.dart`).
+  Po lewej panel (`SidePanel`, 288 px) z zakładkami Zespół / Stanowiska
   z ikonami jak w UniFi (`SegmentedTabs(expand: true, icons:)`, `AppIcons.list` i `AppIcons.userGear`; według uprawnień
   `staff`/`staff_logins` i `positions`), wyszukiwaniem (imię albo telefon), wyborem lokalu pod wyszukiwaniem
   (`_RestaurantPicker`, jak wybór firmy w UniFi; widzi go tylko osoba ze stanowiskiem ALL albo pełny dostęp
   właściciela, zmienia lokal całego panelu), „Dodaj pracownika” („Dodaj stanowisko” w Stanowiskach) i filtrami
-  z liczbą osób (`_FilterSection`: Stanowisko; Stan: Na zmianie / Aktywni / Nieaktywni / Zwolnieni, na start
-  zaznaczeni Aktywni; pusta grupa nie filtruje; pola wyboru `_Check` bez okrągłej poświaty po najechaniu). Panel
-  zwija uchwyt na kresce między panelem a treścią (`_EdgeButton` w `_StaffLayout`: prostokąt 20×40 z zaokrąglonymi
+  z liczbą osób (`FilterSection`: Stanowisko; Stan: Na zmianie / Aktywni / Nieaktywni / Zwolnieni, na start
+  zaznaczeni Aktywni; pusta grupa nie filtruje; pola wyboru `PanelCheck` bez okrągłej poświaty po najechaniu). Panel
+  zwija uchwyt na kresce między panelem a treścią (`_EdgeButton` w `SidePanelLayout`: prostokąt 20×40 z zaokrąglonymi
   rogami, od 1.11.2026 na prośbę użytkownika, wcześniej kółko), z animacją: panel
   odjeżdża w lewo i gaśnie, przycisk jedzie z kreską (280 ms, przy „Ogranicz ruch” od razu). Filtry, zwinięte grupy i zwinięcie panelu są wspólne dla Pracowników i Grafiku
   (`_panelProvider`). Grafik to osobna podzakładka (`ScheduleScreen`, `/grafik`) z tym samym panelem: wybór okresu
@@ -561,20 +570,32 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   z gotowymi stolikami 2-, 4-, 6-osobowym, okrągłym, miejscem i elementem stałym do przeciągnięcia albo kliknięcia,
   pod nim Strefa; kilka zaznaczonych: wyrównanie, równe odstępy, Duplikuj, Usuń), w lewym dolnym rogu Cofnij,
   Ponów, Dopasuj, Przybliż, Oddal i podziałka, na dole pasek narzędzi (`IconTabs`): Zaznacz V, Przesuń widok H,
-  Ściana W, Element stały R, Stolik T, Miejsce M, z podpowiedzią nad paskiem. Widok (`PlanView`: skala px/cm
-  i początek strefy) zmienia tylko obraz: kółko myszy przybliża wokół kursora, gładzik i dwa palce przesuwają
-  i przybliżają, spacja, środkowy przycisk albo „Przesuń widok” przesuwa, Ctrl+0 dopasowuje, Ctrl+plus/minus.
-  Zaznaczanie: klik, Shift albo Ctrl dodaje, ramka po pustym miejscu (obiekty, które przecina), Ctrl+A.
-  Przeciąganie przesuwa całe zaznaczenie co 10 cm z liniami prowadzącymi do krawędzi i środków innych obiektów
-  i strefy (Alt bez przyciągania), strzałki o 10 cm (Shift 50, Alt 1). Jeden zaznaczony ma uchwyty: rogi i boki
-  (wymiary co 5 cm, przeciwna krawędź stoi), kółko obrotu nad krzesłami (co 15°, Shift co 1°), krzesła; cienka
+  Ściana W, Element stały R, Stolik T, Miejsce M, z podpowiedzią nad paskiem (przy zaznaczaniu tylko wtedy, gdy nic
+  nie jest zaznaczone). Od 2.11.2026 (użytkownik: „tragiczna pod względem działania”): kierownik (`canManage`)
+  edytuje od razu, bez „Edytuj układ” (`_loadDraft` w build: na start, po zapisie na świeżych danych z id i po
+  „Odrzuć zmiany”; nagłówek „Odrzuć zmiany” i „Zapisz układ”, oba tylko przy zmianach); reszta obsługi widzi salę
+  na żywo. Pola wymiarów (stolik, element, strefa) zapisują się po Enter albo wyjściu z pola (`_Commit`, bez
+  „Zastosuj”; zły wpis wraca do bieżącej wartości), a zmiana z panelu nie zabiera zaznaczenia (`_update`). Widok
+  (`PlanView`: skala px/cm i początek strefy) zmienia tylko obraz: kółko myszy przybliża wokół kursora, gładzik
+  i dwa palce przesuwają i przybliżają, przeciąganie pustego miejsca, spacja, środkowy przycisk albo „Przesuń
+  widok” przesuwa, Ctrl+0 dopasowuje, Ctrl+plus/minus. Zaznaczanie: klik (stolik także za krzesło), Shift albo Ctrl
+  dodaje, ramka tylko z Shift albo Ctrl po pustym miejscu (obiekty, które przecina), Ctrl+A. Prawy przycisk:
+  menu (`_contextMenu`; na obiekcie Duplikuj, Obróć o 90°, Kopiuj, Usuń, na pustym miejscu Wklej, Zaznacz
+  wszystko, Dopasuj widok). Przeciąganie przesuwa całe zaznaczenie, a złapany obiekt staje na kratce co 10 cm
+  (linie prowadzące do krawędzi i środków innych obiektów i strefy mają pierwszeństwo, Alt bez przyciągania),
+  strzałki o 10 cm (Shift 50, Alt 1). Jeden zaznaczony ma uchwyty: rogi i boki
+  (wymiary co 5 cm, przeciwna krawędź stoi), kółko obrotu nad krzesłami (co 15°, Shift co 1°), krzesła (krzesło
+  zaznaczonego stolika przesuwa samo krzesło, niezaznaczonego łapie cały stolik); cienka
   ściana ma uchwyty tylko na końcach. Krawędzie strefy (prawa, dolna, róg) zmieniają jej wymiary co 10 cm, a w edycji
   wymiary strefy są przy górnej i lewej krawędzi. Ściana to element stały 12 cm (`wallElement`, wydłużony o pół
   grubości, żeby narożniki się domykały, kąt 0–179°): klik w kolejne narożniki, kąt co 15° (Shift dowolny),
-  przyciąganie do końców innych ścian, Enter, Esc, dwuklik albo prawy przycisk kończy. Delete usuwa zaznaczenie
+  przyciąganie do końców innych ścian, Enter, Esc, dwuklik albo prawy przycisk kończy i wraca do zaznaczania
+  (`_finishWall`, kolejna ściana od W). Plan i pływające panele mają osobne warstwy (`RepaintBoundary`), żeby ruch
+  myszy nie odrysowywał cieni paneli. Delete usuwa zaznaczenie
   (pyta tylko o zapisane stoliki), Ctrl+C/V/D kopiuje kilka obiektów naraz, Ctrl+Z i Ctrl+Shift+Z albo Ctrl+Y.
   Na żywo ten sam plan: klik stolika pokazuje jego rezerwacje, przeciąganie przesuwa widok. Rezerwacje i Logi
-  używają `FloorCanvas` bez widoku (strefa dopasowana do miejsca). Zmiana nazwy strefy przenosi też jej elementy,
+  używają `FloorCanvas` bez widoku (strefa dopasowana do miejsca; podpis stolika może wystawać poza mały blat,
+  `OverflowBox`). Zmiana nazwy strefy przenosi też jej elementy,
   a usunięcie pustej strefy usuwa jej elementy stałe.
 - Kliknięcie stolika na planie w „Rezerwacjach” otwiera menu tylko w obszarze planu, obok stolika i jego krzeseł.
   W menu „Nowa rezerwacja” otwiera okno z tym stolikiem. W „Nowej rezerwacji” stolik: „Dobierz automatycznie”

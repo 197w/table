@@ -6,6 +6,7 @@ import 'package:table_core/table_core.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
+import '../../shared/side_panel.dart';
 import '../fleet/vehicle_days.dart';
 import 'timesheet.dart';
 
@@ -68,9 +69,7 @@ enum _Status {
   };
 }
 
-/// Szerokość panelu po lewej, zwiniętego paska i okna dodawania obok panelu.
-const _panelWidth = 288.0;
-const _collapsedWidth = 20.0;
+/// Szerokość okna dodawania obok panelu.
 const _sheetWidth = 368.0;
 
 /// Panel po lewej wspólny dla Pracowników i Grafiku: zaznaczone filtry ('' = bez stanowiska), zwinięte grupy
@@ -158,7 +157,7 @@ List<Widget> _filterSections(
   int count(bool Function(StaffMember m) test) => all.where(test).length;
   final noPosition = count((m) => m.positionIds.isEmpty);
   return [
-    _FilterSection(
+    FilterSection(
       title: 'Stanowisko',
       first: true,
       open: !f.closed.contains('positions'),
@@ -182,7 +181,7 @@ List<Widget> _filterSections(
           ),
       ],
     ),
-    _FilterSection(
+    FilterSection(
       title: 'Stan',
       open: !f.closed.contains('status'),
       onToggle: () => notifier.toggleSection('status'),
@@ -361,7 +360,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     final members = [for (final m in all) if (_matches(m, filters, query, week.working)) m];
     final chosen = [for (final m in members) if (_selected.contains(m.id)) m];
 
-    final panel = _StaffPanel(
+    final panel = SidePanel(
       header: views.length > 1
           ? SegmentedTabs<_View>(
               options: [for (final v in views) (v.$1, v.$2)],
@@ -379,12 +378,12 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                 _role = null;
               }),
             )
-          : _PanelTitle(icon: views.first.$3, title: views.first.$2),
+          : PanelTitle(icon: views.first.$3, title: views.first.$2),
       search: _search,
       searchHint: view == _View.positions ? 'Szukaj stanowiska' : 'Szukaj',
       onSearch: () => setState(() {}),
-      restaurantPicker: _hasAll(ref.watch(panelMemberProvider), all, positions),
       actions: [
+        if (_hasAll(ref.watch(panelMemberProvider), all, positions)) const _RestaurantPicker(),
         if (view == _View.team && canStaff)
           _PanelAction(
             label: 'Dodaj pracownika',
@@ -719,14 +718,14 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     };
     final positionNames = {for (final p in positions) p.id: p.name};
 
-    final panel = _StaffPanel(
-      header: const _PanelTitle(icon: AppIcons.calendarDots, title: 'Grafik'),
+    final panel = SidePanel(
+      header: const PanelTitle(icon: AppIcons.calendarDots, title: 'Grafik'),
       search: _search,
       searchHint: 'Szukaj',
       onSearch: () => setState(() {}),
-      restaurantPicker: _hasAll(ref.watch(panelMemberProvider), all, positions),
       // Okres i edycja w panelu; pracownicy widzą zmiany dopiero po „Zapisz”.
       actions: [
+        if (_hasAll(ref.watch(panelMemberProvider), all, positions)) const _RestaurantPicker(),
         StepSwitcher(
           label: periodKind == 'month' ? Fmt.monthYear(period.from) : weekLabel(period.from, period.to),
           expand: true,
@@ -918,8 +917,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
 // Układ jak w UniFi: panel po lewej, okno obok, treść
 // ---------------------------------------------------------------
 
-/// Panel po lewej (albo wąski pasek, gdy zwinięty), obok niego okno dodawania albo zmiany (gdy otwarte), po prawej
-/// treść. Przycisk zwijania stoi na kresce między panelem a resztą, jak w UniFi.
+/// Wspólny układ list ([SidePanelLayout]) ze stanem zwinięcia panelu, który zostaje między Pracownikami a Grafikiem.
 class _StaffLayout extends ConsumerWidget {
   const _StaffLayout({required this.panel, required this.content, this.sheet});
 
@@ -930,195 +928,12 @@ class _StaffLayout extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final open = ref.watch(_panelProvider.select((s) => s.open));
-    // Panel zwija się i rozwija płynnie: szerokość maleje do wąskiego paska, treść panelu odjeżdża w lewo
-    // i gaśnie, a przycisk jedzie razem z kreską.
-    return TweenAnimationBuilder<double>(
-      tween: Tween(end: open ? 1 : 0),
-      duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 280),
-      curve: Curves.easeInOutCubic,
-      builder: (context, t, _) {
-        final width = _collapsedWidth + (_panelWidth - _collapsedWidth) * t;
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(
-                    width: width,
-                    decoration: BoxDecoration(border: Border(right: BorderSide(color: AppColors.ring))),
-                    child: t == 0
-                        ? null
-                        : ClipRect(
-                            child: OverflowBox(
-                              alignment: Alignment.centerRight,
-                              minWidth: _panelWidth,
-                              maxWidth: _panelWidth,
-                              child: Opacity(opacity: t, child: panel),
-                            ),
-                          ),
-                  ),
-                  // Okno dodawania wysuwa się zza panelu.
-                  AnimatedSwitcher(
-                    duration: PanelMotion.tab,
-                    transitionBuilder: (child, animation) => SizeTransition(
-                      axis: Axis.horizontal,
-                      alignment: Alignment.centerLeft,
-                      sizeFactor: CurvedAnimation(parent: animation, curve: AppMotion.easeOut),
-                      child: child,
-                    ),
-                    child: sheet ?? const SizedBox.shrink(key: ValueKey('bez okna')),
-                  ),
-                  Expanded(child: content),
-                ],
-              ),
-            ),
-            Positioned(
-              left: width - 10,
-              top: 18,
-              child: _EdgeButton(open: open, onTap: () => ref.read(_panelProvider.notifier).setOpen(!open)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-/// Uchwyt na kresce panelu: wąski prostokąt z zaokrąglonymi rogami (1.11.2026, prośba użytkownika; wcześniej
-/// kółko), zwija panel albo go rozwija. Bez podświetlenia tła: najechana strzałka jaśnieje.
-class _EdgeButton extends StatefulWidget {
-  const _EdgeButton({required this.open, required this.onTap});
-
-  final bool open;
-  final VoidCallback onTap;
-
-  @override
-  State<_EdgeButton> createState() => _EdgeButtonState();
-}
-
-class _EdgeButtonState extends State<_EdgeButton> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: widget.open ? 'Zwiń panel' : 'Pokaż panel',
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: GestureDetector(
-          onTap: widget.onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            width: 20,
-            height: 40,
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: _hover ? AppColors.textMuted : AppColors.ringStrong),
-            ),
-            child: Center(
-              child: Glyph(
-                widget.open ? AppIcons.caretLeft : AppIcons.caretRight,
-                size: 13,
-                color: _hover ? AppColors.text : AppColors.textMuted,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Panel po lewej: zakładki albo tytuł, wyszukiwanie, wybór lokalu (tylko ALL), przyciski i filtry.
-class _StaffPanel extends StatelessWidget {
-  const _StaffPanel({
-    required this.header,
-    required this.search,
-    required this.searchHint,
-    required this.onSearch,
-    required this.restaurantPicker,
-    this.actions = const [],
-    this.children = const [],
-  });
-
-  final Widget header;
-  final TextEditingController search;
-  final String searchHint;
-  final VoidCallback onSearch;
-  final bool restaurantPicker;
-  final List<Widget> actions;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: _panelWidth,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: SizedBox(height: 40, child: header),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: TextField(
-              controller: search,
-              onChanged: (_) => onSearch(),
-              decoration: InputDecoration(
-                hintText: searchHint,
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-                prefixIcon: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Glyph(AppIcons.search, size: 16, color: AppColors.textMuted),
-                ),
-                prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              ),
-            ),
-          ),
-          if (restaurantPicker)
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: _RestaurantPicker(),
-            ),
-          for (final a in actions)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: a,
-            ),
-          const SizedBox(height: 10),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              children: children,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Tytuł panelu, gdy nie ma zakładek do wyboru (Grafik albo tylko jedna część Pracowników).
-class _PanelTitle extends StatelessWidget {
-  const _PanelTitle({required this.icon, required this.title});
-
-  final AppIconData icon;
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Glyph(icon, size: 18, color: AppColors.textMuted),
-        const SizedBox(width: 10),
-        Text(title, style: Theme.of(context).textTheme.titleMedium),
-      ],
+    return SidePanelLayout(
+      open: open,
+      onToggle: () => ref.read(_panelProvider.notifier).setOpen(!open),
+      panel: panel,
+      content: content,
+      sheet: sheet,
     );
   }
 }
@@ -1161,7 +976,7 @@ class _RestaurantPicker extends ConsumerWidget {
       tooltip: 'Zmień lokal',
       position: PopupMenuPosition.under,
       color: AppColors.surface,
-      constraints: const BoxConstraints(minWidth: _panelWidth - 32),
+      constraints: const BoxConstraints(minWidth: sidePanelWidth - 32),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: AppColors.ring),
@@ -1306,149 +1121,6 @@ class _Legend extends StatelessWidget {
 // Filtry i tabela zespołu
 // ---------------------------------------------------------------
 
-/// Pole wyboru w grupie filtrów: napis, liczba osób, zaznaczenie i kropka koloru (np. „Na zmianie”).
-typedef _FilterOption = ({String label, int count, bool checked, ValueChanged<bool> onChanged, Color? dot});
-
-/// Grupa filtrów w panelu po lewej: nagłówek ze strzałką (zwija grupę) i pola wyboru z liczbą osób.
-class _FilterSection extends StatelessWidget {
-  const _FilterSection({
-    required this.title,
-    required this.open,
-    required this.onToggle,
-    required this.options,
-    this.first = false,
-  });
-
-  final String title;
-  final bool open;
-  final VoidCallback onToggle;
-  final List<_FilterOption> options;
-
-  /// Pierwsza grupa nie ma kreski nad sobą.
-  final bool first;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (!first) Divider(height: 1, color: AppColors.ring),
-        InkWell(
-          onTap: onToggle,
-          borderRadius: BorderRadius.circular(6),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Row(
-              children: [
-                Expanded(child: Text(title, style: text.labelLarge)),
-                Glyph(open ? AppIcons.caretUp : AppIcons.caretDown, size: 14, color: AppColors.textMuted),
-              ],
-            ),
-          ),
-        ),
-        if (open) ...[
-          for (final o in options) _FilterRow(option: o),
-          const SizedBox(height: 8),
-        ],
-      ],
-    );
-  }
-}
-
-/// Jedno pole wyboru filtra. Bez nikogo w tej grupie przygaszone i nieklikalne (chyba że zaznaczone).
-class _FilterRow extends StatelessWidget {
-  const _FilterRow({required this.option});
-
-  final _FilterOption option;
-
-  @override
-  Widget build(BuildContext context) {
-    final o = option;
-    final enabled = o.count > 0 || o.checked;
-    return InkWell(
-      onTap: enabled ? () => o.onChanged(!o.checked) : null,
-      borderRadius: BorderRadius.circular(6),
-      child: SizedBox(
-        height: 32,
-        child: Row(
-          children: [
-            _Check(value: o.checked, onChanged: enabled ? (v) => o.onChanged(v ?? false) : null),
-            const SizedBox(width: 10),
-            if (o.dot != null) ...[
-              Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(color: enabled ? o.dot : AppColors.textDisabled, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 7),
-            ],
-            Expanded(
-              child: Text(
-                '${o.label} (${o.count})',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: enabled ? AppColors.text : AppColors.textDisabled,
-                  fontFeatures: _tabular,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Małe pole wyboru (filtry, uprawnienia, wiersze tabeli), bez poświaty. Przy [tristate] null znaczy
-/// „część zaznaczona”.
-class _Check extends StatelessWidget {
-  const _Check({required this.value, required this.onChanged, this.tristate = false});
-
-  final bool? value;
-  final ValueChanged<bool?>? onChanged;
-  final bool tristate;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onChanged != null;
-    return SizedBox(
-      width: 18,
-      height: 18,
-      child: Checkbox(
-        value: value,
-        tristate: tristate,
-        onChanged: onChanged,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.compact,
-        // Bez okrągłej poświaty po najechaniu i kliknięciu (prośba użytkownika).
-        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-        splashRadius: 0,
-        activeColor: AppColors.accentFill,
-        checkColor: AppColors.onAccent,
-        side: WidgetStateBorderSide.resolveWith(
-          (states) => states.contains(WidgetState.selected)
-              ? BorderSide.none
-              : BorderSide(color: enabled ? AppColors.ringStrong : AppColors.ring, width: 1.5),
-        ),
-      ),
-    );
-  }
-}
-
-/// Nagłówek kolumny tabeli: z [width] stała szerokość, bez niej część wolnego miejsca według [flex].
-Widget _head(BuildContext context, String label, int flex, {TextAlign align = TextAlign.left, double? width}) {
-  final child = Text(
-    label,
-    textAlign: align,
-    maxLines: 1,
-    overflow: TextOverflow.ellipsis,
-    style: Theme.of(context).textTheme.labelMedium?.copyWith(color: AppColors.text, fontWeight: FontWeight.w600),
-  );
-  return width == null ? Expanded(flex: flex, child: child) : SizedBox(width: width, child: child);
-}
-
 /// Stałe szerokości wąskich kolumn tabeli zespołu; imię i stanowisko dzielą resztę.
 const _checkWidth = 36.0;
 const _phoneWidth = 136.0;
@@ -1525,19 +1197,19 @@ class _TeamTable extends StatelessWidget {
                     width: _checkWidth,
                     child: Align(
                       alignment: Alignment.centerLeft,
-                      child: _Check(
+                      child: PanelCheck(
                         tristate: true,
                         value: chosen == 0 ? false : (chosen == members.length ? true : null),
                         onChanged: members.isEmpty ? null : (_) => onSelectAll(chosen < members.length),
                       ),
                     ),
                   ),
-                _head(context, 'Imię i nazwisko', 3),
-                _head(context, 'Telefon', 0, width: _phoneWidth),
-                _head(context, 'Stanowisko', 2),
-                _head(context, 'Teraz', 0, width: _nowWidth),
-                _head(context, 'Ten tydzień', 0, align: TextAlign.right, width: _weekWidth),
-                if (showCodes) _head(context, 'Kod', 0, align: TextAlign.right, width: _codeWidth),
+                tableHead(context, 'Imię i nazwisko', 3),
+                tableHead(context, 'Telefon', 0, width: _phoneWidth),
+                tableHead(context, 'Stanowisko', 2),
+                tableHead(context, 'Teraz', 0, width: _nowWidth),
+                tableHead(context, 'Ten tydzień', 0, align: TextAlign.right, width: _weekWidth),
+                if (showCodes) tableHead(context, 'Kod', 0, align: TextAlign.right, width: _codeWidth),
               ],
             ),
           ),
@@ -1573,7 +1245,7 @@ class _TeamTable extends StatelessWidget {
                               width: _checkWidth,
                               child: Align(
                                 alignment: Alignment.centerLeft,
-                                child: _Check(value: on, onChanged: (v) => onSelect(m.id, v ?? false)),
+                                child: PanelCheck(value: on, onChanged: (v) => onSelect(m.id, v ?? false)),
                               ),
                             )
                           : null,
@@ -3080,9 +2752,9 @@ class _PositionsTable extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
-                _head(context, 'Nazwa', 3),
-                _head(context, 'Uprawnienia', 6),
-                _head(context, 'Pracownicy', 0, align: TextAlign.right, width: 88),
+                tableHead(context, 'Nazwa', 3),
+                tableHead(context, 'Uprawnienia', 6),
+                tableHead(context, 'Pracownicy', 0, align: TextAlign.right, width: 88),
                 const SizedBox(width: 96),
               ],
             ),
@@ -4192,7 +3864,7 @@ class _PermissionGroup extends StatelessWidget {
                   children: [
                     Padding(
                       padding: const EdgeInsets.only(top: 1),
-                      child: _Check(
+                      child: PanelCheck(
                         value: selected.contains(p),
                         onChanged: enabled ? (v) => onChanged(p, v ?? false) : null,
                       ),
