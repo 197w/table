@@ -1027,12 +1027,22 @@ class PanelRepository {
     });
   }
 
-  /// Sprzedaż z ostatnich [days] dni.
-  Future<SalesStats> salesStats(String restaurantId, int days) {
+  /// Sprzedaż z ostatnich [days] dni, tylko z wybranych rodzajów zamówień i od wybranych osób (puste: wszystko).
+  Future<SalesStats> salesStats(
+    String restaurantId,
+    int days, {
+    List<String> kinds = const [],
+    List<String> members = const [],
+  }) {
     return _guard(() async {
       final json = await _db.rpc<Map<String, dynamic>>(
         'panel_sales_stats',
-        params: {'p_restaurant_id': restaurantId, 'p_days': days},
+        params: {
+          'p_restaurant_id': restaurantId,
+          'p_days': days,
+          if (kinds.isNotEmpty) 'p_kinds': kinds,
+          if (members.isNotEmpty) 'p_members': members,
+        },
       );
       return SalesStats.fromJson(json);
     });

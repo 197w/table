@@ -135,23 +135,25 @@ class _EdgeButtonState extends State<_EdgeButton> {
   }
 }
 
-/// Panel po lewej: zakładki albo tytuł, wyszukiwanie, przyciski (np. wybór lokalu, „Dodaj pracownika”, dzień)
-/// i przewijane filtry.
+/// Panel po lewej: zakładki albo tytuł, wyszukiwanie (bez niego w Statystykach), przyciski (np. wybór lokalu,
+/// „Dodaj pracownika”, dzień) i przewijane filtry.
 class SidePanel extends StatelessWidget {
   const SidePanel({
     super.key,
     required this.header,
-    required this.search,
-    required this.searchHint,
-    required this.onSearch,
+    this.search,
+    this.searchHint = '',
+    this.onSearch,
     this.actions = const [],
     this.children = const [],
   });
 
   final Widget header;
-  final TextEditingController search;
+
+  /// Bez pola wyszukiwania, gdy null.
+  final TextEditingController? search;
   final String searchHint;
-  final VoidCallback onSearch;
+  final VoidCallback? onSearch;
   final List<Widget> actions;
   final List<Widget> children;
 
@@ -166,23 +168,24 @@ class SidePanel extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: SizedBox(height: 40, child: header),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: TextField(
-              controller: search,
-              onChanged: (_) => onSearch(),
-              decoration: InputDecoration(
-                hintText: searchHint,
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-                prefixIcon: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Glyph(AppIcons.search, size: 16, color: AppColors.textMuted),
+          if (search != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: TextField(
+                controller: search,
+                onChanged: (_) => onSearch?.call(),
+                decoration: InputDecoration(
+                  hintText: searchHint,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                  prefixIcon: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Glyph(AppIcons.search, size: 16, color: AppColors.textMuted),
+                  ),
+                  prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                 ),
-                prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
               ),
             ),
-          ),
           for (final a in actions)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
@@ -216,6 +219,56 @@ class PanelTitle extends StatelessWidget {
         const SizedBox(width: 10),
         Text(title, style: Theme.of(context).textTheme.titleMedium),
       ],
+    );
+  }
+}
+
+/// Przycisk z obrysem w kolorze akcentu w panelu („Dodaj pracownika”, „Dodaj pojazd”), podświetlony, gdy jego okno
+/// jest otwarte.
+class PanelAction extends StatelessWidget {
+  const PanelAction({super.key, required this.label, required this.onTap, this.active = false});
+
+  final String label;
+  final VoidCallback onTap;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.accent,
+        backgroundColor: active ? AppColors.accentTint : null,
+        side: BorderSide(color: AppColors.accent.withValues(alpha: 0.7)),
+        minimumSize: const Size.fromHeight(40),
+      ),
+      child: Text(label),
+    );
+  }
+}
+
+/// Mała odznaka w wierszu tabeli, np. „ALL”, „Ty” albo „Nieużywany”.
+class RowBadge extends StatelessWidget {
+  const RowBadge(this.label, {super.key, this.accent = false});
+
+  final String label;
+  final bool accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: accent ? AppColors.accentTint : AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: accent ? AppColors.accent : AppColors.textMuted,
+          letterSpacing: 0.2,
+        ),
+      ),
     );
   }
 }
@@ -262,10 +315,7 @@ class FilterSection extends StatelessWidget {
             ),
           ),
         ),
-        if (open) ...[
-          for (final o in options) _FilterRow(option: o),
-          const SizedBox(height: 8),
-        ],
+        if (open) ...[for (final o in options) _FilterRow(option: o), const SizedBox(height: 8)],
       ],
     );
   }

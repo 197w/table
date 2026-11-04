@@ -35,16 +35,16 @@ String _money(int grosze) {
   return '$buffer zł';
 }
 
-/// Sprzedaż z rachunków zamkniętych w panelu: obrót, pory dnia, dania, płatności i obsługa.
+/// Sprzedaż z rachunków zamkniętych w panelu: obrót, pory dnia, dania, płatności i obsługa. Z filtrami z panelu
+/// Statystyk ([query]: rodzaje zamówień i osoby).
 class SalesView extends ConsumerWidget {
-  const SalesView({super.key, required this.restaurantId, required this.days});
+  const SalesView({super.key, required this.query});
 
-  final String restaurantId;
-  final int days;
+  final SalesQuery query;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final query = (restaurantId: restaurantId, days: days);
+    final filtered = query.kinds.isNotEmpty || query.members.isNotEmpty;
     final async = ref.watch(salesStatsProvider(query));
     final text = Theme.of(context).textTheme;
 
@@ -54,16 +54,18 @@ class SalesView extends ConsumerWidget {
       error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(salesStatsProvider(query))),
       data: (s) {
         if (s.orders == 0 && s.prevOrders == 0) {
-          return const MessageView(
+          return MessageView(
             icon: AppIcons.receipt,
-            title: 'Brak sprzedaży w tym okresie',
-            message: 'Statystyki sprzedaży liczą się z rachunków zamkniętych w zakładce „Zamówienia”.',
+            title: filtered ? 'Nic nie znaleziono' : 'Brak sprzedaży w tym okresie',
+            message: filtered
+                ? 'Żaden rachunek z tego okresu nie pasuje do filtrów. Zmień je w panelu po lewej.'
+                : 'Statystyki sprzedaży liczą się z rachunków zamkniętych w zakładce „Zamówienia”.',
           );
         }
         final prevAverage = s.prevOrders == 0 ? 0 : s.prevRevenue ~/ s.prevOrders;
 
         return ListView(
-          padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
+          padding: const EdgeInsets.fromLTRB(24, 16, 32, 32),
           children: [
             Row(
               children: [

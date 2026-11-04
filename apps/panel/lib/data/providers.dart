@@ -1113,7 +1113,14 @@ final shiftsProvider = FutureProvider.autoDispose.family<List<StaffShift>, Shift
   return ref.watch(repositoryProvider).shifts(q.restaurantId, from: q.from, to: q.to);
 });
 
-final salesStatsProvider = FutureProvider.autoDispose.family<SalesStats, StatsQuery>((ref, q) {
+/// Sprzedaż z filtrami z panelu Statystyk: rodzaje zamówień i osoby po przecinku, posortowane (napis, a nie lista,
+/// żeby to samo zapytanie było tym samym kluczem); pusty napis to wszystko.
+typedef SalesQuery = ({String restaurantId, int days, String kinds, String members});
+
+final salesStatsProvider = FutureProvider.autoDispose.family<SalesStats, SalesQuery>((ref, q) {
   ref.cacheFor();
-  return ref.watch(repositoryProvider).salesStats(q.restaurantId, q.days);
+  List<String> split(String s) => s.isEmpty ? const [] : s.split(',');
+  return ref
+      .watch(repositoryProvider)
+      .salesStats(q.restaurantId, q.days, kinds: split(q.kinds), members: split(q.members));
 });

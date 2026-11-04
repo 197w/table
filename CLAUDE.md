@@ -116,7 +116,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
   Map i śledzenia dostawców nie ma od 0068 (usunięte na prośbę użytkownika, także mapa u gościa).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0075, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0076, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -150,6 +150,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (obrys 16 na 256, też w duotone): `cursor`, `corners-out`, `dining-table`, `wall` (pasek edytora sali),
   `circle-half-inset` (pierścień z wypełnioną prawą połową w środku jak w UniFi: motyw systemowy,
   `AppThemeSetting.system`, od 2.11.2026; wcześniej przełączniki `toggles` i monitor).
+  Duotone `plus`, `minus` i `x` to te same kształty bez kwadratu w tle (4.11.2026: zielony „+” w Rezerwacjach,
+  `GlowButton(primary)`, wyglądał jak kafelek; nie pobierać ich od nowa z better-icons).
 - `apps/guest/lib`: `app` (router, dolne menu, preferencje), `core` (mapy, lokalizacja), `data`, `features`
   (m.in. `ordering`: zamawianie z dostawą i na wynos).
   Odkrywaj (`features/discover`, nowy wygląd z 10.2026): powitanie na całą szerokość, wyszukiwarka
@@ -267,7 +269,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   użytkownika): treść zaczyna się zaraz pod zakładkami.
   Ikony bez tła (1.11.2026, prośba użytkownika): przycisk z ikoną (`IconButton`, motyw w `panel_theme.dart`) to sama
   ikona bez tła, obwódki i podświetlenia po kliknięciu, najechana jaśnieje (w przyciskach nie ustawiamy koloru ikony,
-  żeby działało); kosz to zawsze `DeleteButton` (czerwony, wyłączony szary; w notatkach na środku wysokości); `GlowButton` w nagłówkach też sama ikona (główna akcja w kolorze akcentu, duotone); `IconBadge`
+  żeby działało); kosz to zawsze `DeleteButton` (czerwony, wyłączony bladoczerwony, od 4.11.2026, bo szary wyłączony kosz przy
+  jedynym terminalu w Podsumowaniu dnia wyglądał na nieczerwony; w notatkach na środku wysokości); `GlowButton` w nagłówkach też sama ikona (główna akcja w kolorze akcentu, duotone); `IconBadge`
   w kaflach liczb i nagłówkach kart to kolorowa ikona bez kostki; `IconTabs` bez pigułki: wybrana ikona w kolorze
   akcentu z nazwą obok, jak grupy w górnym pasku. Jedna wysokość kontrolek 40 px (`PanelTheme.controlHeight`):
   przyciski wszystkich rodzajów, przyciski z ikoną, pola w jednej linii (padding 8 + 24 + 8), ikony w polach,
@@ -348,46 +351,43 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `order_items_takeaway_limits` tylko dla pozycji dodanych przez gościa), w Table koszyk blokuje „+” i pokazuje
   przekroczenie (`RestaurantDetail.cartLimitProblem`, `canAddMore`).
 - Logi i Time Machine (0072, pasek boczny pod „Ustawienia lokalu” → `/logi`, uprawnienie `activity` w grupie Lokal,
-  w 0072 dostały je stanowiska z `day_close` albo `staff`; `features/activity/activity_screen.dart`). Wygląd
-  i działanie jak Time Machine w UniFi z filmu w Todoist (od 31.10.2026). Od 2.11.2026 (prośba użytkownika) Logi mają
-  układ jak Pracownicy (`SidePanelLayout`, `SidePanel`): po lewej zwijany panel z zakładkami „Zdarzenia” / „Time
-  Machine” (`_View`), wyszukiwaniem (tytuł, szczegóły, osoba), dniem (`StepSwitcher` z kalendarzem) i filtrami
-  z liczbą zdarzeń dnia (`FilterSection`: Rodzaj z kropką w kolorze grupy, `activityGroupLabel`; Osoba, w tym „Bez
-  osoby”; puste grupy nie filtrują). „Zdarzenia” (domyślna) to tabela jak Zespół (`_EventTable`: godzina z sekundami,
-  zdarzenie z ikoną w kolorze grupy, szczegóły, osoba, kwota), najnowsze u góry; kliknięcie wiersza otwiera Time
-  Machine w chwili zdarzenia i zaznacza jego rachunek (`_openInMachine`). Filtry działają też na oś i zdarzenia
-  w Time Machine. Time Machine: nad osią „Na żywo / Historia” na całą szerokość osi (`expand: true`), pod nim oś czasu (godziny 18 px od
-  lewej krawędzi, równo z godziną na kresce; godziny pod pigułką z sekundami się nie rysują) przycięta do swojej karty (godziny nie wchodzą na przyciski
-  skali), bez paska nad całym ekranem, więc plan sali ma ponad połowę wysokości. Oś przesuwa się pod
-  stałą kreską z godziną i sekundami u góry (wcześniejsze chwile niżej; przeciąganie z bezwładnością, kółko myszy,
-  Ctrl + kółko albo suwak −/+ zmienia skalę, kliknięcie wybiera chwilę), na osi ikony zdarzeń w kolorach grup
-  (bliskie razem z liczbą, podpowiedź z listą, kliknięcie płynnie przewija oś do zdarzenia: `_jump`,
-  360–800 ms według odległości, przy „Ogranicz ruch” od razu; przeciąganie przerywa przewijanie). Po prawej na samej górze plan sali
-  w tej chwili (`FloorCanvas`: rachunek z kwotą, rezerwacja; podsumowanie sali w rogu), pod nim legenda (stan stolika
-  i stan pozycji), a pod nią tabela jak porty w UniFi: zakładki Stoliki (wszystkie stoliki: kwadracik z numerem
-  w kolorze stanu, strefa, stan, od, goście, kelner, pasek pozycji w kolorach stanu, kwota, wpłacone; kliknięcie
-  rozwija pozycje i zaznacza stolik na planie; kreski między wierszami to `ring` z 60% jego krycia, nie 60% bieli),
-  Na wynos i Na zmianie. Kafli z liczbami już nie ma.
-  Zdarzenia w Time Machine (od 1.11.2026, prośba użytkownika): stale cała doba w kolumnie po prawej (`_LogCard`, `_DayLog`,
-  360 px; przy treści węższej niż 1240 px, czyli zwykle przy rozwiniętym panelu, zakładka „Zdarzenia” w tabeli), najnowsze u góry jak na osi, ikona
-  w kolorze grupy bez tła, tytuł i szczegóły. Wybrana chwila to kreska z godziną między zdarzeniami: te do niej
-  zwykłe, ostatnie przed nią zaznaczone (tło i kreska akcentu), późniejsze zamglone (przezroczystość 0,35 i lekkie
-  rozmycie); nagłówek „9 z 20 do 14:32”. Lista przewija się do kreski tylko wtedy, gdy kreska przeskoczy zdarzenie
-  i wyjdzie poza widok (na żywo nowe zdarzenia nie zabierają czytanego miejsca). Kliknięcie zdarzenia przewija oś
-  do jego chwili co do mikrosekundy (czasy z bazy mają mikrosekundy). Time Machine bez czekania (0073): `panel_time_machine_day` zwraca raz całą dobę z chwilami (rachunki
-  z pozycjami i płatnościami, rezerwacje, na wynos z etapami, zmiany), stan w chwili liczy panel
-  (`TimeMachineDay.at`, `timeMachineDayProvider`), więc przewijanie osi zmienia plan i tabelę od razu.
-  „Na żywo” trzyma chwilę na teraz (co sekundę; dziś dane odświeżają się z zamówieniami), „Historia” ma dzień
-  (`StepSwitcher`). Nic nowego się nie zapisuje: `panel_activity` składa
-  zdarzenia z chwil przy zamówieniach, pozycjach (dodane, na kuchnię, gotowe, wydane, anulowane; to samo danie
-  łączy `private.merge_item_names`), płatnościach, dostawach, rezerwacjach, zmianach i inwentaryzacji, a
-  `panel_time_machine_day` daje chwile do odtworzenia rachunków, rezerwacji (`table_holds`), zamówień na wynos
-  i zmian (stare `panel_time_machine` dla jednej chwili zostało dla starszych wersji panelu).
+  w 0072 dostały je stanowiska z `day_close` albo `staff`; `features/activity/activity_screen.dart`). Układ jak
+  Pracownicy (`SidePanelLayout`, `SidePanel`, od 2.11.2026): po lewej zwijany panel z jedną zakładką „Lista” (od
+  4.11.2026, prośba użytkownika; wcześniej „Zdarzenia” i zakładka „Time Machine” z planem sali w chwili, stolikami,
+  na wynos i osobami na zmianie: usunięta), wyszukiwaniem (tytuł, szczegóły, osoba), dniem (`StepSwitcher`
+  z kalendarzem), wierszem „Time Machine” z przełącznikiem (`_MachineSwitch`, jak w UniFi) i filtrami z liczbą zdarzeń
+  dnia (`FilterSection`: Rodzaj z kropką w kolorze grupy, `activityGroupLabel`; Osoba, w tym „Bez osoby”; puste grupy
+  nie filtrują). Po prawej tabela jak Zespół (`_EventTable`: godzina z sekundami, zdarzenie z ikoną w kolorze grupy,
+  szczegóły, osoba, kwota), najnowsze u góry. Time Machine działa na liście, wzór: film z UniFi (porty w tabeli
+  zmieniają się razem z osią): włączony wysuwa zza panelu oś czasu (`sheet` w `SidePanelLayout`, jak okno dodawania
+  w Pracownikach; nad osią „Na żywo / Historia”), a lista pokazuje dzień w wybranej chwili: kreska z godziną między
+  wierszami (`_TimeMark`), zdarzenia do niej zwykłe, ostatnie przed nią zaznaczone (tło i kreska akcentu),
+  późniejsze zamglone (przezroczystość 0,35 i lekkie rozmycie, jak odłączone porty w UniFi). Lista przewija się do
+  kreski tylko wtedy, gdy kreska przeskoczy zdarzenie i wyjdzie poza widok (stała wysokość wiersza `_rowExtent`; na
+  żywo nowe zdarzenia nie zabierają czytanego miejsca). Kliknięcie wiersza przewija oś do jego chwili co do
+  mikrosekundy (czasy z bazy mają mikrosekundy) i zaznacza wiersze jego rachunku; przy wyłączonym Time Machine
+  najpierw go włącza (`_openEvent`). Filtry działają też na oś. Oś (`_TimeRail`, kolumna `_railWidth`): godziny
+  18 px od lewej krawędzi, równo z godziną na kresce (godziny pod pigułką z sekundami się nie rysują), przycięta do
+  swojej karty (godziny nie wchodzą na przyciski skali). Oś przesuwa się pod stałą kreską z godziną i sekundami
+  u góry (wcześniejsze chwile niżej; przeciąganie z bezwładnością, kółko myszy, Ctrl + kółko albo suwak −/+ zmienia
+  skalę, kliknięcie wybiera chwilę), na osi ikony zdarzeń w kolorach grup (bliskie razem z liczbą, podpowiedź
+  z listą, kliknięcie płynnie przewija oś do zdarzenia: `_jump`, 360–800 ms według odległości, przy „Ogranicz ruch”
+  od razu; przeciąganie przerywa przewijanie). „Na żywo” trzyma chwilę na teraz (co sekundę, tylko przy włączonym
+  Time Machine; dziś dane odświeżają się z zamówieniami), „Historia” ma dzień. Nic nowego się nie zapisuje:
+  `panel_activity` składa zdarzenia z chwil przy zamówieniach, pozycjach (dodane, na kuchnię, gotowe, wydane,
+  anulowane; to samo danie łączy `private.merge_item_names`), płatnościach, dostawach, rezerwacjach, zmianach
+  i inwentaryzacji. Stan sali w chwili (`panel_time_machine_day`, 0073, model `TimeMachineDay.at`,
+  `timeMachineDayProvider`) został w bazie i w modelach z testami, ale ekran go już nie pokazuje (stare
+  `panel_time_machine` dla jednej chwili zostało dla starszych wersji panelu).
   Doszła tylko chwila anulowania pozycji (`order_items.cancelled_at`, trigger). Model zdarzenia z polskimi tytułami
   jest w `table_core` (`ActivityEvent`). Logów nie ma w aplikacji mobilnej (usunięte na prośbę użytkownika);
   `panel_activity(p_member_id)` zostało w bazie.
 - Dane lokalu: logo, dane, poziom cen, dane właściciela, godziny, dni wyjątkowe.
-- Flota (`/flota`, uprawnienie `fleet`, 0045): `vehicles` (auto, skuter, rower, inny; nazwa, rejestracja unikalna
+- Flota (`/flota`, uprawnienie `fleet`, 0045) w układzie jak Pracownicy (4.11.2026, prośba użytkownika: lista zamiast
+  kafli; `SidePanel` z „Dodaj pojazd” i filtrami Rodzaj / Stan / Dziś, tabela `_VehicleTable`: pojazd z ikoną
+  w kolorze rodzaju i odznaką „Nieużywany”, rejestracja, VIN, dzisiejszy dostawca z zieloną kropką, ostatnia
+  notatka z „+N”, aparat „Przebieg i zdjęcia”; kliknięcie wiersza otwiera okno pojazdu): `vehicles` (auto, skuter,
+  rower, inny; nazwa, rejestracja unikalna
   w lokalu, VIN 17 znaków bez I/O/Q unikalny w lokalu (0046), w użyciu), `panel_save_vehicle`,
   `panel_delete_vehicle`. Od 0068 auto nie ma stałego dostawcy (`vehicles.member_id` zawsze puste): auto przypisuje się
   na dzień (`vehicle_days`, jedno auto i jeden dostawca na dzień, `panel_set_vehicle_day`, `panel_vehicle_days`) w oknie
@@ -450,7 +450,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Ja nadal nie zakładam kont ani nie wymyślam haseł: konto zakłada sama restauracja albo użytkownik.
 - Pracownicy nie mają kont w panelu. Dodaje ich osoba z uprawnieniem `staff` w „Pracownicy” → „Zespół”
   (szczegóły ze statystykami `panel_member_stats`). Zakładka „Pracownicy” wygląda jak „People” w UniFi (od 0.28.0,
-  wzory od użytkownika; `staff_screen.dart`; panel, filtry i uchwyt są wspólne z Logami w `shared/side_panel.dart`).
+  wzory od użytkownika; `staff_screen.dart`; panel, filtry, uchwyt, `PanelAction` i `RowBadge` są wspólne z Logami,
+  Flotą i Statystykami w `shared/side_panel.dart`).
   Po lewej panel (`SidePanel`, 288 px) z zakładkami Zespół / Stanowiska
   z ikonami jak w UniFi (`SegmentedTabs(expand: true, icons:)`, `AppIcons.list` i `AppIcons.userGear`; według uprawnień
   `staff`/`staff_logins` i `positions`), wyszukiwaniem (imię albo telefon), wyborem lokalu pod wyszukiwaniem
@@ -538,8 +539,12 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   to suma, `private.member_permissions`, dostawca: `private.is_courier`), w grafiku stanowisko na dzień
   (`staff_schedule.position_id`, wybór w oknie dnia, widać w aplikacji). Pod siatką: przyjętych osób, godziny pracy dnia
   i ile osób na jakim stanowisku; kolumna „Tydzień” z godzinami pracownika.
-- Statystyki (Management) mają zakładki: Sprzedaż (`panel_sales_stats`) i Rezerwacje i goście; okres 7/30/90 dni
-  w rzędzie zakładek. W „Rezerwacje i goście” kafel „Polubienia” (wszystkie i „+N w tym okresie”, także plan Free)
+- Statystyki (Management) w układzie jak Pracownicy (4.11.2026, prośba użytkownika; kafle i wykresy zostały): po
+  lewej zwijany panel (bez wyszukiwania) z zakładkami Sprzedaż (`panel_sales_stats`) i Rezerwacje i goście, okresem
+  7/30/90 dni i w Sprzedaży filtrami z liczbą rachunków w okresie: Rodzaj zamówienia (Na miejscu, Dostawa, Odbiór
+  osobisty) i Obsługa (kto otworzył rachunek, „Bez przypisania” na końcu). Filtry liczy baza (0076:
+  `panel_sales_stats(p_kinds, p_members)`, `''` = bez przypisania, liczby bez filtrów w `facets`; stara wersja bez
+  filtrów usunięta, bo domyślne parametry obsługują starsze panele); w panelu `SalesQuery` z filtrami po przecinku. W „Rezerwacje i goście” kafel „Polubienia” (wszystkie i „+N w tym okresie”, także plan Free)
   i wykres nowych polubień dzień po dniu (`panel_stats` od 0063: `likes`, `likes_total`); kafle mają równą wysokość. W Sprzedaży tabela „Sprzedaż w godzinach” (godziny z zamówieniami: liczba, kwota, na miejscu,
   dostawa, odbiór osobisty, wiersz „Razem”; `hourly` z `dine_in`, `delivery`, `pickup` od 0062). Historia zamówień jest osobną zakładką w grupie Rezerwacje.
 - Role w `restaurant_staff`: owner, manager, staff. Kierownik i właściciel zmieniają salę, menu, dane lokalu

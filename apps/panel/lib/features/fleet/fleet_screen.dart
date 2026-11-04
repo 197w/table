@@ -7,6 +7,7 @@ import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/notes_view.dart';
 import '../../shared/panel_widgets.dart';
+import '../../shared/side_panel.dart';
 import 'vehicle_days.dart';
 
 /// Wpisywane litery od razu zamieniają się na wielkie (rejestracja, VIN), jak przy włączonym Caps Locku.
@@ -30,12 +31,41 @@ Color _kindColor(VehicleKind kind) => switch (kind) {
   VehicleKind.other => TileColors.violet,
 };
 
-/// Flota: pojazdy dostawców (auto, skuter, rower), rejestracja, kto nim jeździ i notatki zespołu
-/// (np. przegląd, usterki). Zmiany i notatki tylko z uprawnieniem „Flota”.
-class FleetScreen extends ConsumerWidget {
+const _tabular = [FontFeature.tabularFigures()];
+
+/// Stałe szerokości wąskich kolumn tabeli pojazdów; pojazd i notatka dzielą resztę.
+const _plateWidth = 132.0;
+const _vinWidth = 200.0;
+const _courierWidth = 180.0;
+const _checksWidth = 48.0;
+
+/// Flota (`/flota`, uprawnienie `fleet`) w układzie jak Pracownicy (4.11.2026, prośba użytkownika: lista zamiast
+/// kafli): po lewej zwijany panel z wyszukiwaniem (nazwa, rejestracja, VIN, dzisiejszy dostawca), „Dodaj pojazd”
+/// i filtrami z liczbą pojazdów (rodzaj, stan, dziś), po prawej tabela: pojazd, rejestracja, VIN, kto nim jeździ
+/// dziś, ostatnia notatka i przebieg ze zdjęciami. Kliknięty wiersz otwiera okno pojazdu (zmiana i notatki,
+/// tylko z uprawnieniem „Flota”).
+class FleetScreen extends ConsumerStatefulWidget {
   const FleetScreen({super.key});
 
-  Future<void> _edit(BuildContext context, WidgetRef ref, String restaurantId, [Vehicle? vehicle]) async {
+  @override
+  ConsumerState<FleetScreen> createState() => _FleetScreenState();
+}
+
+class _FleetScreenState extends ConsumerState<FleetScreen> {
+  final _search = TextEditingController();
+  final _kinds = <VehicleKind>{};
+  final _states = <String>{};
+  final _today = <String>{};
+  final _closed = <String>{};
+  bool _panelOpen = true;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  Future<void> _edit(String restaurantId, [Vehicle? vehicle]) async {
     final saved = await showDialog<bool>(
       context: context,
       builder: (_) => _VehicleDialog(restaurantId: restaurantId, vehicle: vehicle),
@@ -44,8 +74,12 @@ class FleetScreen extends ConsumerWidget {
     ref.invalidate(vehicleNotesProvider(restaurantId));
   }
 
+  void _toggle<T>(Set<T> set, T value) => setState(() => set.contains(value) ? set.remove(value) : set.add(value));
+
+  static String _state(Vehicle v) => v.active ? 'active' : 'inactive';
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final restaurant = ref.watch(currentRestaurantProvider);
     if (restaurant == null) return const LoadingView();
     final canEdit = ref.watch(memberPermissionsProvider).contains('fleet');
@@ -58,73 +92,186 @@ class FleetScreen extends ConsumerWidget {
         d.vehicleId: names[d.memberId],
     };
     final notes = ref.watch(vehicleNotesProvider(restaurant.id)).value ?? const <String, List<Note>>{};
+    final all = async.value ?? const <Vehicle>[];
+    String todayKey(Vehicle v) => today[v.id] == null ? 'free' : 'driven';
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    final query = _search.text.trim().toLowerCase();
+    final vehicles = [
+      for (final v in all)
+        if ((_kinds.isEmpty || _kinds.contains(v.kind)) &&
+            (_states.isEmpty || _states.contains(_state(v))) &&
+            (_today.isEmpty || _today.contains(todayKey(v))) &&
+            (query.isEmpty ||
+                [v.name, ?v.plate, ?v.vin, ?today[v.id]].any((t) => t.toLowerCase().contains(query)) ||
+                (v.plate ?? '').replaceAll(' ', '').toLowerCase().contains(query.replaceAll(' ', ''))))
+          v,
+    ];
+
+    final panel = SidePanel(
+      header: const PanelTitle(icon: AppIcons.car, title: 'Flota'),
+      search: _search,
+      searchHint: 'Szukaj pojazdu',
+      onSearch: () => setState(() {}),
+      actions: [if (canEdit) PanelAction(label: 'Dodaj pojazd', onTap: () => _edit(restaurant.id))],
       children: [
-        PageHeader(
-          actions: [
-            if (canEdit)
-              FilledButton.icon(
-                onPressed: () => _edit(context, ref, restaurant.id),
-                icon: const Glyph(AppIcons.plus, size: 18),
-                label: const Text('Dodaj pojazd'),
+        FilterSection(
+          title: 'Rodzaj',
+          first: true,
+          open: !_closed.contains('kind'),
+          onToggle: () => _toggle(_closed, 'kind'),
+          options: [
+            for (final k in VehicleKind.values)
+              (
+                label: k.label,
+                count: all.where((v) => v.kind == k).length,
+                checked: _kinds.contains(k),
+                onChanged: (_) => _toggle(_kinds, k),
+                dot: _kindColor(k),
               ),
           ],
         ),
-        Expanded(
-          child: async.when(
-            skipLoadingOnReload: true,
-            loading: () => const LoadingView(),
-            error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(vehiclesProvider(restaurant.id))),
-            data: (vehicles) => vehicles.isEmpty
-                ? MessageView(
-                    icon: AppIcons.car,
-                    title: 'Brak pojazdów',
-                    message:
-                        'Dodaj auto, skuter albo rower. Dostawcę wybiera się na dany dzień w Grafiku albo Dostawach.',
-                    actionLabel: canEdit ? 'Dodaj pojazd' : null,
-                    onAction: canEdit ? () => _edit(context, ref, restaurant.id) : null,
-                  )
-                : LayoutBuilder(
-                    builder: (context, box) {
-                      const gap = 16.0;
-                      final columns = ((box.maxWidth - 64 + gap) / (320 + gap)).floor().clamp(1, 6);
-                      final width = (box.maxWidth - 64 - gap * (columns - 1)) / columns;
-                      return SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
-                        child: Wrap(
-                          spacing: gap,
-                          runSpacing: gap,
-                          children: [
-                            for (final v in vehicles)
-                              SizedBox(
-                                width: width,
-                                child: _VehicleCard(
-                                  vehicle: v,
-                                  courier: today[v.id],
-                                  notes: notes[v.id] ?? const [],
-                                  onTap: canEdit ? () => _edit(context, ref, restaurant.id, v) : null,
-                                  onChecks: () => showDialog<void>(
-                                    context: context,
-                                    builder: (_) => VehicleChecksDialog(restaurantId: restaurant.id, vehicle: v),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+        FilterSection(
+          title: 'Stan',
+          open: !_closed.contains('state'),
+          onToggle: () => _toggle(_closed, 'state'),
+          options: [
+            for (final (key, label) in const [('active', 'W użyciu'), ('inactive', 'Nieużywane')])
+              (
+                label: label,
+                count: all.where((v) => _state(v) == key).length,
+                checked: _states.contains(key),
+                onChanged: (_) => _toggle(_states, key),
+                dot: null,
+              ),
+          ],
+        ),
+        FilterSection(
+          title: 'Dziś',
+          open: !_closed.contains('today'),
+          onToggle: () => _toggle(_closed, 'today'),
+          options: [
+            for (final (key, label) in const [('driven', 'Z dostawcą'), ('free', 'Bez dostawcy')])
+              (
+                label: label,
+                count: all.where((v) => todayKey(v) == key).length,
+                checked: _today.contains(key),
+                onChanged: (_) => _toggle(_today, key),
+                dot: key == 'driven' ? AppColors.accent : null,
+              ),
+          ],
+        ),
+      ],
+    );
+
+    final content = async.when(
+      skipLoadingOnReload: true,
+      loading: () => const LoadingView(),
+      error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(vehiclesProvider(restaurant.id))),
+      data: (_) => all.isEmpty
+          ? MessageView(
+              icon: AppIcons.car,
+              title: 'Brak pojazdów',
+              message: 'Dodaj auto, skuter albo rower. Dostawcę wybiera się na dany dzień w Grafiku albo Dostawach.',
+              actionLabel: canEdit ? 'Dodaj pojazd' : null,
+              onAction: canEdit ? () => _edit(restaurant.id) : null,
+            )
+          : Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 32, 16),
+              child: _VehicleTable(
+                vehicles: vehicles,
+                today: today,
+                notes: notes,
+                onOpen: canEdit ? (v) => _edit(restaurant.id, v) : null,
+                onChecks: (v) => showDialog<void>(
+                  context: context,
+                  builder: (_) => VehicleChecksDialog(restaurantId: restaurant.id, vehicle: v),
+                ),
+              ),
+            ),
+    );
+
+    return SidePanelLayout(
+      open: _panelOpen,
+      onToggle: () => setState(() => _panelOpen = !_panelOpen),
+      panel: panel,
+      content: content,
+    );
+  }
+}
+
+/// Pojazdy jako tabela jak Zespół w Pracownikach.
+class _VehicleTable extends StatelessWidget {
+  const _VehicleTable({
+    required this.vehicles,
+    required this.today,
+    required this.notes,
+    required this.onOpen,
+    required this.onChecks,
+  });
+
+  final List<Vehicle> vehicles;
+
+  /// Kto jeździ danym pojazdem dziś.
+  final Map<String, String?> today;
+
+  /// Notatki od najnowszej.
+  final Map<String, List<Note>> notes;
+  final ValueChanged<Vehicle>? onOpen;
+  final ValueChanged<Vehicle> onChecks;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 40,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                tableHead(context, 'Pojazd', 3),
+                tableHead(context, 'Rejestracja', 0, width: _plateWidth),
+                tableHead(context, 'VIN', 0, width: _vinWidth),
+                tableHead(context, 'Dziś', 0, width: _courierWidth),
+                tableHead(context, 'Notatka', 3),
+                const SizedBox(width: _checksWidth),
+              ],
+            ),
           ),
+        ),
+        Divider(height: 1, color: AppColors.ring),
+        Expanded(
+          child: vehicles.isEmpty
+              ? Center(
+                  child: Text(
+                    'Nic nie znaleziono. Zmień wyszukiwanie albo filtry po lewej.',
+                    style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                  ),
+                )
+              : ListView.separated(
+                  itemCount: vehicles.length,
+                  separatorBuilder: (_, _) => Divider(height: 1, color: AppColors.ring),
+                  itemBuilder: (context, i) {
+                    final v = vehicles[i];
+                    return _VehicleRow(
+                      vehicle: v,
+                      courier: today[v.id],
+                      notes: notes[v.id] ?? const [],
+                      onTap: onOpen == null ? null : () => onOpen!(v),
+                      onChecks: () => onChecks(v),
+                    );
+                  },
+                ),
         ),
       ],
     );
   }
 }
 
-class _VehicleCard extends StatelessWidget {
-  const _VehicleCard({
+class _VehicleRow extends StatelessWidget {
+  const _VehicleRow({
     required this.vehicle,
     required this.courier,
     required this.notes,
@@ -133,133 +280,150 @@ class _VehicleCard extends StatelessWidget {
   });
 
   final Vehicle vehicle;
-
-  /// Kto jeździ tym autem dziś.
   final String? courier;
-  final VoidCallback onChecks;
-
-  /// Notatki od najnowszej. Karta pokazuje ostatnią i ile ich jest.
   final List<Note> notes;
   final VoidCallback? onTap;
+  final VoidCallback onChecks;
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final v = vehicle;
-    return PanelPress(
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Opacity(
-            opacity: v.active ? 1 : 0.55,
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+    final muted = text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular);
+    final note = notes.firstOrNull;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          height: 52,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Row(
                     children: [
-                      IconBadge(vehicleIcon(v.kind), color: _kindColor(v.kind), size: 40),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(v.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.titleMedium),
-                            Text(
-                              v.active ? v.kind.label : '${v.kind.label} · nieużywany',
-                              style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-                            ),
-                          ],
+                      Tooltip(
+                        message: v.kind.label,
+                        child: Glyph(
+                          vehicleIcon(v.kind),
+                          size: 18,
+                          color: v.active ? _kindColor(v.kind) : AppColors.textDisabled,
                         ),
                       ),
-                      if (v.plate != null)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: AppColors.surfaceRaised,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: AppColors.ringStrong),
-                          ),
-                          child: Text(
-                            v.plate!,
-                            style: text.labelLarge?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 1,
-                              fontFeatures: const [FontFeature.tabularFigures()],
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Glyph(AppIcons.users, size: 16, color: AppColors.textMuted),
-                      const SizedBox(width: 8),
-                      Expanded(
+                      const SizedBox(width: 12),
+                      Flexible(
                         child: Text(
-                          courier == null ? 'Dziś bez dostawcy' : 'Dziś: $courier',
+                          v.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: text.bodyMedium?.copyWith(
-                            color: courier == null ? AppColors.textMuted : AppColors.text,
+                            color: v.active ? AppColors.text : AppColors.textMuted,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ),
-                      TextButton.icon(
-                        onPressed: onChecks,
-                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                        icon: const Glyph(AppIcons.camera, size: 15),
-                        label: const Text('Przebieg i zdjęcia'),
-                      ),
+                      if (!v.active) ...[const SizedBox(width: 8), const RowBadge('Nieużywany')],
+                      const SizedBox(width: 12),
                     ],
                   ),
-                  if (v.vin != null) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      'VIN ${v.vin}',
-                      style: text.bodySmall?.copyWith(
-                        color: AppColors.textMuted,
-                        letterSpacing: 0.5,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ],
-                  if (notes.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 1),
-                          child: Glyph(AppIcons.notePencil, size: 16, color: AppColors.textMuted),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            notes.first.body,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: text.bodySmall?.copyWith(color: AppColors.text),
-                          ),
-                        ),
-                        if (notes.length > 1) ...[
-                          const SizedBox(width: 8),
-                          Text(
-                            '+${notes.length - 1}',
-                            style: text.bodySmall?.copyWith(
-                              color: AppColors.textMuted,
-                              fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+                SizedBox(
+                  width: _plateWidth,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: v.plate == null
+                        ? Text('—', style: muted)
+                        : Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceRaised,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: AppColors.ringStrong),
+                            ),
+                            child: Text(
+                              v.plate!,
+                              style: text.labelMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 1,
+                                fontFeatures: _tabular,
+                              ),
                             ),
                           ),
-                        ],
-                      ],
+                  ),
+                ),
+                SizedBox(
+                  width: _vinWidth,
+                  child: Text(
+                    v.vin ?? '—',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: muted?.copyWith(letterSpacing: 0.5),
+                  ),
+                ),
+                // Dostawca na dziś: zielona kropka jak „Na zmianie” w Pracownikach.
+                SizedBox(
+                  width: _courierWidth,
+                  child: courier == null
+                      ? Text('—', style: muted)
+                      : Row(
+                          children: [
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(color: AppColors.accent, shape: BoxShape.circle),
+                            ),
+                            const SizedBox(width: 7),
+                            Flexible(
+                              child: Text(
+                                courier!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: text.bodyMedium,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: note == null
+                      ? Text('—', style: muted)
+                      : Tooltip(
+                          message: note.body,
+                          waitDuration: const Duration(milliseconds: 600),
+                          child: Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  note.body,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: text.bodyMedium,
+                                ),
+                              ),
+                              if (notes.length > 1) ...[
+                                const SizedBox(width: 8),
+                                Text('+${notes.length - 1}', style: muted),
+                              ],
+                            ],
+                          ),
+                        ),
+                ),
+                SizedBox(
+                  width: _checksWidth,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      tooltip: 'Przebieg i zdjęcia',
+                      onPressed: onChecks,
+                      icon: const Glyph(AppIcons.camera, size: 18),
                     ),
-                  ],
-                ],
-              ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

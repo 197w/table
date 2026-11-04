@@ -179,7 +179,7 @@ void main() {
     expect(closed.bills, isEmpty);
   });
 
-  testWidgets('logi: lista zdarzeń dnia z filtrami, w Time Machine późniejsze zamglone', (tester) async {
+  testWidgets('logi: lista zdarzeń z filtrami, Time Machine z przełącznika działa na liście', (tester) async {
     await initializeDateFormatting('pl');
     await tester.runAsync(() async {
       final loader = FontLoader('packages/table_core/Geist');
@@ -203,10 +203,6 @@ void main() {
           currentRestaurantProvider.overrideWithValue(
             const PanelRestaurant(id: 'r1', name: 'Lokal', city: 'Kraków', isPro: true, role: StaffRole.owner),
           ),
-          zonesProvider.overrideWith((ref, id) async => const <FloorZone>[]),
-          tablesProvider.overrideWith((ref, id) async => const <DiningTable>[]),
-          elementsProvider.overrideWith((ref, id) async => const <FloorElement>[]),
-          timeMachineDayProvider.overrideWith((ref, q) async => TimeMachineDay.fromJson(const {})),
           activityProvider.overrideWith((ref, q) async => events),
         ],
         child: MaterialApp(
@@ -222,6 +218,12 @@ void main() {
       final fog = find.ancestor(of: find.text('Otwarty rachunek · $label'), matching: find.byType(Opacity));
       return fog.evaluate().isEmpty ? 1 : tester.widget<Opacity>(fog.first).opacity;
     }
+
+    // Jedna zakładka „Lista”, Time Machine to przełącznik (wyłączony): bez osi i bez zamglenia.
+    expect(find.text('Lista'), findsOneWidget);
+    Switch machine() => tester.widget<Switch>(find.byType(Switch));
+    expect(machine().value, isFalse);
+    expect(find.text('Na żywo'), findsNothing);
 
     // Lista jak Pracownicy: wszystkie zdarzenia dnia, najnowsze u góry, filtry z liczbą i wyszukiwanie.
     final rows = find.textContaining('Otwarty rachunek');
@@ -239,11 +241,30 @@ void main() {
     await tester.pump();
     expect(rows, findsNWidgets(4), reason: 'pusta grupa filtrów jest nieklikalna');
 
-    // Kliknięte zdarzenie otwiera Time Machine w swojej chwili: wszystkie zostają na liście, późniejsze są zamglone.
+    expect([for (final e in events) opacityOf(e.label!)], [1, 1, 1, 1]);
+
+    // Kliknięte zdarzenie włącza Time Machine w swojej chwili: oś wysuwa się obok listy, wszystkie zdarzenia
+    // zostają na liście, późniejsze są zamglone, a kreska chwili stoi między nimi.
     await tester.tap(find.text('Otwarty rachunek · Stolik 2'));
     await tester.pumpAndSettle();
+    expect(machine().value, isTrue);
+    expect(find.text('Na żywo'), findsOneWidget);
     expect([for (final e in events) opacityOf(e.label!)], [1, 1, lessThan(1), lessThan(1)]);
-    expect(find.textContaining('2 z 4 do'), findsOneWidget);
+    String hms(DateTime t) => [t.hour, t.minute, t.second].map((n) => '$n'.padLeft(2, '0')).join(':');
+    // Ta sama godzina jest w pigułce osi, na kresce listy i w wierszu zdarzenia; kreska listy stoi między wierszami.
+    final times = find.text(hms(events[1].at));
+    final table = tester.getTopLeft(find.text('Godzina')).dx - 12;
+    final inList = [
+      for (var i = 0; i < times.evaluate().length; i++)
+        if (tester.getTopLeft(times.at(i)).dx >= table) tester.getTopLeft(times.at(i)).dy,
+    ];
+    expect(inList.where((y) => y > top('Stolik 3') && y < top('Stolik 2')), hasLength(1));
+
+    // Przełącznik wyłącza Time Machine: oś się chowa, lista bez zamglenia.
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    expect(find.text('Na żywo'), findsNothing);
+    expect([for (final e in events) opacityOf(e.label!)], [1, 1, 1, 1]);
 
     await tester.pumpWidget(const SizedBox());
   });

@@ -307,7 +307,8 @@ class _GlowButtonState extends State<GlowButton> {
   }
 }
 
-/// Kosz do usuwania: zawsze czerwony (1.11.2026, prośba użytkownika), najechany wyraźniejszy, wyłączony szary.
+/// Kosz do usuwania: zawsze czerwony (1.11.2026, prośba użytkownika), najechany wyraźniejszy, wyłączony bladoczerwony
+/// (4.11.2026: szary wyłączony kosz w Podsumowaniu dnia, przy jedynym terminalu, wyglądał na nieczerwony).
 /// Bez tła, jak inne przyciski z ikoną (podświetlenie przy kliknięciu wyłącza motyw).
 class DeleteButton extends StatelessWidget {
   const DeleteButton({super.key, required this.onPressed, this.tooltip = 'Usuń', this.size = 16, this.compact = false});
@@ -324,7 +325,7 @@ class DeleteButton extends StatelessWidget {
     style: ButtonStyle(
       foregroundColor: WidgetStateProperty.resolveWith(
         (s) => s.contains(WidgetState.disabled)
-            ? AppColors.textDisabled
+            ? AppColors.error.withValues(alpha: 0.4)
             : (s.contains(WidgetState.hovered) || s.contains(WidgetState.pressed)
                   ? Color.lerp(AppColors.error, AppColors.text, 0.25)
                   : AppColors.error),

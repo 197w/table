@@ -9,17 +9,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
-import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
 import '../../shared/side_panel.dart';
-import '../floor/floor_canvas.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
 String _two(int n) => n.toString().padLeft(2, '0');
-String _hm(DateTime t) => '${_two(t.toLocal().hour)}:${_two(t.toLocal().minute)}';
-String _hms(DateTime t) => '${_hm(t)}:${_two(t.toLocal().second)}';
+String _hms(DateTime t) => '${_two(t.toLocal().hour)}:${_two(t.toLocal().minute)}:${_two(t.toLocal().second)}';
 
 DateTime _nextDay(DateTime day) => DateTime(day.year, day.month, day.day + 1);
 
@@ -62,51 +59,15 @@ AppIconData activityIcon(ActivityEvent e) => switch (e.kind) {
   _ => AppIcons.shoppingBag,
 };
 
-/// Stan pozycji rachunku: nazwa i kolor (tabela, pasek pozycji i legenda).
-(String, Color) _itemStatus(String status) => switch (status) {
-  'sent' => ('na kuchni', TileColors.amber),
-  'ready' => ('do wydania', TileColors.blue),
-  'served' => ('wydane', TileColors.green),
-  'cancelled' => ('anulowane', TileColors.rose),
-  _ => ('niewysłane', AppColors.textMuted),
-};
-
-const _itemStatuses = ['new', 'sent', 'ready', 'served'];
-
-/// Etap zamówienia na wynos z kolorem.
-Color _stageColor(String stage) => switch (stage) {
-  'accepted' => TileColors.amber,
-  'ready' => TileColors.blue,
-  'on_the_way' => TileColors.violet,
-  'delivered' => TileColors.green,
-  _ => TileColors.rose,
-};
-
-/// Stolik w kolejności sali: numery rosnąco jak liczby, reszta alfabetycznie.
-int _compareLabels(String a, String b) {
-  final x = int.tryParse(a);
-  final y = int.tryParse(b);
-  if (x != null && y != null) return x.compareTo(y);
-  if (x != null) return -1;
-  if (y != null) return 1;
-  return a.compareTo(b);
-}
-
-enum _ListTab { tables, takeaway, staff, events }
-
-/// Zakładki w panelu po lewej: lista zdarzeń i Time Machine.
-enum _View { log, machine }
-
-/// Logi (pod „Ustawienia lokalu”, uprawnienie `activity`) w układzie jak Pracownicy (2.11.2026, prośba użytkownika):
-/// po lewej zwijany panel z zakładkami „Zdarzenia” i „Time Machine”, wyszukiwaniem, dniem i filtrami (rodzaj
-/// zdarzenia, osoba) z liczbami, po prawej tabela wszystkich zdarzeń dnia, najnowsze u góry. Kliknięte zdarzenie
-/// otwiera Time Machine w jego chwili, jak w UniFi: oś czasu, która przesuwa się pod stałą kreską wybranej chwili
-/// (przeciąganie z bezwładnością, kółko myszy, Ctrl + kółko zmienia skalę, kliknięcie albo ikona zdarzenia
-/// przenosi do chwili), plan sali w tej chwili, pod nim legenda i tabela: stoliki z rachunkami, na wynos i osoby
-/// na zmianie, a po prawej zdarzenia dnia (późniejsze niż wybrana chwila zamglone; na węższym ekranie zakładka
-/// „Zdarzenia” w tabeli). Filtry z panelu działają też na oś i zdarzenia w Time Machine. Cała doba przychodzi
-/// z bazy naraz (`timeMachineDayProvider`), a stan w chwili liczy panel, więc wszystko zmienia się od razu.
-/// „Na żywo” trzyma chwilę na teraz (co sekundę), „Historia” ma dzień.
+/// Logi (pod „Ustawienia lokalu”, uprawnienie `activity`) w układzie jak Pracownicy: po lewej zwijany panel
+/// z zakładką „Lista”, wyszukiwaniem, dniem, przełącznikiem „Time Machine” i filtrami (rodzaj zdarzenia, osoba)
+/// z liczbami, po prawej tabela wszystkich zdarzeń dnia, najnowsze u góry.
+/// Time Machine (4.11.2026, prośba użytkownika, wzór: film z UniFi) włącza się przełącznikiem i działa na liście:
+/// zza panelu wysuwa się oś czasu, która przesuwa się pod stałą kreską wybranej chwili (przeciąganie
+/// z bezwładnością, kółko myszy, Ctrl + kółko zmienia skalę, kliknięcie albo ikona zdarzenia przenosi do chwili),
+/// a lista od razu pokazuje dzień w tej chwili: kreska z godziną między zdarzeniami, ostatnie przed nią
+/// zaznaczone, późniejsze zamglone. Kliknięcie wiersza przenosi oś do chwili zdarzenia (przy wyłączonym Time
+/// Machine najpierw go włącza). „Na żywo” trzyma chwilę na teraz (co sekundę), „Historia” ma dzień.
 class ActivityScreen extends ConsumerStatefulWidget {
   const ActivityScreen({super.key});
 
@@ -121,14 +82,13 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> with SingleTick
 
   /// Skala osi: punkty na minutę.
   double _zoom = 3;
-  String? _zone;
   String? _selectedOrder;
-  String? _selectedTable;
-  _ListTab _tab = _ListTab.tables;
   Timer? _clock;
 
-  // Panel po lewej: zakładka, wyszukiwanie, zaznaczone filtry (puste: wszystko), zwinięte grupy i zwinięcie panelu.
-  _View _view = _View.log;
+  /// Time Machine włączony: oś obok listy, lista w wybranej chwili.
+  bool _machine = false;
+
+  // Panel po lewej: wyszukiwanie, zaznaczone filtry (puste: wszystko), zwinięte grupy i zwinięcie panelu.
   final _search = TextEditingController();
   final _groups = <ActivityGroup>{};
   final _people = <String>{};
@@ -143,9 +103,9 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> with SingleTick
   @override
   void initState() {
     super.initState();
-    // Na żywo: chwila idzie z zegarem.
+    // Na żywo: chwila idzie z zegarem (tylko przy włączonym Time Machine, lista bez niego nie ma chwili).
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!_live || !mounted) return;
+      if (!_machine || !_live || !mounted) return;
       final now = DateTime.now();
       setState(() {
         _day = dateOnly(now);
@@ -228,6 +188,22 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> with SingleTick
     });
   }
 
+  /// Włącza albo wyłącza Time Machine. Na żywo zaczyna od teraz, w innym dniu od ostatnio wybranej chwili.
+  void _setMachine(bool on) {
+    _glide.stop();
+    setState(() {
+      _machine = on;
+      if (!on) return;
+      if (_live) {
+        final now = DateTime.now();
+        _day = dateOnly(now);
+        _at = now;
+      } else {
+        _at = _clamp(_at);
+      }
+    });
+  }
+
   DateTime get _latest {
     final now = DateTime.now();
     final end = _nextDay(_day).subtract(const Duration(seconds: 1));
@@ -251,7 +227,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> with SingleTick
     });
   }
 
-  /// Kliknięte zdarzenie (na osi albo w tabeli): oś przewija się do jego chwili, dłużej przy dalszej drodze.
+  /// Kliknięte zdarzenie (na osi albo na liście): oś przewija się do jego chwili, dłużej przy dalszej drodze.
   /// Przy „Ogranicz ruch” przeskakuje od razu.
   void _jump(DateTime at) {
     final t = _clamp(at);
@@ -301,28 +277,18 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> with SingleTick
   }
 
   /// Kliknięte zdarzenie (na osi albo na liście): oś jedzie do jego chwili, a jego rachunek się zaznacza.
+  /// Przy wyłączonym Time Machine najpierw się on włącza, od razu w chwili zdarzenia (oś dopiero wyjeżdża).
   void _openEvent(ActivityEvent e) {
-    _jump(e.at);
     if (e.orderId != null) setState(() => _selectedOrder = e.orderId);
-  }
-
-  /// Zdarzenie z tabeli: Time Machine w jego chwili, bez przewijania (oś dopiero się pokazuje).
-  void _openInMachine(ActivityEvent e) {
+    if (_machine) {
+      _jump(e.at);
+      return;
+    }
     _glide.stop();
     setState(() {
-      _view = _View.machine;
+      _machine = true;
       _live = false;
       _at = _clamp(e.at);
-      if (e.orderId != null) _selectedOrder = e.orderId;
-    });
-  }
-
-  void _selectOrder(String? orderId, {String? tableId, String? zone}) {
-    setState(() {
-      final same = orderId != null ? orderId == _selectedOrder : tableId == _selectedTable;
-      _selectedOrder = same ? null : orderId;
-      _selectedTable = same ? null : tableId;
-      if (zone != null) _zone = zone;
     });
   }
 
@@ -330,23 +296,21 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> with SingleTick
   Widget build(BuildContext context) {
     final restaurant = ref.watch(currentRestaurantProvider);
     if (restaurant == null) return const LoadingView();
-    final rid = restaurant.id;
     final today = dateOnly(DateTime.now());
-    final query = (restaurantId: rid, day: _day);
-    final dayAsync = ref.watch(timeMachineDayProvider(query));
+    final query = (restaurantId: restaurant.id, day: _day);
     final eventsAsync = ref.watch(activityProvider(query));
     final all = eventsAsync.value ?? const <ActivityEvent>[];
     final search = _search.text.trim().toLowerCase();
     final events = [for (final e in all) if (_matches(e, search)) e];
-    final data = dayAsync.value;
 
     final panel = SidePanel(
-      header: SegmentedTabs<_View>(
-        options: const [(_View.log, 'Zdarzenia'), (_View.machine, 'Time Machine')],
-        icons: const [AppIcons.list, AppIcons.clockCounterClockwise],
-        selected: _view,
+      // Jedna zakładka (4.11.2026, prośba użytkownika: „Zdarzenia” to teraz „Lista”, bez zakładki Time Machine).
+      header: SegmentedTabs<int>(
+        options: const [(0, 'Lista')],
+        icons: const [AppIcons.list],
+        selected: 0,
         expand: true,
-        onChanged: (v) => setState(() => _view = v),
+        onChanged: (_) {},
       ),
       search: _search,
       searchHint: 'Szukaj zdarzenia',
@@ -363,123 +327,94 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> with SingleTick
           onReset: _live ? null : _goLive,
           extras: [(AppIcons.calendar, 'Wybierz dzień', _pickDay)],
         ),
+        _MachineSwitch(value: _machine, onChanged: _setMachine),
       ],
       children: _filterSections(all),
     );
 
-    final content = switch (_view) {
-      _View.log => eventsAsync.when(
-        skipLoadingOnReload: true,
-        loading: () => const LoadingView(),
-        error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(activityProvider(query))),
-        data: (_) => Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 32, 16),
-          child: _EventTable(
-            events: events.reversed.toList(),
-            empty: all.isEmpty
-                ? 'Tego dnia nic się nie wydarzyło.'
-                : 'Nic nie znaleziono. Zmień wyszukiwanie albo filtry po lewej.',
-            selectedOrder: _selectedOrder,
-            onOpen: _openInMachine,
-          ),
+    final content = eventsAsync.when(
+      skipLoadingOnReload: true,
+      loading: () => const LoadingView(),
+      error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(activityProvider(query))),
+      data: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 16, 32, 16),
+        child: _EventTable(
+          key: ValueKey(_day),
+          events: events.reversed.toList(),
+          at: _machine ? _at : null,
+          empty: all.isEmpty
+              ? 'Tego dnia nic się nie wydarzyło.'
+              : 'Nic nie znaleziono. Zmień wyszukiwanie albo filtry po lewej.',
+          selectedOrder: _selectedOrder,
+          onOpen: _openEvent,
         ),
       ),
-      _View.machine => _machine(rid, query, dayAsync, data, events),
-    };
+    );
 
     return SidePanelLayout(
       open: _panelOpen,
       onToggle: () => setState(() => _panelOpen = !_panelOpen),
       panel: panel,
-      content: TabContent(tab: '$_view', child: content),
+      // Oś czasu wysuwa się zza panelu jak okno dodawania w Pracownikach.
+      sheet: _machine
+          ? Container(
+              key: const ValueKey('time machine'),
+              width: _railWidth,
+              padding: const EdgeInsets.fromLTRB(12, 16, 12, 16),
+              decoration: BoxDecoration(border: Border(right: BorderSide(color: AppColors.ring))),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SegmentedTabs<bool>(
+                    options: const [(true, 'Na żywo'), (false, 'Historia')],
+                    selected: _live,
+                    expand: true,
+                    onChanged: (live) => live ? _goLive() : setState(() => _live = false),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: _TimeRail(
+                      day: _day,
+                      at: _at,
+                      latest: _latest,
+                      events: events,
+                      zoom: _zoom,
+                      onPick: _pick,
+                      onZoom: (z) => setState(() => _zoom = z),
+                      onEvent: _openEvent,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : null,
+      content: content,
     );
   }
+}
 
-  /// Time Machine: oś czasu, plan i tabela w wybranej chwili, a obok zdarzenia dnia.
-  Widget _machine(
-    String rid,
-    ({String restaurantId, DateTime day}) query,
-    AsyncValue<TimeMachineDay> dayAsync,
-    TimeMachineDay? data,
-    List<ActivityEvent> events,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
-      child: LayoutBuilder(
-        builder: (context, c) {
-          // Zdarzenia dnia stoją stale w kolumnie po prawej; bez miejsca na nią są zakładką pod planem.
-          final wide = c.maxWidth >= _logBreakpoint;
-          final log = _DayLog(
-            key: ValueKey(_day),
-            events: events,
-            at: _at,
-            selectedOrder: _selectedOrder,
-            onEvent: _openEvent,
-          );
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                width: _railWidth,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Tryb nad osią czasu, na całą szerokość jej karty (dzień jest w panelu po lewej).
-                    SegmentedTabs<bool>(
-                      options: const [(true, 'Na żywo'), (false, 'Historia')],
-                      selected: _live,
-                      expand: true,
-                      onChanged: (live) => live ? _goLive() : setState(() => _live = false),
-                    ),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      child: _TimeRail(
-                        day: _day,
-                        at: _at,
-                        latest: _latest,
-                        events: events,
-                        zoom: _zoom,
-                        onPick: _pick,
-                        onZoom: (z) => setState(() => _zoom = z),
-                        onEvent: _openEvent,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: data == null
-                    ? dayAsync.hasError
-                          ? ErrorView(
-                              error: dayAsync.error!,
-                              onRetry: () => ref.invalidate(timeMachineDayProvider(query)),
-                            )
-                          : const LoadingView()
-                    : _Snapshot(
-                        restaurantId: rid,
-                        tm: data.at(_at),
-                        eventCount: events.length,
-                        log: wide ? null : log,
-                        tab: _tab,
-                        onTab: (t) => setState(() => _tab = t),
-                        zone: _zone,
-                        onZone: (z) => setState(() => _zone = z),
-                        selectedOrder: _selectedOrder,
-                        selectedTable: _selectedTable,
-                        onSelect: _selectOrder,
-                      ),
-              ),
-              if (wide) ...[
-                const SizedBox(width: 16),
-                SizedBox(
-                  width: _logWidth,
-                  child: _LogCard(events: events, at: _at, child: log),
-                ),
-              ],
-            ],
-          );
-        },
+/// Wiersz „Time Machine” z przełącznikiem w panelu po lewej (jak w UniFi). Cały wiersz przełącza.
+class _MachineSwitch extends StatelessWidget {
+  const _MachineSwitch({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => onChanged(!value),
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        height: 40,
+        child: Row(
+          children: [
+            Glyph(AppIcons.clockCounterClockwise, size: 16, color: value ? AppColors.accent : AppColors.textMuted),
+            const SizedBox(width: 10),
+            Expanded(child: Text('Time Machine', style: Theme.of(context).textTheme.bodyMedium)),
+            Switch(value: value, onChanged: onChanged),
+          ],
+        ),
       ),
     );
   }
@@ -946,819 +881,71 @@ class _RailPainter extends CustomPainter {
 }
 
 // ---------------------------------------------------------------
-// Stan w chwili: plan, legenda, tabela
+// Lista zdarzeń
 // ---------------------------------------------------------------
 
-class _Snapshot extends ConsumerWidget {
-  const _Snapshot({
-    required this.restaurantId,
-    required this.tm,
-    required this.eventCount,
-    required this.log,
-    required this.tab,
-    required this.onTab,
-    required this.zone,
-    required this.onZone,
-    required this.selectedOrder,
-    required this.selectedTable,
-    required this.onSelect,
-  });
+/// Stałe szerokości wąskich kolumn tabeli zdarzeń; zdarzenie i szczegóły dzielą resztę.
+const _timeWidth = 92.0;
+const _personWidth = 168.0;
+const _amountWidth = 104.0;
 
-  final String restaurantId;
-  final TimeMachine tm;
-  final int eventCount;
+/// Stała wysokość wiersza (z kreską pod nim) i kreski chwili: lista wie, gdzie jest kreska, i przewija się do niej.
+const _rowExtent = 53.0;
+const _markHeight = 30.0;
 
-  /// Zdarzenia dnia jako zakładka tabeli (null: stoją w kolumnie po prawej).
-  final Widget? log;
-  final _ListTab tab;
-  final ValueChanged<_ListTab> onTab;
-  final String? zone;
-  final ValueChanged<String> onZone;
-  final String? selectedOrder;
-  final String? selectedTable;
-  final void Function(String? orderId, {String? tableId, String? zone}) onSelect;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final zones = ref.watch(zonesProvider(restaurantId)).value ?? const <FloorZone>[];
-    final tables = ref.watch(tablesProvider(restaurantId)).value ?? const <DiningTable>[];
-    final elements = ref.watch(elementsProvider(restaurantId)).value ?? const <FloorElement>[];
-    final current = zones.where((z) => z.name == zone).firstOrNull ?? zones.firstOrNull;
-
-    void selectTable(DiningTable t) {
-      final bill = t.id == null ? null : tm.billAt(t.id!);
-      onSelect(bill?.orderId, tableId: t.id, zone: t.zone);
-      onTab(_ListTab.tables);
-    }
-
-    return LayoutBuilder(
-      builder: (context, c) {
-        final planHeight = (c.maxHeight * 0.56).clamp(260.0, 680.0);
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (current != null)
-              SizedBox(
-                height: planHeight,
-                child: _PlanCard(
-                  tm: tm,
-                  zones: zones,
-                  zone: current,
-                  onZone: onZone,
-                  tables: [
-                    for (final t in tables)
-                      if (t.zone == current.name) t,
-                  ],
-                  elements: [
-                    for (final e in elements)
-                      if (e.zone == current.name) e,
-                  ],
-                  selectedOrder: selectedOrder,
-                  selectedTable: selectedTable,
-                  onTapTable: selectTable,
-                ),
-              ),
-            const SizedBox(height: 10),
-            const _Legend(),
-            const SizedBox(height: 12),
-            Expanded(
-              child: _ListCard(
-                tm: tm,
-                zones: zones,
-                tables: tables,
-                eventCount: eventCount,
-                log: log,
-                tab: tab,
-                onTab: onTab,
-                selectedOrder: selectedOrder,
-                selectedTable: selectedTable,
-                onSelect: onSelect,
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-TableLook _lookOf(DiningTable t, TimeMachine tm, {required bool selected}) {
-  final bill = t.id == null ? null : tm.billAt(t.id!);
-  if (bill != null) {
-    return TableLook(
-      fill: AppColors.accentTint,
-      stroke: AppColors.accent,
-      strokeWidth: selected ? 3.5 : 2,
-      caption: Fmt.price(bill.total),
-      captionColor: AppColors.accent,
-    );
-  }
-  final res = t.id == null ? null : tm.reservationAt(t.id!);
-  if (res != null) {
-    return TableLook(
-      fill: AppColors.warning.withValues(alpha: 0.14),
-      stroke: AppColors.warning,
-      strokeWidth: selected ? 3.5 : 2,
-      caption: res.seated ? res.name : 'od ${_hm(res.startsAt)}',
-      captionColor: AppColors.warning,
-    );
-  }
-  return TableLook(
-    fill: AppColors.surface,
-    stroke: selected ? AppColors.accent : (t.active ? planLine : planLineMuted),
-    strokeWidth: selected ? 3 : 1.5,
-    dimmed: !t.active,
-  );
-}
-
-/// Plan sali w wybranej chwili: rachunki (kwota), rezerwacje (od której albo goście przy stoliku).
-class _PlanCard extends StatelessWidget {
-  const _PlanCard({
-    required this.tm,
-    required this.zones,
-    required this.zone,
-    required this.onZone,
-    required this.tables,
-    required this.elements,
-    required this.selectedOrder,
-    required this.selectedTable,
-    required this.onTapTable,
-  });
-
-  final TimeMachine tm;
-  final List<FloorZone> zones;
-  final FloorZone zone;
-  final ValueChanged<String> onZone;
-  final List<DiningTable> tables;
-  final List<FloorElement> elements;
-  final String? selectedOrder;
-  final String? selectedTable;
-  final ValueChanged<DiningTable> onTapTable;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final open = tm.bills.fold(0, (s, b) => s + b.total);
-    final paid = tm.bills.fold(0, (s, b) => s + b.paid);
-    final guests = tm.bills.fold(0, (s, b) => s + (b.guests ?? 0));
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.ring),
-      ),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            // Jedna strefa: niski wiersz z samym podsumowaniem, więcej miejsca na plan.
-            height: zones.length > 1 ? 40 : 24,
-            child: Row(
-              children: [
-                if (zones.length > 1)
-                  SegmentedTabs<String>(
-                    options: [for (final z in zones) (z.name, Fmt.capitalize(z.name))],
-                    selected: zone.name,
-                    onChanged: onZone,
-                  ),
-                const Spacer(),
-                Text(
-                  tm.bills.isEmpty
-                      ? 'Sala pusta'
-                      : [
-                          '${tm.bills.length} ${tm.bills.length == 1 ? 'rachunek' : 'rachunki'}',
-                          if (guests > 0) '$guests ${guests == 1 ? 'gość' : 'gości'}',
-                          'na sali ${Fmt.price(open)}',
-                          if (paid > 0) 'wpłacone ${Fmt.price(paid)}',
-                        ].join(' · '),
-                  style: text.labelLarge?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 4),
-          Expanded(
-            child: FloorCanvas(
-              zone: zone,
-              tables: tables,
-              elements: elements,
-              showGrid: false,
-              selectedId: null,
-              lookOf: (t) {
-                final bill = t.id == null ? null : tm.billAt(t.id!);
-                final selected = bill != null ? bill.orderId == selectedOrder : t.id != null && t.id == selectedTable;
-                return _lookOf(t, tm, selected: selected);
-              },
-              onTapTable: onTapTable,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Legenda pod planem, jak w UniFi: stan stolika i stan pozycji w pasku „Pozycje”.
-class _Legend extends StatelessWidget {
-  const _Legend();
-
-  @override
-  Widget build(BuildContext context) {
-    final style = Theme.of(context).textTheme.labelMedium?.copyWith(color: AppColors.textMuted);
-    Widget swatch(Color fill, Color stroke, String label) => Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: fill,
-            borderRadius: BorderRadius.circular(3),
-            border: Border.all(color: stroke, width: 1.5),
-          ),
-        ),
-        const SizedBox(width: 6),
-        Text(label, style: style),
-      ],
-    );
-    Widget bar(String status) {
-      final (label, color) = _itemStatus(status);
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 14,
-            height: 5,
-            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3)),
-          ),
-          const SizedBox(width: 6),
-          Text(Fmt.capitalize(label), style: style),
-        ],
-      );
-    }
-
-    return Wrap(
-      alignment: WrapAlignment.center,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 18,
-      runSpacing: 6,
-      children: [
-        swatch(AppColors.accentTint, AppColors.accent, 'Rachunek'),
-        swatch(AppColors.warning.withValues(alpha: 0.14), AppColors.warning, 'Rezerwacja'),
-        swatch(AppColors.surface, planLine, 'Wolny'),
-        swatch(AppColors.surface, planLineMuted, 'Wyłączony'),
-        Container(width: 1, height: 14, color: AppColors.ring),
-        for (final s in _itemStatuses) bar(s),
-      ],
-    );
-  }
-}
-
-/// Kolumna tabeli: nazwa, udział w szerokości i wyrównanie do prawej (liczby).
-typedef _Col = (String, int, bool);
-
-/// Tabela pod planem: stoliki (jak porty w UniFi), na wynos, osoby na zmianie, a na węższym ekranie też zdarzenia.
-class _ListCard extends StatelessWidget {
-  const _ListCard({
-    required this.tm,
-    required this.zones,
-    required this.tables,
-    required this.eventCount,
-    required this.log,
-    required this.tab,
-    required this.onTab,
-    required this.selectedOrder,
-    required this.selectedTable,
-    required this.onSelect,
-  });
-
-  final TimeMachine tm;
-  final List<FloorZone> zones;
-  final List<DiningTable> tables;
-  final int eventCount;
-
-  /// Lista zdarzeń dnia dla zakładki „Zdarzenia” (null: bez tej zakładki, zdarzenia są w kolumnie obok).
-  final Widget? log;
-  final _ListTab tab;
-  final ValueChanged<_ListTab> onTab;
-  final String? selectedOrder;
-  final String? selectedTable;
-  final void Function(String? orderId, {String? tableId, String? zone}) onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    // Zakładka zdarzeń bez listy (kolumna wróciła po poszerzeniu okna) przechodzi na stoliki.
-    final shown = tab == _ListTab.events && log == null ? _ListTab.tables : tab;
-    final (cols, count, row) = switch (shown) {
-      _ListTab.tables => _tablesTab(context),
-      _ListTab.takeaway => _takeawayTab(context),
-      _ListTab.staff => _staffTab(context),
-      // Zdarzenia mają własną listę bez kolumn.
-      _ListTab.events => (const <_Col>[], 0, (BuildContext _, int _) => const SizedBox.shrink()),
-    };
-    final text = Theme.of(context).textTheme;
-    final head = text.labelMedium?.copyWith(color: AppColors.textMuted);
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.ring),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: SegmentedTabs<_ListTab>(
-                options: [
-                  (_ListTab.tables, 'Stoliki (${tm.bills.length})'),
-                  (_ListTab.takeaway, 'Na wynos (${tm.takeaway.length})'),
-                  (_ListTab.staff, 'Na zmianie (${tm.staff.length})'),
-                  if (log != null) (_ListTab.events, 'Zdarzenia ($eventCount)'),
-                ],
-                selected: shown,
-                onChanged: onTab,
-              ),
-            ),
-          ),
-          Divider(height: 1, color: AppColors.ring),
-          if (shown == _ListTab.events)
-            Expanded(child: log!)
-          else ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-              child: Row(
-                children: [
-                  for (final (label, flex, end) in cols)
-                    Expanded(
-                      flex: flex,
-                      child: Text(label, textAlign: end ? TextAlign.end : TextAlign.start, style: head),
-                    ),
-                ],
-              ),
-            ),
-            Divider(height: 1, color: AppColors.ring),
-            Expanded(
-              child: count == 0
-                ? Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(_emptyText(shown), style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
-                  )
-                : ListView.separated(
-                    padding: EdgeInsets.zero,
-                    itemCount: count,
-                    separatorBuilder: (_, _) => Divider(height: 1, color: AppColors.ring.withValues(alpha: AppColors.ring.a * 0.6)),
-                    itemBuilder: row,
-                  ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  String _emptyText(_ListTab tab) => switch (tab) {
-    _ListTab.tables => 'Lokal nie ma jeszcze stolików ani rachunków w tej chwili.',
-    _ListTab.takeaway => 'O ${_hm(tm.at)} nie było zamówień na wynos w toku.',
-    _ListTab.staff || _ListTab.events => 'O ${_hm(tm.at)} nikt nie był na zmianie.',
-  };
-
-  static Widget _cells(List<_Col> cols, List<Widget> cells) => Row(
-    children: [
-      for (final (i, (_, flex, end)) in cols.indexed)
-        Expanded(
-          flex: flex,
-          child: Align(alignment: end ? Alignment.centerRight : Alignment.centerLeft, child: cells[i]),
-        ),
-    ],
-  );
-
-  static Widget _row({required Widget child, required bool selected, VoidCallback? onTap}) => Material(
-    color: selected ? AppColors.accentTint : Colors.transparent,
-    child: InkWell(
-      onTap: onTap,
-      child: Padding(padding: const EdgeInsets.fromLTRB(16, 9, 16, 9), child: child),
-    ),
-  );
-
-  (List<_Col>, int, IndexedWidgetBuilder) _tablesTab(BuildContext context) {
-    const cols = <_Col>[
-      ('Stolik', 3, false),
-      ('Strefa', 2, false),
-      ('Stan', 4, false),
-      ('Od', 2, false),
-      ('Goście', 2, false),
-      ('Kelner', 3, false),
-      ('Pozycje', 4, false),
-      ('Kwota', 2, true),
-      ('Wpłacone', 2, true),
-    ];
-    final zoneOrder = {for (final (i, z) in zones.indexed) z.name: i};
-    final sorted = [...tables]
-      ..sort((a, b) {
-        final z = (zoneOrder[a.zone] ?? 999).compareTo(zoneOrder[b.zone] ?? 999);
-        return z != 0 ? z : _compareLabels(a.label, b.label);
-      });
-    final known = {for (final t in sorted) ?t.id};
-    // Rachunki bez stolika z planu (np. stolik usunięty) też są w tabeli.
-    final loose = [
-      for (final b in tm.bills)
-        if (b.tableId == null || !known.contains(b.tableId)) b,
-    ];
-    final scale = math.max(
-      1,
-      tm.bills.fold(
-        0,
-        (m, b) => math.max(m, b.items.where((i) => i.status != 'cancelled').fold(0, (s, i) => s + i.quantity)),
-      ),
-    );
-    final text = Theme.of(context).textTheme;
-    final body = text.bodyMedium?.copyWith(fontFeatures: _tabular);
-    final muted = body?.copyWith(color: AppColors.textMuted);
-
-    Widget build(BuildContext context, int index) {
-      final t = index < sorted.length ? sorted[index] : null;
-      final bill = t != null ? (t.id == null ? null : tm.billAt(t.id!)) : loose[index - sorted.length];
-      final res = t?.id == null || bill != null ? null : tm.reservationAt(t!.id!);
-      final selected = bill != null ? bill.orderId == selectedOrder : t?.id != null && t?.id == selectedTable;
-      final (state, color) = bill != null
-          ? ('Rachunek', AppColors.accent)
-          : res != null
-          ? (res.seated ? 'Goście przy stoliku' : 'Rezerwacja ${_hm(res.startsAt)}', AppColors.warning)
-          : t != null && !t.active
-          ? ('Wyłączony', AppColors.textMuted)
-          : ('Wolny', AppColors.textMuted);
-      final name = t == null ? bill!.label : (t.isSeat ? 'Miejsce ${t.label}' : 'Stolik ${t.label}');
-      final row = _cells(cols, [
-        Row(
-          children: [
-            _TableBadge(label: t?.label ?? '?', color: bill != null || res != null ? color : null),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: body),
-            ),
-          ],
-        ),
-        Text(t == null ? '—' : Fmt.capitalize(t.zone), maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
-        Row(
-          children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                res != null && !res.seated ? '$state · ${res.name}' : state,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: body?.copyWith(color: bill != null || res != null ? color : AppColors.textMuted),
-              ),
-            ),
-          ],
-        ),
-        Text(
-          bill != null
-              ? _hm(bill.openedAt)
-              : res != null
-              ? _hm(res.startsAt)
-              : '—',
-          style: bill != null || res != null ? body : muted,
-        ),
-        Text('${bill?.guests ?? res?.party ?? '—'}', style: bill != null || res != null ? body : muted),
-        Text(
-          bill?.openedBy ?? '—',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: bill?.openedBy != null ? body : muted,
-        ),
-        bill == null ? Text('—', style: muted) : _ItemsBar(items: bill.items, scale: scale),
-        Text(bill == null ? '—' : Fmt.price(bill.total), style: bill == null ? muted : body),
-        Text(
-          bill == null || bill.paid == 0 ? '—' : Fmt.price(bill.paid),
-          style: bill == null || bill.paid == 0 ? muted : body,
-        ),
-      ]);
-      return _row(
-        selected: selected,
-        onTap: () => onSelect(bill?.orderId, tableId: t?.id, zone: t?.zone),
-        child: selected && bill != null && bill.items.isNotEmpty
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  row,
-                  _BillItems(bill: bill),
-                ],
-              )
-            : row,
-      );
-    }
-
-    return (cols, sorted.length + loose.length, build);
-  }
-
-  (List<_Col>, int, IndexedWidgetBuilder) _takeawayTab(BuildContext context) {
-    const cols = <_Col>[
-      ('Zamówienie', 3, false),
-      ('Rodzaj', 2, false),
-      ('Klient', 4, false),
-      ('Etap', 3, false),
-      ('Złożone', 2, false),
-      ('Kwota', 2, true),
-    ];
-    final text = Theme.of(context).textTheme;
-    final body = text.bodyMedium?.copyWith(fontFeatures: _tabular);
-    final muted = body?.copyWith(color: AppColors.textMuted);
-    Widget build(BuildContext context, int i) {
-      final o = tm.takeaway[i];
-      final color = _stageColor(o.stage);
-      return _row(
-        selected: o.orderId == selectedOrder,
-        onTap: () => onSelect(o.orderId),
-        child: _cells(cols, [
-          Text(o.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: body),
-          Text(switch (o.kind) {
-            'delivery' => 'Dostawa',
-            'pickup' => 'Odbiór',
-            _ => '—',
-          }, style: muted),
-          Text(
-            o.customer ?? '—',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: o.customer == null ? muted : body,
-          ),
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(o.stageLabel, style: body?.copyWith(color: color)),
-              ),
-            ],
-          ),
-          Text(o.openedAt == null ? '—' : _hm(o.openedAt!), style: body),
-          Text(Fmt.price(o.total), style: body),
-        ]),
-      );
-    }
-
-    return (cols, tm.takeaway.length, build);
-  }
-
-  (List<_Col>, int, IndexedWidgetBuilder) _staffTab(BuildContext context) {
-    const cols = <_Col>[('Pracownik', 5, false), ('Od', 2, false), ('Na zmianie', 2, true)];
-    final body = Theme.of(context).textTheme.bodyMedium?.copyWith(fontFeatures: _tabular);
-    Widget build(BuildContext context, int i) {
-      final (name, since) = tm.staff[i];
-      final d = tm.at.difference(since);
-      return _row(
-        selected: false,
-        child: _cells(cols, [
-          Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: body),
-          Text(_hm(since), style: body),
-          Text('${d.inHours}:${_two(d.inMinutes % 60)} h', style: body),
-        ]),
-      );
-    }
-
-    return (cols, tm.staff.length, build);
-  }
-}
-
-/// Kwadracik z numerem stolika w kolorze stanu (jak port w UniFi).
-class _TableBadge extends StatelessWidget {
-  const _TableBadge({required this.label, required this.color});
-
-  final String label;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = color;
-    return Container(
-      constraints: const BoxConstraints(minWidth: 26),
-      height: 26,
-      padding: const EdgeInsets.symmetric(horizontal: 5),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: c == null ? AppColors.surfaceRaised : c.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: c ?? AppColors.ring),
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: c ?? AppColors.textMuted,
-          fontWeight: FontWeight.w600,
-          fontFeatures: _tabular,
-        ),
-      ),
-    );
-  }
-}
-
-/// Pasek pozycji rachunku jak „Activity” w UniFi: długość według liczby sztuk (najdłuższy rachunek = cały),
-/// części w kolorach stanu: niewysłane, na kuchni, do wydania, wydane.
-class _ItemsBar extends StatelessWidget {
-  const _ItemsBar({required this.items, required this.scale});
-
-  final List<TmItem> items;
-  final int scale;
-
-  @override
-  Widget build(BuildContext context) {
-    final counts = {for (final s in _itemStatuses) s: 0};
-    for (final i in items) {
-      if (counts.containsKey(i.status)) counts[i.status] = counts[i.status]! + i.quantity;
-    }
-    final total = counts.values.fold(0, (s, n) => s + n);
-    final text = Theme.of(context).textTheme;
-    if (total == 0) return Text('—', style: text.bodyMedium?.copyWith(color: AppColors.textMuted));
-    return Tooltip(
-      message: [
-        for (final s in _itemStatuses)
-          if (counts[s]! > 0) '${counts[s]} ${_itemStatus(s).$1}',
-      ].join(' · '),
-      child: Row(
-        children: [
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, c) => Align(
-                alignment: Alignment.centerLeft,
-                child: SizedBox(
-                  width: c.maxWidth * (total / scale).clamp(0.12, 1.0),
-                  height: 6,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(3),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (final s in _itemStatuses)
-                          if (counts[s]! > 0)
-                            Expanded(
-                              flex: counts[s]!,
-                              child: ColoredBox(color: _itemStatus(s).$2),
-                            ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text('$total', style: text.labelMedium?.copyWith(fontFeatures: _tabular)),
-        ],
-      ),
-    );
-  }
-}
-
-/// Pozycje wybranego rachunku pod jego wierszem, ze stanem z tamtej chwili.
-class _BillItems extends StatelessWidget {
-  const _BillItems({required this.bill});
-
-  final TmBill bill;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(36, 8, 0, 2),
-      child: Wrap(
-        spacing: 22,
-        runSpacing: 4,
-        children: [
-          for (final i in bill.items)
-            Text.rich(
-              TextSpan(
-                children: [
-                  TextSpan(
-                    text: '${i.quantity}× ${[i.name, ?i.variant].join(' · ')}',
-                    style: TextStyle(decoration: i.status == 'cancelled' ? TextDecoration.lineThrough : null),
-                  ),
-                  TextSpan(
-                    text: '  ${_itemStatus(i.status).$1}',
-                    style: text.labelSmall?.copyWith(color: _itemStatus(i.status).$2),
-                  ),
-                ],
-              ),
-              style: text.bodySmall,
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------
-// Zdarzenia dnia
-// ---------------------------------------------------------------
-
-/// Kolumna zdarzeń po prawej stoi od tej szerokości treści; węższy ekran ma zdarzenia w zakładce pod planem.
-const _logBreakpoint = 1240.0;
-const _logWidth = 360.0;
-
-/// Stała wysokość wiersza zdarzenia i kreski chwili: lista wie, gdzie jest kreska, i przewija się do niej.
-const _logRow = 56.0;
-const _logMark = 30.0;
-
-/// Kolumna zdarzeń po prawej: nagłówek z liczbą (ile było do wybranej chwili) i lista całego dnia.
-class _LogCard extends StatelessWidget {
-  const _LogCard({required this.events, required this.at, required this.child});
-
-  final List<ActivityEvent> events;
-  final DateTime at;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final past = events.where((e) => !e.at.isAfter(at)).length;
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.ring),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            height: 52,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Text('Zdarzenia', style: text.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-                  const Spacer(),
-                  Text(
-                    past == events.length ? '${events.length}' : '$past z ${events.length} do ${_hm(at)}',
-                    style: text.labelLarge?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Divider(height: 1, color: AppColors.ring),
-          Expanded(child: child),
-        ],
-      ),
-    );
-  }
-}
-
-/// Wszystkie zdarzenia dnia naraz (1.11.2026, prośba użytkownika), najnowsze u góry jak na osi. Wybrana chwila
-/// to kreska z godziną między zdarzeniami: te do niej mają zwykły wygląd, ostatnie przed nią jest zaznaczone,
-/// a późniejsze (nad kreską) są zamglone. Gdy kreska wyjdzie poza widok, lista sama do niej przewija.
-class _DayLog extends StatefulWidget {
-  const _DayLog({
+/// Wszystkie zdarzenia dnia jako tabela jak „People” w UniFi: godzina, zdarzenie z ikoną w kolorze rodzaju,
+/// szczegóły, osoba i kwota. Z Time Machine ([at]) wybrana chwila to kreska z godziną między wierszami: zdarzenia
+/// do niej mają zwykły wygląd, ostatnie przed nią jest zaznaczone, a późniejsze (nad kreską) są zamglone, jak
+/// odłączone porty w UniFi. Gdy kreska przeskoczy zdarzenie i wyjdzie poza widok, lista sama do niej przewija
+/// (na żywo nowe zdarzenia nie zabierają czytanego miejsca).
+class _EventTable extends StatefulWidget {
+  const _EventTable({
     super.key,
     required this.events,
     required this.at,
+    required this.empty,
     required this.selectedOrder,
-    required this.onEvent,
+    required this.onOpen,
   });
 
-  /// Zdarzenia dnia od najstarszego (jak z bazy).
+  /// Od najnowszego.
   final List<ActivityEvent> events;
-  final DateTime at;
+
+  /// Chwila z Time Machine albo null, gdy jest wyłączony.
+  final DateTime? at;
+
+  /// Napis, gdy nie ma czego pokazać.
+  final String empty;
   final String? selectedOrder;
-  final ValueChanged<ActivityEvent> onEvent;
+  final ValueChanged<ActivityEvent> onOpen;
 
   /// Ile zdarzeń jest po wybranej chwili (nad kreską).
-  int get later => events.where((e) => e.at.isAfter(at)).length;
+  int get later {
+    final t = at;
+    return t == null ? 0 : events.where((e) => e.at.isAfter(t)).length;
+  }
 
   @override
-  State<_DayLog> createState() => _DayLogState();
+  State<_EventTable> createState() => _EventTableState();
 }
 
-class _DayLogState extends State<_DayLog> {
+class _EventTableState extends State<_EventTable> {
   final _scroll = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _reveal(animate: false));
+    if (widget.at != null) WidgetsBinding.instance.addPostFrameCallback((_) => _reveal(animate: false));
   }
 
   @override
-  void didUpdateWidget(_DayLog old) {
+  void didUpdateWidget(_EventTable old) {
     super.didUpdateWidget(old);
-    // Tylko gdy kreska przeskoczyła zdarzenie: na żywo nowe zdarzenia nie zabierają czytanego miejsca listy.
-    if (old.later != widget.later) WidgetsBinding.instance.addPostFrameCallback((_) => _reveal());
+    if (widget.at == null) return;
+    // Włączony Time Machine albo kreska przeskoczyła zdarzenie.
+    if (old.at == null || old.later != widget.later) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _reveal());
+    }
   }
 
   @override
@@ -1769,11 +956,11 @@ class _DayLogState extends State<_DayLog> {
 
   /// Kreska poza widokiem: lista przewija się tak, żeby stała w górnej jednej trzeciej.
   void _reveal({bool animate = true}) {
-    if (!mounted || !_scroll.hasClients) return;
+    if (!mounted || !_scroll.hasClients || widget.at == null) return;
     final p = _scroll.position;
-    final top = widget.later * _logRow;
+    final top = widget.later * _rowExtent;
     final view = p.viewportDimension;
-    if (top >= p.pixels && top + _logMark + _logRow <= p.pixels + view) return;
+    if (top >= p.pixels && top + _markHeight + _rowExtent <= p.pixels + view) return;
     final target = (top - view / 3).clamp(0.0, p.maxScrollExtent);
     if (!animate || MediaQuery.disableAnimationsOf(context)) {
       _scroll.jumpTo(target);
@@ -1784,220 +971,24 @@ class _DayLogState extends State<_DayLog> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.events.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(16),
-        child: Text(
-          'Tego dnia nic się nie wydarzyło.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
-        ),
-      );
-    }
-    final newest = widget.events.reversed.toList();
+    final text = Theme.of(context).textTheme;
+    final events = widget.events;
+    final at = widget.at;
     final later = widget.later;
-    Widget row(ActivityEvent e, {required bool future, required bool current}) => _LogRow(
-      event: e,
-      future: future,
-      current: current,
-      selected: e.orderId != null && e.orderId == widget.selectedOrder,
-      onTap: () => widget.onEvent(e),
-    );
-    return CustomScrollView(
-      controller: _scroll,
-      slivers: [
-        SliverFixedExtentList(
-          itemExtent: _logRow,
-          delegate: SliverChildBuilderDelegate(
-            (context, i) => row(newest[i], future: true, current: false),
-            childCount: later,
+    Widget row(ActivityEvent e, {required bool future, required bool current}) => Column(
+      children: [
+        Expanded(
+          child: _EventRow(
+            event: e,
+            future: future,
+            current: current,
+            selected: e.orderId != null && e.orderId == widget.selectedOrder,
+            onTap: () => widget.onOpen(e),
           ),
         ),
-        SliverToBoxAdapter(child: _LogMark(at: widget.at)),
-        SliverFixedExtentList(
-          itemExtent: _logRow,
-          delegate: SliverChildBuilderDelegate(
-            (context, i) => row(newest[later + i], future: false, current: i == 0),
-            childCount: newest.length - later,
-          ),
-        ),
+        Divider(height: 1, color: AppColors.ring),
       ],
     );
-  }
-}
-
-/// Kreska wybranej chwili między zdarzeniami, z godziną w pigułce jak na osi.
-class _LogMark extends StatelessWidget {
-  const _LogMark({required this.at});
-
-  final DateTime at;
-
-  @override
-  Widget build(BuildContext context) {
-    final line = Container(height: 2, color: AppColors.accent);
-    return SizedBox(
-      height: _logMark,
-      child: Row(
-        children: [
-          SizedBox(width: 10, child: line),
-          Container(
-            height: 22,
-            padding: const EdgeInsets.symmetric(horizontal: 9),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(color: AppColors.accent, borderRadius: BorderRadius.circular(11)),
-            child: Text(
-              _hms(at),
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: AppColors.onAccentStrong,
-                fontWeight: FontWeight.w600,
-                fontFeatures: _tabular,
-              ),
-            ),
-          ),
-          Expanded(child: line),
-        ],
-      ),
-    );
-  }
-}
-
-/// Zdarzenie na liście: godzina, ikona w kolorze grupy (bez tła), tytuł i szczegóły. Po wybranej chwili zamglone
-/// (przezroczyste i lekko rozmyte), ostatnie przed nią zaznaczone kreską akcentu.
-class _LogRow extends StatelessWidget {
-  const _LogRow({
-    required this.event,
-    required this.future,
-    required this.current,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final ActivityEvent event;
-  final bool future;
-  final bool current;
-
-  /// Zdarzenie zaznaczonego rachunku.
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final e = event;
-    final detail = e.detail;
-    Widget content = Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 14, 0),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 64,
-            child: Text(
-              _hms(e.at),
-              style: text.labelMedium?.copyWith(
-                color: current ? AppColors.accent : AppColors.textMuted,
-                fontWeight: current ? FontWeight.w600 : null,
-                fontFeatures: _tabular,
-              ),
-            ),
-          ),
-          Glyph(activityIcon(e), size: 16, color: activityColor(e.group)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  e.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-                ),
-                if (detail != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    detail,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-    if (future) {
-      content = Opacity(
-        opacity: 0.35,
-        child: ImageFiltered(imageFilter: ImageFilter.blur(sigmaX: 0.8, sigmaY: 0.8), child: content),
-      );
-    }
-    return Tooltip(
-      message: [e.title, ?detail].join('\n'),
-      waitDuration: const Duration(milliseconds: 600),
-      child: Material(
-        color: current
-            ? AppColors.accentTint
-            : selected
-            ? AppColors.surfaceRaised
-            : Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          child: Stack(
-            children: [
-              Positioned.fill(child: content),
-              if (current)
-                Positioned(
-                  left: 0,
-                  top: 10,
-                  bottom: 10,
-                  child: Container(
-                    width: 3,
-                    decoration: BoxDecoration(
-                      color: AppColors.accent,
-                      borderRadius: const BorderRadius.horizontal(right: Radius.circular(2)),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------
-// Tabela zdarzeń (zakładka „Zdarzenia”)
-// ---------------------------------------------------------------
-
-/// Stałe szerokości wąskich kolumn tabeli zdarzeń; zdarzenie i szczegóły dzielą resztę.
-const _timeWidth = 92.0;
-const _personWidth = 168.0;
-const _amountWidth = 104.0;
-
-/// Wszystkie zdarzenia dnia jako tabela jak „People” w UniFi: godzina, zdarzenie z ikoną w kolorze rodzaju,
-/// szczegóły, osoba i kwota. Kliknięcie wiersza otwiera Time Machine w chwili zdarzenia.
-class _EventTable extends StatelessWidget {
-  const _EventTable({
-    required this.events,
-    required this.empty,
-    required this.selectedOrder,
-    required this.onOpen,
-  });
-
-  /// Od najnowszego.
-  final List<ActivityEvent> events;
-
-  /// Napis, gdy nie ma czego pokazać.
-  final String empty;
-  final String? selectedOrder;
-  final ValueChanged<ActivityEvent> onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -2019,18 +1010,26 @@ class _EventTable extends StatelessWidget {
         Divider(height: 1, color: AppColors.ring),
         Expanded(
           child: events.isEmpty
-              ? Center(child: Text(empty, style: text.bodyMedium?.copyWith(color: AppColors.textMuted)))
-              : ListView.separated(
-                  itemCount: events.length,
-                  separatorBuilder: (_, _) => Divider(height: 1, color: AppColors.ring),
-                  itemBuilder: (context, i) {
-                    final e = events[i];
-                    return _EventRow(
-                      event: e,
-                      selected: e.orderId != null && e.orderId == selectedOrder,
-                      onTap: () => onOpen(e),
-                    );
-                  },
+              ? Center(child: Text(widget.empty, style: text.bodyMedium?.copyWith(color: AppColors.textMuted)))
+              : CustomScrollView(
+                  controller: _scroll,
+                  slivers: [
+                    SliverFixedExtentList(
+                      itemExtent: _rowExtent,
+                      delegate: SliverChildBuilderDelegate(
+                        (context, i) => row(events[i], future: true, current: false),
+                        childCount: later,
+                      ),
+                    ),
+                    if (at != null) SliverToBoxAdapter(child: _TimeMark(at: at)),
+                    SliverFixedExtentList(
+                      itemExtent: _rowExtent,
+                      delegate: SliverChildBuilderDelegate(
+                        (context, i) => row(events[later + i], future: false, current: at != null && i == 0),
+                        childCount: events.length - later,
+                      ),
+                    ),
+                  ],
                 ),
         ),
       ],
@@ -2038,10 +1037,57 @@ class _EventTable extends StatelessWidget {
   }
 }
 
+/// Kreska wybranej chwili między zdarzeniami, z godziną w pigułce jak na osi (w kolumnie godzin).
+class _TimeMark extends StatelessWidget {
+  const _TimeMark({required this.at});
+
+  final DateTime at;
+
+  @override
+  Widget build(BuildContext context) {
+    final line = Container(height: 2, color: AppColors.accent);
+    return SizedBox(
+      height: _markHeight,
+      child: Row(
+        children: [
+          SizedBox(width: 4, child: line),
+          Container(
+            height: 22,
+            padding: const EdgeInsets.symmetric(horizontal: 9),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: AppColors.accent, borderRadius: BorderRadius.circular(11)),
+            child: Text(
+              _hms(at),
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: AppColors.onAccentStrong,
+                fontWeight: FontWeight.w600,
+                fontFeatures: _tabular,
+              ),
+            ),
+          ),
+          Expanded(child: line),
+        ],
+      ),
+    );
+  }
+}
+
+/// Wiersz zdarzenia. Po wybranej chwili zamglony (przezroczysty i lekko rozmyty), ostatni przed nią zaznaczony
+/// kreską akcentu, wiersze klikniętego rachunku podświetlone.
 class _EventRow extends StatelessWidget {
-  const _EventRow({required this.event, required this.selected, required this.onTap});
+  const _EventRow({
+    required this.event,
+    required this.future,
+    required this.current,
+    required this.selected,
+    required this.onTap,
+  });
 
   final ActivityEvent event;
+  final bool future;
+  final bool current;
+
+  /// Zdarzenie zaznaczonego rachunku.
   final bool selected;
   final VoidCallback onTap;
 
@@ -2053,63 +1099,94 @@ class _EventRow extends StatelessWidget {
     final detail = e.detail;
     // Kwota tylko przy rachunkach, płatnościach i zamówieniach (dostawa towaru ma liczbę składników).
     final amount = e.amount;
-    return Material(
-      color: selected ? AppColors.accentFill.withValues(alpha: 0.08) : Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: SizedBox(
-          height: 52,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                SizedBox(width: _timeWidth, child: Text(_hms(e.at), style: muted)),
-                Expanded(
-                  flex: 3,
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: Row(
-                      children: [
-                        Glyph(activityIcon(e), size: 16, color: activityColor(e.group)),
-                        const SizedBox(width: 12),
-                        Flexible(
-                          child: Text(
-                            e.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Expanded(
-                  flex: 3,
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: Tooltip(
-                      message: detail ?? '',
-                      waitDuration: const Duration(milliseconds: 600),
-                      child: Text(detail ?? '—', maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  width: _personWidth,
-                  child: Text(e.member ?? '—', maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
-                ),
-                SizedBox(
-                  width: _amountWidth,
-                  child: Text(
-                    amount == null ? '—' : Fmt.price(amount),
-                    textAlign: TextAlign.right,
-                    style: amount == null ? muted : text.bodyMedium?.copyWith(fontFeatures: _tabular),
-                  ),
-                ),
-              ],
+    Widget content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(
+        children: [
+          SizedBox(
+            width: _timeWidth,
+            child: Text(
+              _hms(e.at),
+              style: current ? muted?.copyWith(color: AppColors.accent, fontWeight: FontWeight.w600) : muted,
             ),
           ),
+          Expanded(
+            flex: 3,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Row(
+                children: [
+                  Glyph(activityIcon(e), size: 16, color: activityColor(e.group)),
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Text(
+                      e.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Tooltip(
+                message: detail ?? '',
+                waitDuration: const Duration(milliseconds: 600),
+                child: Text(detail ?? '—', maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: _personWidth,
+            child: Text(e.member ?? '—', maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
+          ),
+          SizedBox(
+            width: _amountWidth,
+            child: Text(
+              amount == null ? '—' : Fmt.price(amount),
+              textAlign: TextAlign.right,
+              style: amount == null ? muted : text.bodyMedium?.copyWith(fontFeatures: _tabular),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (future) {
+      content = Opacity(
+        opacity: 0.35,
+        child: ImageFiltered(imageFilter: ImageFilter.blur(sigmaX: 0.8, sigmaY: 0.8), child: content),
+      );
+    }
+    return Material(
+      color: current
+          ? AppColors.accentTint
+          : selected
+          ? AppColors.accentFill.withValues(alpha: 0.08)
+          : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Stack(
+          children: [
+            Positioned.fill(child: content),
+            if (current)
+              Positioned(
+                left: 0,
+                top: 12,
+                bottom: 12,
+                child: Container(
+                  width: 3,
+                  decoration: BoxDecoration(
+                    color: AppColors.accent,
+                    borderRadius: const BorderRadius.horizontal(right: Radius.circular(2)),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

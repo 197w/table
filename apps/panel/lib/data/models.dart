@@ -3375,6 +3375,8 @@ class SalesStats {
     required this.staff,
     this.avgTableMinutes,
     this.kitchenSeconds,
+    this.kindCounts = const [],
+    this.memberCounts = const [],
   });
 
   final int revenue;
@@ -3402,10 +3404,19 @@ class SalesStats {
   /// Pracownik, przychód, liczba rachunków.
   final List<(String, int, int)> staff;
 
+  /// Rachunki okresu bez filtrów, do pól wyboru w panelu Statystyk: rodzaj zamówienia (dine_in, delivery,
+  /// pickup) i liczba.
+  final List<(String, int)> kindCounts;
+
+  /// Jak [kindCounts], według tego, kto otworzył rachunek: id pracownika ('' bez przypisania), imię, liczba.
+  final List<(String, String, int)> memberCounts;
+
   int get averageCheck => orders == 0 ? 0 : revenue ~/ orders;
 
   factory SalesStats.fromJson(Map<String, dynamic> j) {
     List<Map<String, dynamic>> list(String k) => (j[k] as List? ?? const []).cast<Map<String, dynamic>>();
+    List<Map<String, dynamic>> facets(String k) =>
+        ((j['facets'] as Map?)?[k] as List? ?? const []).cast<Map<String, dynamic>>();
     int? opt(Object? v) => v == null ? null : _toInt(v);
     return SalesStats(
       revenue: _toInt(j['revenue']),
@@ -3441,6 +3452,12 @@ class SalesStats {
       ],
       vat: [for (final v in list('vat')) (_toInt(v['rate']), _toInt(v['gross']))],
       staff: [for (final s in list('staff')) (s['name'] as String, _toInt(s['revenue']), _toInt(s['orders']))],
+      kindCounts: [
+        for (final k in facets('kinds')) (k['kind'] as String, _toInt(k['orders'])),
+      ],
+      memberCounts: [
+        for (final m in facets('members')) (m['id'] as String, m['name'] as String, _toInt(m['orders'])),
+      ],
     );
   }
 }

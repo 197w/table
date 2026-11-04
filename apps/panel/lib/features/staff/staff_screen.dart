@@ -385,7 +385,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
       actions: [
         if (_hasAll(ref.watch(panelMemberProvider), all, positions)) const _RestaurantPicker(),
         if (view == _View.team && canStaff)
-          _PanelAction(
+          PanelAction(
             label: 'Dodaj pracownika',
             active: _addingMember,
             onTap: () => setState(() {
@@ -396,7 +396,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
             }),
           ),
         if (view == _View.positions)
-          _PanelAction(
+          PanelAction(
             label: 'Dodaj stanowisko',
             active: _role != null && _role!.position == null,
             onTap: () => _openRole(null),
@@ -938,29 +938,6 @@ class _StaffLayout extends ConsumerWidget {
   }
 }
 
-/// Przycisk z obrysem w kolorze akcentu („Dodaj pracownika”), podświetlony, gdy jego okno jest otwarte.
-class _PanelAction extends StatelessWidget {
-  const _PanelAction({required this.label, required this.onTap, this.active = false});
-
-  final String label;
-  final VoidCallback onTap;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: AppColors.accent,
-        backgroundColor: active ? AppColors.accentTint : null,
-        side: BorderSide(color: AppColors.accent.withValues(alpha: 0.7)),
-        minimumSize: const Size.fromHeight(40),
-      ),
-      child: Text(label),
-    );
-  }
-}
-
 /// Wybór lokalu pod wyszukiwaniem, jak wybór firmy w UniFi. Widzi go tylko osoba ze stanowiskiem ALL albo
 /// z pełnym dostępem właściciela; zmienia lokal całego panelu (jak lokal w prawym górnym rogu).
 class _RestaurantPicker extends ConsumerWidget {
@@ -1333,12 +1310,12 @@ class _TeamRow extends StatelessWidget {
                             ),
                           ),
                           if (badges) ...[
-                            if (isAll) ...[const SizedBox(width: 8), const _Badge('ALL')],
-                            if (isMe) ...[const SizedBox(width: 6), const _Badge('Ty', accent: true)],
+                            if (isAll) ...[const SizedBox(width: 8), const RowBadge('ALL')],
+                            if (isMe) ...[const SizedBox(width: 6), const RowBadge('Ty', accent: true)],
                             if (m.dismissed)
-                              ...[const SizedBox(width: 6), const _Badge('Zwolniony')]
+                              ...[const SizedBox(width: 6), const RowBadge('Zwolniony')]
                             else if (!m.active)
-                              ...[const SizedBox(width: 6), const _Badge('Nieaktywny')],
+                              ...[const SizedBox(width: 6), const RowBadge('Nieaktywny')],
                           ],
                           const SizedBox(width: 12),
                         ],
@@ -1473,32 +1450,6 @@ class _SelectionBar extends StatelessWidget {
             icon: const Glyph(AppIcons.close, size: 16),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Mała odznaka przy imieniu, np. „ALL” albo „Ty”.
-class _Badge extends StatelessWidget {
-  const _Badge(this.label, {this.accent = false});
-
-  final String label;
-  final bool accent;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: accent ? AppColors.accentTint : AppColors.surfaceRaised,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: accent ? AppColors.accent : AppColors.textMuted,
-          letterSpacing: 0.2,
-        ),
       ),
     );
   }
@@ -1657,9 +1608,9 @@ class _MemberDetailsState extends ConsumerState<_MemberDetails> {
                       children: [
                         Flexible(child: Text(member.name, style: text.headlineSmall)),
                         if (member.dismissed)
-                          ...[const SizedBox(width: 10), const _Badge('Zwolniony')]
+                          ...[const SizedBox(width: 10), const RowBadge('Zwolniony')]
                         else if (!member.active)
-                          ...[const SizedBox(width: 10), const _Badge('Nieaktywny')],
+                          ...[const SizedBox(width: 10), const RowBadge('Nieaktywny')],
                       ],
                     ),
                     const SizedBox(height: 2),
