@@ -42,9 +42,9 @@ enum _Metric {
 const _kinds = [('dine_in', 'Na miejscu'), ('delivery', 'Dostawa'), ('pickup', 'Odbiór osobisty')];
 
 /// Statystyki (Management) w układzie jak Pracownicy (4.11.2026, prośba użytkownika; kafle zostały): po lewej
-/// zwijany panel z zakładkami Sprzedaż / Rezerwacje i goście, okresem 7/30/90 dni i w Sprzedaży filtrami z liczbą
-/// rachunków w okresie (rodzaj zamówienia, kto otworzył rachunek; puste grupy nie filtrują), po prawej kafle
-/// i wykresy. Filtry liczy baza (`panel_sales_stats` z `p_kinds` i `p_members`).
+/// zwijany panel z zakładkami Sprzedaż / Rezerwacje i goście i w Sprzedaży filtrami z liczbą rachunków w okresie
+/// (rodzaj zamówienia, kto otworzył rachunek; puste grupy nie filtrują), po prawej okres 7D / 30D / 90D w górnym
+/// rogu, kafle i wykresy. Filtry liczy baza (`panel_sales_stats` z `p_kinds` i `p_members`).
 class StatsScreen extends ConsumerStatefulWidget {
   const StatsScreen({super.key});
 
@@ -135,14 +135,6 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
         expand: true,
         onChanged: (t) => setState(() => _tab = t),
       ),
-      actions: [
-        SegmentedTabs<int>(
-          options: const [(7, '7 dni'), (30, '30 dni'), (90, '90 dni')],
-          selected: _days,
-          expand: true,
-          onChanged: (d) => setState(() => _days = d),
-        ),
-      ],
       children: sales ? _salesFilters(unfiltered) : const [],
     );
 
@@ -150,149 +142,168 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       open: _panelOpen,
       onToggle: () => setState(() => _panelOpen = !_panelOpen),
       panel: panel,
-      content: TabContent(
-        tab: _tab,
-        child: _tab == 0
-            ? (restaurant.isPro
-                  ? SalesView(
-                      query: (
-                        restaurantId: restaurant.id,
-                        days: _days,
-                        kinds: _key(_kindFilter),
-                        members: _key(_memberFilter),
-                      ),
-                    )
-                  : const ProGate(feature: 'Sprzedaż i zamówienia'))
-            : async.when(
-                skipLoadingOnReload: true,
-                loading: () => const LoadingView(),
-                error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(statsProvider(query))),
-                data: (all) {
-                  final split = all.length > _days ? all.length - _days : 0;
-                  final stats = all.sublist(split);
-                  final earlier = all.sublist(0, split);
-                  int sum(int Function(DayStat) f) => stats.fold(0, (a, s) => a + f(s));
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Okres w prawym górnym rogu (5.11.2026, prośba użytkownika), wspólny dla obu zakładek.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 32, 12),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: SegmentedTabs<int>(
+                options: const [(7, '7D'), (30, '30D'), (90, '90D')],
+                selected: _days,
+                onChanged: (d) => setState(() => _days = d),
+              ),
+            ),
+          ),
+          Expanded(
+            child: TabContent(
+              tab: _tab,
+              child: _tab == 0
+                  ? (restaurant.isPro
+                        ? SalesView(
+                            query: (
+                              restaurantId: restaurant.id,
+                              days: _days,
+                              kinds: _key(_kindFilter),
+                              members: _key(_memberFilter),
+                            ),
+                          )
+                        : const ProGate(feature: 'Sprzedaż i zamówienia'))
+                  : async.when(
+                      skipLoadingOnReload: true,
+                      loading: () => const LoadingView(),
+                      error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(statsProvider(query))),
+                      data: (all) {
+                        final split = all.length > _days ? all.length - _days : 0;
+                        final stats = all.sublist(split);
+                        final earlier = all.sublist(0, split);
+                        int sum(int Function(DayStat) f) => stats.fold(0, (a, s) => a + f(s));
 
-                  // Zmiana wzgledem poprzedniego okresu tej samej dlugosci.
-                  double? change(int Function(DayStat) f) {
-                    if (earlier.isEmpty) return null;
-                    final before = earlier.fold(0, (a, s) => a + f(s));
-                    final now = sum(f);
-                    if (before == 0) return now == 0 ? 0 : 100;
-                    return (now - before) / before * 100;
-                  }
+                        // Zmiana wzgledem poprzedniego okresu tej samej dlugosci.
+                        double? change(int Function(DayStat) f) {
+                          if (earlier.isEmpty) return null;
+                          final before = earlier.fold(0, (a, s) => a + f(s));
+                          final now = sum(f);
+                          if (before == 0) return now == 0 ? 0 : 100;
+                          return (now - before) / before * 100;
+                        }
 
-                  final reservations = sum((s) => s.reservations);
-                  // Polubienia w aplikacji Table: wszystkie na dziś i nowe w okresie.
-                  final likesTotal = stats.isEmpty ? 0 : stats.last.likesTotal;
-                  final likesNew = sum((s) => s.likes);
-                  final noShows = sum((s) => s.noShows);
-                  final noShowRate = reservations == 0 ? 0.0 : noShows / reservations * 100;
+                        final reservations = sum((s) => s.reservations);
+                        // Polubienia w aplikacji Table: wszystkie na dziś i nowe w okresie.
+                        final likesTotal = stats.isEmpty ? 0 : stats.last.likesTotal;
+                        final likesNew = sum((s) => s.likes);
+                        final noShows = sum((s) => s.noShows);
+                        final noShowRate = reservations == 0 ? 0.0 : noShows / reservations * 100;
 
-                  return ListView(
-                    padding: const EdgeInsets.fromLTRB(24, 16, 32, 32),
-                    children: [
-                      // Kafle równej wysokości, także gdy dłuższa nazwa zawija się do drugiej linii.
-                      IntrinsicHeight(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                        return ListView(
+                          padding: const EdgeInsets.fromLTRB(24, 0, 32, 32),
                           children: [
-                            Expanded(
-                              child: StatTile(
-                                label: 'Wyświetlenia profilu',
-                                value: '${sum((s) => s.views)}',
-                                icon: AppIcons.eye,
-                                color: TileColors.violet,
-                                change: change((s) => s.views),
+                            // Kafle równej wysokości, także gdy dłuższa nazwa zawija się do drugiej linii.
+                            IntrinsicHeight(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Expanded(
+                                    child: StatTile(
+                                      label: 'Wyświetlenia profilu',
+                                      value: '${sum((s) => s.views)}',
+                                      icon: AppIcons.eye,
+                                      color: TileColors.violet,
+                                      change: change((s) => s.views),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: StatTile(
+                                      label: 'Kliknięcia „Zadzwoń”',
+                                      value: '${sum((s) => s.callClicks)}',
+                                      icon: AppIcons.phone,
+                                      color: TileColors.amber,
+                                      change: change((s) => s.callClicks),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: StatTile(
+                                      label: 'Polubienia',
+                                      value: '$likesTotal',
+                                      icon: AppIcons.heart,
+                                      color: TileColors.rose,
+                                      hint: '+$likesNew w tym okresie',
+                                      change: change((s) => s.likes),
+                                    ),
+                                  ),
+                                  if (restaurant.isPro) ...[
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: StatTile(
+                                        label: 'Rezerwacje',
+                                        value: '$reservations',
+                                        icon: AppIcons.calendarCheck,
+                                        color: TileColors.blue,
+                                        hint: '${sum((s) => s.cancellations)} odwołanych',
+                                        change: change((s) => s.reservations),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: StatTile(
+                                        label: 'Goście',
+                                        value: '${sum((s) => s.covers)}',
+                                        icon: AppIcons.users,
+                                        color: TileColors.green,
+                                        accent: true,
+                                        change: change((s) => s.covers),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: StatTile(
+                                        label: 'Niestawiennictwa',
+                                        value: '$noShows',
+                                        icon: AppIcons.userMinus,
+                                        color: TileColors.rose,
+                                        hint: '${Fmt.rating(noShowRate)}% rezerwacji',
+                                        change: change((s) => s.noShows),
+                                        moreIsBetter: false,
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: StatTile(
-                                label: 'Kliknięcia „Zadzwoń”',
-                                value: '${sum((s) => s.callClicks)}',
-                                icon: AppIcons.phone,
-                                color: TileColors.amber,
-                                change: change((s) => s.callClicks),
+                            const SizedBox(height: 16),
+                            PanelCard(
+                              title: metric.label,
+                              icon: AppIcons.chartBar,
+                              iconColor: metric.color,
+                              trailing: SegmentedTabs<_Metric>(
+                                options: [for (final m in metrics) (m, m.label)],
+                                selected: metric,
+                                onChanged: (m) => setState(() => _metric = m),
+                              ),
+                              child: SizedBox(
+                                height: 320,
+                                child: _BarChart(days: stats, valueOf: metric.valueOf, color: metric.color),
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: StatTile(
-                                label: 'Polubienia',
-                                value: '$likesTotal',
-                                icon: AppIcons.heart,
-                                color: TileColors.rose,
-                                hint: '+$likesNew w tym okresie',
-                                change: change((s) => s.likes),
-                              ),
-                            ),
-                            if (restaurant.isPro) ...[
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: StatTile(
-                                  label: 'Rezerwacje',
-                                  value: '$reservations',
-                                  icon: AppIcons.calendarCheck,
-                                  color: TileColors.blue,
-                                  hint: '${sum((s) => s.cancellations)} odwołanych',
-                                  change: change((s) => s.reservations),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: StatTile(
-                                  label: 'Goście',
-                                  value: '${sum((s) => s.covers)}',
-                                  icon: AppIcons.users,
-                                  color: TileColors.green,
-                                  accent: true,
-                                  change: change((s) => s.covers),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: StatTile(
-                                  label: 'Niestawiennictwa',
-                                  value: '$noShows',
-                                  icon: AppIcons.userMinus,
-                                  color: TileColors.rose,
-                                  hint: '${Fmt.rating(noShowRate)}% rezerwacji',
-                                  change: change((s) => s.noShows),
-                                  moreIsBetter: false,
-                                ),
+                            if (restaurant.isPro) ...[const SizedBox(height: 16), _OccasionsCard(query: query)],
+                            if (!restaurant.isPro) ...[
+                              const SizedBox(height: 16),
+                              Text(
+                                'Statystyki rezerwacji i gości są dostępne w planie Pro.',
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
                               ),
                             ],
                           ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      PanelCard(
-                        title: metric.label,
-                        icon: AppIcons.chartBar,
-                        iconColor: metric.color,
-                        trailing: SegmentedTabs<_Metric>(
-                          options: [for (final m in metrics) (m, m.label)],
-                          selected: metric,
-                          onChanged: (m) => setState(() => _metric = m),
-                        ),
-                        child: SizedBox(
-                          height: 320,
-                          child: _BarChart(days: stats, valueOf: metric.valueOf, color: metric.color),
-                        ),
-                      ),
-                      if (restaurant.isPro) ...[const SizedBox(height: 16), _OccasionsCard(query: query)],
-                      if (!restaurant.isPro) ...[
-                        const SizedBox(height: 16),
-                        Text(
-                          'Statystyki rezerwacji i gości są dostępne w planie Pro.',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
-                        ),
-                      ],
-                    ],
-                  );
-                },
-              ),
+                        );
+                      },
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }

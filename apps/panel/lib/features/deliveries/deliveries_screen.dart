@@ -169,11 +169,9 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
         PageHeader(
           below: Row(
             children: [
-              IconTabs<int>(
-                options: [
-                  (0, pickup ? AppIcons.shoppingBag : AppIcons.moped, 'Aktywne (${active.length})'),
-                  (1, AppIcons.checkCircle, 'Zakończone dziś (${finished.length})'),
-                ],
+              // Napisy w pigułce jak w Rezerwacjach (5.11.2026, prośba użytkownika; wcześniej same ikony).
+              SegmentedTabs<int>(
+                options: [(0, 'Aktywne (${active.length})'), (1, 'Zakończone dziś (${finished.length})')],
                 selected: _tab,
                 onChanged: (t) => setState(() => _tab = t),
               ),

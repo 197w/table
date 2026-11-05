@@ -65,7 +65,7 @@ class SalesView extends ConsumerWidget {
         final prevAverage = s.prevOrders == 0 ? 0 : s.prevRevenue ~/ s.prevOrders;
 
         return ListView(
-          padding: const EdgeInsets.fromLTRB(24, 16, 32, 32),
+          padding: const EdgeInsets.fromLTRB(24, 0, 32, 32),
           children: [
             Row(
               children: [

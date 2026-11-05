@@ -191,13 +191,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         PageHeader(
           below: Row(
             children: [
-              IconTabs<int>(
-                options: const [
-                  (0, AppIcons.clipboardText, 'Spis'),
-                  (1, AppIcons.package, 'Składniki'),
-                  (2, AppIcons.truck, 'Dostawy i usunięcia'),
-                  (3, AppIcons.clock, 'Historia'),
-                ],
+              // Napisy w pigułce jak w Rezerwacjach (5.11.2026, prośba użytkownika; wcześniej same ikony).
+              SegmentedTabs<int>(
+                options: const [(0, 'Spis'), (1, 'Składniki'), (2, 'Dostawy i usunięcia'), (3, 'Historia')],
                 selected: tab,
                 onChanged: (t) => setState(() => _tab = t),
               ),

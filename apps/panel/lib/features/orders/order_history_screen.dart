@@ -7,19 +7,19 @@ import 'package:table_core/table_core.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
+import '../../shared/side_panel.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
-enum _Filter {
-  all('Wszystkie'),
+/// Stan rachunku w filtrach panelu.
+enum _State {
   paid('Opłacone'),
   cancelled('Anulowane');
 
-  const _Filter(this.label);
+  const _State(this.label);
   final String label;
 
   bool matches(PanelOrder o) => switch (this) {
-    all => true,
     paid => o.isPaid,
     cancelled => o.isCancelled,
   };
@@ -44,14 +44,13 @@ enum HistoryKind {
   };
 }
 
-/// Historia zamówień: zamknięte rachunki z wybranego dnia, z podziałem na restaurację, dostawy i odbiór osobisty,
-/// albo wyniki wyszukiwania po imieniu, telefonie i adresie ze wszystkich dni. Podsumowanie obrotu widzi tylko osoba
-/// z uprawnieniem „Przychody” (kierownik, właściciel); kelner widzi same rachunki.
+/// Historia zamówień w układzie jak Statystyki i Pracownicy (5.11.2026, prośba użytkownika): po lewej zwijany panel
+/// z wyszukiwaniem po imieniu, firmie, telefonie i adresie ze wszystkich dni oraz filtrami z liczbą rachunków dnia
+/// (rodzaj: restauracja, dostawy, odbiór osobisty; stan: opłacone, anulowane; puste grupy nie filtrują), dzień
+/// w prawym górnym rogu, pod nim kafle podsumowania (tylko z uprawnieniem „Przychody”), lista rachunków
+/// i szczegóły wybranego.
 class OrderHistoryScreen extends ConsumerStatefulWidget {
-  const OrderHistoryScreen({super.key, this.embedded = false});
-
-  /// Wewnątrz zakładki „Statystyki”: bez własnego nagłówka strony.
-  final bool embedded;
+  const OrderHistoryScreen({super.key});
 
   @override
   ConsumerState<OrderHistoryScreen> createState() => _OrderHistoryScreenState();
@@ -59,9 +58,13 @@ class OrderHistoryScreen extends ConsumerStatefulWidget {
 
 class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
   DateTime _day = dateOnly(DateTime.now());
-  _Filter _filter = _Filter.all;
-  HistoryKind _kind = HistoryKind.all;
   String? _selectedId;
+
+  // Panel po lewej: zaznaczone filtry (puste: wszystko), zwinięte grupy i zwinięcie panelu.
+  final _kinds = <HistoryKind>{};
+  final _states = <_State>{};
+  final _closed = <String>{};
+  bool _panelOpen = true;
 
   /// Wpisany tekst wyszukiwania; od 2 znaków lista pokazuje wyniki ze wszystkich dni zamiast wybranego dnia.
   final _search = TextEditingController();
@@ -70,9 +73,6 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
 
   bool get _searching => _query.length >= 2;
 
-  /// Pole wyszukiwania rozwinięte z lupy (w miejscu wyboru dnia, żeby rząd filtrów się mieścił).
-  bool _searchOpen = false;
-
   @override
   void dispose() {
     _debounce?.cancel();
@@ -80,62 +80,24 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     super.dispose();
   }
 
-  void _onSearch(String value) {
+  void _onSearch() {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
       setState(() {
-        _query = value.trim();
+        _query = _search.text.trim();
         _selectedId = null;
       });
     });
   }
 
-  void _clearSearch() {
-    _debounce?.cancel();
-    _search.clear();
-    setState(() {
-      _query = '';
-      _selectedId = null;
-      _searchOpen = false;
-    });
-  }
+  void _toggle<T>(Set<T> set, T value) => setState(() {
+    set.contains(value) ? set.remove(value) : set.add(value);
+    _selectedId = null;
+  });
 
-  /// Lupa i wybór dnia, a po kliknięciu lupy pole wyszukiwania w ich miejscu.
-  List<Widget> _searchOrDay(DateTime today) => _searchOpen || _searching
-      ? [_searchField()]
-      : [
-          IconButton(
-            tooltip: 'Szukaj po imieniu, telefonie albo adresie',
-            onPressed: () => setState(() => _searchOpen = true),
-            icon: const Glyph(AppIcons.search, size: 20),
-          ),
-          const SizedBox(width: 4),
-          _daySwitcher(today),
-        ];
-
-  Widget _searchField() => SizedBox(
-    width: 320,
-    child: TextField(
-      controller: _search,
-      autofocus: true,
-      onChanged: _onSearch,
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: 'Szukaj: imię, telefon albo adres',
-        prefixIcon: Padding(
-          padding: const EdgeInsets.only(left: 12, right: 8),
-          child: Glyph(AppIcons.search, size: 18, color: AppColors.textMuted),
-        ),
-        prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-        suffixIcon: IconButton(
-          tooltip: _search.text.isEmpty ? 'Zamknij wyszukiwanie' : 'Wyczyść',
-          onPressed: _clearSearch,
-          icon: const Glyph(AppIcons.close, size: 16),
-        ),
-      ),
-    ),
-  );
+  bool _kindMatches(PanelOrder o) => _kinds.isEmpty || _kinds.any((k) => k.matches(o));
+  bool _stateMatches(PanelOrder o) => _states.isEmpty || _states.any((s) => s.matches(o));
 
   void _shift(int days) => setState(() {
     _day = DateTime(_day.year, _day.month, _day.day + days);
@@ -174,107 +136,109 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
   Widget build(BuildContext context) {
     final restaurant = ref.watch(currentRestaurantProvider);
     if (restaurant == null) return const LoadingView();
+    if (!restaurant.isPro) return const ProGate(feature: 'Historia zamówień');
 
-    if (!restaurant.isPro) {
-      return const Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(child: ProGate(feature: 'Historia zamówień')),
-        ],
-      );
-    }
     final today = dateOnly(DateTime.now());
     final canRevenue = ref.watch(memberPermissionsProvider).contains('revenue');
     final query = (restaurantId: restaurant.id, day: _day);
     final searchQuery = (restaurantId: restaurant.id, query: _query);
     // Wyszukiwanie przeszukuje wszystkie dni; bez niego lista wybranego dnia.
     final async = _searching ? ref.watch(orderSearchProvider(searchQuery)) : ref.watch(orderHistoryProvider(query));
-    void retry() => _searching
-        ? ref.invalidate(orderSearchProvider(searchQuery))
-        : ref.invalidate(orderHistoryProvider(query));
+    void retry() =>
+        _searching ? ref.invalidate(orderSearchProvider(searchQuery)) : ref.invalidate(orderHistoryProvider(query));
     final tables = ref.watch(tablesProvider(restaurant.id)).value ?? const <DiningTable>[];
     final labels = {for (final t in tables) ?t.id: '${t.isSeat ? 'Miejsce' : 'Stolik'} ${t.label}'};
     String labelOf(PanelOrder o) => o.takeawayLabel ?? labels[o.tableId] ?? 'Bez stolika';
     final all = async.value ?? const <PanelOrder>[];
 
-    // Podział na restaurację, dostawy i odbiór osobisty (z liczbą zamówień), obok filtr opłacone/anulowane.
-    // Przy otwartym wyszukiwaniu w wąskim oknie zakładki przewijają się w bok, zamiast wychodzić pod pole.
-    Widget filters() => SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-      mainAxisSize: MainAxisSize.min,
+    final panel = SidePanel(
+      header: const PanelTitle(icon: AppIcons.clockBack, title: 'Historia zamówień'),
+      search: _search,
+      searchHint: 'Imię, telefon albo adres',
+      onSearch: _onSearch,
       children: [
-        SegmentedTabs<HistoryKind>(
+        FilterSection(
+          title: 'Rodzaj',
+          first: true,
+          open: !_closed.contains('kind'),
+          onToggle: () => _toggle(_closed, 'kind'),
           options: [
             for (final k in HistoryKind.values)
-              (k, k == HistoryKind.all ? k.label : '${k.label} (${all.where(k.matches).length})'),
+              if (k != HistoryKind.all)
+                (
+                  label: k.label,
+                  count: all.where(k.matches).length,
+                  checked: _kinds.contains(k),
+                  onChanged: (_) => _toggle(_kinds, k),
+                  dot: null,
+                ),
           ],
-          selected: _kind,
-          onChanged: (k) => setState(() {
-            _kind = k;
-            _selectedId = null;
-          }),
         ),
-        const SizedBox(width: 12),
-        SegmentedTabs<_Filter>(
-          options: [for (final f in _Filter.values) (f, f.label)],
-          selected: _filter,
-          onChanged: (f) => setState(() => _filter = f),
+        FilterSection(
+          title: 'Stan',
+          open: !_closed.contains('state'),
+          onToggle: () => _toggle(_closed, 'state'),
+          options: [
+            for (final st in _State.values)
+              (
+                label: st.label,
+                count: all.where(st.matches).length,
+                checked: _states.contains(st),
+                onChanged: (_) => _toggle(_states, st),
+                dot: st == _State.cancelled ? AppColors.error : null,
+              ),
+          ],
         ),
       ],
-      ),
     );
 
-    return Column(
+    final text = Theme.of(context).textTheme;
+    final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (widget.embedded)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(32, 0, 32, 16),
+        // Dzień w prawym górnym rogu, jak okres w Statystykach; przy wyszukiwaniu w jego miejscu wynik.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 32, 12),
+          child: SizedBox(
+            height: 40,
             child: Row(
               children: [
-                Flexible(child: Align(alignment: Alignment.centerLeft, child: filters())),
-                const SizedBox(width: 12),
-                ..._searchOrDay(today),
+                Expanded(
+                  child: _searching && async.hasValue
+                      ? Text(
+                          all.isEmpty
+                              ? 'Nic nie znaleziono dla „$_query”.'
+                              : all.length >= 100
+                              ? 'Pierwsze 100 wyników dla „$_query” (najnowsze). Wpisz więcej, żeby zawęzić.'
+                              : 'Wyniki dla „$_query”: ${all.length}, ze wszystkich dni.',
+                          style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                if (!_searching) _daySwitcher(today),
               ],
             ),
-          )
-        else
-        PageHeader(
-          actions: _searchOrDay(today),
-          below: Align(alignment: Alignment.centerLeft, child: filters()),
+          ),
         ),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(32, 0, 32, 24),
+            padding: const EdgeInsets.fromLTRB(24, 0, 32, 24),
             child: async.when(
               skipLoadingOnReload: true,
               loading: () => const LoadingView(),
               error: (e, _) => ErrorView(error: e, onRetry: retry),
               data: (everything) {
-                final orders = everything.where(_kind.matches).toList();
-                final visible = orders.where(_filter.matches).toList();
+                // Kafle liczą rachunki wybranych rodzajów (także anulowane), lista pokazuje też filtr stanu.
+                final ofKind = everything.where(_kindMatches).toList();
+                final visible = ofKind.where(_stateMatches).toList();
                 PanelOrder? selected;
-                for (final o in orders) {
+                for (final o in everything) {
                   if (o.id == _selectedId) selected = o;
                 }
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (_searching) ...[
-                      Text(
-                        everything.isEmpty
-                            ? 'Nic nie znaleziono dla „$_query”.'
-                            : everything.length >= 100
-                            ? 'Pierwsze 100 wyników dla „$_query” (najnowsze). Wpisz więcej, żeby zawęzić.'
-                            : 'Wyniki dla „$_query”: ${everything.length}, ze wszystkich dni.',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
-                      ),
-                      const SizedBox(height: 12),
-                    ] else if (canRevenue) ...[
-                      _Summary(orders: orders),
-                      const SizedBox(height: 16),
-                    ],
+                    if (!_searching && canRevenue) ...[_Summary(orders: ofKind), const SizedBox(height: 16)],
                     Expanded(
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -284,21 +248,14 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
                               child: visible.isEmpty
                                   ? MessageView(
                                       icon: _searching ? AppIcons.search : AppIcons.receipt,
-                                      title: _searching
-                                          ? (orders.isEmpty ? 'Brak wyników' : 'Nic w tym filtrze')
-                                          : orders.isEmpty
-                                          ? switch (_kind) {
-                                              HistoryKind.dineIn => 'Brak rachunków w restauracji',
-                                              HistoryKind.delivery => 'Brak dostaw',
-                                              HistoryKind.pickup => 'Brak odbiorów osobistych',
-                                              HistoryKind.all => 'Brak zamkniętych rachunków',
-                                            }
-                                          : 'Nic w tym filtrze',
-                                      message: _searching
+                                      title: everything.isEmpty
+                                          ? (_searching ? 'Brak wyników' : 'Brak zamkniętych rachunków')
+                                          : 'Nic w tych filtrach',
+                                      message: _searching && everything.isEmpty
                                           ? 'Szukamy w imieniu, nazwie firmy, telefonie i adresie dostawy.'
-                                          : orders.isEmpty
+                                          : everything.isEmpty
                                           ? 'Tego dnia nic tu nie zamknięto ani nie anulowano.'
-                                          : 'Wybierz inny filtr, żeby zobaczyć pozostałe rachunki.',
+                                          : 'Zmień filtry po lewej, żeby zobaczyć pozostałe rachunki.',
                                     )
                                   : ListView.separated(
                                       padding: const EdgeInsets.all(8),
@@ -337,6 +294,13 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
           ),
         ),
       ],
+    );
+
+    return SidePanelLayout(
+      open: _panelOpen,
+      onToggle: () => setState(() => _panelOpen = !_panelOpen),
+      panel: panel,
+      content: content,
     );
   }
 }
@@ -389,12 +353,7 @@ class _Summary extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: StatTile(
-            label: 'Anulowane',
-            value: '$cancelled',
-            icon: AppIcons.prohibit,
-            color: TileColors.rose,
-          ),
+          child: StatTile(label: 'Anulowane', value: '$cancelled', icon: AppIcons.prohibit, color: TileColors.rose),
         ),
       ],
     );
@@ -484,9 +443,7 @@ class _OrderRow extends StatelessWidget {
                     ),
                     Text(
                       '${_pieces(count)} · ${_paymentLabel(order)}',
-                      style: text.bodySmall?.copyWith(
-                        color: muted ? AppColors.error : AppColors.textMuted,
-                      ),
+                      style: text.bodySmall?.copyWith(color: muted ? AppColors.error : AppColors.textMuted),
                     ),
                   ],
                 ),
@@ -561,10 +518,7 @@ class _OrderDetail extends StatelessWidget {
                     if (minutes != null)
                       order.kind == OrderKind.dineIn ? '$minutes min przy stoliku' : '$minutes min od zamówienia',
                   ].join(' · '),
-                  style: text.bodyMedium?.copyWith(
-                    color: AppColors.textMuted,
-                    fontFeatures: _tabular,
-                  ),
+                  style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
                 ),
               ],
             ),
@@ -584,10 +538,7 @@ class _OrderDetail extends StatelessWidget {
                           width: 34,
                           child: Text(
                             '${i.quantity}×',
-                            style: text.bodyMedium?.copyWith(
-                              color: AppColors.textMuted,
-                              fontFeatures: _tabular,
-                            ),
+                            style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
                           ),
                         ),
                         Expanded(
@@ -597,21 +548,13 @@ class _OrderDetail extends StatelessWidget {
                               Text(
                                 i.name,
                                 style: text.bodyMedium?.copyWith(
-                                  decoration: i.status == OrderItemStatus.cancelled
-                                      ? TextDecoration.lineThrough
-                                      : null,
+                                  decoration: i.status == OrderItemStatus.cancelled ? TextDecoration.lineThrough : null,
                                 ),
                               ),
                               if (i.details != null)
-                                Text(
-                                  i.details!,
-                                  style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-                                ),
+                                Text(i.details!, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
                               if (i.status == OrderItemStatus.cancelled)
-                                Text(
-                                  'anulowana',
-                                  style: text.bodySmall?.copyWith(color: AppColors.error),
-                                ),
+                                Text('anulowana', style: text.bodySmall?.copyWith(color: AppColors.error)),
                             ],
                           ),
                         ),
@@ -639,33 +582,27 @@ class _OrderDetail extends StatelessWidget {
                     children: [
                       Text('Dostawa', style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
                       const Spacer(),
-                      Text(Fmt.price(order.deliveryFeeGrosze), style: text.bodyMedium?.copyWith(fontFeatures: _tabular)),
+                      Text(
+                        Fmt.price(order.deliveryFeeGrosze),
+                        style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
+                      ),
                     ],
                   ),
                 Row(
                   children: [
                     Text('Razem', style: text.titleMedium),
                     const Spacer(),
-                    Text(
-                      Fmt.price(order.billGrosze),
-                      style: text.headlineSmall?.copyWith(fontFeatures: _tabular),
-                    ),
+                    Text(Fmt.price(order.billGrosze), style: text.headlineSmall?.copyWith(fontFeatures: _tabular)),
                   ],
                 ),
                 for (final e in vat)
                   Row(
                     children: [
-                      Text(
-                        'w tym VAT ${e.key}%',
-                        style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-                      ),
+                      Text('w tym VAT ${e.key}%', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
                       const Spacer(),
                       Text(
                         Fmt.price(_vatOf(e.value, e.key)),
-                        style: text.bodySmall?.copyWith(
-                          color: AppColors.textMuted,
-                          fontFeatures: _tabular,
-                        ),
+                        style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
                       ),
                     ],
                   ),
@@ -680,12 +617,13 @@ class _OrderDetail extends StatelessWidget {
                   if (order.payments.isNotEmpty)
                     for (final p in order.payments)
                       _PayRow(
-                        label: p.tipGrosze > 0 ? '${p.method.label} · napiwek ${Fmt.price(p.tipGrosze)}' : p.method.label,
+                        label: p.tipGrosze > 0
+                            ? '${p.method.label} · napiwek ${Fmt.price(p.tipGrosze)}'
+                            : p.method.label,
                         amount: p.amountGrosze,
                       )
                   else ...[
-                    if (gift != null)
-                      _PayRow(label: 'Karta podarunkowa', amount: gift),
+                    if (gift != null) _PayRow(label: 'Karta podarunkowa', amount: gift),
                     if (order.paymentMethod != null && order.paymentMethod != PaymentMethod.giftCard)
                       _PayRow(
                         label: order.paymentMethod!.label,

@@ -151,7 +151,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `circle-half-inset` (pierścień z wypełnioną prawą połową w środku jak w UniFi: motyw systemowy,
   `AppThemeSetting.system`, od 2.11.2026; wcześniej przełączniki `toggles` i monitor).
   Duotone `plus`, `minus` i `x` to te same kształty bez kwadratu w tle (4.11.2026: zielony „+” w Rezerwacjach,
-  `GlowButton(primary)`, wyglądał jak kafelek; nie pobierać ich od nowa z better-icons).
+  `GlowButton(primary)`, wyglądał jak kafelek; nie pobierać ich od nowa z better-icons). Tak samo duotone
+  `clock-counter-clockwise` (Logi w pasku bocznym, 5.11.2026): bez zielonego koła w środku, sama linia.
 - `apps/guest/lib`: `app` (router, dolne menu, preferencje), `core` (mapy, lokalizacja), `data`, `features`
   (m.in. `ordering`: zamawianie z dostawą i na wynos).
   Odkrywaj (`features/discover`, nowy wygląd z 10.2026): powitanie na całą szerokość, wyszukiwarka
@@ -315,8 +316,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   szerokie tabele poziomo, Geist z `table_core`, nagłówek tabeli na każdej stronie, suma pogrubiona, numery stron),
   obok mała ikona CSV dla Excela (średnik, przecinek, UTF-8 z BOM). Obie postaci z tej samej `ExportTable`
   (`export_csv.dart`: `salesTable`, `dailyTable`, `hoursTable`, `pettyTable`; CSV bez wiersza sumy jak dotąd poza
-  rachunkami). Historia zamówień pokazuje obrót tylko z uprawnieniem `revenue`; lupa w rzędzie filtrów rozwija
-  wyszukiwanie po imieniu, firmie, telefonie (ostatnie 9 cyfr) i adresie ze wszystkich dni (`panel_order_search`,
+  rachunkami). Historia zamówień pokazuje obrót tylko z uprawnieniem `revenue`; wyszukiwanie w panelu po lewej
+  szuka po imieniu, firmie, telefonie (ostatnie 9 cyfr) i adresie ze wszystkich dni (`panel_order_search`,
   najwyżej 100 zamkniętych i anulowanych, wiersz z dniem, telefonem i adresem).
   Niezamknięte zamówienia (`/niezamkniete`, uprawnienie `day_close`, `unclosed_screen.dart`, `unclosedOrdersProvider`
   na żywo): otwarte rachunki i niezakończone zamówienia na wynos ze wszystkich dni, z poprzednich dni osobno na górze
@@ -540,11 +541,13 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`staff_schedule.position_id`, wybór w oknie dnia, widać w aplikacji). Pod siatką: przyjętych osób, godziny pracy dnia
   i ile osób na jakim stanowisku; kolumna „Tydzień” z godzinami pracownika.
 - Statystyki (Management) w układzie jak Pracownicy (4.11.2026, prośba użytkownika; kafle i wykresy zostały): po
-  lewej zwijany panel (bez wyszukiwania) z zakładkami Sprzedaż (`panel_sales_stats`) i Rezerwacje i goście, okresem
-  7/30/90 dni i w Sprzedaży filtrami z liczbą rachunków w okresie: Rodzaj zamówienia (Na miejscu, Dostawa, Odbiór
+  lewej zwijany panel (bez wyszukiwania) z zakładkami Sprzedaż (`panel_sales_stats`) i Rezerwacje i goście
+  i w Sprzedaży filtrami z liczbą rachunków w okresie: Rodzaj zamówienia (Na miejscu, Dostawa, Odbiór
   osobisty) i Obsługa (kto otworzył rachunek, „Bez przypisania” na końcu). Filtry liczy baza (0076:
   `panel_sales_stats(p_kinds, p_members)`, `''` = bez przypisania, liczby bez filtrów w `facets`; stara wersja bez
-  filtrów usunięta, bo domyślne parametry obsługują starsze panele); w panelu `SalesQuery` z filtrami po przecinku. W „Rezerwacje i goście” kafel „Polubienia” (wszystkie i „+N w tym okresie”, także plan Free)
+  filtrów usunięta, bo domyślne parametry obsługują starsze panele); w panelu `SalesQuery` z filtrami po przecinku.
+  Okres 7D / 30D / 90D stoi w prawym górnym rogu treści, nad kaflami (5.11.2026, prośba użytkownika; wcześniej
+  w panelu jako „7 dni”). W „Rezerwacje i goście” kafel „Polubienia” (wszystkie i „+N w tym okresie”, także plan Free)
   i wykres nowych polubień dzień po dniu (`panel_stats` od 0063: `likes`, `likes_total`); kafle mają równą wysokość. W Sprzedaży tabela „Sprzedaż w godzinach” (godziny z zamówieniami: liczba, kwota, na miejscu,
   dostawa, odbiór osobisty, wiersz „Razem”; `hourly` z `dine_in`, `delivery`, `pickup` od 0062). Historia zamówień jest osobną zakładką w grupie Rezerwacje.
 - Role w `restaurant_staff`: owner, manager, staff. Kierownik i właściciel zmieniają salę, menu, dane lokalu
@@ -655,8 +658,11 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `panel_settle_order` zapisuje płatności w `order_payments` (method, amount, tip), `panel_order_due` liczy kwotę do zapłaty.
   Stare `panel_close_order` zostało dla starszych wersji: gotówka, karta albo inne. Karty podarunkowe usunięte (0038): nie ma ich
   w panelu ani w aplikacji Table, `purchase_gift_card` zwraca błąd, dane kart i stare płatności kartą zostają w bazie
-  (historia zamówień i sprzedaż je pokazują). Historia zamkniętych rachunków: „Rezerwacje” → „Historia zamówień”,
-  z podziałem Wszystkie / W restauracji / Dostawy / Odbiór osobisty (`HistoryKind`, z liczbą) i kwotą z dostawą.
+  (historia zamówień i sprzedaż je pokazują). Historia zamkniętych rachunków: „Zamówienia” → „Historia zamówień”,
+  w układzie jak Statystyki (5.11.2026, prośba użytkownika; `order_history_screen.dart`): po lewej zwijany panel
+  z wyszukiwaniem i filtrami z liczbą rachunków dnia (Rodzaj: W restauracji / Dostawy / Odbiór osobisty,
+  `HistoryKind`; Stan: Opłacone / Anulowane; puste grupy nie filtrują), dzień (`StepSwitcher`) w prawym górnym
+  rogu, pod nim kafle (liczą wybrane rodzaje bez filtra stanu), lista z kwotą z dostawą i szczegóły rachunku.
   Paragon fiskalny jeszcze na kasie, integrację z drukarką fiskalną robimy później.
 - Dostawy i odbiór osobisty (0039, 0040, tylko Pro): lokal włącza je w „Ustawienia lokalu” → „Dostawa i odbiór”
   (`delivery_enabled`, `pickup_enabled`, `takeaway_cash` = gotówka, `takeaway_card` = karta przy odbiorze (0074,
@@ -714,7 +720,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `menu_availability` („Skończyło się”). Warianty (np. rozmiary, każdy z ceną), płatne dodatki, stawka VAT i „dostępne teraz”. Przy wariantach
   `price_grosze` to najniższa cena wariantu. „od” przed ceną tylko, gdy warianty mają różne ceny (`priceVaries`
   w modelach gościa, pracownika i panelu); jeden wariant (np. Tonic 200 ml) pokazuje samą cenę. „Skończyło się” może ustawić też kelner i kuchnia (`panel_set_menu_item_available`).
-- Inwentaryzacja (`/inwentaryzacja`, `features/inventory`): zakładki Spis, Składniki, Dostawy i usunięcia, Historia (`IconTabs`).
+- Inwentaryzacja (`/inwentaryzacja`, `features/inventory`): zakładki Spis, Składniki, Dostawy i usunięcia, Historia
+  (`SegmentedTabs` jak w Rezerwacjach, od 5.11.2026; tak samo „Aktywne / Zakończone dziś” w Dostawach i Odbiorze).
   Składniki (`inventory_items`: nazwa, jednostka ml/l/g/kg/szt, pojemność opakowania; usunięcie ustawia `deleted_at`,
   w historii zostają). Spis (`inventory_counts`, jeden otwarty na lokal, `inventory_count_lines` z ilością w opakowaniach
   oraz jednostką i pojemnością z chwili spisu): `panel_inventory_start`, `panel_inventory_set` (każda ilość zapisuje się
