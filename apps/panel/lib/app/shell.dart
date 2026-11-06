@@ -8,6 +8,7 @@ import '../data/providers.dart';
 import '../features/auth/login_screen.dart' show TableMark;
 import '../features/kiosk/kiosk_screen.dart';
 import '../features/onboarding/create_restaurant_screen.dart';
+import '../features/printing/label_printing.dart';
 import '../shared/panel_widgets.dart';
 import 'app.dart';
 import 'panel_theme.dart';
@@ -55,6 +56,8 @@ class PanelShell extends ConsumerWidget {
           }
         }
       });
+      // Etykiety same po przyjęciu zamówienia, gdy ten komputer ma drukarkę i włączony automat („Drukarki”).
+      ref.listen(labelAutoPrintProvider(current.id), (_, _) {});
       // Analiza oszustw w tle: ocena nowych zamówień z aplikacji i sprawdzenie IP bez otwierania Dostaw.
       if (allowed(PanelRoutes.deliveries)) {
         ref.listen(orderRisksProvider((restaurantId: current.id, days: 2)), (_, _) {});

@@ -116,7 +116,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
   Map i śledzenia dostawców nie ma od 0068 (usunięte na prośbę użytkownika, także mapa u gościa).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0076, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0077, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -153,6 +153,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Duotone `plus`, `minus` i `x` to te same kształty bez kwadratu w tle (4.11.2026: zielony „+” w Rezerwacjach,
   `GlowButton(primary)`, wyglądał jak kafelek; nie pobierać ich od nowa z better-icons). Tak samo duotone
   `clock-counter-clockwise` (Logi w pasku bocznym, 5.11.2026): bez zielonego koła w środku, sama linia.
+  Własne ikony do drukarek i edytora etykiet (6.11.2026, rysowane ręcznie w stylu Phosphor): `printer`, `text-t`,
+  `text-b`, `text-align-left/center/right`, `line-segment`, `image`.
 - `apps/guest/lib`: `app` (router, dolne menu, preferencje), `core` (mapy, lokalizacja), `data`, `features`
   (m.in. `ordering`: zamawianie z dostawą i na wynos).
   Odkrywaj (`features/discover`, nowy wygląd z 10.2026): powitanie na całą szerokość, wyszukiwarka
@@ -264,7 +266,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`_RestaurantSwitcher`: logo, kropka połączenia na żywo, plan; strzałka i lista tylko przy kilku lokalach konta).
   Kropka na „Informacje dla pracowników”, dopóki zalogowany pracownik ma nieprzeczytane informacje.
   Wąski pasek boczny: zakładki wybranej grupy (same ikony bez ramek, 30 px, nazwy w podpowiedziach po prawej, `tooltipOnRight`), na dole Ustawienia lokalu
-  (`/ustawienia`), pod nimi Logi (`/logi`, od 31.10.2026), Dane lokalu i Edycja sali (`placeTabs`). Grupa i zakładki według uprawnień zalogowanego pracownika;
+  (`/ustawienia`), Drukarki (`/drukarki`, od 6.11.2026), pod nimi Logi (`/logi`, od 31.10.2026), Dane lokalu i Edycja sali (`placeTabs`). Grupa i zakładki według uprawnień zalogowanego pracownika;
   ostatnia grupa zostaje wybrana na stronach lokalu (`panelSectionProvider`). Bez hamburgera i bez paska nad zakładką.
   Pod nagłówkiem zakładki (`PageHeader`) i pod paskiem Kuchni i Kompletowania nie ma linii (31.10.2026, prośba
   użytkownika): treść zaczyna się zaraz pod zakładkami.
@@ -663,7 +665,35 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   z wyszukiwaniem i filtrami z liczbą rachunków dnia (Rodzaj: W restauracji / Dostawy / Odbiór osobisty,
   `HistoryKind`; Stan: Opłacone / Anulowane; puste grupy nie filtrują), dzień (`StepSwitcher`) w prawym górnym
   rogu, pod nim kafle (liczą wybrane rodzaje bez filtra stanu), lista z kwotą z dostawą i szczegóły rachunku.
-  Paragon fiskalny jeszcze na kasie, integrację z drukarką fiskalną robimy później.
+  Paragon fiskalny jeszcze na kasie, integrację z drukarką fiskalną robimy później. Terminal płatniczy z drukarką
+  (6.11.2026, prośba użytkownika: „ma drukować paragony”) czeka na operatora i model: każdy operator (eService,
+  Polcard/Fiserv, Elavon, PeP, PayTel…) ma własny protokół ECR, a dokumentację daje integratorom.
+- Drukarki i etykiety (0077, pasek boczny → „Drukarki”, `/drukarki`, uprawnienie `profile` albo `orders`;
+  `features/printing`, 6.11.2026, prośba użytkownika: etykiety na pudełka pizzy na wynos, edytor, wydruk testowy).
+  Drukarka etykiet jest na tym komputerze (preferencje lokalne `panel_drukarka_etykiet`, `LabelPrinterSettings`):
+  drukarka systemowa albo w sieci (IP, port 9100), język TSPL (Xprinter, TSC) albo ZPL (Zebra), ciemność, przerwa
+  między etykietami, obrót o 180°, „Wydruk testowy” (wzór z edytora, także niezapisany, z przykładowym zamówieniem)
+  i „Sam po przyjęciu zamówienia” (`labelAutoPrintProvider`, trzyma go `shell.dart`: drukuje zamówienia przyjęte
+  po włączeniu, na tym komputerze, pamięta wydrukowane 3 dni w `panel_etykiety_wydrukowane`; błąd tylko w
+  powiadomieniu, bez ponawiania). Ręcznie: ikona drukarki na karcie zamówienia w Dostawach i Odbiorze. Na tym
+  komputerze: Xprinter XP-410B (USB, sterownik z typem danych RAW), etykiety 100 × 50 mm (od użytkownika).
+  Wygląd etykiety jest wspólny dla lokalu (`label_templates`, RLS bez zasad: `panel_label_template` czyta obsługa,
+  `panel_save_label_template` zapisuje `profile`; bez zapisu domyślny wzór 100 × 50 mm `LabelTemplate.standard`):
+  rozmiar w mm, „Jedna etykieta na” każde danie (każda sztuka z „1/3”) albo całe zamówienie, rodzaje zamówień,
+  działy menu (puste: wszystko, co robi kuchnia, bez napojów `show_in_kitchen = false`) i elementy (tekst, linia,
+  ramka, kod QR, logo lokalu) z polami w klamrach (`labelFields`: {numer}, {sztuka}, {danie}, {dodatki},
+  {pozycje}, {rodzaj}, {godzina}, {data}, {klient}, {telefon}, {adres}, {uwagi}, {platnosc}, {kwota}, {lokal});
+  element ze wszystkimi polami pustymi znika w całości (`resolveLabelText`). Edytor (`printers_screen.dart`):
+  panel po lewej (drukarka, kiedy drukować, zasady), etykieta na białym tle (przeciąganie co 0,5 mm, z Alt co 0,1,
+  uchwyty rozmiaru, strzałki, Delete, Ctrl+D, Ctrl+Z / Ctrl+Shift+Z), przykład Dostawa / Odbiór, „Wydruk” pokazuje
+  punkty drukarki, po prawej rozmiar etykiety z gotowymi rozmiarami albo właściwości elementu (tekst z „Wstaw pole”,
+  czcionka w pt, pogrubienie, wyrównanie, biały na czarnym, „Zmniejsz, gdy się nie mieści”, położenie i rozmiar).
+  Szkic przeżywa zmianę zakładki. Druk: ten sam kod rysuje edytor i etykietę w 8 punktach na mm (203 dpi,
+  `rasterizeLabel`, Geist z polskimi znakami, logo rastrowane Floyd–Steinbergiem), potem BITMAP w TSPL (bit 0 =
+  punkt wydrukowany) albo ^GFA w ZPL (`printer_commands.dart`). Wysyłka bez sterownika rysującego
+  (`printer_transport.dart`): Windows winspool przez FFI (`ffi`, zadanie „RAW”), macOS `lp -o raw` (uprawnienie
+  piaskownicy `com.apple.security.print`), sieć przez gniazdo; na tablecie tylko drukarka w sieci. Drukarka
+  odłączona od USB nie zgłasza błędu: Windows trzyma zadanie w kolejce i drukuje po podłączeniu.
 - Dostawy i odbiór osobisty (0039, 0040, tylko Pro): lokal włącza je w „Ustawienia lokalu” → „Dostawa i odbiór”
   (`delivery_enabled`, `pickup_enabled`, `takeaway_cash` = gotówka, `takeaway_card` = karta przy odbiorze (0074,
   domyślnie włączona), opłata, minimalne zamówienie, obszar). Gość zamawia w aplikacji Table (przycisk „Zamów”

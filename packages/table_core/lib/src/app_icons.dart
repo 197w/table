@@ -183,6 +183,16 @@ abstract final class AppIcons {
   static const phoneSwap = AppIconData('assets/icons/swap.svg');
   static const plus = AppIconData('assets/icons/plus.svg');
   static const prohibit = AppIconData('assets/icons/prohibit.svg');
+
+  // Własne ikony w stylu Phosphor do drukarek i edytora etykiet (6.11.2026).
+  static const printer = AppIconData('assets/icons/printer.svg');
+  static const textT = AppIconData('assets/icons/text-t.svg');
+  static const textBold = AppIconData('assets/icons/text-b.svg');
+  static const textAlignLeft = AppIconData('assets/icons/text-align-left.svg');
+  static const textAlignCenter = AppIconData('assets/icons/text-align-center.svg');
+  static const textAlignRight = AppIconData('assets/icons/text-align-right.svg');
+  static const lineSegment = AppIconData('assets/icons/line-segment.svg');
+  static const image = AppIconData('assets/icons/image.svg');
   static const qrCode = AppIconData('assets/icons/qr-code.svg');
   static const question = AppIconData('assets/icons/question.svg');
   static const receipt = AppIconData('assets/icons/receipt.svg');

@@ -22,6 +22,7 @@ import '../features/management/unclosed_screen.dart';
 import '../features/menu/menu_screen.dart';
 import '../features/orders/order_history_screen.dart';
 import '../features/orders/orders_screen.dart';
+import '../features/printing/printers_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/reservations/reservations_screen.dart';
 import '../features/reviews/reviews_screen.dart';
@@ -198,6 +199,7 @@ GoRouter _buildRouter(
           _page(PanelRoutes.discounts, const DiscountsScreen()),
           _page(PanelRoutes.export, const ExportScreen()),
           _page(PanelRoutes.activity, const ActivityScreen()),
+          _page(PanelRoutes.printers, const PrintersScreen()),
         ],
       ),
     ],
@@ -250,6 +252,7 @@ abstract final class PanelRoutes {
   static const discounts = '/rabaty';
   static const export = '/eksport';
   static const activity = '/logi';
+  static const printers = '/drukarki';
 }
 
 /// Uprawnienia, z których wystarczy jedno, żeby otworzyć zakładkę.
@@ -282,6 +285,8 @@ const _routePermissions = {
   PanelRoutes.discounts: {'discounts'},
   PanelRoutes.export: {'export'},
   PanelRoutes.activity: {'activity'},
+  // Drukarkę tego komputera ustawia też obsługa zamówień; wygląd etykiety zmienia tylko uprawnienie „profile”.
+  PanelRoutes.printers: {'profile', 'orders'},
 };
 
 /// Nazwy zakładek, np. w logowaniu do zakładki.
@@ -312,6 +317,7 @@ const panelTabLabels = {
   PanelRoutes.discounts: 'Kody rabatowe',
   PanelRoutes.export: 'Eksport',
   PanelRoutes.activity: 'Logi',
+  PanelRoutes.printers: 'Drukarki',
 };
 
 /// Zakładka (jej ścieżka) dla adresu. Null: adres poza zakładkami.

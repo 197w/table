@@ -22,8 +22,11 @@ void main() {
     expect(PanelSection.forRoute(PanelRoutes.teamStats), PanelSection.staff);
     expect(PanelSection.forRoute(PanelRoutes.reviews), PanelSection.customers);
     expect(PanelSection.forRoute(PanelRoutes.profile), isNull);
-    expect(placeTabs.map((t) => t.label), ['Ustawienia lokalu', 'Logi', 'Dane lokalu', 'Edycja sali']);
+    expect(placeTabs.map((t) => t.label), ['Ustawienia lokalu', 'Drukarki', 'Logi', 'Dane lokalu', 'Edycja sali']);
     expect(PanelSection.forRoute(PanelRoutes.activity), isNull);
+    // Drukarkę etykiet na komputerze ustawia też obsługa zamówień.
+    expect(canOpenRoute(PanelRoutes.printers, {'orders'}), isTrue);
+    expect(canOpenRoute(PanelRoutes.printers, {'kitchen'}), isFalse);
   });
 
   test('grupy według uprawnień: flota i klienci mają własne', () {

@@ -29,6 +29,8 @@ dependencies:
   image: any
   pdf: ^3.11.1
   http: any
+  # Drukarka etykiet: bufor wydruku Windows (winspool) przez FFI.
+  ffi: ^2.1.0
 
 dev_dependencies:
   flutter_test:

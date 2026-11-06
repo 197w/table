@@ -6,6 +6,7 @@ import '../../app/panel_theme.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
+import '../printing/label_printing.dart';
 import 'order_risk.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
@@ -63,6 +64,21 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
       if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Etykiety zamówienia na drukarce etykiet tego komputera (wzór z „Drukarki”).
+  Future<void> _printLabels(String restaurantId, TakeawayOrder order) async {
+    try {
+      final n = await ref.read(labelPrintingProvider).printOrder(restaurantId, order);
+      if (!mounted) return;
+      if (n == 0) {
+        showMessage(context, 'W ${order.label} nie ma dań z etykietą (zasady w „Drukarki”).');
+      } else {
+        showMessage(context, '${order.label}: ${labelCount(n)} na drukarce.', tone: ToastTone.success, icon: AppIcons.printer);
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
     }
   }
 
@@ -227,6 +243,7 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
                           '${o.label} przyjęte: gotowe ok. ${_hm(DateTime.now().add(Duration(minutes: minutes)))}.',
                         ),
                         onReject: () => _reject(rid, o),
+                        onPrint: () => _printLabels(rid, o),
                         onReady: () => _run(rid, () => ref.read(repositoryProvider).takeawayReady(o.id), '${o.label} gotowe.'),
                         onHanded: () => _run(
                           rid,
@@ -329,6 +346,7 @@ class _OrderCard extends StatefulWidget {
     required this.onAssign,
     required this.onMerge,
     required this.onSplit,
+    required this.onPrint,
   });
 
   final TakeawayOrder order;
@@ -347,6 +365,9 @@ class _OrderCard extends StatefulWidget {
   final VoidCallback onReady;
   final VoidCallback onHanded;
   final ValueChanged<String?> onAssign;
+
+  /// Etykiety na pudełka (drukarka etykiet tego komputera).
+  final VoidCallback onPrint;
 
   @override
   State<_OrderCard> createState() => _OrderCardState();
@@ -382,6 +403,13 @@ class _OrderCardState extends State<_OrderCard> {
                   RiskChip(risk: risk),
                 ],
                 const Spacer(),
+                IconButton(
+                  tooltip: 'Drukuj etykiety',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: widget.onPrint,
+                  icon: const Glyph(AppIcons.printer, size: 18),
+                ),
+                const SizedBox(width: 4),
                 Text(
                   o.scheduledFor != null
                       ? 'na ${dayTimeLabel(o.scheduledFor!)}'

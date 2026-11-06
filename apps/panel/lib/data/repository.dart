@@ -1434,6 +1434,19 @@ class PanelRepository {
   }
 
   /// Platformy dostaw lokalu (nazwy w kolejności), do kwot w podsumowaniu dnia.
+  /// Wzór etykiety lokalu (0077) jako JSON; null: lokal go jeszcze nie zapisał.
+  Future<Map<String, dynamic>?> labelTemplateJson(String restaurantId) {
+    return _guard(() async {
+      final row = await _db.rpc<dynamic>('panel_label_template', params: {'p_restaurant_id': restaurantId});
+      return row is Map<String, dynamic> ? row : null;
+    });
+  }
+
+  /// Zapis wzoru etykiety: parametry z `LabelTemplate.toRpc`.
+  Future<void> saveLabelTemplate(Map<String, dynamic> params) {
+    return _guard(() => _db.rpc<void>('panel_save_label_template', params: params));
+  }
+
   Future<void> setDeliveryPlatforms(String restaurantId, List<String> names) {
     return _guard(
       () => _db.rpc<void>('panel_set_delivery_platforms', params: {'p_restaurant_id': restaurantId, 'p_names': names}),
