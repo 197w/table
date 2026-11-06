@@ -116,7 +116,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
   Map i śledzenia dostawców nie ma od 0068 (usunięte na prośbę użytkownika, także mapa u gościa).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0077, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0078, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -266,7 +266,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`_RestaurantSwitcher`: logo, kropka połączenia na żywo, plan; strzałka i lista tylko przy kilku lokalach konta).
   Kropka na „Informacje dla pracowników”, dopóki zalogowany pracownik ma nieprzeczytane informacje.
   Wąski pasek boczny: zakładki wybranej grupy (same ikony bez ramek, 30 px, nazwy w podpowiedziach po prawej, `tooltipOnRight`), na dole Ustawienia lokalu
-  (`/ustawienia`), Drukarki (`/drukarki`, od 6.11.2026), pod nimi Logi (`/logi`, od 31.10.2026), Dane lokalu i Edycja sali (`placeTabs`). Grupa i zakładki według uprawnień zalogowanego pracownika;
+  (`/ustawienia`), Drukarki i terminal (`/drukarki`, od 6.11.2026), pod nimi Logi (`/logi`, od 31.10.2026), Dane lokalu i Edycja sali (`placeTabs`). Grupa i zakładki według uprawnień zalogowanego pracownika;
   ostatnia grupa zostaje wybrana na stronach lokalu (`panelSectionProvider`). Bez hamburgera i bez paska nad zakładką.
   Pod nagłówkiem zakładki (`PageHeader`) i pod paskiem Kuchni i Kompletowania nie ma linii (31.10.2026, prośba
   użytkownika): treść zaczyna się zaraz pod zakładkami.
@@ -665,11 +665,36 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   z wyszukiwaniem i filtrami z liczbą rachunków dnia (Rodzaj: W restauracji / Dostawy / Odbiór osobisty,
   `HistoryKind`; Stan: Opłacone / Anulowane; puste grupy nie filtrują), dzień (`StepSwitcher`) w prawym górnym
   rogu, pod nim kafle (liczą wybrane rodzaje bez filtra stanu), lista z kwotą z dostawą i szczegóły rachunku.
-  Paragon fiskalny jeszcze na kasie, integrację z drukarką fiskalną robimy później. Terminal płatniczy z drukarką
-  (6.11.2026, prośba użytkownika: „ma drukować paragony”) czeka na operatora i model: każdy operator (eService,
-  Polcard/Fiserv, Elavon, PeP, PayTel…) ma własny protokół ECR, a dokumentację daje integratorom.
-- Drukarki i etykiety (0077, pasek boczny → „Drukarki”, `/drukarki`, uprawnienie `profile` albo `orders`;
-  `features/printing`, 6.11.2026, prośba użytkownika: etykiety na pudełka pizzy na wynos, edytor, wydruk testowy).
+  Paragon fiskalny i terminal płatniczy: „Drukarki i terminal” → „Paragony” i „Terminal” (niżej).
+- Drukarki i terminal (pasek boczny → „Drukarki i terminal”, `/drukarki`, uprawnienie `profile` albo `orders`;
+  `features/printing`, 6.11.2026, prośby użytkownika). W panelu po lewej zakładki Etykiety / Paragony / Terminal.
+  Paragony (0078, `fiscal_printing.dart`, `novitus_xml.dart`, `fiscal_receipt.dart`, `cp1250.dart`): drukarka fiskalna
+  albo kasoterminal na tym komputerze (`panel_drukarka_fiskalna`), na razie tylko protokół XML Novitus przez sieć
+  (publiczny opis „Description of XML communication protocol” 1.0.2, novitus.pl/file/get/701; nazwy atrybutów jak
+  w działającej bibliotece litex.novitus_xml: `ptu`, `quantityunit`, bo angielski opis myli je z „rate”): pakiety
+  `<packet>` w Windows-1250, port domyślnie 6001, po każdej komendzie `<enq/>` (`lastcommanderror`) i numer błędu
+  z `<error action="get"/>`; stawki PTU czytane z drukarki (`<taxrates action="get">`) i dopasowane do VAT z menu;
+  paragon = aktywne pozycje (nazwa z wariantem, ilość, cena z dodatkami), dostawa (stawka do wyboru, domyślnie 8%),
+  rabat do sumy, formy płatności (tylko gdy suma się zgadza; zadatek jako przelew), NIP firmy, numer systemowy
+  („D12”, „O12”, „R” + początek id); otwarty paragon po przerwie anulowany przed nowym. Jeden paragon na rachunek:
+  `fiscal_receipts` (RLS: czyta obsługa, zapis tylko funkcjami) i `panel_fiscal_claim` (rezerwacja przed wydrukiem,
+  `p_force` po przerwanym wydruku), `panel_fiscal_done` (numer z drukarki), `panel_fiscal_release` (błąd),
+  `panel_fiscal_pending` (kolejka). „Kasa główna” (`fiscalAutoPrintProvider` w `shell.dart`): ten komputer drukuje
+  paragon za każdy opłacony rachunek lokalu zamknięty od włączenia (panel, telefon kelnera, wydanie na wynos),
+  przy błędzie pauza minuta. Ręcznie: Historia zamówień → rachunek → „Wydrukuj paragon” (`FiscalReceiptRow`, numer
+  i godzina wydrukowanego). „Wydruk niefiskalny” i „Sprawdź połączenie” (stan, tryb fiskalny/szkoleniowy, stawki).
+  Posnet i Elzab nie mają publicznej dokumentacji protokołu (do zrobienia po dokumentacji od producenta).
+  Terminal (`payment_terminal.dart`, `panel_terminal_platniczy`, klucze tylko na tym komputerze): Viva.com Cloud
+  Terminal API (token `connect/token` z danymi „POS APIs”, `ecr/v1/transactions:sale` w groszach i walucie 985,
+  odpytywanie `ecr/v1/sessions/{id}` co 2 s do 4 min, przerwanie DELETE sesji; demo albo produkcja) i Adyen
+  Terminal API w chmurze (`device-api-test`/`device-api-live.adyen.com/v1/merchants/{konto}/devices/{POIID}/sync`,
+  nagłówek `x-API-key`, nexo `PaymentRequest` w PLN, po 170 s `TransactionStatusRequest`, przerwanie
+  `AbortRequest` na `/async`, „Sprawdź połączenie” przez `DiagnosisRequest`). Zamknięcie rachunku kartą (całość
+  albo wybrane pozycje, `SettleDialog._terminal`) otwiera okno płatności (`showTerminalPayment`: kwota z napiwkiem,
+  „Przerwij”), rachunek zamyka się dopiero po udanej płatności; podział „Równo” bez terminala. Polscy operatorzy
+  (eService, Polcard, Elavon, PeP, PayTel) bez publicznej dokumentacji. Nic z tego nie było sprawdzone na prawdziwym
+  urządzeniu (testy: udawana drukarka TCP i udawane API, `test/fiscal_terminal_test.dart`).
+  Etykiety (0077, prośba użytkownika: etykiety na pudełka pizzy na wynos, edytor, wydruk testowy).
   Drukarka etykiet jest na tym komputerze (preferencje lokalne `panel_drukarka_etykiet`, `LabelPrinterSettings`):
   drukarka systemowa albo w sieci (IP, port 9100), język TSPL (Xprinter, TSC) albo ZPL (Zebra), ciemność, przerwa
   między etykietami, obrót o 180°, „Wydruk testowy” (wzór z edytora, także niezapisany, z przykładowym zamówieniem)

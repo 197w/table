@@ -317,7 +317,7 @@ const panelTabLabels = {
   PanelRoutes.discounts: 'Kody rabatowe',
   PanelRoutes.export: 'Eksport',
   PanelRoutes.activity: 'Logi',
-  PanelRoutes.printers: 'Drukarki',
+  PanelRoutes.printers: 'Drukarki i terminal',
 };
 
 /// Zakładka (jej ścieżka) dla adresu. Null: adres poza zakładkami.

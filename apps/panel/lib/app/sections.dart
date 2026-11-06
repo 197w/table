@@ -78,7 +78,7 @@ enum PanelSection {
 const placeTabs = [
   PanelTab(PanelRoutes.settings, 'Ustawienia lokalu', AppIcons.gear),
   // Drukarka etykiet i edytor etykiet (6.11.2026).
-  PanelTab(PanelRoutes.printers, 'Drukarki', AppIcons.printer),
+  PanelTab(PanelRoutes.printers, 'Drukarki i terminal', AppIcons.printer),
   // Logi i Time Machine (od 10.2026 pod ustawieniami, nie w Management).
   PanelTab(PanelRoutes.activity, 'Logi', AppIcons.clockCounterClockwise),
   PanelTab(PanelRoutes.profile, 'Dane lokalu', AppIcons.storefront),

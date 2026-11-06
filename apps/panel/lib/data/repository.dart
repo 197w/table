@@ -1586,6 +1586,72 @@ class PanelRepository {
     });
   }
 
+  // Paragony fiskalne (0078): kolejka opłaconych rachunków bez paragonu i rezerwacja, żeby nie było dwóch.
+
+  /// Opłacone rachunki bez paragonu zamknięte od [since] (najstarsze pierwsze, najwyżej 50).
+  Future<List<String>> fiscalPendingIds(String restaurantId, DateTime since) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>(
+        'panel_fiscal_pending',
+        params: {'p_restaurant_id': restaurantId, 'p_since': since.toUtc().toIso8601String()},
+      );
+      return [for (final r in rows) r is Map ? r.values.first as String : r as String];
+    });
+  }
+
+  /// Rachunki do paragonu z NIP-em nabywcy (firma z zamówienia na wynos).
+  Future<List<(PanelOrder, String?)>> fiscalOrders(List<String> ids) {
+    if (ids.isEmpty) return Future.value(const []);
+    return _guard(() async {
+      final rows = await _db
+          .from('orders')
+          .select(
+            'id, table_id, reservation_id, note, status, opened_at, closed_at, '
+            'payment_method, gift_card_grosze, kind, number, discount_grosze, discount_label, deposit_grosze, tip_grosze, '
+            'delivery_fee_grosze, customer_name, customer_company, customer_nip, customer_phone, delivery_address, '
+            'order_items(*), order_payments(method, amount_grosze, tip_grosze)',
+          )
+          .inFilter('id', ids)
+          .order('closed_at');
+      return [for (final r in rows) (PanelOrder.fromJson(r), (r['customer_nip'] as String?)?.trim())];
+    });
+  }
+
+  /// Rezerwacja paragonu. False: rachunek ma już paragon (albo inny komputer właśnie go drukuje).
+  Future<bool> fiscalClaim(String orderId, {bool force = false}) {
+    return _guard(
+      () async => await _db.rpc<dynamic>('panel_fiscal_claim', params: {'p_order_id': orderId, 'p_force': force}) == true,
+    );
+  }
+
+  Future<void> fiscalDone(String orderId, String receiptNo, String device) {
+    return _guard(
+      () => _db.rpc<void>(
+        'panel_fiscal_done',
+        params: {'p_order_id': orderId, 'p_receipt_no': receiptNo, 'p_device': device},
+      ),
+    );
+  }
+
+  Future<void> fiscalRelease(String orderId) {
+    return _guard(() => _db.rpc<void>('panel_fiscal_release', params: {'p_order_id': orderId}));
+  }
+
+  /// Paragony lokalu zarezerwowane od [since]: rachunek → (kiedy wydrukowany, numer z drukarki).
+  Future<Map<String, (DateTime?, String?)>> fiscalReceipts(String restaurantId, DateTime since) {
+    return _guard(() async {
+      final rows = await _db
+          .from('fiscal_receipts')
+          .select('order_id, printed_at, receipt_no')
+          .eq('restaurant_id', restaurantId)
+          .gte('claimed_at', since.toUtc().toIso8601String());
+      return {
+        for (final r in rows)
+          r['order_id'] as String: (DateTime.tryParse(r['printed_at'] as String? ?? '')?.toLocal(), r['receipt_no'] as String?),
+      };
+    });
+  }
+
   /// Adres klienta z ustawień aplikacji Table. Null: gość bez konta albo bez adresu.
   Future<GuestAppAddress?> customerAppAddress(String restaurantId, String key) {
     return _guard(() async {

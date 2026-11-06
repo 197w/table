@@ -6,6 +6,8 @@ import 'package:table_core/table_core.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
+import '../printing/devices_pages.dart';
+import '../printing/payment_terminal.dart';
 import 'discount_code_field.dart';
 import 'person_badge.dart';
 
@@ -97,8 +99,23 @@ class _SettleDialogState extends ConsumerState<SettleDialog> {
 
   String? get _memberId => ref.read(panelMemberProvider)?.dbMemberId;
 
-  Future<void> _payWhole(OrderDue due) {
+  /// Karta przy ustawionym terminalu („Drukarki” → „Terminal”): najpierw płatność na terminalu (kwota z napiwkiem),
+  /// rachunek zamyka się dopiero po udanej. Bez terminala true, jak dotąd.
+  Future<bool> _terminal(PaymentMethod method, int grosze) async {
+    final client = ref.read(terminalClientProvider);
+    if (client == null || method != PaymentMethod.card || grosze <= 0) return true;
+    final result = await showTerminalPayment(
+      context,
+      client,
+      grosze: grosze,
+      reference: '${widget.title} · ${widget.orderId.substring(0, 8)}',
+    );
+    return result?.success == true;
+  }
+
+  Future<void> _payWhole(OrderDue due) async {
     final tip = _money(_tip);
+    if (!await _terminal(_method, due.dueGrosze + tip)) return;
     return _run(
       () => ref.read(repositoryProvider).settleOrder(
         widget.orderId,
@@ -127,11 +144,12 @@ class _SettleDialogState extends ConsumerState<SettleDialog> {
     );
   }
 
-  Future<void> _payItems(PanelOrder order, OrderDue due) {
+  Future<void> _payItems(PanelOrder order, OrderDue due) async {
     final part = _partTotal(order);
     final (_, partDue) = due.forPart(part);
     final all = order.active.every((i) => (_picked[i.id] ?? 0) == i.quantity);
     final tip = _money(_tip);
+    if (!await _terminal(_method, (all ? due.dueGrosze : partDue) + tip)) return;
     return _run(
       () => ref.read(repositoryProvider).payItems(
         widget.orderId,

@@ -8,6 +8,7 @@ import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
 import '../../shared/side_panel.dart';
+import '../printing/devices_pages.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -520,6 +521,7 @@ class _OrderDetail extends StatelessWidget {
                   ].join(' · '),
                   style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
                 ),
+                FiscalReceiptRow(order: order),
               ],
             ),
           ),

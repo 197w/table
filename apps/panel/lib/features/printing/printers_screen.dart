@@ -12,10 +12,13 @@ import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
 import '../../shared/side_panel.dart';
+import 'devices_pages.dart';
+import 'fiscal_printing.dart';
 import 'label_printing.dart';
 import 'label_render.dart';
 import 'label_template.dart';
 import 'printer_commands.dart';
+import 'payment_terminal.dart';
 import 'printer_transport.dart';
 
 // Drukarki (pasek boczny pod „Ustawienia lokalu”, `/drukarki`, 6.11.2026, prośba użytkownika): drukarka etykiet
@@ -43,6 +46,9 @@ class _DraftNotifier extends Notifier<_Draft?> {
 
 final _labelDraftProvider = NotifierProvider<_DraftNotifier, _Draft?>(_DraftNotifier.new);
 
+/// Części „Drukarki”: etykiety (edytor), paragony (drukarka fiskalna), terminal płatniczy.
+enum _Section { labels, fiscal, terminal }
+
 class PrintersScreen extends ConsumerStatefulWidget {
   const PrintersScreen({super.key});
 
@@ -52,6 +58,7 @@ class PrintersScreen extends ConsumerStatefulWidget {
 
 class _PrintersScreenState extends ConsumerState<PrintersScreen> {
   bool _panelOpen = true;
+  _Section _section = _Section.labels;
   String? _selectedId;
   bool _preview = false;
   bool _sampleDelivery = true;
@@ -251,16 +258,25 @@ class _PrintersScreenState extends ConsumerState<PrintersScreen> {
     final selected = template.elements.where((e) => e.id == _selectedId).firstOrNull;
 
     final panel = SidePanel(
-      header: const PanelTitle(icon: AppIcons.printer, title: 'Drukarki'),
-      children: [
-        _PrinterSection(template: template, values: values, logoUrl: logoUrl),
-        _RulesSection(
-          template: template,
-          menu: menu,
-          editable: editable,
-          onChanged: (t) => _apply(rid, base, t),
-        ),
-      ],
+      header: SegmentedTabs<_Section>(
+        options: const [(_Section.labels, 'Etykiety'), (_Section.fiscal, 'Paragony'), (_Section.terminal, 'Terminal')],
+        selected: _section,
+        expand: true,
+        onChanged: (s) => setState(() => _section = s),
+      ),
+      children: switch (_section) {
+        _Section.labels => [
+          _PrinterSection(template: template, values: values, logoUrl: logoUrl),
+          _RulesSection(
+            template: template,
+            menu: menu,
+            editable: editable,
+            onChanged: (t) => _apply(rid, base, t),
+          ),
+        ],
+        _Section.fiscal => const [_DeviceSummary(fiscal: true)],
+        _Section.terminal => const [_DeviceSummary(fiscal: false)],
+      },
     );
 
     final text = Theme.of(context).textTheme;
@@ -411,7 +427,51 @@ class _PrintersScreenState extends ConsumerState<PrintersScreen> {
       open: _panelOpen,
       onToggle: () => setState(() => _panelOpen = !_panelOpen),
       panel: panel,
-      content: content,
+      content: TabContent(
+        tab: _section.index,
+        child: switch (_section) {
+          _Section.labels => content,
+          _Section.fiscal => const FiscalPage(),
+          _Section.terminal => const TerminalPage(),
+        },
+      ),
+    );
+  }
+}
+
+/// Panel po lewej przy „Paragony” i „Terminal”: co jest ustawione na tym komputerze.
+class _DeviceSummary extends ConsumerWidget {
+  const _DeviceSummary({required this.fiscal});
+
+  final bool fiscal;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final muted = text.bodySmall?.copyWith(color: AppColors.textMuted);
+    final String title;
+    final String body;
+    if (fiscal) {
+      final s = ref.watch(fiscalSettingsProvider);
+      title = s.configured ? s.title : 'Nie ustawiona';
+      body = s.configured
+          ? (s.auto ? 'Kasa główna: drukuje paragony za wszystkie opłacone rachunki lokalu.' : 'Paragony drukuje się ręcznie z Historii zamówień.')
+          : 'Wpisz adres drukarki fiskalnej Novitus w sieci lokalu.';
+    } else {
+      final s = ref.watch(terminalSettingsProvider);
+      title = s.configured ? s.title : 'Nie ustawiony';
+      body = s.configured
+          ? 'Zamknięcie rachunku kartą wysyła kwotę na terminal.'
+          : 'Wybierz operatora i wpisz dane z konta u operatora.';
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _GroupTitle(fiscal ? 'Drukarka fiskalna' : 'Terminal płatniczy', subtitle: 'na tym komputerze', first: true),
+        Text(title, style: text.bodyMedium),
+        const SizedBox(height: 4),
+        Text(body, style: muted),
+      ],
     );
   }
 }
