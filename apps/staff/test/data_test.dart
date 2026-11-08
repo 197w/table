@@ -102,6 +102,21 @@ void main() {
     expect(DateTime.utc(from.year, from.month, from.day).difference(DateTime.utc(2026, 1, 5)).inDays % 14, 0);
   });
 
+  test('Kalendarz: okres lokalu dla dowolnego dnia, także przy zmianie czasu', () {
+    final today = DateTime.now();
+    for (final kind in ['week', 'two_weeks', 'month']) {
+      expect(periodOf(kind, today), periodFor(kind, 0), reason: kind);
+      // Każdy dzień od października do grudnia leży w swoim okresie (25.10.2026 zmiana czasu na zimowy).
+      for (var d = DateTime(2026, 10, 1); d.isBefore(DateTime(2027, 1, 1)); d = DateTime(d.year, d.month, d.day + 1)) {
+        final p = periodOf(kind, d);
+        expect(p.from.isAfter(d) || p.to.isBefore(d), isFalse, reason: '$kind $d');
+        expect(p.from.hour, 0, reason: '$kind $d');
+      }
+    }
+    expect(periodOf('week', DateTime(2026, 11, 8)), (from: DateTime(2026, 11, 2), to: DateTime(2026, 11, 8)));
+    expect(periodOf('two_weeks', DateTime(2026, 10, 26)).from.weekday, DateTime.monday);
+  });
+
   test('menu kelnera: „od” tylko przy różnych cenach wariantów', () {
     WMenuItem item(List<Map<String, Object>> variants) =>
         WMenuItem.fromJson({'id': 'm1', 'name': 'Tonic', 'price_grosze': 1500, 'variants': variants});

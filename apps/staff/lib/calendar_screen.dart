@@ -6,27 +6,10 @@ import 'package:table_core/table_core.dart';
 import 'data.dart';
 import 'ui.dart';
 
-// Kalendarz w Table for employees (0080, zadanie „Kalendarz” z Todoist: wygląd i działanie inspirowane Apple
-// Calendar): u góry miesiąc z kropkami w dniach z wydarzeniami (dziś na czerwono), pod nim wydarzenia wybranego
-// dnia. Pracownik widzi wydarzenia specjalne lokalu i te dla pracowników (spotkania, szkolenia) ze wszystkich
-// swoich lokali; osoba z uprawnieniem „Kalendarz” dodaje nowe przyciskiem „+”.
+// Wydarzenia z Kalendarza lokalu w Table for employees (0080): wydarzenia specjalne lokalu i te dla pracowników
+// (spotkania, szkolenia) ze wszystkich lokali pracownika. Zakładka „Kalendarz” (dawniej Grafik, [ScheduleScreen])
+// pokazuje je pod siatką miesiąca razem z grafikiem; osoba z uprawnieniem „Kalendarz” dodaje nowe przyciskiem „+”.
 
-const _red = Color(0xFFEB5757);
-const _weekdaysMini = ['P', 'W', 'Ś', 'C', 'P', 'S', 'N'];
-const _months = [
-  'Styczeń',
-  'Luty',
-  'Marzec',
-  'Kwiecień',
-  'Maj',
-  'Czerwiec',
-  'Lipiec',
-  'Sierpień',
-  'Wrzesień',
-  'Październik',
-  'Listopad',
-  'Grudzień',
-];
 const _monthsGenitive = [
   'stycznia',
   'lutego',
@@ -41,8 +24,6 @@ const _monthsGenitive = [
   'listopada',
   'grudnia',
 ];
-const _weekdaysLong = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota', 'Niedziela'];
-
 const _colors = {
   'green': Color(0xFF2FB673),
   'blue': Color(0xFF3B82F6),
@@ -53,8 +34,10 @@ const _colors = {
   'gray': Color(0xFF8A8F98),
 };
 
+/// Kolor wydarzenia z panelu (green, blue, violet, amber, rose, teal, gray).
+Color eventColor(StaffEvent e) => _colors[e.color] ?? AppColors.accent;
+
 DateTime _day(DateTime t) => DateTime(t.year, t.month, t.day);
-bool _same(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
 
 /// Wydarzenie z Kalendarza lokalu.
 class StaffEvent {
@@ -112,238 +95,9 @@ final staffCalendarProvider = FutureProvider.autoDispose.family<List<StaffEvent>
   return [for (final r in rows) StaffEvent.fromJson(r)];
 });
 
-class StaffCalendarScreen extends ConsumerStatefulWidget {
-  const StaffCalendarScreen({super.key});
-
-  @override
-  ConsumerState<StaffCalendarScreen> createState() => _StaffCalendarScreenState();
-}
-
-class _StaffCalendarScreenState extends ConsumerState<StaffCalendarScreen> {
-  late DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
-  late DateTime _selected = _day(DateTime.now());
-
-  DateTime get _gridStart {
-    final first = DateTime(_month.year, _month.month);
-    return first.subtract(Duration(days: first.weekday - 1));
-  }
-
-  void _shift(int dir) => setState(() => _month = DateTime(_month.year, _month.month + dir));
-
-  Future<void> _add(List<Job> jobs) async {
-    final saved = await showTableSheet<bool>(
-      context: context,
-      builder: (_) => _AddEventSheet(jobs: jobs, day: _selected),
-    );
-    if (saved == true) ref.invalidate(staffCalendarProvider);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final jobs = ref.watch(jobsProvider).value ?? const <Job>[];
-    final ids = {for (final j in jobs) j.restaurantId}.toList()..sort();
-    final start = _gridStart;
-    final end = start.add(const Duration(days: 42));
-    final async = ref.watch(staffCalendarProvider((restaurants: ids.join(','), from: start, to: end)));
-    final events = async.value ?? const <StaffEvent>[];
-    final today = _day(DateTime.now());
-    final names = {for (final j in jobs) j.restaurantId: j.restaurantName};
-    final canAdd = [
-      for (final j in jobs)
-        if (j.permissions.contains('calendar')) j,
-    ];
-    final dayEvents = [
-      for (final e in events)
-        if (e.overlaps(_selected, _selected.add(const Duration(days: 1)))) e,
-    ];
-
-    return Scaffold(
-      // Jak w Apple Calendar: „Dziś” i „+” w pasku u góry, miesiąc nad siatką, przesuwanie palcem zmienia miesiąc.
-      appBar: AppBar(
-        leading: glassLeading(context),
-        title: const Text('Kalendarz'),
-        actions: [
-          TextButton(
-            onPressed: () => setState(() {
-              _month = DateTime(today.year, today.month);
-              _selected = today;
-            }),
-            child: const Text('Dziś'),
-          ),
-          if (canAdd.isNotEmpty)
-            IconButton(tooltip: 'Nowe wydarzenie', onPressed: () => _add(canAdd), icon: const Glyph(AppIcons.plus)),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async => ref.invalidate(staffCalendarProvider),
-        child: ContentWidth(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 32),
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(left: 4, bottom: 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Semantics(
-                        header: true,
-                        child: Text(
-                          '${_months[_month.month - 1]} ${_month.year}',
-                          style: text.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Poprzedni miesiąc',
-                      onPressed: () => _shift(-1),
-                      icon: const Glyph(AppIcons.caretLeft),
-                    ),
-                    IconButton(
-                      tooltip: 'Następny miesiąc',
-                      onPressed: () => _shift(1),
-                      icon: const Glyph(AppIcons.caretRight),
-                    ),
-                  ],
-                ),
-              ),
-              Row(
-                children: [
-                  for (final d in _weekdaysMini)
-                    Expanded(
-                      child: Center(
-                        child: Text(d, style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onHorizontalDragEnd: (d) {
-                  final v = d.primaryVelocity ?? 0;
-                  if (v.abs() > 250) _shift(v < 0 ? 1 : -1);
-                },
-                child: Column(
-                  children: [
-                    for (var w = 0; w < 6; w++)
-                      Row(
-                        children: [
-                          for (var i = 0; i < 7; i++)
-                            Expanded(
-                              child: Builder(
-                                builder: (context) {
-                                  final day = start.add(Duration(days: w * 7 + i));
-                                  final inMonth = day.month == _month.month;
-                                  final isToday = _same(day, today);
-                                  final isSelected = _same(day, _selected);
-                                  final has = [
-                                    for (final e in events)
-                                      if (e.overlaps(day, day.add(const Duration(days: 1)))) e,
-                                  ];
-                                  return Semantics(
-                                    button: true,
-                                    selected: isSelected,
-                                    label:
-                                        '${day.day} ${_monthsGenitive[day.month - 1]}'
-                                        '${has.isEmpty ? '' : ', wydarzeń: ${has.length}'}',
-                                    excludeSemantics: true,
-                                    child: InkWell(
-                                      onTap: () => setState(() {
-                                        _selected = day;
-                                        if (!inMonth) _month = DateTime(day.year, day.month);
-                                      }),
-                                      customBorder: const CircleBorder(),
-                                      child: SizedBox(
-                                        height: 52,
-                                        child: Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Container(
-                                              width: 34,
-                                              height: 34,
-                                              alignment: Alignment.center,
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                color: isSelected ? (isToday ? _red : AppColors.text) : null,
-                                              ),
-                                              child: Text(
-                                                '${day.day}',
-                                                style: text.titleSmall?.copyWith(
-                                                  fontWeight: isSelected || isToday ? FontWeight.w600 : FontWeight.w400,
-                                                  color: isSelected
-                                                      ? (isToday ? Colors.white : AppColors.background)
-                                                      : isToday
-                                                      ? _red
-                                                      : (inMonth ? AppColors.text : AppColors.textMuted),
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 3),
-                                            Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                for (final e in has.take(3))
-                                                  Container(
-                                                    width: 5,
-                                                    height: 5,
-                                                    margin: const EdgeInsets.symmetric(horizontal: 1),
-                                                    decoration: BoxDecoration(
-                                                      color: _colors[e.color] ?? AppColors.accent,
-                                                      shape: BoxShape.circle,
-                                                    ),
-                                                  ),
-                                                if (has.isEmpty) const SizedBox(height: 5),
-                                              ],
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                        ],
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Divider(height: 1, color: AppColors.ring),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
-                child: Text(
-                  '${_weekdaysLong[_selected.weekday - 1]}, ${_selected.day} ${_monthsGenitive[_selected.month - 1]}',
-                  style: text.titleMedium,
-                ),
-              ),
-              if (async.isLoading && !async.hasValue)
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else if (async.hasError && !async.hasValue)
-                ErrorView(error: async.error!, onRetry: () => ref.invalidate(staffCalendarProvider))
-              else if (dayEvents.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
-                  child: Text('Brak wydarzeń', style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
-                )
-              else
-                for (final e in dayEvents)
-                  _EventTile(event: e, day: _selected, restaurant: ids.length > 1 ? names[e.restaurantId] : null),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Wydarzenie dnia jak na liście w Apple Calendar: godziny po lewej, kolorowa kreska, nazwa i opis.
-class _EventTile extends StatelessWidget {
-  const _EventTile({required this.event, required this.day, required this.restaurant});
+class CalendarEventTile extends StatelessWidget {
+  const CalendarEventTile({super.key, required this.event, required this.day, required this.restaurant});
 
   final StaffEvent event;
   final DateTime day;
@@ -355,7 +109,7 @@ class _EventTile extends StatelessWidget {
     final e = event;
     final dayEnd = day.add(const Duration(days: 1));
     final wholeDay = e.allDay || (!e.startsAt.isAfter(day) && !e.endsAt.isBefore(dayEnd));
-    final color = _colors[e.color] ?? AppColors.accent;
+    final color = eventColor(e);
     final kind = e.special ? 'Wydarzenie specjalne' : 'Dla pracowników';
     return Semantics(
       label:
@@ -414,17 +168,17 @@ class _EventTile extends StatelessWidget {
 }
 
 /// Nowe wydarzenie z telefonu (uprawnienie „Kalendarz”): nazwa, rodzaj, dzień, godziny albo cały dzień, opis.
-class _AddEventSheet extends ConsumerStatefulWidget {
-  const _AddEventSheet({required this.jobs, required this.day});
+class AddEventSheet extends ConsumerStatefulWidget {
+  const AddEventSheet({super.key, required this.jobs, required this.day});
 
   final List<Job> jobs;
   final DateTime day;
 
   @override
-  ConsumerState<_AddEventSheet> createState() => _AddEventSheetState();
+  ConsumerState<AddEventSheet> createState() => _AddEventSheetState();
 }
 
-class _AddEventSheetState extends ConsumerState<_AddEventSheet> {
+class _AddEventSheetState extends ConsumerState<AddEventSheet> {
   final _title = TextEditingController();
   final _description = TextEditingController();
   late Job _job = widget.jobs.first;

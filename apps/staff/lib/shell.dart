@@ -13,7 +13,7 @@ import 'schedule_screen.dart';
 import 'settings_screen.dart';
 import 'waiter_screens.dart';
 
-/// Dolne menu aplikacji: Zamówienia, Dostawy, Zeskanuj, Grafik, Konto. Na iOS 26 systemowy pasek
+/// Dolne menu aplikacji: Zamówienia, Dostawy, Zeskanuj, Kalendarz (dawniej Grafik), Konto. Na iOS 26 systemowy pasek
 /// z Liquid Glass, gdzie indziej Material.
 class StaffShell extends ConsumerStatefulWidget {
   const StaffShell({super.key});
@@ -97,7 +97,7 @@ class _StaffShellState extends ConsumerState<StaffShell> {
             (label: 'Zamówienia', symbol: 'list.bullet.rectangle', selectedSymbol: 'list.bullet.rectangle.fill'),
             (label: 'Dostawy', symbol: 'scooter', selectedSymbol: 'scooter'),
             (label: 'Zeskanuj', symbol: 'qrcode.viewfinder', selectedSymbol: 'qrcode.viewfinder'),
-            (label: 'Grafik', symbol: 'calendar', selectedSymbol: 'calendar'),
+            (label: 'Kalendarz', symbol: 'calendar', selectedSymbol: 'calendar'),
             (label: 'Konto', symbol: 'person.crop.circle', selectedSymbol: 'person.crop.circle.fill'),
           ],
         ),
@@ -129,7 +129,7 @@ class _StaffShellState extends ConsumerState<StaffShell> {
                 (AppIcons.receipt, 'Zamówienia'),
                 (AppIcons.moped, 'Dostawy'),
                 (AppIcons.qrCode, 'Zeskanuj'),
-                (AppIcons.calendarDots, 'Grafik'),
+                (AppIcons.calendarDots, 'Kalendarz'),
                 (AppIcons.userCircle, 'Konto'),
               ])
                 NavigationDestination(

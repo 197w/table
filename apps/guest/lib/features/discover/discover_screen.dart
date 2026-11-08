@@ -543,33 +543,6 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // iOS 26: pigułka na natywnym Liquid Glass, wybrana w kolorze akcentu.
-    return GlassPill(
-      onPressed: onTap,
-      selected: selected,
-      semanticLabel: label,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      content: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Glyph(icon, size: 16, color: selected ? AppColors.onAccent : AppColors.textMuted),
-          const SizedBox(width: 7),
-          Text(
-            label,
-            style: TextStyle(
-              fontFamily: AppTheme.fontFamily,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: selected ? AppColors.onAccent : AppColors.text,
-            ),
-          ),
-        ],
-      ),
-      fallback: _fallback(context),
-    );
-  }
-
-  Widget _fallback(BuildContext context) {
     return Semantics(
       button: true,
       selected: selected,

@@ -49,24 +49,44 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => open(AppRoutes.accountDetails, needsAccount: true),
           ),
           const SizedBox(height: 20),
-          // Polubione lokale i osobiste kody od lokali, pod kafelkiem konta.
-          SettingsGroup(
-            children: [
-              SettingsRow(
-                icon: AppIcons.heart,
-                title: 'Polubione',
-                value: liked == null || liked == 0 ? null : '$liked',
-                locked: !loggedIn,
-                onTap: () => open(AppRoutes.liked, needsAccount: true),
-              ),
-              SettingsRow(
-                icon: AppIcons.sealPercent,
-                title: 'Kody',
-                value: codes == null || codes == 0 ? null : '$codes do wykorzystania',
-                locked: !loggedIn,
-                onTap: () => open(AppRoutes.codes, needsAccount: true),
-              ),
-            ],
+          // Polubione lokale i osobiste kody od lokali: dwa kafelki obok siebie pod kafelkiem konta.
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _AccountTile(
+                    icon: AppIcons.heart,
+                    title: 'Polubione',
+                    value: !loggedIn
+                        ? 'Po zalogowaniu'
+                        : liked == null
+                        ? ' '
+                        : liked == 0
+                        ? 'Brak lokali'
+                        : Fmt.restaurants(liked),
+                    locked: !loggedIn,
+                    onTap: () => open(AppRoutes.liked, needsAccount: true),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _AccountTile(
+                    icon: AppIcons.sealPercent,
+                    title: 'Kody',
+                    value: !loggedIn
+                        ? 'Po zalogowaniu'
+                        : codes == null
+                        ? ' '
+                        : codes == 0
+                        ? 'Brak kodów'
+                        : '$codes do wykorzystania',
+                    locked: !loggedIn,
+                    onTap: () => open(AppRoutes.codes, needsAccount: true),
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 20),
           SettingsGroup(
@@ -134,6 +154,81 @@ class SettingsScreen extends ConsumerWidget {
             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Kafelek pod kontem (Polubione, Kody): ikona, nazwa i ile tego jest. Bez logowania kłódka.
+class _AccountTile extends StatelessWidget {
+  const _AccountTile({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.locked,
+    required this.onTap,
+  });
+
+  final AppIconData icon;
+  final String title;
+  final String value;
+  final bool locked;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Semantics(
+      button: true,
+      label: '$title, ${value.trim()}${locked ? ', wymaga logowania' : ''}',
+      excludeSemantics: true,
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          splashColor: Colors.transparent,
+          highlightColor: AppColors.ring,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceRaised,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Glyph(icon, size: 20, color: AppColors.accent),
+                    ),
+                    const Spacer(),
+                    Glyph(
+                      locked ? AppIcons.lock : AppIcons.caretRight,
+                      size: locked ? 14 : 18,
+                      color: AppColors.textMuted,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(title, style: text.titleMedium),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.bodyMedium?.copyWith(
+                    color: AppColors.textMuted,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

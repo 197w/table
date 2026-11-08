@@ -8,11 +8,20 @@ import 'ui.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 const _weekdays = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'];
+const _weekdaysMini = ['P', 'W', 'Ś', 'C', 'P', 'S', 'N'];
+const _weekdaysFull = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota', 'Niedziela'];
 const _months = [
   'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
   'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień',
 ];
 const _monthsShort = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
+const _monthsGenitive = [
+  'stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca',
+  'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia',
+];
+
+/// Dziś na czerwono, jak w Apple Calendar.
+const _red = Color(0xFFEB5757);
 
 /// Kolor zgłoszenia, które czeka na decyzję przełożonego (czytelny w obu motywach).
 Color get _pending => StaffColors.pending;
@@ -28,7 +37,7 @@ Color get _proposed => StaffColors.proposal;
     switch (e) {
       null when past => (label: 'Brak godzin', icon: AppIcons.minus, color: AppColors.textMuted),
       null when closed => (label: 'Niedostępny', icon: AppIcons.lock, color: AppColors.textMuted),
-      null => (label: 'Nie zgłoszono', icon: AppIcons.calendarPlus, color: AppColors.textMuted),
+      null => (label: 'Możesz wpisać godziny', icon: AppIcons.calendarPlus, color: AppColors.accent),
       final e when e.accepted => (
         label: e.changed ? 'Przyjęte ze zmianą' : 'Przyjęte',
         icon: AppIcons.checkCircle,
@@ -62,22 +71,35 @@ bool sameTime(TimeOfDay a, TimeOfDay b) => a.hour * 60 + a.minute == b.hour * 60
 /// Okres grafiku lokalu (tydzień, 2 tygodnie, miesiąc), przesunięty o [offset] okresów od dziś.
 ({DateTime from, DateTime to}) periodFor(String kind, int offset) {
   final today = _day(DateTime.now());
-  final monday = today.subtract(Duration(days: today.weekday - 1));
+  final current = periodOf(kind, today);
   switch (kind) {
     case 'month':
-      final from = DateTime(today.year, today.month + offset);
+      final from = DateTime(current.from.year, current.from.month + offset);
       return (from: from, to: DateTime(from.year, from.month + 1, 0));
+    case 'two_weeks':
+      final from = DateTime(current.from.year, current.from.month, current.from.day + offset * 14);
+      return (from: from, to: DateTime(from.year, from.month, from.day + 13));
+    default:
+      final from = DateTime(current.from.year, current.from.month, current.from.day + offset * 7);
+      return (from: from, to: DateTime(from.year, from.month, from.day + 6));
+  }
+}
+
+/// Okres grafiku lokalu (tydzień, 2 tygodnie, miesiąc), w którym jest [day].
+({DateTime from, DateTime to}) periodOf(String kind, DateTime day) {
+  final d = _day(day);
+  final monday = DateTime(d.year, d.month, d.day - (d.weekday - 1));
+  switch (kind) {
+    case 'month':
+      return (from: DateTime(d.year, d.month), to: DateTime(d.year, d.month + 1, 0));
     case 'two_weeks':
       // Pary tygodni liczone od stałego poniedziałku, żeby okres był ten sam dla całego lokalu.
       // Dni liczone w UTC, bo przejście na czas letni skraca lokalną różnicę o godzinę.
-      final anchor = DateTime(2026, 1, 5);
       final days = DateTime.utc(monday.year, monday.month, monday.day).difference(DateTime.utc(2026, 1, 5)).inDays;
-      final index = (days / 14).floor() + offset;
-      final from = DateTime(anchor.year, anchor.month, anchor.day + index * 14);
+      final from = DateTime(2026, 1, 5 + (days / 14).floor() * 14);
       return (from: from, to: DateTime(from.year, from.month, from.day + 13));
     default:
-      final from = DateTime(monday.year, monday.month, monday.day + offset * 7);
-      return (from: from, to: DateTime(from.year, from.month, from.day + 6));
+      return (from: monday, to: DateTime(monday.year, monday.month, monday.day + 6));
   }
 }
 
@@ -89,9 +111,18 @@ String _periodLabel(String kind, ({DateTime from, DateTime to}) p) {
       : '${p.from.day} ${_monthsShort[p.from.month - 1]} – ${p.to.day} ${_monthsShort[p.to.month - 1]}';
 }
 
-/// Grafik jako czytelna lista dni z okresu, który ustawił lokal (tydzień, 2 tygodnie albo miesiąc).
-/// Przy każdym dniu widać, czy godziny są przyjęte, czekają na decyzję albo zostały odrzucone.
-/// Godziny można zgłosić na cały okres naraz. Na dole moje przepracowane godziny.
+/// „Tydzień 9–15 lis”, „2 tygodnie 9–22 lis”, „Listopad 2026”.
+String _periodName(String kind, ({DateTime from, DateTime to}) p) => switch (kind) {
+  'month' => _periodLabel(kind, p),
+  'two_weeks' => '2 tygodnie ${_periodLabel(kind, p)}',
+  _ => 'Tydzień ${_periodLabel(kind, p)}',
+};
+
+/// Zakładka „Kalendarz” (dawniej Grafik, 8.11.2026): miesiąc jak w Apple Calendar, w nim mój grafik i wydarzenia
+/// lokali. Dni, w które mogę jeszcze wpisać godziny pracy, są zielonymi polami; pod każdym dniem kreska w kolorze
+/// stanu zgłoszenia (przyjęte, czeka, odrzucone, wolne, propozycja) i kropki wydarzeń. Pod siatką wybrany dzień:
+/// godziny i stan, wydarzenia, uwaga na tydzień. Godziny można zgłosić na cały okres lokalu (tydzień, 2 tygodnie
+/// albo miesiąc). Na dole moje przepracowane godziny.
 class ScheduleScreen extends ConsumerStatefulWidget {
   const ScheduleScreen({super.key});
 
@@ -100,7 +131,8 @@ class ScheduleScreen extends ConsumerStatefulWidget {
 }
 
 class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
-  int _offset = 0;
+  late DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+  late DateTime _selected = _day(DateTime.now());
 
   @override
   void initState() {
@@ -108,6 +140,21 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     // Okres grafiku (tydzień, 2 tygodnie, miesiąc) mógł się zmienić w panelu: pobieramy go od nowa.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) ref.invalidate(jobsProvider);
+    });
+  }
+
+  /// Pierwszy poniedziałek siatki (6 tygodni).
+  DateTime get _gridStart {
+    final first = DateTime(_month.year, _month.month);
+    return DateTime(first.year, first.month, first.day - (first.weekday - 1));
+  }
+
+  /// Inny miesiąc: zaznaczony jest dziś (w bieżącym miesiącu) albo pierwszy dzień miesiąca.
+  void _goTo(DateTime month) {
+    final today = _day(DateTime.now());
+    setState(() {
+      _month = DateTime(month.year, month.month);
+      _selected = today.year == _month.year && today.month == _month.month ? today : _month;
     });
   }
 
@@ -153,7 +200,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       if (mounted) {
         showMessage(
           context,
-          accept ? 'Przyjęte: ${entry.starts}–${entry.ends}. Dzień jest w Twoim grafiku.' : 'Przełożony zobaczy, że nie możesz.',
+          accept ? 'Przyjęte: ${entry.starts}–${entry.ends}. Dzień jest w Twoim kalendarzu.' : 'Przełożony zobaczy, że nie możesz.',
           tone: accept ? ToastTone.success : ToastTone.info,
         );
       }
@@ -244,148 +291,286 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     );
   }
 
+  /// Nowe wydarzenie w Kalendarzu lokalu (uprawnienie „Kalendarz”).
+  Future<void> _addEvent(List<Job> jobs) async {
+    final saved = await showTableSheet<bool>(
+      context: context,
+      builder: (_) => AddEventSheet(jobs: jobs, day: _selected),
+    );
+    if (saved == true) ref.invalidate(staffCalendarProvider);
+  }
+
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final jobs = ref.watch(jobsProvider).value ?? const <Job>[];
     final kind = jobs.isEmpty ? 'week' : jobs.first.schedulePeriod;
-    final period = periodFor(kind, _offset);
-    final async = ref.watch(schedulePeriodProvider(period));
+    final now = DateTime.now();
+    final today = _day(now);
+    final start = _gridStart;
+    final grid = [for (var i = 0; i < 42; i++) DateTime(start.year, start.month, start.day + i)];
+    final last = grid.last;
+
+    // Grafik z całych okresów lokalu, które zahaczają o siatkę: zgłoszenie na okres widzi wszystkie jego dni.
+    final range = (from: periodOf(kind, start).from, to: periodOf(kind, last).to);
+    final async = ref.watch(schedulePeriodProvider(range));
+    final loaded = async.hasValue;
     final byDay = {for (final e in async.value ?? const <PlannedShift>[]) _day(e.day): e};
-    final days = [
-      for (var d = period.from; !d.isAfter(period.to); d = DateTime(d.year, d.month, d.day + 1)) d,
+
+    // Termin zgłaszania dyspozycyjności na każdy okres, który trwa albo dopiero będzie. Po nim wpisywanie się wyłącza.
+    final deadlines = <DateTime, DateTime?>{};
+    if (jobs.isNotEmpty) {
+      for (var d = range.from; !d.isAfter(range.to);) {
+        final p = periodOf(kind, d);
+        if (!p.to.isBefore(today)) {
+          deadlines[p.from] = ref.watch(scheduleDeadlineProvider((memberId: jobs.first.memberId, day: p.from))).value;
+        }
+        d = DateTime(p.to.year, p.to.month, p.to.day + 1);
+      }
+    }
+    bool closedOn(DateTime d) {
+      final deadline = deadlines[periodOf(kind, d).from];
+      return deadline != null && now.isAfter(deadline);
+    }
+
+    // Zielone pole: dzień bez zgłoszenia, w który mogę jeszcze wpisać godziny.
+    bool canEnter(DateTime d) => loaded && jobs.isNotEmpty && byDay[d] == null && !d.isBefore(today) && !closedOn(d);
+
+    // Wydarzenia lokali pracownika w siatce (lokale po przecinku, żeby klucz rodziny był porównywalny).
+    final ids = {for (final j in jobs) j.restaurantId}.toList()..sort();
+    final names = {for (final j in jobs) j.restaurantId: j.restaurantName};
+    final eventsQuery = (restaurants: ids.join(','), from: start, to: DateTime(last.year, last.month, last.day + 1));
+    final events = ref.watch(staffCalendarProvider(eventsQuery)).value ?? const <StaffEvent>[];
+    List<StaffEvent> eventsOn(DateTime d) => [
+      for (final e in events)
+        if (e.overlaps(d, DateTime(d.year, d.month, d.day + 1))) e,
     ];
-    final today = _day(DateTime.now());
-    // Termin zgłaszania dyspozycyjności na ten okres: po nim wpisywanie się wyłącza.
-    final deadline = jobs.isEmpty
-        ? null
-        : ref.watch(scheduleDeadlineProvider((memberId: jobs.first.memberId, day: period.from))).value;
-    final closed = deadline != null && DateTime.now().isAfter(deadline);
-    // Uwagi na tygodnie okresu (poniedziałki).
-    final firstMonday = period.from.subtract(Duration(days: period.from.weekday - 1));
-    final notes = ref.watch(weekNotesProvider((from: firstMonday, to: period.to))).value ?? const <DateTime, String>{};
-    final open = closed
+    final canAdd = [
+      for (final j in jobs)
+        if (j.permissions.contains('calendar')) j,
+    ];
+
+    // Wybrany dzień i jego okres grafiku.
+    final period = periodOf(kind, _selected);
+    final deadline = deadlines[period.from];
+    final closed = deadline != null && now.isAfter(deadline);
+    final open = closed || !loaded
         ? const <DateTime>[]
-        : days.where((d) => !d.isBefore(today) && (byDay[d] == null || byDay[d]!.pending || byDay[d]!.unavailable)).toList();
-    final proposals = byDay.values.where((e) => e.proposed).length;
-    final accepted = byDay.values.where((e) => e.accepted).length;
-    final waiting = byDay.values.where((e) => e.pending).length;
-    final rejected = byDay.values.where((e) => e.rejected).length;
-    final free = byDay.values.where((e) => e.off).length;
+        : [
+            for (var d = period.from; !d.isAfter(period.to); d = DateTime(d.year, d.month, d.day + 1))
+              if (!d.isBefore(today) && (byDay[d] == null || byDay[d]!.pending || byDay[d]!.unavailable)) d,
+          ];
+    final entry = byDay[_selected];
+    final monday = DateTime(_selected.year, _selected.month, _selected.day - (_selected.weekday - 1));
+    final notes = ref.watch(weekNotesProvider((from: start, to: last))).value ?? const <DateTime, String>{};
     final shifts = ref.watch(shiftsProvider).value ?? const <Shift>[];
-    // Krótki napis: okres widać w pigułce nad przyciskiem, a przy czcionce telefonu +15% dłuższy się łamał.
-    final (unit, submitLabel) = switch (kind) {
-      'month' => ('miesiąc', 'Zgłoś godziny na miesiąc'),
-      'two_weeks' => ('2 tygodnie', 'Zgłoś godziny na 2 tygodnie'),
-      _ => ('tydzień', 'Zgłoś godziny na tydzień'),
+
+    // Legenda z liczbami w tym miesiącu.
+    final monthDays = grid.where((d) => d.month == _month.month).toList();
+    int count(bool Function(PlannedShift e) test) => monthDays.where((d) => byDay[d] != null && test(byDay[d]!)).length;
+    final toEnter = monthDays.where(canEnter).length;
+    final accepted = count((e) => e.accepted);
+    final waiting = count((e) => e.pending);
+    final rejected = count((e) => e.rejected);
+    final free = count((e) => e.off);
+    final proposals = count((e) => e.proposed);
+    // Krótki napis: przy czcionce telefonu +15% dłuższy się łamał.
+    final submitLabel = switch (kind) {
+      'month' => 'Zgłoś godziny na miesiąc',
+      'two_weeks' => 'Zgłoś godziny na 2 tygodnie',
+      _ => 'Zgłoś godziny na tydzień',
     };
 
     return Scaffold(
+      // Jak w Apple Calendar: „Dziś” i „+” w pasku u góry, miesiąc nad siatką, przesuwanie palcem zmienia miesiąc.
       appBar: AppBar(
         leading: glassLeading(context),
-        title: const Text('Grafik'),
+        title: const Text('Kalendarz'),
         actions: [
-          // Kalendarz lokalu (wydarzenia specjalne, spotkania, szkolenia).
-          IconButton(
-            tooltip: 'Kalendarz',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(builder: (_) => const StaffCalendarScreen()),
-            ),
-            icon: const Glyph(AppIcons.calendar),
-          ),
+          TextButton(onPressed: () => _goTo(today), child: const Text('Dziś')),
+          if (canAdd.isNotEmpty)
+            IconButton(tooltip: 'Nowe wydarzenie', onPressed: () => _addEvent(canAdd), icon: const Glyph(AppIcons.plus)),
         ],
       ),
       body: RefreshIndicator(
         onRefresh: () async => ref
           ..invalidate(jobsProvider)
           ..invalidate(schedulePeriodProvider)
+          ..invalidate(scheduleDeadlineProvider)
+          ..invalidate(weekNotesProvider)
+          ..invalidate(staffCalendarProvider)
           ..invalidate(shiftsProvider),
         child: ContentWidth(
           child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
-          children: [
-            // Okres w pigułce ze strzałkami. Stuknięcie w napis wraca do bieżącego okresu.
-            _PeriodSwitcher(
-              label: _periodLabel(kind, period),
-              caption: _offset == 0 ? 'Grafik na $unit · teraz' : 'Grafik na $unit',
-              onPrevious: () => setState(() => _offset--),
-              onNext: () => setState(() => _offset++),
-              onToday: _offset == 0 ? null : () => setState(() => _offset = 0),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                StatusChip(label: 'Przyjęte: $accepted', icon: AppIcons.checkCircle, color: AppColors.accent),
-                StatusChip(label: 'Czeka: $waiting', icon: AppIcons.hourglass, color: _pending),
-                if (rejected > 0)
-                  StatusChip(label: 'Odrzucone: $rejected', icon: AppIcons.prohibit, color: AppColors.error),
-                if (free > 0) StatusChip(label: 'Wolne: $free', icon: AppIcons.sun, color: _off),
-                if (proposals > 0)
-                  StatusChip(label: 'Propozycje: $proposals', icon: AppIcons.send, color: _proposed),
-              ],
-            ),
-            if (deadline != null) ...[
-              const SizedBox(height: 12),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 1),
-                    child: Glyph(
-                      closed ? AppIcons.lock : AppIcons.alarm,
-                      size: 16,
-                      color: closed ? AppColors.textMuted : _pending,
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 32),
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 4, bottom: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Semantics(
+                        header: true,
+                        child: Text(
+                          '${_months[_month.month - 1]} ${_month.year}',
+                          style: text.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      closed
-                          ? 'Termin zgłaszania minął (${_deadlineText(deadline)}). Dni bez zgłoszenia: niedostępny.'
-                          : 'Zgłoś dyspozycyjność do ${_deadlineText(deadline)}.',
-                      style: text.bodyMedium?.copyWith(color: closed ? AppColors.textMuted : _pending),
+                    IconButton(
+                      tooltip: 'Poprzedni miesiąc',
+                      onPressed: () => _goTo(DateTime(_month.year, _month.month - 1)),
+                      icon: const Glyph(AppIcons.caretLeft),
                     ),
-                  ),
-                ],
+                    IconButton(
+                      tooltip: 'Następny miesiąc',
+                      onPressed: () => _goTo(DateTime(_month.year, _month.month + 1)),
+                      icon: const Glyph(AppIcons.caretRight),
+                    ),
+                  ],
+                ),
               ),
-            ],
-            if (open.isNotEmpty && jobs.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-                onPressed: () => _whole(jobs, open, byDay),
-                icon: const Glyph(AppIcons.calendarPlus, size: 20),
-                label: Text(submitLabel),
+              ExcludeSemantics(
+                child: Row(
+                  children: [
+                    for (final d in _weekdaysMini)
+                      Expanded(
+                        child: Center(
+                          child: Text(d, style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ],
-            const SizedBox(height: 8),
-            if (async.isLoading && !async.hasValue)
-              const _DaysSkeleton()
-            else
-              for (final d in days) ...[
-                // Na początku tygodnia: moja uwaga na ten tydzień dla przełożonego.
-                if (d == period.from || d.weekday == DateTime.monday)
-                  _WeekNoteRow(
-                    week: d.subtract(Duration(days: d.weekday - 1)),
-                    note: notes[d.subtract(Duration(days: d.weekday - 1))],
-                    onTap: jobs.isEmpty
-                        ? null
-                        : () => _weekNote(jobs, d.subtract(Duration(days: d.weekday - 1)), notes[d.subtract(Duration(days: d.weekday - 1))]),
+              const SizedBox(height: 4),
+              GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onHorizontalDragEnd: (d) {
+                  final v = d.primaryVelocity ?? 0;
+                  if (v.abs() > 250) _goTo(DateTime(_month.year, _month.month + (v < 0 ? 1 : -1)));
+                },
+                child: Column(
+                  children: [
+                    for (var w = 0; w < 6; w++)
+                      Row(
+                        children: [
+                          for (final day in grid.sublist(w * 7, w * 7 + 7))
+                            Expanded(
+                              child: _DayCell(
+                                day: day,
+                                inMonth: day.month == _month.month,
+                                today: today,
+                                selected: day == _selected,
+                                entry: byDay[day],
+                                canEnter: canEnter(day),
+                                events: eventsOn(day),
+                                onTap: () {
+                                  // Drugie stuknięcie w zaznaczony dzień od razu otwiera godziny.
+                                  if (day == _selected) {
+                                    _open(jobs, day, byDay[day], closed: closedOn(day));
+                                    return;
+                                  }
+                                  setState(() {
+                                    _selected = day;
+                                    if (day.month != _month.month) _month = DateTime(day.year, day.month);
+                                  });
+                                },
+                              ),
+                            ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Wrap(
+                  spacing: 14,
+                  runSpacing: 8,
+                  children: [
+                    if (toEnter > 0) _Legend(field: true, color: AppColors.accent, label: 'Do wpisania: $toEnter'),
+                    _Legend(color: AppColors.accent, label: 'Przyjęte: $accepted'),
+                    _Legend(color: _pending, label: 'Czeka: $waiting'),
+                    if (rejected > 0) _Legend(color: AppColors.error, label: 'Odrzucone: $rejected'),
+                    if (free > 0) _Legend(color: _off, label: 'Wolne: $free'),
+                    if (proposals > 0) _Legend(color: _proposed, label: 'Propozycje: $proposals'),
+                  ],
+                ),
+              ),
+              if (deadline != null) ...[
+                const SizedBox(height: 14),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 1),
+                        child: Glyph(
+                          closed ? AppIcons.lock : AppIcons.alarm,
+                          size: 16,
+                          color: closed ? AppColors.textMuted : _pending,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          closed
+                              ? '${_periodName(kind, period)}: termin zgłaszania minął (${_deadlineText(deadline)}). '
+                                    'Dni bez zgłoszenia: niedostępny.'
+                              : '${_periodName(kind, period)}: zgłoś dyspozycyjność do ${_deadlineText(deadline)}.',
+                          style: text.bodyMedium?.copyWith(color: closed ? AppColors.textMuted : _pending),
+                        ),
+                      ),
+                    ],
                   ),
-                _DayRow(
-                  day: d,
-                  today: today,
-                  entry: byDay[d],
-                  closed: closed,
-                  onTap: () => _open(jobs, d, byDay[d], closed: closed),
                 ),
               ],
-            const SizedBox(height: 12),
-            HoursHistory(shifts: shifts),
-          ],
+              if (open.isNotEmpty && jobs.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+                  onPressed: () => _whole(jobs, open, byDay),
+                  icon: const Glyph(AppIcons.calendarPlus, size: 20),
+                  label: Text(submitLabel, semanticsLabel: '$submitLabel, ${_periodName(kind, period)}'),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Divider(height: 1, color: AppColors.ring),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 16, 4, 10),
+                child: Text(
+                  '${_weekdaysFull[_selected.weekday - 1]}, ${_selected.day} ${_monthsGenitive[_selected.month - 1]}'
+                  '${_selected == today ? ' · dziś' : ''}',
+                  style: text.titleMedium,
+                ),
+              ),
+              if (async.hasError && !loaded)
+                ErrorView(error: async.error!, onRetry: () => ref.invalidate(schedulePeriodProvider))
+              else if (!loaded)
+                const ExcludeSemantics(child: SkeletonBox(width: double.infinity, height: 68, radius: 16))
+              else
+                _DayRow(
+                  day: _selected,
+                  today: today,
+                  entry: entry,
+                  closed: closedOn(_selected),
+                  canEnter: canEnter(_selected),
+                  onTap: () => _open(jobs, _selected, entry, closed: closedOn(_selected)),
+                ),
+              // Wydarzenia lokali w tym dniu (specjalne i dla pracowników).
+              for (final e in eventsOn(_selected))
+                CalendarEventTile(event: e, day: _selected, restaurant: ids.length > 1 ? names[e.restaurantId] : null),
+              // Moja uwaga na ten tydzień dla przełożonego.
+              _WeekNoteRow(
+                week: monday,
+                note: notes[monday],
+                onTap: jobs.isEmpty ? null : () => _weekNote(jobs, monday, notes[monday]),
+              ),
+              const SizedBox(height: 12),
+              HoursHistory(shifts: shifts),
+            ],
           ),
         ),
       ),
@@ -393,74 +578,155 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   }
 }
 
-/// Okres grafiku w pigułce: strzałki po bokach (48 dp), napis w środku wraca do bieżącego okresu.
-class _PeriodSwitcher extends StatelessWidget {
-  const _PeriodSwitcher({
-    required this.label,
-    required this.caption,
-    required this.onPrevious,
-    required this.onNext,
-    required this.onToday,
+/// Dzień w siatce miesiąca: numer (dziś na czerwono, wybrany w kółku), pod nim kreska grafiku w kolorze stanu
+/// zgłoszenia i kropki wydarzeń. Dzień, w który mogę jeszcze wpisać godziny pracy, jest zielonym polem.
+class _DayCell extends StatelessWidget {
+  const _DayCell({
+    required this.day,
+    required this.inMonth,
+    required this.today,
+    required this.selected,
+    required this.entry,
+    required this.canEnter,
+    required this.events,
+    required this.onTap,
   });
 
-  final String label;
-  final String caption;
-  final VoidCallback onPrevious;
-  final VoidCallback onNext;
-
-  /// Null: już bieżący okres.
-  final VoidCallback? onToday;
+  final DateTime day;
+  final bool inMonth;
+  final DateTime today;
+  final bool selected;
+  final PlannedShift? entry;
+  final bool canEnter;
+  final List<StaffEvent> events;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.ring),
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: 'Poprzedni okres',
-            onPressed: onPrevious,
-            icon: const Glyph(AppIcons.caretLeft, size: 20),
+    final isToday = day == today;
+    final e = entry;
+    final mark = e == null ? null : _dayStatus(e, past: day.isBefore(today), closed: false);
+    final hours = e != null && !e.off && !e.unavailable ? '${e.starts}–${e.ends}' : null;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: [
+        '${day.day} ${_monthsGenitive[day.month - 1]}',
+        if (isToday) 'dziś',
+        ?hours,
+        if (mark != null) mark.label,
+        if (canEnter) 'możesz wpisać godziny',
+        if (events.isNotEmpty) 'wydarzeń: ${events.length}',
+      ].join(', '),
+      excludeSemantics: true,
+      child: Padding(
+        padding: const EdgeInsets.all(2),
+        child: Material(
+          color: canEnter ? AppColors.accentTint : Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: canEnter ? BorderSide(color: AppColors.accent.withValues(alpha: 0.45)) : BorderSide.none,
           ),
-          Expanded(
-            child: Semantics(
-              button: onToday != null,
-              hint: onToday == null ? null : 'Wróć do bieżącego okresu',
-              child: InkWell(
-                onTap: onToday,
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Column(
-                    children: [
-                      Text(
-                        label,
-                        textAlign: TextAlign.center,
-                        style: text.titleLarge?.copyWith(fontFeatures: _tabular),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: SizedBox(
+              height: 54,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: selected ? (isToday ? _red : AppColors.text) : null,
+                    ),
+                    child: Text(
+                      '${day.day}',
+                      style: text.titleSmall?.copyWith(
+                        fontFeatures: _tabular,
+                        fontWeight: selected || isToday || canEnter ? FontWeight.w600 : FontWeight.w400,
+                        color: selected
+                            ? (isToday ? Colors.white : AppColors.background)
+                            : isToday
+                            ? _red
+                            : canEnter
+                            ? AppColors.accent
+                            : (inMonth ? AppColors.text : AppColors.textMuted),
                       ),
-                      Text(
-                        onToday == null ? caption : '$caption · wróć do teraz',
-                        textAlign: TextAlign.center,
-                        style: text.bodySmall?.copyWith(color: onToday == null ? AppColors.textMuted : AppColors.accent),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 3),
+                  SizedBox(
+                    height: 5,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (mark != null)
+                          Container(
+                            width: 14,
+                            height: 4,
+                            decoration: BoxDecoration(color: mark.color, borderRadius: BorderRadius.circular(2)),
+                          ),
+                        if (mark != null && events.isNotEmpty) const SizedBox(width: 3),
+                        for (final ev in events.take(mark == null ? 3 : 2))
+                          Container(
+                            width: 5,
+                            height: 5,
+                            margin: const EdgeInsets.symmetric(horizontal: 1),
+                            decoration: BoxDecoration(color: eventColor(ev), shape: BoxShape.circle),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          IconButton(
-            tooltip: 'Następny okres',
-            onPressed: onNext,
-            icon: const Glyph(AppIcons.caretRight, size: 20),
-          ),
-        ],
+        ),
       ),
+    );
+  }
+}
+
+/// Pozycja legendy pod siatką: zielone pole (dni do wpisania) albo kreska w kolorze stanu, z liczbą.
+class _Legend extends StatelessWidget {
+  const _Legend({required this.color, required this.label, this.field = false});
+
+  final Color color;
+  final String label;
+  final bool field;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (field)
+          Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              color: AppColors.accentTint,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: color.withValues(alpha: 0.45)),
+            ),
+          )
+        else
+          Container(
+            width: 14,
+            height: 4,
+            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
+          ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+        ),
+      ],
     );
   }
 }
@@ -536,8 +802,8 @@ class _WeekNoteRow extends StatelessWidget {
   }
 }
 
-/// Jeden dzień okresu: kafelek z dniem, godziny i stan zgłoszenia słowem z ikoną.
-/// Minione dni są przygaszone kolorem tekstu, nie przezroczystością (kontrast zostaje czytelny).
+/// Wybrany dzień w grafiku: godziny i stan zgłoszenia słowem z ikoną. Dzień, w który mogę jeszcze wpisać godziny
+/// pracy, jest zieloną kartą. Minione dni są przygaszone kolorem tekstu, nie przezroczystością (kontrast zostaje).
 class _DayRow extends StatelessWidget {
   const _DayRow({
     required this.day,
@@ -545,6 +811,7 @@ class _DayRow extends StatelessWidget {
     required this.entry,
     required this.onTap,
     this.closed = false,
+    this.canEnter = false,
   });
 
   final DateTime day;
@@ -555,67 +822,59 @@ class _DayRow extends StatelessWidget {
   /// Termin zgłaszania minął: dzień bez zgłoszenia to „Niedostępny”.
   final bool closed;
 
+  /// Dzień bez zgłoszenia, w który mogę jeszcze wpisać godziny (zielona karta).
+  final bool canEnter;
+
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final e = entry;
     final past = day.isBefore(today);
-    final isToday = day == today;
     final status = _dayStatus(e, past: past, closed: closed);
     final hours = e != null && !e.off && !e.unavailable
         ? '${e.starts}–${e.ends}${e.positionName == null ? '' : ' · ${e.positionName}'}'
         : null;
     final tappable = !past || e != null;
+    final title = hours ?? (canEnter ? 'Wpisz godziny pracy' : status.label);
+    final border = canEnter ? AppColors.accent.withValues(alpha: 0.45) : AppColors.ring;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Semantics(
         button: tappable,
         label: [
-          Fmt.capitalize(Fmt.dayLong(day)),
-          if (isToday) 'dziś',
+          'Grafik',
           ?hours,
           status.label,
           if (e?.answer != null) 'przełożony: ${e!.answer}',
         ].join(', '),
         excludeSemantics: true,
         child: Material(
-          color: AppColors.surface,
+          color: canEnter ? AppColors.accentTint : AppColors.surface,
           borderRadius: BorderRadius.circular(16),
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
-            onTap: onTap,
+            onTap: tappable ? onTap : null,
             child: Container(
-              constraints: const BoxConstraints(minHeight: 64),
-              padding: const EdgeInsets.fromLTRB(10, 10, 12, 10),
+              constraints: const BoxConstraints(minHeight: 68),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: isToday ? AppColors.accent : AppColors.ring, width: isToday ? 1.5 : 1),
+                border: Border.all(color: border),
               ),
               child: Row(
                 children: [
-                  // Kafelek dnia: dzień tygodnia i numer, dziś w kolorze akcentu.
                   Container(
-                    width: 48,
-                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    width: 44,
+                    height: 44,
+                    alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: isToday ? AppColors.accentTint : AppColors.surfaceRaised,
+                      color: canEnter ? AppColors.accent.withValues(alpha: 0.14) : AppColors.surfaceRaised,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Column(
-                      children: [
-                        Text(
-                          _weekdays[day.weekday - 1],
-                          style: text.labelMedium?.copyWith(color: isToday ? AppColors.accent : AppColors.textMuted),
-                        ),
-                        Text(
-                          '${day.day}',
-                          style: text.titleLarge?.copyWith(
-                            fontFeatures: _tabular,
-                            fontWeight: FontWeight.w600,
-                            color: past ? AppColors.textMuted : AppColors.text,
-                          ),
-                        ),
-                      ],
+                    child: Glyph(
+                      hours != null ? AppIcons.clock : status.icon,
+                      size: 22,
+                      color: hours != null ? (past ? AppColors.textMuted : AppColors.text) : status.color,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -623,18 +882,31 @@ class _DayRow extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (hours != null) ...[
-                          Text(
-                            hours,
-                            style: text.titleMedium?.copyWith(
-                              fontFeatures: _tabular,
-                              color: past || e!.rejected ? AppColors.textMuted : AppColors.text,
-                              decoration: e!.rejected ? TextDecoration.lineThrough : null,
-                            ),
+                        Text(
+                          title,
+                          style: text.titleMedium?.copyWith(
+                            fontFeatures: _tabular,
+                            color: canEnter
+                                ? AppColors.accent
+                                : past || (e?.rejected ?? false)
+                                ? AppColors.textMuted
+                                : AppColors.text,
+                            decoration: hours != null && e!.rejected ? TextDecoration.lineThrough : null,
                           ),
+                        ),
+                        if (hours != null) ...[
                           const SizedBox(height: 4),
+                          StatusChip(label: status.label, icon: status.icon, color: status.color),
+                        ] else if (canEnter) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Przełożony przyjmie je, zmieni albo odrzuci.',
+                            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                          ),
+                        ] else if (closed && e == null && !past) ...[
+                          const SizedBox(height: 2),
+                          Text('Termin zgłaszania minął.', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
                         ],
-                        StatusChip(label: status.label, icon: status.icon, color: status.color),
                         if (e?.answer != null) ...[
                           const SizedBox(height: 4),
                           Text(
@@ -647,49 +919,13 @@ class _DayRow extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (tappable) Glyph(AppIcons.caretRight, size: 16, color: AppColors.textMuted),
+                  if (tappable)
+                    Glyph(AppIcons.caretRight, size: 16, color: canEnter ? AppColors.accent : AppColors.textMuted),
                 ],
               ),
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Szkielet listy dni, zanim grafik dojdzie.
-class _DaysSkeleton extends StatelessWidget {
-  const _DaysSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    return ExcludeSemantics(
-      child: Column(
-        children: [
-          for (var i = 0; i < 5; i++)
-            Container(
-              height: 64,
-              margin: const EdgeInsets.only(top: 8),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.ring),
-              ),
-              child: const Row(
-                children: [
-                  SkeletonBox(width: 48, height: 44, radius: 12),
-                  SizedBox(width: 12),
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [SkeletonBox(width: 110, height: 14), SizedBox(height: 8), SkeletonBox(width: 80, height: 12)],
-                  ),
-                ],
-              ),
-            ),
-        ],
       ),
     );
   }

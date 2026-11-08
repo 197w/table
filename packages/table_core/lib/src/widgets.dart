@@ -3,7 +3,6 @@ import 'package:material_ui/material_ui.dart';
 import 'app_icons.dart';
 import 'failure.dart';
 import 'formatters.dart';
-import 'liquid_glass.dart';
 import 'theme.dart';
 
 /// Wiadomość błędu gotowa do pokazania użytkownikowi.
@@ -536,79 +535,55 @@ class _DropdownPillState<T> extends State<DropdownPill<T>>
             ),
           ],
         ),
-        // iOS 26: pigułka na natywnym Liquid Glass, lista wyboru ta sama.
-        child: GlassPill(
-          onPressed: _isOpen ? _close : _open,
-          semanticLabel: '${widget.title}: ${widget.label}',
-          padding: const EdgeInsets.only(left: 12, right: 10),
-          content: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Glyph(widget.icon, size: 17, color: AppColors.textMuted),
-              const SizedBox(width: 7),
-              Text(
-                widget.label,
-                style: TextStyle(
-                  fontFamily: AppTheme.fontFamily,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.text,
+        child: Semantics(
+          button: true,
+          expanded: _isOpen,
+          label: '${widget.title}: ${widget.label}',
+          excludeSemantics: true,
+          child: PressScale(
+            onTap: _isOpen ? _close : _open,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeOut,
+              height: 40,
+              margin: EdgeInsets.symmetric(
+                vertical: (widget.tapHeight - 40).clamp(0, 24) / 2,
+              ),
+              // Po stronie ikony odstęp o 2 px mniejszy, żeby pigułka wyglądała na wyśrodkowaną.
+              padding: const EdgeInsets.only(left: 12, right: 10),
+              decoration: BoxDecoration(
+                color: _isOpen ? AppColors.surfaceRaised : AppColors.surface,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: _isOpen ? AppColors.ringStrong : AppColors.ring,
                 ),
               ),
-              const SizedBox(width: 4),
-              Glyph(AppIcons.caretDown, size: 18, color: AppColors.textMuted),
-            ],
-          ),
-          fallback: Semantics(
-            button: true,
-            expanded: _isOpen,
-            label: '${widget.title}: ${widget.label}',
-            excludeSemantics: true,
-            child: PressScale(
-              onTap: _isOpen ? _close : _open,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                curve: Curves.easeOut,
-                height: 40,
-                margin: EdgeInsets.symmetric(
-                  vertical: (widget.tapHeight - 40).clamp(0, 24) / 2,
-                ),
-                // Po stronie ikony odstęp o 2 px mniejszy, żeby pigułka wyglądała na wyśrodkowaną.
-                padding: const EdgeInsets.only(left: 12, right: 10),
-                decoration: BoxDecoration(
-                  color: _isOpen ? AppColors.surfaceRaised : AppColors.surface,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: _isOpen ? AppColors.ringStrong : AppColors.ring,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Glyph(widget.icon, size: 17, color: AppColors.textMuted),
+                  const SizedBox(width: 7),
+                  Text(
+                    widget.label,
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.text,
+                    ),
                   ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Glyph(widget.icon, size: 17, color: AppColors.textMuted),
-                    const SizedBox(width: 7),
-                    Text(
-                      widget.label,
-                      style: TextStyle(
-                        fontFamily: AppTheme.fontFamily,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.text,
-                      ),
+                  const SizedBox(width: 4),
+                  AnimatedRotation(
+                    turns: _isOpen ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    curve: AppMotion.easeOut,
+                    child: Glyph(
+                      AppIcons.caretDown,
+                      size: 18,
+                      color: AppColors.textMuted,
                     ),
-                    const SizedBox(width: 4),
-                    AnimatedRotation(
-                      turns: _isOpen ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 180),
-                      curve: AppMotion.easeOut,
-                      child: Glyph(
-                        AppIcons.caretDown,
-                        size: 18,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),

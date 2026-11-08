@@ -12,9 +12,11 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   iOS `pl.table.tableStaff`). Na tablecie (krótszy bok co najmniej 600 punktów, `isTabletScreen`) aplikacja zamiast
   siebie uruchamia pełny panel restauracji jak na komputerze (zależność `table_panel`, zadanie z Todoist: „na tabletach
   identycznie jak na komputerach”): konto lokalu, pracownicy kodem albo QR. Logowanie e-mailem jak w Table (0069; numer konta = numer u pracownika w panelu), skan wspólnego kodu QR z panelu
-  zaczyna zmianę i loguje w panelu. Dolne menu: Zamówienia, Dostawy, Zeskanuj, Grafik, Konto (dawniej Ustawienia). Grafik to lista dni z okresu lokalu
-  (tydzień, 2 tygodnie albo miesiąc, `restaurants.schedule_period`, ustawia „Ustawienia lokalu”) ze zgłaszaniem godzin
-  na cały okres naraz i „Moje godziny” na dole (miesiąc kalendarzowy ze strzałkami, do 3 miesięcy wstecz).
+  zaczyna zmianę i loguje w panelu. Dolne menu: Zamówienia, Dostawy, Zeskanuj, Kalendarz (dawniej Grafik, 8.11.2026), Konto (dawniej Ustawienia).
+  Kalendarz (`schedule_screen.dart`, `ScheduleScreen`) to miesiąc jak w Apple Calendar z grafikiem i wydarzeniami lokali:
+  dni, w które pracownik może jeszcze wpisać godziny, są zielonymi polami; zgłaszanie godzin na cały okres lokalu naraz
+  (tydzień, 2 tygodnie albo miesiąc, `restaurants.schedule_period`, ustawia „Ustawienia lokalu”) i „Moje godziny” na dole
+  (miesiąc kalendarzowy ze strzałkami, do 3 miesięcy wstecz).
   Napisy dolnego menu: 11 px, bez powiększania czcionki z ustawień telefonu (S23 ma 1,15), żeby się nie zawijały. Kelner nabija zamówienia (stoliki, menu, wysyłka na kuchnię, wydanie,
   zamknięcie rachunku; niewysłaną pozycję usuwa się przesunięciem w lewo, minus tylko zmniejsza ilość; w wyborze dań
   „Przejdź dalej” na dole wraca do rachunku stolika; zamknięcie z rabatem, zadatkiem, napiwkiem i podziałem), mój grafik
@@ -29,8 +31,12 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   Do wysłania / Na kuchni / Wydane” i podpowiedzią o przesuwaniu w lewo, niedostępne dania z chipem zamiast
   przezroczystości. Dostawy: etap kursu i „na 19:30” jako chipy, „Nawiguj” z obrysem (pełny kolor ma tylko
   „Odebrałem” albo „Dostarczone”), kolejka z „Wolny / W kursie”, kafle „Kursy” i „Gotówka”, pulsowanie stoi przy
-  „Ogranicz ruch”. Grafik: pigułka okresu (stuknięcie w napis wraca do teraz), dni z kafelkiem i chipem stanu
-  (`_dayStatus`), bez przygaszania przezroczystością, uwaga na tydzień pod nazwą tygodnia, „Moje godziny” na karcie.
+  „Ogranicz ruch”. Kalendarz: „Dziś” i „+” (nowe wydarzenie) w pasku, miesiąc ze strzałkami i przesuwaniem palcem,
+  siatka 6 tygodni (`_DayCell`: dziś na czerwono, wybrany w kółku, zielone pole = dzień bez zgłoszenia przed terminem,
+  kreska w kolorze stanu z `_dayStatus`, kropki wydarzeń), legenda z liczbami w miesiącu, termin i „Zgłoś godziny na …”
+  dla okresu wybranego dnia (`periodOf`), a pod kreską wybrany dzień: karta godzin (`_DayRow`, zielona do wpisania;
+  drugie stuknięcie w dzień też ją otwiera), wydarzenia (`CalendarEventTile`), uwaga na tydzień, „Moje godziny”.
+  Bez przygaszania przezroczystością.
   Ustawienia jak u gościa. Podgląd ekranów: test golden poza repozytorium, jak przy panelu.
   „Zakończ zmianę” (31.10.2026, wzór od użytkownika: okno wyboru sposobu zamówienia z aplikacji McDonald's) otwiera
   okno od dołu (`showOptionSheet` w `table_core/src/option_sheet.dart`: karta na całą szerokość telefonu aż do
@@ -186,7 +192,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `DateTile`, `relativeVisit` i `reservationStatus` w `features/reservations/booking_widgets.dart`, `StatusChip`
   i `ButtonPair` w `table_core`. „Moje” → Zamówienia: „W trakcie” i „Zakończone”,
   wiersz z kafelkiem rodzaju (dostawa / odbiór), numerem, kwotą i etapem z ikoną; szkielety zamiast kółka ładowania.
-  Konto → Polubione (0063, `features/likes/likes.dart`, od 10.2026 w Koncie pod kafelkiem konta, `LikedScreen`): serce na karcie lokalu w Odkrywaj (osobny przycisk nad
+  Konto → Polubione (0063, `features/likes/likes.dart`, od 10.2026 w Koncie pod kafelkiem konta jako jeden z dwóch kafelków obok siebie, `_AccountTile`, `LikedScreen`): serce na karcie lokalu w Odkrywaj (osobny przycisk nad
   kartą, poza jej opisem dla czytnika) i w pasku strony lokalu (`LikeButton`), w zwartych wierszach tylko znak
   polubienia (`LikedMark`); lista polubionych jako karty, ostatnio polubione pierwsze (`guest_liked_restaurants`,
   `likedRestaurantsProvider`). Polubienie od razu na ekranie (`LikedIdsNotifier`, przy błędzie wraca), w bazie
@@ -211,15 +217,15 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   paskiem), a ekrany z treścią (lokal, menu, rezerwacja, koszyk, zamówienie, ustawienia, logowanie) mają szerokość
   do 820 punktów na środku (`TabletWidth` w `app/tablet_width.dart`, owija trasy w `app.dart`).
   Dolne menu Table: Odkrywaj, Rezerwacje („Moje”: rezerwacje i zamówienia), Konto (dawniej Ustawienia; pod kafelkiem
-  konta Polubione i Kody).
+  konta dwa kafelki obok siebie: Polubione z liczbą lokali i Kody z liczbą do wykorzystania, 8.11.2026).
   Liquid Glass (wspólny moduł `table_core/src/liquid_glass.dart`, eksportowany z `table_core`), tylko iOS 26 i nowszy.
   Natywne kontrolki UIKit tylko tam, gdzie stoją w miejscu i nic z Fluttera ich nie przykrywa: dolne menu
   (`NativeGlassTabBar`, natywny UITabBar), „Wstecz” i „Zamknij” w każdym pasku u góry
   (`AppBar(leading: glassLeading(context))`; poza iOS 26 null, czyli zwykły przycisk), „Wróć” i serce w pasku strony
   lokalu. Reszta to szkło rysowane przez Fluttera
   w tym samym stylu (`GlassSurface`: półprzezroczysta warstwa, jasna krawędź, cień; `frosted` gęstsze na zdjęciu,
-  `blur` z rozmyciem nad przewijaną treścią): filtry w Odkrywaj (`GlassPill`, `DropdownPill` sam przechodzi na
-  szkło), przełącznik kart i listy (`GlassIconButton` z `icon` i `selected`), serca na kartach
+  `blur` z rozmyciem nad przewijaną treścią; filtry w Odkrywaj, czyli pigułki i `DropdownPill` „Gdzie szukać” /
+  „Sortuj”, wróciły 8.11.2026 na prośbę do wyglądu sprzed Liquid Glass i nie są na szkle): przełącznik kart i listy (`GlassIconButton` z `icon` i `selected`), serca na kartach
   (`LikeButton(glass: true)`), „Zarezerwuj stolik”, „Zadzwoń, żeby zarezerwować” i „Zamów” (z rozmyciem, bez paska
   pod spodem), u kelnera filtry działów menu, „Zamknij” w oknie od dołu (`GlassIconButton` z `icon`; natywny
   przycisk w oknie, które jedzie od dołu i które przykrywa drugie okno, psuł na iPhonie rysowanie treści okna:
@@ -327,10 +333,11 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   wydarzenia dział znika u gościa, w Zamówieniach panelu i u kelnera (`MenuSection.visibleAt`), a baza nie przyjmuje
   takiej pozycji (trigger `order_items_event_menu`, `private.event_menu_check`, liczy `scheduled_for` albo teraz).
   Table: sekcja „Wydarzenia” nad „Godziny otwarcia” na stronie lokalu (`_EventsCard`, `RestaurantEvent`,
-  `restaurantEventWhen`, najwyżej 6 trwających albo przyszłych, „TRWA TERAZ”). Table for employees: Grafik → ikona
-  kalendarza (`calendar_screen.dart`, `StaffCalendarScreen`, jak Apple Calendar: miesiąc z kropkami, dziś na
-  czerwono, przesuwanie palcem, wydarzenia wybranego dnia ze wszystkich lokali pracownika, `staffCalendarProvider`);
-  „+” przy uprawnieniu `calendar` dodaje wydarzenie (`panel_save_calendar_event` z `p_member_id`).
+  `restaurantEventWhen`, najwyżej 6 trwających albo przyszłych, „TRWA TERAZ”). Table for employees: zakładka
+  Kalendarz (dawniej Grafik, `schedule_screen.dart`) pokazuje wydarzenia ze wszystkich lokali pracownika jako kropki
+  w siatce i karty pod wybranym dniem (`calendar_screen.dart`: `StaffEvent`, `staffCalendarProvider`,
+  `CalendarEventTile`, `eventColor`); „+” przy uprawnieniu `calendar` dodaje wydarzenie (`AddEventSheet`,
+  `panel_save_calendar_event` z `p_member_id`).
   Zamknięcie dnia (0079, „Ustawienia lokalu” → „Zamknięcie dnia”, `restaurants.day_close` 00:00–08:00, co 30 min do
   06:00 w panelu): lokal otwarty do 2 w nocy ustawia 02:00 i sprzedaż do tej godziny liczy się do poprzedniego dnia.
   Baza: `private.day_close`, `private.business_day`, przesunięte `private.day_range` (podsumowanie dnia) i
