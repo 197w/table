@@ -121,21 +121,9 @@ class TableSheet extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    // Szkło rysowane przez Fluttera, nie natywny przycisk: okno jedzie od dołu, a drugie okno
-                    // (np. kółka godzin nad „Zgłoś godziny”) je przykrywa. Natywny widok w takim miejscu psuł
-                    // na iPhonie rysowanie treści okna (puste kółka godzin, 1.11.2026).
-                    child: GlassIconButton(
-                      symbol: 'xmark',
-                      icon: AppIcons.close,
-                      label: 'Zamknij',
-                      onTap: () => Navigator.maybePop(context),
-                      fallback: _CloseCircle(onTap: () => Navigator.maybePop(context)),
-                    ),
-                  ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, 18),
+                  child: Align(alignment: Alignment.centerLeft, child: _SheetClose()),
                 ),
                 Flexible(child: body),
               ],
@@ -328,6 +316,58 @@ class _TextSheetState extends State<_TextSheet> {
       ],
     ),
   );
+}
+
+/// „Zamknij” w oknie od dołu. Na iOS 26 i nowszym natywny Liquid Glass (8.11.2026, prośba użytkownika), ale tylko
+/// gdy okno już wjechało i nic go nie przykrywa. W czasie wjazdu, wyjazdu i pod drugim oknem (np. kółka godzin nad
+/// „Zgłoś godziny”) szkło rysowane przez Fluttera: natywny widok w takim miejscu psuł na iPhonie rysowanie treści
+/// okna (puste kółka godzin, 1.11.2026). Poza iOS 26 [_CloseCircle].
+class _SheetClose extends StatefulWidget {
+  const _SheetClose();
+
+  @override
+  State<_SheetClose> createState() => _SheetCloseState();
+}
+
+class _SheetCloseState extends State<_SheetClose> {
+  Animation<double>? _animation;
+  bool _settled = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final animation = ModalRoute.of(context)?.animation;
+    if (animation != _animation) {
+      _animation?.removeStatusListener(_onStatus);
+      _animation = animation?..addStatusListener(_onStatus);
+      _settled = (animation?.status ?? AnimationStatus.completed) == AnimationStatus.completed;
+    }
+  }
+
+  void _onStatus(AnimationStatus status) {
+    final settled = status == AnimationStatus.completed;
+    if (settled != _settled && mounted) setState(() => _settled = settled);
+  }
+
+  @override
+  void dispose() {
+    _animation?.removeStatusListener(_onStatus);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final native = _settled && (ModalRoute.of(context)?.isCurrent ?? true);
+    void close() => Navigator.maybePop(context);
+    return GlassIconButton(
+      symbol: 'xmark',
+      icon: native ? null : AppIcons.close,
+      native: native,
+      label: 'Zamknij',
+      onTap: close,
+      fallback: _CloseCircle(onTap: close),
+    );
+  }
 }
 
 /// Okrągłe „Zamknij” rysowane przez Fluttera (Android i iOS przed 26).

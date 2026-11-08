@@ -316,6 +316,19 @@ class StaffRepository {
     return value is String ? DateTime.parse(value).toLocal() : null;
   });
 
+  /// Okno zgłaszania dyspozycyjności (0081): jedyny okres lokalu, na który mogę teraz wpisać godziny, i jego termin.
+  Future<ScheduleWindow?> scheduleWindow(String memberId) => _guard(() async {
+    final rows = await _db.rpc<dynamic>('staff_schedule_window', params: {'p_member_id': memberId});
+    if (rows is! List || rows.isEmpty) return null;
+    final r = rows.first as Map<String, dynamic>;
+    final deadline = r['deadline'] as String?;
+    return (
+      from: DateTime.parse(r['starts'] as String),
+      to: DateTime.parse(r['ends'] as String),
+      deadline: deadline == null ? null : DateTime.parse(deadline).toLocal(),
+    );
+  });
+
   /// Moje uwagi na tygodnie od [from] do [to]: poniedziałek tygodnia → uwaga.
   Future<Map<DateTime, String>> weekNotes(DateTime from, DateTime to) => _guard(() async {
     final rows = await _db
@@ -421,6 +434,15 @@ final schedulePeriodProvider = FutureProvider.autoDispose
 final scheduleDeadlineProvider = FutureProvider.autoDispose.family<DateTime?, ({String memberId, DateTime day})>((ref, q) {
   if (ref.watch(sessionProvider) == null) return Future.value(null);
   return ref.watch(staffRepositoryProvider).scheduleDeadline(q.memberId, q.day);
+});
+
+/// Okno zgłaszania dyspozycyjności (0081): okres lokalu (tydzień, 2 tygodnie albo miesiąc), na który pracownik
+/// zgłasza teraz godziny. Ani wcześniej, ani później baza nie przyjmie zgłoszenia.
+typedef ScheduleWindow = ({DateTime from, DateTime to, DateTime? deadline});
+
+final scheduleWindowProvider = FutureProvider.autoDispose.family<ScheduleWindow?, String>((ref, memberId) {
+  if (ref.watch(sessionProvider) == null) return Future.value(null);
+  return ref.watch(staffRepositoryProvider).scheduleWindow(memberId);
 });
 
 /// Moje uwagi na tygodnie okresu grafiku.

@@ -1567,7 +1567,8 @@ class _SchedulePeriodCardState extends ConsumerState<_SchedulePeriodCard> {
         SettingsRow(
           title: 'Okres zgłaszania',
           description: 'Na jaki okres pracownicy zgłaszają w aplikacji Table for employees, od której do której '
-              'mogą pracować.',
+              'mogą pracować. Zgłaszają jeden okres naraz: najbliższy następny, którego termin jeszcze nie minął '
+              '(w aplikacji te dni są zielone). Wcześniej ani później się nie da.',
           trailing: IgnorePointer(
             ignoring: !widget.editable || _busy,
             child: SegmentedTabs<String>(

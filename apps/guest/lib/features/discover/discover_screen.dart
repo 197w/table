@@ -651,46 +651,40 @@ class _ResultsBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          // iOS 26: dwa przyciski na szkle, wybrany w kolorze akcentu.
-          if (nativeLiquidGlass)
-            for (final (value, symbol, icon, label) in const [
-              (DiscoverLayout.cards, 'rectangle.grid.1x2', AppIcons.cards, 'Karty ze zdjęciem'),
-              (DiscoverLayout.list, 'list.bullet', AppIcons.rows, 'Zwarta lista'),
-            ])
-              GlassIconButton(
-                symbol: symbol,
-                icon: icon,
-                label: label,
-                selected: layout == value,
-                onTap: () {
-                  if (layout != value) HapticFeedback.selectionClick();
-                  onLayout(value);
-                },
-                fallback: const SizedBox.shrink(),
-              )
-          else
-          Container(
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.ring),
-            ),
-            child: Row(
-              children: [
-                _LayoutButton(
-                  icon: AppIcons.cards,
-                  label: 'Karty ze zdjęciem',
-                  selected: layout == DiscoverLayout.cards,
-                  onTap: () => onLayout(DiscoverLayout.cards),
-                ),
-                _LayoutButton(
-                  icon: AppIcons.rows,
-                  label: 'Zwarta lista',
-                  selected: layout == DiscoverLayout.list,
-                  onTap: () => onLayout(DiscoverLayout.list),
-                ),
-              ],
+          // iOS 26 i nowszy: natywny przełącznik Liquid Glass jak dolne menu (8.11.2026), gdzie indziej jak dotąd.
+          GlassSegmentedIcons(
+            symbols: const ['rectangle.grid.1x2', 'list.bullet'],
+            icons: const [AppIcons.cards, AppIcons.rows],
+            labels: const ['Karty ze zdjęciem', 'Zwarta lista'],
+            selected: layout == DiscoverLayout.cards ? 0 : 1,
+            onChanged: (i) {
+              final value = i == 0 ? DiscoverLayout.cards : DiscoverLayout.list;
+              if (layout != value) HapticFeedback.selectionClick();
+              onLayout(value);
+            },
+            fallback: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.ring),
+              ),
+              child: Row(
+                children: [
+                  _LayoutButton(
+                    icon: AppIcons.cards,
+                    label: 'Karty ze zdjęciem',
+                    selected: layout == DiscoverLayout.cards,
+                    onTap: () => onLayout(DiscoverLayout.cards),
+                  ),
+                  _LayoutButton(
+                    icon: AppIcons.rows,
+                    label: 'Zwarta lista',
+                    selected: layout == DiscoverLayout.list,
+                    onTap: () => onLayout(DiscoverLayout.list),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

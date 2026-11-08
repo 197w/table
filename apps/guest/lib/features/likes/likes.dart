@@ -74,7 +74,9 @@ class _LikeButtonState extends ConsumerState<LikeButton> {
         symbol: liked ? 'heart.fill' : 'heart',
         icon: liked ? AppIcons.heartFill : AppIcons.heart,
         native: widget.nativeGlass,
-        frosted: true,
+        // Na karcie przejrzyste szkło z rozmytym zdjęciem pod spodem, jak systemowe (8.11.2026).
+        frosted: widget.nativeGlass,
+        blur: !widget.nativeGlass,
         size: widget.nativeGlass ? 44 : 40,
         iconScale: _pop ? 1.25 : 1,
         color: liked ? likeColor : null,

@@ -14,9 +14,9 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   identycznie jak na komputerach”): konto lokalu, pracownicy kodem albo QR. Logowanie e-mailem jak w Table (0069; numer konta = numer u pracownika w panelu), skan wspólnego kodu QR z panelu
   zaczyna zmianę i loguje w panelu. Dolne menu: Zamówienia, Dostawy, Zeskanuj, Kalendarz (dawniej Grafik, 8.11.2026), Konto (dawniej Ustawienia).
   Kalendarz (`schedule_screen.dart`, `ScheduleScreen`) to miesiąc jak w Apple Calendar z grafikiem i wydarzeniami lokali:
-  dni, w które pracownik może jeszcze wpisać godziny, są zielonymi polami; zgłaszanie godzin na cały okres lokalu naraz
-  (tydzień, 2 tygodnie albo miesiąc, `restaurants.schedule_period`, ustawia „Ustawienia lokalu”) i „Moje godziny” na dole
-  (miesiąc kalendarzowy ze strzałkami, do 3 miesięcy wstecz).
+  zielone pola to dni okna zgłaszania (0081: jedyny okres lokalu, na który pracownik zgłasza teraz dyspozycyjność;
+  tydzień, 2 tygodnie albo miesiąc, `restaurants.schedule_period`, ustawia „Ustawienia lokalu”), zgłaszanie godzin na
+  ten okres naraz. „Moje godziny” usunięte 9.11.2026 na prośbę.
   Napisy dolnego menu: 11 px, bez powiększania czcionki z ustawień telefonu (S23 ma 1,15), żeby się nie zawijały. Kelner nabija zamówienia (stoliki, menu, wysyłka na kuchnię, wydanie,
   zamknięcie rachunku; niewysłaną pozycję usuwa się przesunięciem w lewo, minus tylko zmniejsza ilość; w wyborze dań
   „Przejdź dalej” na dole wraca do rachunku stolika; zamknięcie z rabatem, zadatkiem, napiwkiem i podziałem), mój grafik
@@ -31,12 +31,15 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   Do wysłania / Na kuchni / Wydane” i podpowiedzią o przesuwaniu w lewo, niedostępne dania z chipem zamiast
   przezroczystości. Dostawy: etap kursu i „na 19:30” jako chipy, „Nawiguj” z obrysem (pełny kolor ma tylko
   „Odebrałem” albo „Dostarczone”), kolejka z „Wolny / W kursie”, kafle „Kursy” i „Gotówka”, pulsowanie stoi przy
-  „Ogranicz ruch”. Kalendarz: „Dziś” i „+” (nowe wydarzenie) w pasku, miesiąc ze strzałkami i przesuwaniem palcem,
-  siatka 6 tygodni (`_DayCell`: dziś na czerwono, wybrany w kółku, zielone pole = dzień bez zgłoszenia przed terminem,
-  kreska w kolorze stanu z `_dayStatus`, kropki wydarzeń), legenda z liczbami w miesiącu, termin i „Zgłoś godziny na …”
-  dla okresu wybranego dnia (`periodOf`), a pod kreską wybrany dzień: karta godzin (`_DayRow`, zielona do wpisania;
-  drugie stuknięcie w dzień też ją otwiera), wydarzenia (`CalendarEventTile`), uwaga na tydzień, „Moje godziny”.
-  Bez przygaszania przezroczystością.
+  „Ogranicz ruch”. Kalendarz (jak Apple Calendar): w pasku „‹ 2026” (czerwone, wraca do całego roku `_YearView`:
+  12 małych miesięcy, dziś w czerwonym kółku, dni okna na zielono, stuknięcie otwiera miesiąc, przesunięcie zmienia
+  rok), „Dziś” i „+” (nowe wydarzenie), wszystkie na Liquid Glass (`GlassTextButton`, `GlassIconButton(native: true)`).
+  Miesiąc ze strzałkami i przesuwaniem palcem, siatka 6 tygodni (`_DayCell`: dziś na czerwono, wybrany w kółku,
+  zielone pole = dzień okna zgłaszania bez zgłoszenia, kreska w kolorze stanu z `_dayStatus`, kropki wydarzeń),
+  legenda z liczbami w miesiącu, wiersz okna („Zgłoś dyspozycyjność na tydzień 16–22 lis do …”, stuknięcie pokazuje te
+  dni) i „Zgłoś godziny na …”, a pod kreską wybrany dzień: karta godzin (`_DayRow`, zielona do wpisania, przed oknem
+  „Niedostępny”, po nim „Zgłaszanie później”; drugie stuknięcie w dzień też ją otwiera), wydarzenia
+  (`CalendarEventTile`), uwaga na tydzień. Bez przygaszania przezroczystością.
   Ustawienia jak u gościa. Podgląd ekranów: test golden poza repozytorium, jak przy panelu.
   „Zakończ zmianę” (31.10.2026, wzór od użytkownika: okno wyboru sposobu zamówienia z aplikacji McDonald's) otwiera
   okno od dołu (`showOptionSheet` w `table_core/src/option_sheet.dart`: karta na całą szerokość telefonu aż do
@@ -122,7 +125,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
   Map i śledzenia dostawców nie ma od 0068 (usunięte na prośbę użytkownika, także mapa u gościa).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0080, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0081, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -218,21 +221,28 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   do 820 punktów na środku (`TabletWidth` w `app/tablet_width.dart`, owija trasy w `app.dart`).
   Dolne menu Table: Odkrywaj, Rezerwacje („Moje”: rezerwacje i zamówienia), Konto (dawniej Ustawienia; pod kafelkiem
   konta dwa kafelki obok siebie: Polubione z liczbą lokali i Kody z liczbą do wykorzystania, 8.11.2026).
-  Liquid Glass (wspólny moduł `table_core/src/liquid_glass.dart`, eksportowany z `table_core`), tylko iOS 26 i nowszy.
+  Liquid Glass (wspólny moduł `table_core/src/liquid_glass.dart`, eksportowany z `table_core`), tylko iOS 26 i nowszy
+  (iPhone 14 użytkownika ma iOS 27; `PlatformInfo.isIOS26OrHigher` to „co najmniej 26”). Od 9.11.2026 (prośba: „ma
+  wyglądać tak jak dolne menu”) natywne są też: przełącznik kart i listy w Odkrywaj (`GlassSegmentedIcons`, natywny
+  UISegmentedControl z symbolami SF), „Zamknij” w oknie od dołu (`_SheetClose` w `option_sheet.dart`: natywny dopiero,
+  gdy okno wjechało i nic go nie przykrywa) i przyciski w pasku Kalendarza pracownika (`GlassTextButton` z napisem
+  UIKit). Gdy nad ekranem leży okno albo inna strona, w ich miejscu jest szkło Fluttera w tym samym kształcie.
   Natywne kontrolki UIKit tylko tam, gdzie stoją w miejscu i nic z Fluttera ich nie przykrywa: dolne menu
   (`NativeGlassTabBar`, natywny UITabBar), „Wstecz” i „Zamknij” w każdym pasku u góry
   (`AppBar(leading: glassLeading(context))`; poza iOS 26 null, czyli zwykły przycisk), „Wróć” i serce w pasku strony
   lokalu. Reszta to szkło rysowane przez Fluttera
   w tym samym stylu (`GlassSurface`: półprzezroczysta warstwa, jasna krawędź, cień; `frosted` gęstsze na zdjęciu,
   `blur` z rozmyciem nad przewijaną treścią; filtry w Odkrywaj, czyli pigułki i `DropdownPill` „Gdzie szukać” /
-  „Sortuj”, wróciły 8.11.2026 na prośbę do wyglądu sprzed Liquid Glass i nie są na szkle): przełącznik kart i listy (`GlassIconButton` z `icon` i `selected`), serca na kartach
-  (`LikeButton(glass: true)`), „Zarezerwuj stolik”, „Zadzwoń, żeby zarezerwować” i „Zamów” (z rozmyciem, bez paska
+  „Sortuj”, wróciły 8.11.2026 na prośbę do wyglądu sprzed Liquid Glass i nie są na szkle): serca na kartach
+  (`LikeButton(glass: true)`, od 9.11.2026 przejrzyste szkło z prawdziwym rozmyciem i nasyceniem zdjęcia pod spodem,
+  `GlassIconButton(blur: true)`), „Zarezerwuj stolik”, „Zadzwoń, żeby zarezerwować” i „Zamów” (z rozmyciem, bez paska
   pod spodem), u kelnera filtry działów menu, „Zamknij” w oknie od dołu (`GlassIconButton` z `icon`; natywny
   przycisk w oknie, które jedzie od dołu i które przykrywa drugie okno, psuł na iPhonie rysowanie treści okna:
   puste kółka godzin, 1.11.2026). Powód (31.10.2026, „aplikacje są zlagowane”): we Flutterze 3.47 na iOS
   każda klatka z natywnym widokiem czeka na wątek główny, a każdy napis Fluttera na natywnym szkle to osobna warstwa
   wielkości ekranu rysowana w każdej klatce; kilkanaście pigułek i serc w przewijanej liście zacinało obie aplikacje.
-  Nie dodawać natywnych kontrolek w listach ani pod treścią Fluttera. Wybrane: kolor akcentu z treścią
+  Nie dodawać natywnych kontrolek powtarzanych w wierszach i kartach list ani pod treścią Fluttera (pojedynczy
+  przełącznik nad listą jest natywny, ale pod oknem albo inną stroną ustępuje szkłu Fluttera). Wybrane: kolor akcentu z treścią
   `AppColors.onAccent`. Natywny przycisk nie zmienia stylu po utworzeniu, więc klucz zawiera stan. Natywny pasek
   chowa się, gdy nad zakładką jest inny ekran. Android zostaje przy Material. Dolne menu nie ma podpowiedzi po przytrzymaniu (`NavigationDestination(tooltip: '')`); podpowiedzi są
   tylko w lewym pasku panelu. Sprawdzić da się tylko na iPhonie z iOS 26 (Xcode 26).
@@ -584,7 +594,12 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   wysłać propozycję (`panel_propose_hours`, stan `proposed`, fioletowy), którą pracownik przyjmuje albo odrzuca w aplikacji
   (`staff_answer_proposal`; odrzucenie = niedostępny). Termin zgłaszania: „Ustawienia lokalu” → „Grafik pracowników”
   (`schedule_deadline_dow`, `schedule_deadline_time`: ostatni wybrany dzień tygodnia przed początkiem okresu o godzinie,
-  `private.schedule_deadline`); po nim aplikacja nie przyjmuje zgłoszeń (`check_schedule_deadline`). Od 0062 godziny
+  `private.schedule_deadline`); po nim aplikacja nie przyjmuje zgłoszeń (`check_schedule_deadline`). Okno zgłaszania
+  (0081, 9.11.2026, prośba użytkownika): pracownik zgłasza godziny i „Nie mogę” tylko na jeden okres, pierwszy po
+  bieżącym, którego termin jeszcze nie minął (bez terminu: następny okres); ani wcześniej, ani później
+  (`private.schedule_window`, `private.schedule_period_end`, `check_schedule_window` w `staff_submit_hours`
+  i `staff_mark_unavailable`; wycofanie `staff_delete_hours` bez zmian). Aplikacja: `staff_schedule_window`
+  (`scheduleWindowProvider`, okno i termin). Od 0062 godziny
   mogą iść przez północ (koniec wcześniej niż początek = następny dzień, np. 18:00–02:00 to 8 h; w bazie
   `ends <> starts`), w panelu „następnego dnia” przy godzinach i suma godzin z doliczoną dobą. Uwaga pracownika
   na tydzień (`staff_week_notes`, `staff_set_week_note`; w panelu ikona przy nazwisku). Pracownik może mieć kilka
