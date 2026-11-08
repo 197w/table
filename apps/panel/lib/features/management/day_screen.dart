@@ -15,6 +15,23 @@ const _warn = Color(0xFFE0A21B);
 
 String? _money(int? grosze) => grosze == null ? null : groszeToText(grosze);
 
+/// „1 opakowanie”, „3 opakowania”, „5 opakowań”.
+String _packs(int n) {
+  final ones = n % 10;
+  final tens = n % 100;
+  if (n == 1) return '1 opakowanie';
+  if (ones >= 2 && ones <= 4 && (tens < 12 || tens > 14)) return '$n opakowania';
+  return '$n opakowań';
+}
+
+String _envelopeHint(EnvelopeCash e) => [
+  'raport ${Fmt.price(e.fiscal)}',
+  if (e.online > 0) '− online ${Fmt.price(e.online)}',
+  '− terminale ${Fmt.price(e.terminals)}',
+  if (e.other > 0) '− przelewy i inne ${Fmt.price(e.other)}',
+  if (e.kaucja > 0) '− kaucja ${Fmt.price(e.kaucja)}',
+].join(' ');
+
 /// Management → Podsumowanie dnia: sprzedaż według płatności, raporty z kasy fiskalnej i terminali,
 /// policzona gotówka i petty cash (drobne wydatki i wpłaty z kasy). Różnice są od razu widoczne.
 /// Różnica między kartami z terminali a kartami w panelu przechodzi na gotówkę, która powinna być w kasie.
@@ -27,7 +44,8 @@ class DaySummaryScreen extends ConsumerStatefulWidget {
 }
 
 class _DaySummaryScreenState extends ConsumerState<DaySummaryScreen> {
-  DateTime _day = dateOnly(DateTime.now());
+  // Dzień lokalu: przy zamknięciu dnia o 02:00 o 01:30 to jeszcze wczoraj.
+  late DateTime _day = businessToday(ref.read(dayCloseProvider));
 
   Future<void> _pickDay() async {
     final picked = await showDatePicker(
@@ -43,14 +61,16 @@ class _DaySummaryScreenState extends ConsumerState<DaySummaryScreen> {
   Widget build(BuildContext context) {
     final restaurant = ref.watch(currentRestaurantProvider);
     if (restaurant == null) return const LoadingView();
-    final today = dateOnly(DateTime.now());
+    final close = ref.watch(dayCloseProvider);
+    final today = businessToday(close);
     final query = (restaurantId: restaurant.id, day: _day);
     final async = ref.watch(daySummaryProvider(query));
-    // Rachunki otwarte w wybranym dniu albo wcześniej: do zamknięcia przed rozliczeniem.
+    // Rachunki otwarte w wybranym dniu lokalu albo wcześniej: do zamknięcia przed rozliczeniem.
     final unclosed = [
       for (final o in ref.watch(unclosedOrdersProvider(restaurant.id)).value ?? const <UnclosedOrder>[])
-        if (dateOnly(o.order.openedAt.toLocal()).compareTo(_day) <= 0) o,
+        if (businessDayOf(o.order.openedAt, close).compareTo(_day) <= 0) o,
     ];
+    String hm(Duration d) => '${d.inHours.toString().padLeft(2, '0')}:${(d.inMinutes % 60).toString().padLeft(2, '0')}';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -84,6 +104,15 @@ class _DaySummaryScreenState extends ConsumerState<DaySummaryScreen> {
                     _UnclosedBanner(orders: unclosed),
                     const SizedBox(height: 16),
                   ],
+                  if (close > Duration.zero)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        'Dzień lokalu od ${hm(close)} do ${hm(close)} następnego dnia (zamknięcie dnia w Ustawieniach '
+                        'lokalu): sprzedaż po północy liczy się do tego dnia.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+                      ),
+                    ),
                   Row(
                     children: [
                       Expanded(
@@ -132,6 +161,8 @@ class _DaySummaryScreenState extends ConsumerState<DaySummaryScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 14),
+                  _SecondRow(summary: s),
                   const SizedBox(height: 16),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -155,6 +186,76 @@ class _DaySummaryScreenState extends ConsumerState<DaySummaryScreen> {
                 ],
               ),
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Drugi rząd kafli (8.11.2026, prośba użytkownika): zamówienia netto, średni rachunek, kaucja i gotówka do
+/// koperty z zapisanego raportu dobowego.
+class _SecondRow extends StatelessWidget {
+  const _SecondRow({required this.summary});
+
+  final DaySummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = summary;
+    final report = s.report;
+    final avg = averageBill(s, fiscalNetGrosze: report?.fiscalNetGrosze);
+    final env = envelopeCash(
+      s,
+      fiscalGrosze: report?.fiscalGrosze,
+      terminalsGrosze: (report?.terminals ?? const []).isEmpty ? null : report!.terminalsGrosze,
+    );
+    return Row(
+      children: [
+        Expanded(
+          child: StatTile(
+            label: 'Zamówienia netto',
+            value: '${s.ordersNet}',
+            hint: [
+              s.cancelled > 0 ? 'bez ${s.cancelled} anulowanych' : 'bez anulowanych',
+              if (s.orders != s.ordersNet) '${s.orders} rachunków',
+            ].join(' · '),
+            icon: AppIcons.receipt,
+            color: TileColors.blue,
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: StatTile(
+            label: 'Średni rachunek',
+            value: avg == null ? '—' : Fmt.price(avg.grosze),
+            hint: avg == null
+                ? 'brak zamówień'
+                : (avg.fromReport ? 'netto z raportu dobowego' : 'netto z panelu · wpisz netto z raportu'),
+            icon: AppIcons.chartBar,
+            color: TileColors.green,
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: StatTile(
+            label: 'Kaucja',
+            value: Fmt.price(s.kaucjaGrosze),
+            hint: s.kaucjaCount > 0 ? _packs(s.kaucjaCount) : 'składniki z kaucją: Inwentaryzacja',
+            icon: AppIcons.package,
+            color: TileColors.amber,
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: StatTile(
+            label: 'Gotówka do koperty',
+            value: env == null ? '—' : Fmt.price(env.total),
+            hint: env == null
+                ? 'po zapisaniu raportu dobowego'
+                : 'raport − online − terminale${env.other > 0 ? ' − inne' : ''}${env.kaucja > 0 ? ' − kaucja' : ''}',
+            icon: AppIcons.envelope,
+            color: TileColors.violet,
           ),
         ),
       ],
@@ -254,6 +355,55 @@ class _Check extends StatelessWidget {
   }
 }
 
+/// Gotówka do koperty liczona na żywo z wpisanego raportu dobowego i terminali.
+class _Envelope extends StatelessWidget {
+  const _Envelope({required this.cash});
+
+  final EnvelopeCash? cash;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final c = cash;
+    final negative = c != null && c.total < 0;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: negative ? _warn.withValues(alpha: 0.6) : AppColors.ring),
+      ),
+      child: Row(
+        children: [
+          const Glyph(AppIcons.envelope, size: 22, color: TileColors.violet),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  c == null ? 'Wpisz raport dobowy' : Fmt.price(c.total),
+                  style: text.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: negative ? _warn : null,
+                    fontFeatures: _tabular,
+                  ),
+                ),
+                Text(
+                  c == null
+                      ? 'Raport dobowy minus płatności online, terminale (bez napiwków kartą) i kaucja.'
+                      : _envelopeHint(c),
+                  style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MoneyField extends StatelessWidget {
   const _MoneyField({required this.controller, required this.label, this.onChanged});
 
@@ -290,6 +440,7 @@ class _ReportCard extends ConsumerStatefulWidget {
 class _ReportCardState extends ConsumerState<_ReportCard> {
   late final DayReport? _report = widget.summary.report;
   late final _fiscal = TextEditingController(text: _money(_report?.fiscalGrosze) ?? '');
+  late final _fiscalNet = TextEditingController(text: _money(_report?.fiscalNetGrosze) ?? '');
   late final _cash = TextEditingController(text: _money(_report?.cashCountedGrosze) ?? '');
   late final _note = TextEditingController(text: _report?.note ?? '');
   /// Kwoty z platform dostaw według nazwy (lista platform z „Ustawienia lokalu” i te zapisane w raporcie).
@@ -307,6 +458,7 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
   @override
   void dispose() {
     _fiscal.dispose();
+    _fiscalNet.dispose();
     _cash.dispose();
     _note.dispose();
     for (final (a, b) in _terminals) {
@@ -328,7 +480,7 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
   }
 
   Future<void> _save() async {
-    for (final c in [_fiscal, _cash, for (final (_, amount) in _terminals) amount, ..._platforms.values]) {
+    for (final c in [_fiscal, _fiscalNet, _cash, for (final (_, amount) in _terminals) amount, ..._platforms.values]) {
       if (c.text.trim().isNotEmpty && parseGrosze(c.text) == null) {
         showMessage(context, 'Wpisz kwotę, na przykład 1250 albo 1250,50.', tone: ToastTone.warning);
         return;
@@ -340,6 +492,7 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
         widget.restaurantId,
         widget.day,
         fiscalGrosze: _parse(_fiscal),
+        fiscalNetGrosze: _parse(_fiscalNet),
         terminals: [
           for (final (name, amount) in _terminals)
             if (_parse(amount) != null) TerminalReport(name.text.trim(), _parse(amount)!),
@@ -396,11 +549,29 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
           const SizedBox(height: 8),
           Row(
             children: [
-              SizedBox(width: 240, child: _MoneyField(controller: _fiscal, label: 'Raport dobowy', onChanged: refresh)),
+              SizedBox(
+                width: 240,
+                child: Column(
+                  children: [
+                    _MoneyField(controller: _fiscal, label: 'Raport dobowy (brutto)', onChanged: refresh),
+                    const SizedBox(height: 10),
+                    _MoneyField(controller: _fiscalNet, label: 'Netto z raportu', onChanged: refresh),
+                  ],
+                ),
+              ),
               const SizedBox(width: 16),
               Expanded(child: _Check(label: 'Obrót w panelu', expected: s.revenueGrosze, actual: _parse(_fiscal))),
             ],
           ),
+          if (averageBill(s, fiscalNetGrosze: _parse(_fiscalNet)) case final avg?)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Średni rachunek ${Fmt.price(avg.grosze)}: netto ${avg.fromReport ? 'z raportu' : 'z panelu'} '
+                '/ ${s.ordersNet} zamówień netto',
+                style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+              ),
+            ),
           const SizedBox(height: 20),
           Row(
             children: [
@@ -446,6 +617,10 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
               ),
             ),
           _Check(label: 'Karty w panelu', expected: s.expectedCardGrosze, actual: _terminalsSum),
+          const SizedBox(height: 20),
+          Text('Gotówka do koperty', style: text.titleSmall),
+          const SizedBox(height: 8),
+          _Envelope(cash: envelopeCash(s, fiscalGrosze: _parse(_fiscal), terminalsGrosze: _terminalsSum)),
           const SizedBox(height: 20),
           Text('Gotówka w kasie', style: text.titleSmall),
           const SizedBox(height: 8),

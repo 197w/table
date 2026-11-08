@@ -52,6 +52,7 @@ class PanelRestaurant {
     required this.role,
     this.logoUrl,
     this.listed = true,
+    this.dayClose = Duration.zero,
   });
 
   final String id;
@@ -60,6 +61,9 @@ class PanelRestaurant {
   final bool isPro;
   final StaffRole role;
   final String? logoUrl;
+
+  /// Zamknięcie dnia (0079): do tej godziny po północy sprzedaż liczy się do poprzedniego dnia (0: północ).
+  final Duration dayClose;
 
   /// Goście widzą lokal w aplikacji. Nowy lokal czeka na weryfikację przez Table.
   final bool listed;
@@ -76,9 +80,25 @@ class PanelRestaurant {
       role: StaffRole.fromDb(json['role']),
       logoUrl: json['logo_url'] as String?,
       listed: json['listed'] != false,
+      dayClose: parseDayClose(json['day_close']),
     );
   }
 }
+
+/// Godzina zamknięcia dnia „HH:MM” jako przesunięcie od północy.
+Duration parseDayClose(Object? value) {
+  if (value is! String || value.length < 5) return Duration.zero;
+  return Duration(hours: int.tryParse(value.substring(0, 2)) ?? 0, minutes: int.tryParse(value.substring(3, 5)) ?? 0);
+}
+
+/// Dzień lokalu dla chwili [t]: przy zamknięciu dnia o 02:00 sprzedaż o 01:30 należy do poprzedniego dnia.
+DateTime businessDayOf(DateTime t, Duration close) {
+  final local = t.toLocal().subtract(close);
+  return DateTime(local.year, local.month, local.day);
+}
+
+/// Początek dnia lokalu [day], np. 7.11 o 02:00 przy zamknięciu dnia o 02:00.
+DateTime businessDayStart(DateTime day, Duration close) => DateTime(day.year, day.month, day.day).add(close);
 
 // ---------------------------------------------------------------
 // Rezerwacje
@@ -591,7 +611,11 @@ class RestaurantProfile {
     this.scheduleDeadlineTime = '20:00',
     this.inventoryPeriod = 'week',
     this.delivery = const DeliverySettings(),
+    this.dayClose = '00:00',
   });
+
+  /// Zamknięcie dnia „HH:MM” (0079): sprzedaż do tej godziny po północy liczy się do poprzedniego dnia.
+  final String dayClose;
 
   /// Dostawa i odbiór osobisty.
   final DeliverySettings delivery;
@@ -656,6 +680,7 @@ class RestaurantProfile {
       scheduleDeadlineDow: json['schedule_deadline_dow'] == null ? null : _toInt(json['schedule_deadline_dow']),
       scheduleDeadlineTime: (json['schedule_deadline_time'] as String?)?.substring(0, 5) ?? '20:00',
       inventoryPeriod: json['inventory_period'] as String? ?? 'week',
+      dayClose: (json['day_close'] as String?)?.substring(0, 5) ?? '00:00',
       delivery: DeliverySettings.fromJson(json),
     );
   }
@@ -1912,11 +1937,9 @@ class UnclosedOrder {
   /// Kto otworzył rachunek albo przyjął zamówienie w panelu.
   final String? openedBy;
 
-  /// Zamówienie z wcześniejszego dnia niż [now].
-  bool fromEarlierDay(DateTime now) {
-    final o = order.openedAt.toLocal();
-    return DateTime(o.year, o.month, o.day).isBefore(DateTime(now.year, now.month, now.day));
-  }
+  /// Zamówienie z wcześniejszego dnia lokalu niż [now] (z godziną zamknięcia dnia [close]).
+  bool fromEarlierDay(DateTime now, [Duration close = Duration.zero]) =>
+      businessDayOf(order.openedAt, close).isBefore(businessDayOf(now, close));
 
   factory UnclosedOrder.fromJson(Map<String, dynamic> json) {
     final order = PanelOrder.fromJson(json);
@@ -3630,11 +3653,15 @@ class InventoryItem {
     this.location,
     this.packName,
     this.containerId,
+    this.depositGrosze,
   });
 
   final String id;
   final String name;
   final InventoryUnit unit;
+
+  /// Kaucja za opakowanie (np. 50 gr za butelkę albo puszkę). Null: bez kaucji.
+  final int? depositGrosze;
 
   /// Pojemność jednego opakowania w jednostce.
   final double capacity;
@@ -3664,6 +3691,7 @@ class InventoryItem {
     location: json['location'] as String?,
     packName: json['pack_name'] as String?,
     containerId: json['container_id'] as String?,
+    depositGrosze: json['deposit_grosze'] == null ? null : _toInt(json['deposit_grosze']),
   );
 }
 
@@ -3987,6 +4015,7 @@ class TerminalReport {
 class DayReport {
   const DayReport({
     this.fiscalGrosze,
+    this.fiscalNetGrosze,
     this.terminals = const [],
     this.cashCountedGrosze,
     this.note,
@@ -3996,6 +4025,9 @@ class DayReport {
   });
 
   final int? fiscalGrosze;
+
+  /// Sprzedaż netto (bez VAT) z raportu dobowego kasy fiskalnej: do średniego rachunku.
+  final int? fiscalNetGrosze;
   final List<TerminalReport> terminals;
 
   /// Sprzedaż z platform dostaw (nazwa i kwota), osobno od kasy fiskalnej.
@@ -4009,6 +4041,7 @@ class DayReport {
 
   factory DayReport.fromJson(Map<String, dynamic> json) => DayReport(
     fiscalGrosze: json['fiscal_grosze'] == null ? null : _toInt(json['fiscal_grosze']),
+    fiscalNetGrosze: json['fiscal_net_grosze'] == null ? null : _toInt(json['fiscal_net_grosze']),
     terminals: TerminalReport.listFrom(json['terminals']),
     cashCountedGrosze: json['cash_counted_grosze'] == null ? null : _toInt(json['cash_counted_grosze']),
     note: json['note'] as String?,
@@ -4039,10 +4072,28 @@ class DaySummary {
     this.discountsGrosze = 0,
     this.depositsGrosze = 0,
     this.report,
+    this.ordersNet = 0,
+    this.revenueNetGrosze = 0,
+    this.kaucjaGrosze = 0,
+    this.kaucjaCount = 0,
+    this.dayClose = '00:00',
   });
 
   /// Zadatki z rezerwacji odjęte od rachunków (w karcie online).
   final int depositsGrosze;
+
+  /// Zamówienia netto: opłacone, bez anulowanych i pustych; „Część rachunku” liczy się razem z resztą rachunku.
+  final int ordersNet;
+
+  /// Sprzedaż netto bez VAT policzona w panelu ze stawek menu (gdy lokal nie wpisze netto z raportu dobowego).
+  final int revenueNetGrosze;
+
+  /// Kaucja za opakowania sprzedanych dań (składniki z kaucją) i liczba opakowań.
+  final int kaucjaGrosze;
+  final int kaucjaCount;
+
+  /// Zamknięcie dnia lokalu „HH:MM”.
+  final String dayClose;
 
   /// Napiwki ze wszystkich płatności, w tym gotówką i kartą (karta przechodzi przez terminal).
   final int tipsGrosze;
@@ -4093,9 +4144,41 @@ class DaySummary {
     tipsCardGrosze: _toInt(json['tips_card']),
     discountsGrosze: _toInt(json['discounts']),
     depositsGrosze: _toInt(json['deposits']),
+    ordersNet: _toInt(json['orders_net']),
+    revenueNetGrosze: _toInt(json['revenue_net']),
+    kaucjaGrosze: _toInt(json['kaucja_grosze']),
+    kaucjaCount: _toInt(json['kaucja_count']),
+    dayClose: json['day_close'] as String? ?? '00:00',
     petty: [for (final e in (json['petty'] as List? ?? const [])) PettyEntry.fromJson(e as Map<String, dynamic>)],
     report: json['report'] == null ? null : DayReport.fromJson(json['report'] as Map<String, dynamic>),
   );
+}
+
+/// Gotówka do koperty (8.11.2026, prośba użytkownika): raport dobowy z kasy fiskalnej minus płatności online
+/// (karta w aplikacji Table i zadatki), minus płatności z terminali (suma wpisanych terminali, a bez nich karty
+/// z panelu; bez napiwków kartą, których nie ma w raporcie), minus przelewy i inne, minus kaucja.
+typedef EnvelopeCash = ({int fiscal, int online, int terminals, int other, int kaucja, int total});
+
+EnvelopeCash? envelopeCash(DaySummary s, {required int? fiscalGrosze, int? terminalsGrosze}) {
+  if (fiscalGrosze == null) return null;
+  final terminals = (terminalsGrosze ?? s.expectedCardGrosze) - s.tipsCardGrosze;
+  final total = fiscalGrosze - s.cardOnlineGrosze - terminals - s.otherGrosze - s.kaucjaGrosze;
+  return (
+    fiscal: fiscalGrosze,
+    online: s.cardOnlineGrosze,
+    terminals: terminals,
+    other: s.otherGrosze,
+    kaucja: s.kaucjaGrosze,
+    total: total,
+  );
+}
+
+/// Średni rachunek: netto z raportu dobowego (a bez niego netto z panelu) podzielone przez zamówienia netto.
+/// Null: brak zamówień.
+({int grosze, bool fromReport})? averageBill(DaySummary s, {int? fiscalNetGrosze}) {
+  if (s.ordersNet <= 0) return null;
+  final net = fiscalNetGrosze ?? s.revenueNetGrosze;
+  return (grosze: (net / s.ordersNet).round(), fromReport: fiscalNetGrosze != null);
 }
 
 /// Gość na liście oczekujących: dzień, liczba osób, przedział godzin i propozycja lokalu.

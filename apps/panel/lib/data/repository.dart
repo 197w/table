@@ -306,7 +306,7 @@ class PanelRepository {
             'deposit_min_party, deposit_per_person_grosze, '
             'schedule_period, schedule_deadline_dow, schedule_deadline_time, inventory_period, delivery_enabled, '
             'pickup_enabled, takeaway_cash, takeaway_card, delivery_platforms, takeaway_max_items, takeaway_max_per_item, '
-            'delivery_fee_grosze, delivery_min_grosze, delivery_area, opening_hours(weekday, opens, closes)',
+            'delivery_fee_grosze, delivery_min_grosze, delivery_area, day_close, opening_hours(weekday, opens, closes)',
           )
           .eq('id', restaurantId)
           .single();
@@ -921,31 +921,31 @@ class PanelRepository {
 
   /// Statystyki zespołu za miesiąc kalendarzowy [month].
   /// Parametry okresu statystyk zespołu: od północy, ostatnie dni albo bieżący miesiąc.
-  static Map<String, dynamic> _teamPeriod(TeamPeriod period) {
+  static Map<String, dynamic> _teamPeriod(TeamPeriod period, Duration close) {
     final now = DateTime.now();
     return switch (period) {
-      TeamPeriod.today => {'p_from': DateTime(now.year, now.month, now.day).toUtc().toIso8601String()},
+      TeamPeriod.today => {'p_from': businessDayStart(businessDayOf(now, close), close).toUtc().toIso8601String()},
       TeamPeriod.week => {'p_days': 7},
       TeamPeriod.twoWeeks => {'p_days': 14},
       TeamPeriod.month => {'p_month': _isoDay(monthStart(now))},
     };
   }
 
-  Future<List<TeamStat>> teamStats(String restaurantId, TeamPeriod period) {
+  Future<List<TeamStat>> teamStats(String restaurantId, TeamPeriod period, {Duration close = Duration.zero}) {
     return _guard(() async {
       final rows = await _db.rpc<List<dynamic>>(
         'panel_team_stats',
-        params: {'p_restaurant_id': restaurantId, ..._teamPeriod(period)},
+        params: {'p_restaurant_id': restaurantId, ..._teamPeriod(period, close)},
       );
       return [for (final r in rows) TeamStat.fromJson(r as Map<String, dynamic>)];
     });
   }
 
-  Future<TeamSummary> teamSummary(String restaurantId, TeamPeriod period) {
+  Future<TeamSummary> teamSummary(String restaurantId, TeamPeriod period, {Duration close = Duration.zero}) {
     return _guard(() async {
       final json = await _db.rpc<Map<String, dynamic>>(
         'panel_team_summary',
-        params: {'p_restaurant_id': restaurantId, ..._teamPeriod(period)},
+        params: {'p_restaurant_id': restaurantId, ..._teamPeriod(period, close)},
       );
       return TeamSummary.fromJson(json);
     });
@@ -1208,7 +1208,7 @@ class PanelRepository {
     return _guard(() async {
       final rows = await _db
           .from('inventory_items')
-          .select('id, name, unit, capacity, sort, location, pack_name, container_id')
+          .select('id, name, unit, capacity, sort, location, pack_name, container_id, deposit_grosze')
           .eq('restaurant_id', restaurantId)
           .isFilter('deleted_at', null)
           .order('sort')
@@ -1227,6 +1227,7 @@ class PanelRepository {
     String? location,
     String? packName,
     String? containerId,
+    int? depositGrosze,
     bool details = false,
   }) {
     return _guard(() async {
@@ -1239,6 +1240,7 @@ class PanelRepository {
           'location': location?.trim().isEmpty ?? true ? null : location!.trim(),
           'pack_name': packName?.trim().isEmpty ?? true ? null : packName!.trim(),
           'container_id': containerId,
+          'deposit_grosze': depositGrosze,
         },
       };
       try {
@@ -1413,6 +1415,7 @@ class PanelRepository {
     String restaurantId,
     DateTime day, {
     int? fiscalGrosze,
+    int? fiscalNetGrosze,
     List<TerminalReport> terminals = const [],
     int? cashCountedGrosze,
     String? note,
@@ -1424,6 +1427,7 @@ class PanelRepository {
         'p_restaurant_id': restaurantId,
         'p_day': _dateOnly(day),
         'p_fiscal': fiscalGrosze,
+        'p_fiscal_net': fiscalNetGrosze,
         'p_terminals': [for (final t in terminals) t.toJson()],
         'p_cash_counted': cashCountedGrosze,
         'p_note': note,
@@ -1433,7 +1437,6 @@ class PanelRepository {
     );
   }
 
-  /// Platformy dostaw lokalu (nazwy w kolejności), do kwot w podsumowaniu dnia.
   /// Wzór etykiety lokalu (0077) jako JSON; null: lokal go jeszcze nie zapisał.
   Future<Map<String, dynamic>?> labelTemplateJson(String restaurantId) {
     return _guard(() async {
@@ -1447,6 +1450,7 @@ class PanelRepository {
     return _guard(() => _db.rpc<void>('panel_save_label_template', params: params));
   }
 
+  /// Platformy dostaw lokalu (nazwy w kolejności), do kwot w podsumowaniu dnia.
   Future<void> setDeliveryPlatforms(String restaurantId, List<String> names) {
     return _guard(
       () => _db.rpc<void>('panel_set_delivery_platforms', params: {'p_restaurant_id': restaurantId, 'p_names': names}),
@@ -1567,7 +1571,7 @@ class PanelRepository {
 
 
   /// Zamknięte rachunki (opłacone i anulowane) z jednego dnia, najnowsze pierwsze.
-  Future<List<PanelOrder>> orderHistory(String restaurantId, DateTime day) {
+  Future<List<PanelOrder>> orderHistory(String restaurantId, DateTime day, {Duration close = Duration.zero}) {
     return _guard(() async {
       final rows = await _db
           .from('orders')
@@ -1579,8 +1583,8 @@ class PanelRepository {
           )
           .eq('restaurant_id', restaurantId)
           .inFilter('status', ['paid', 'cancelled'])
-          .gte('closed_at', day.toUtc().toIso8601String())
-          .lt('closed_at', DateTime(day.year, day.month, day.day + 1).toUtc().toIso8601String())
+          .gte('closed_at', businessDayStart(day, close).toUtc().toIso8601String())
+          .lt('closed_at', businessDayStart(DateTime(day.year, day.month, day.day + 1), close).toUtc().toIso8601String())
           .order('closed_at', ascending: false);
       return rows.map(PanelOrder.fromJson).toList();
     });

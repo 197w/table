@@ -1280,6 +1280,9 @@ class _InventoryItemDialogState extends ConsumerState<InventoryItemDialog> {
   late final _location = TextEditingController(text: widget.item?.location ?? '');
   late InventoryUnit _unit = widget.item?.unit ?? InventoryUnit.l;
   late String? _containerId = widget.item?.containerId;
+
+  /// Kaucja za opakowanie (0079, 8.11.2026): null bez kaucji, 50 gr butelka plastikowa i puszka, 1 zł szkło.
+  late int? _deposit = widget.item?.depositGrosze;
   bool _busy = false;
   String? _nameError;
   String? _capacityError;
@@ -1318,6 +1321,7 @@ class _InventoryItemDialogState extends ConsumerState<InventoryItemDialog> {
             packName: _pack.text,
             location: _location.text,
             containerId: weighed ? _containerId : null,
+            depositGrosze: _deposit,
           );
       if (!mounted) return;
       Navigator.pop(context, id);
@@ -1460,6 +1464,41 @@ class _InventoryItemDialogState extends ConsumerState<InventoryItemDialog> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Kaucja', style: text.titleSmall),
+                          Text(
+                            pieces
+                                ? 'Za każdą sprzedaną sztukę (butelkę, puszkę). Suma dnia jest w Podsumowaniu dnia.'
+                                : 'Za każde sprzedane opakowanie. Suma dnia jest w Podsumowaniu dnia.',
+                            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Switch(
+                      value: _deposit != null,
+                      onChanged: (v) => setState(() => _deposit = v ? 50 : null),
+                    ),
+                  ],
+                ),
+                if (_deposit != null) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: SegmentedTabs<int>(
+                      options: const [(50, '0,50 zł'), (100, '1,00 zł')],
+                      selected: _deposit == 100 ? 100 : 50,
+                      onChanged: (v) => setState(() => _deposit = v),
+                    ),
+                  ),
+                ],
                 if (weighed && containers.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String?>(

@@ -58,7 +58,7 @@ class OrderHistoryScreen extends ConsumerStatefulWidget {
 }
 
 class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
-  DateTime _day = dateOnly(DateTime.now());
+  late DateTime _day = businessToday(ref.read(dayCloseProvider));
   String? _selectedId;
 
   // Panel po lewej: zaznaczone filtry (puste: wszystko), zwinięte grupy i zwinięcie panelu.
@@ -139,7 +139,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     if (restaurant == null) return const LoadingView();
     if (!restaurant.isPro) return const ProGate(feature: 'Historia zamówień');
 
-    final today = dateOnly(DateTime.now());
+    final today = businessToday(ref.watch(dayCloseProvider));
     final canRevenue = ref.watch(memberPermissionsProvider).contains('revenue');
     final query = (restaurantId: restaurant.id, day: _day);
     final searchQuery = (restaurantId: restaurant.id, query: _query);

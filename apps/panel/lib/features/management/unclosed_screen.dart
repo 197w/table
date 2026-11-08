@@ -69,6 +69,7 @@ class _UnclosedOrdersScreenState extends ConsumerState<UnclosedOrdersScreen> {
                 );
               }
               final now = DateTime.now();
+              final close = ref.watch(dayCloseProvider);
               final visible = [
                 for (final o in orders)
                   if (switch (_filter) {
@@ -80,19 +81,19 @@ class _UnclosedOrdersScreenState extends ConsumerState<UnclosedOrdersScreen> {
               ];
               final earlier = [
                 for (final o in visible)
-                  if (o.fromEarlierDay(now)) o,
+                  if (o.fromEarlierDay(now, close)) o,
               ];
               final today = [
                 for (final o in visible)
-                  if (!o.fromEarlierDay(now)) o,
+                  if (!o.fromEarlierDay(now, close)) o,
               ];
-              final earlierAll = orders.where((o) => o.fromEarlierDay(now)).toList();
+              final earlierAll = orders.where((o) => o.fromEarlierDay(now, close)).toList();
               Widget tile(UnclosedOrder o) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: _OrderTile(
                   entry: o,
                   label: labelOf(o.order),
-                  earlier: o.fromEarlierDay(now),
+                  earlier: o.fromEarlierDay(now, close),
                   restaurantId: restaurant.id,
                 ),
               );

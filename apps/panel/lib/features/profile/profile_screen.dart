@@ -150,6 +150,7 @@ class SettingsScreen extends ConsumerWidget {
                           pro: restaurant.isPro,
                         ),
                         _PlatformsCard(profile: profile, editable: restaurant.canManage),
+                        _DayCloseCard(profile: profile, editable: restaurant.canManage),
                         _SchedulePeriodCard(profile: profile, editable: restaurant.canManage),
                         _InventoryPeriodCard(profile: profile, editable: canInventory),
                         const _ThisComputerCard(),
@@ -513,6 +514,79 @@ class _DepositCardState extends ConsumerState<_DepositCard> {
 }
 
 /// Co ile lokal robi inwentaryzację. Zmiana z uprawnieniem „Edytowanie składników”.
+/// Zamknięcie dnia (0079, 8.11.2026, prośba użytkownika): lokal otwarty po północy ustawia godzinę, do której
+/// sprzedaż liczy się do poprzedniego dnia (podsumowanie dnia, statystyki, Historia zamówień, eksport).
+class _DayCloseCard extends ConsumerStatefulWidget {
+  const _DayCloseCard({required this.profile, required this.editable});
+
+  final RestaurantProfile profile;
+  final bool editable;
+
+  @override
+  ConsumerState<_DayCloseCard> createState() => _DayCloseCardState();
+}
+
+class _DayCloseCardState extends ConsumerState<_DayCloseCard> {
+  bool _busy = false;
+
+  static final _options = [
+    for (var m = 0; m <= 6 * 60; m += 30) '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}',
+  ];
+
+  Future<void> _set(String value) async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(repositoryProvider).updateProfile(widget.profile.id, {'day_close': value});
+      ref
+        ..invalidate(profileProvider(widget.profile.id))
+        ..invalidate(restaurantsProvider);
+      if (mounted) {
+        showMessage(
+          context,
+          value == '00:00' ? 'Dzień kończy się o północy.' : 'Dzień kończy się o $value: sprzedaż po północy liczy się do poprzedniego dnia.',
+        );
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final current = widget.profile.dayClose;
+    return SettingsSection(
+      title: 'Zamknięcie dnia',
+      children: [
+        SettingsRow(
+          title: 'Dzień kończy się o',
+          description: 'Lokal otwarty do 2 w nocy ustawia 02:00: sprzedaż do tej godziny liczy się do poprzedniego dnia '
+              'w podsumowaniu dnia, statystykach, Historii zamówień i eksporcie.',
+          trailing: SizedBox(
+            width: 140,
+            child: DropdownButtonFormField<String>(
+              key: ValueKey(current),
+              initialValue: _options.contains(current) ? current : null,
+              isDense: true,
+              icon: const Glyph(AppIcons.caretDown, size: 16),
+              items: [
+                for (final o in _options)
+                  DropdownMenuItem(value: o, child: Text(o == '00:00' ? '00:00 (północ)' : o)),
+              ],
+              onChanged: !widget.editable || _busy
+                  ? null
+                  : (v) {
+                      if (v != null && v != current) _set(v);
+                    },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _InventoryPeriodCard extends ConsumerStatefulWidget {
   const _InventoryPeriodCard({required this.profile, required this.editable});
 

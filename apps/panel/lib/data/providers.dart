@@ -105,6 +105,12 @@ final currentRestaurantProvider = Provider<PanelRestaurant?>((ref) {
 
 DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
+/// Zamknięcie dnia wybranego lokalu (0079): sprzedaż do tej godziny po północy liczy się do poprzedniego dnia.
+final dayCloseProvider = Provider<Duration>((ref) => ref.watch(currentRestaurantProvider)?.dayClose ?? Duration.zero);
+
+/// Dzisiejszy dzień lokalu (o 01:30 przy zamknięciu dnia 02:00 to jeszcze wczoraj).
+DateTime businessToday(Duration close) => businessDayOf(DateTime.now(), close);
+
 class SelectedDayNotifier extends Notifier<DateTime> {
   @override
   DateTime build() => dateOnly(DateTime.now());
@@ -505,11 +511,12 @@ typedef TeamStatsQuery = ({String restaurantId, TeamPeriod period});
 
 /// Statystyki zespołu za miesiąc (pierwszy dzień miesiąca).
 final teamStatsProvider = FutureProvider.autoDispose.family<List<TeamStat>, TeamStatsQuery>(
-  (ref, q) => (ref..cacheFor()).watch(repositoryProvider).teamStats(q.restaurantId, q.period),
+  (ref, q) => (ref..cacheFor()).watch(repositoryProvider).teamStats(q.restaurantId, q.period, close: ref.watch(dayCloseProvider)),
 );
 
 final teamSummaryProvider = FutureProvider.autoDispose.family<TeamSummary, TeamStatsQuery>(
-  (ref, q) => (ref..cacheFor()).watch(repositoryProvider).teamSummary(q.restaurantId, q.period),
+  (ref, q) =>
+      (ref..cacheFor()).watch(repositoryProvider).teamSummary(q.restaurantId, q.period, close: ref.watch(dayCloseProvider)),
 );
 
 /// Stawki brutto za godzinę i rodzaje umów według numeru pracownika.
@@ -751,8 +758,9 @@ final takeawayOrdersProvider = FutureProvider.autoDispose.family<List<TakeawayOr
   (ref, id) {
     ref.cacheFor();
     ref.watch(ordersLiveProvider(id).select((s) => s.version));
-    final now = DateTime.now();
-    return ref.watch(repositoryProvider).takeawayOrders(id, since: DateTime(now.year, now.month, now.day));
+    // „Zakończone dziś”: od początku dnia lokalu (zamknięcie dnia, np. 02:00).
+    final close = ref.watch(dayCloseProvider);
+    return ref.watch(repositoryProvider).takeawayOrders(id, since: businessDayStart(businessDayOf(DateTime.now(), close), close));
   },
 );
 
@@ -900,7 +908,7 @@ final orderHistoryProvider = FutureProvider.autoDispose.family<List<PanelOrder>,
   (ref, q) {
     ref.cacheFor();
     ref.watch(ordersLiveProvider(q.restaurantId).select((s) => s.version));
-    return ref.watch(repositoryProvider).orderHistory(q.restaurantId, q.day);
+    return ref.watch(repositoryProvider).orderHistory(q.restaurantId, q.day, close: ref.watch(dayCloseProvider));
   },
 );
 

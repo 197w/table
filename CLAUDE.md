@@ -116,7 +116,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
   Map i śledzenia dostawców nie ma od 0068 (usunięte na prośbę użytkownika, także mapa u gościa).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0078, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0079, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -296,6 +296,22 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   albo wcześniejszych i „Sprawdź”),
   terminale (kilka, nazwa i kwota), policzona gotówka i notatka (`day_reports`, `panel_save_day_report`), petty cash
   (wydatki i wpłaty z kasy, `petty_cash`, `panel_add_petty`, `panel_delete_petty`); zgodność kwot zielona albo żółta różnica.
+  Od 0079 (8.11.2026, prośby użytkownika): drugi rząd kafli „Zamówienia netto” (opłacone bez anulowanych i pustych;
+  „Część rachunku” ma ten sam stolik i chwilę otwarcia, więc liczy się raz z resztą rachunku, `orders_net`),
+  „Średni rachunek” (netto z raportu dobowego, nowe pole „Netto z raportu”, `day_reports.fiscal_net_grosze`,
+  `panel_save_day_report(p_fiscal_net)`; bez niego netto z panelu ze stawek menu, `revenue_net`, dostawa jak 8%;
+  `averageBill`), „Kaucja” (składniki z kaucją w Inwentaryzacji, `kaucja_grosze`, `kaucja_count`) i „Gotówka do
+  koperty” (`envelopeCash`: raport dobowy minus karta online i zadatki, minus terminale (suma wpisanych, bez nich
+  karty z panelu; bez napiwków kartą, których nie ma w raporcie), minus przelewy i inne, minus kaucja; kafel z
+  zapisanego raportu, a w raporcie liczona na żywo z rozbiciem).
+  Zamknięcie dnia (0079, „Ustawienia lokalu” → „Zamknięcie dnia”, `restaurants.day_close` 00:00–08:00, co 30 min do
+  06:00 w panelu): lokal otwarty do 2 w nocy ustawia 02:00 i sprzedaż do tej godziny liczy się do poprzedniego dnia.
+  Baza: `private.day_close`, `private.business_day`, przesunięte `private.day_range` (podsumowanie dnia) i
+  `private.month_range` (eksport, godziny i statystyki pracowników), `panel_sales_stats` i `panel_stats` dzień po
+  dniu (godziny w „Sprzedaży w godzinach” zostają prawdziwe), „dziś” w `panel_kitchen_stats`; `panel_my_restaurants`
+  zwraca `day_close`. Panel: `PanelRestaurant.dayClose`, `dayCloseProvider`, `businessDayOf`, `businessDayStart`,
+  `businessToday`: „dziś” w Podsumowaniu dnia i Historii zamówień, zakres Historii zamówień, „Zakończone dziś”
+  w Dostawach, „Dzisiaj” w statystykach zespołu, wcześniejsze dni w Niezamkniętych. Logi zostają od północy.
   Platformy dostaw (0067): lokal wpisuje je w „Ustawienia lokalu” → „Platformy dostaw” (np. Glovo, Uber Eats, Wolt;
   `restaurants.delivery_platforms`, `panel_set_delivery_platforms`), a w podsumowaniu dnia kwotę każdej platformy
   (`day_reports.platforms` jsonb, `panel_save_day_report(p_platforms)`); suma osobno, poza kasą fiskalną i „Powinno być”.
@@ -778,7 +794,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Inwentaryzacja (`/inwentaryzacja`, `features/inventory`): zakładki Spis, Składniki, Dostawy i usunięcia, Historia
   (`SegmentedTabs` jak w Rezerwacjach, od 5.11.2026; tak samo „Aktywne / Zakończone dziś” w Dostawach i Odbiorze).
   Składniki (`inventory_items`: nazwa, jednostka ml/l/g/kg/szt, pojemność opakowania; usunięcie ustawia `deleted_at`,
-  w historii zostają). Spis (`inventory_counts`, jeden otwarty na lokal, `inventory_count_lines` z ilością w opakowaniach
+  w historii zostają). Kaucja przy składniku (0079, `deposit_grosze`: przełącznik i 0,50 zł albo 1,00 zł w oknie
+  składnika): sztuka = jedna kaucja, inne jednostki = jedna na opakowanie; suma dnia z ruchów sprzedaży opłaconych
+  rachunków w Podsumowaniu dnia. Spis (`inventory_counts`, jeden otwarty na lokal, `inventory_count_lines` z ilością w opakowaniach
   oraz jednostką i pojemnością z chwili spisu): `panel_inventory_start`, `panel_inventory_set` (każda ilość zapisuje się
   od razu), `panel_inventory_finish`, `panel_inventory_discard`, lista `panel_inventory_counts`. Okres
   `restaurants.inventory_period` (day, week, two_weeks, month; `panel_set_inventory_period`), ustawia się w „Ustawienia lokalu”,
