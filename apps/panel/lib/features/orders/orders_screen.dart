@@ -1052,7 +1052,9 @@ class _MenuPanel extends StatelessWidget {
         loading: () => const LoadingView(),
         error: (e, _) => ErrorView(error: e, onRetry: onRetry),
         data: (sections) {
-          final withItems = sections.where((s) => s.items.isNotEmpty).toList();
+          // Dział tylko na wydarzenie specjalne (Kalendarz) jest do nabijania tylko w jego czasie.
+          final now = DateTime.now();
+          final withItems = sections.where((s) => s.items.isNotEmpty && s.visibleAt(now)).toList();
           if (withItems.isEmpty) {
             return const MessageView(
               icon: AppIcons.bookOpen,

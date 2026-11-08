@@ -58,6 +58,63 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     );
   }
 
+  /// Dział tylko na wydarzenie specjalne z Kalendarza (0080): poza jego czasem goście i obsługa go nie widzą.
+  Future<void> _sectionEvent(String restaurantId, MenuSection section) async {
+    final from = DateTime.now().subtract(const Duration(days: 1));
+    List<CalendarEvent> events;
+    try {
+      events = [
+        for (final e in await ref.read(
+          calendarEventsProvider((restaurantId: restaurantId, from: from, to: from.add(const Duration(days: 400)))).future,
+        ))
+          if (e.kind == CalendarKind.special) e,
+      ];
+    } catch (e) {
+      if (mounted) showError(context, e);
+      return;
+    }
+    if (!mounted) return;
+    if (events.isEmpty && section.eventId == null) {
+      showMessage(context, 'Najpierw dodaj wydarzenie specjalne w Management → Kalendarz.');
+      return;
+    }
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text('„${section.name}” tylko na wydarzenie'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, ''),
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Glyph(section.eventId == null ? AppIcons.checkCircle : AppIcons.circle, size: 18),
+              title: const Text('Zawsze w menu'),
+              subtitle: const Text('Zwykły dział, bez wydarzenia'),
+            ),
+          ),
+          for (final e in events)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, e.id),
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Glyph(section.eventId == e.id ? AppIcons.checkCircle : AppIcons.circle, size: 18, color: e.color.color),
+                title: Text(e.title),
+                subtitle: Text(sectionEventRange(e.startsAt, e.endsAt)),
+              ),
+            ),
+        ],
+      ),
+    );
+    if (picked == null) return;
+    final eventId = picked.isEmpty ? null : picked;
+    if (eventId == section.eventId) return;
+    await _run(
+      () => ref.read(repositoryProvider).setSectionEvent(section.id, eventId),
+      restaurantId,
+      eventId == null ? '„${section.name}” jest znowu zwykłym działem.' : '„${section.name}” tylko na wydarzenie.',
+    );
+  }
+
   Future<void> _deleteSection(String restaurantId, MenuSection section) async {
     final ok = await confirm(
       context,
@@ -209,6 +266,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                                 onTap: () => setState(() => _sectionId = sections[i].id),
                                 onRename: () => _renameSection(restaurant.id, sections[i]),
                                 onDelete: () => _deleteSection(restaurant.id, sections[i]),
+                                onEvent: () => _sectionEvent(restaurant.id, sections[i]),
                                 onUp: i == 0 ? null : () => _moveSection(restaurant.id, sections, i, -1),
                                 onDown: i == sections.length - 1
                                     ? null
@@ -293,9 +351,11 @@ class _SectionTile extends StatelessWidget {
     required this.onDelete,
     required this.onUp,
     required this.onDown,
+    required this.onEvent,
   });
 
   final MenuSection section;
+  final VoidCallback onEvent;
   final bool selected;
   final bool editable;
   final VoidCallback onTap;
@@ -327,6 +387,14 @@ class _SectionTile extends StatelessWidget {
                       _positions(section.items.length),
                       style: text.bodySmall?.copyWith(color: AppColors.textMuted),
                     ),
+                    if (section.eventId != null)
+                      Text(
+                        'Tylko na: ${section.eventTitle ?? 'wydarzenie'}'
+                        '${section.eventStarts == null || section.eventEnds == null ? '' : ' · ${sectionEventRange(section.eventStarts!, section.eventEnds!)}'}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.bodySmall?.copyWith(color: AppColors.accent),
+                      ),
                   ],
                 ),
               ),
@@ -338,10 +406,12 @@ class _SectionTile extends StatelessWidget {
                     'up' => onUp?.call(),
                     'down' => onDown?.call(),
                     'rename' => onRename(),
+                    'event' => onEvent(),
                     _ => onDelete(),
                   },
                   itemBuilder: (_) => [
                     const PopupMenuItem(value: 'rename', child: Text('Zmień nazwę')),
+                    const PopupMenuItem(value: 'event', child: Text('Tylko na wydarzenie…')),
                     PopupMenuItem(value: 'up', enabled: onUp != null, child: const Text('Przesuń wyżej')),
                     PopupMenuItem(value: 'down', enabled: onDown != null, child: const Text('Przesuń niżej')),
                     PopupMenuItem(
@@ -356,6 +426,14 @@ class _SectionTile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// „4 lis 18:00 – 6 lis 23:00” dla działu na wydarzenie.
+String sectionEventRange(DateTime start, DateTime end) {
+  const months = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
+  String two(int n) => n.toString().padLeft(2, '0');
+  String at(DateTime t) => '${t.toLocal().day} ${months[t.toLocal().month - 1]} ${two(t.toLocal().hour)}:${two(t.toLocal().minute)}';
+  return '${at(start)} – ${at(end)}';
 }
 
 String _positions(int n) {

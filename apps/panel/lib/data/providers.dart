@@ -904,6 +904,14 @@ final orderSearchProvider = FutureProvider.autoDispose.family<List<PanelOrder>, 
   (ref, q) => ref.watch(repositoryProvider).searchOrders(q.restaurantId, q.query),
 );
 
+typedef CalendarQuery = ({String restaurantId, DateTime from, DateTime to});
+
+/// Wydarzenia Kalendarza w widocznym zakresie (dzień, tydzień albo siatka miesiąca).
+final calendarEventsProvider = FutureProvider.autoDispose.family<List<CalendarEvent>, CalendarQuery>((ref, q) {
+  ref.cacheFor(const Duration(minutes: 2));
+  return ref.watch(repositoryProvider).calendarEvents(q.restaurantId, q.from, q.to);
+});
+
 final orderHistoryProvider = FutureProvider.autoDispose.family<List<PanelOrder>, DayQuery>(
   (ref, q) {
     ref.cacheFor();

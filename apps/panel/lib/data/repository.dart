@@ -428,7 +428,7 @@ class PanelRepository {
       final rows = await _db
           .from('menu_sections')
           .select(
-            'id, name, position, '
+            'id, name, position, event_id, event:calendar_events(title, starts_at, ends_at), '
             'menu_items(id, section_id, name, description, price_grosze, allergens, position, '
             'variants, addons, vat_rate, available, show_in_kitchen, photo_url, '
             'menu_item_ingredients(item_id, amount, unit, inventory_items(name)))',
@@ -456,6 +456,50 @@ class PanelRepository {
           .update({'name': name.trim()})
           .eq('id', sectionId),
     );
+  }
+
+  /// Dział menu tylko na wydarzenie specjalne (null: zwykły dział).
+  Future<void> setSectionEvent(String sectionId, String? eventId) {
+    return _guard(() => _db.from('menu_sections').update({'event_id': eventId}).eq('id', sectionId));
+  }
+
+  // Kalendarz (0080).
+
+  /// Wydarzenia, które trwają choć chwilę w [from, to).
+  Future<List<CalendarEvent>> calendarEvents(String restaurantId, DateTime from, DateTime to) {
+    return _guard(() async {
+      final rows = await _db
+          .from('calendar_events')
+          .select('id, kind, title, description, starts_at, ends_at, all_day, color, created_by_name')
+          .eq('restaurant_id', restaurantId)
+          .lt('starts_at', to.toUtc().toIso8601String())
+          .gt('ends_at', from.toUtc().toIso8601String())
+          .order('starts_at');
+      return rows.map(CalendarEvent.fromJson).toList();
+    });
+  }
+
+  /// Zapis wydarzenia (nowe albo zmiana). Zwraca jego numer.
+  Future<String> saveCalendarEvent(String restaurantId, CalendarEvent e, {String? memberId}) {
+    return _guard(() async {
+      final id = await _db.rpc<dynamic>('panel_save_calendar_event', params: {
+        'p_restaurant_id': restaurantId,
+        'p_id': e.id,
+        'p_kind': e.kind.db,
+        'p_title': e.title,
+        'p_description': e.description,
+        'p_starts_at': e.startsAt.toUtc().toIso8601String(),
+        'p_ends_at': e.endsAt.toUtc().toIso8601String(),
+        'p_all_day': e.allDay,
+        'p_color': e.color.db,
+        'p_member_id': memberId,
+      });
+      return id as String;
+    });
+  }
+
+  Future<void> deleteCalendarEvent(String id) {
+    return _guard(() => _db.rpc<void>('panel_delete_calendar_event', params: {'p_id': id}));
   }
 
   Future<void> deleteSection(String sectionId) {

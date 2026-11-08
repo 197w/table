@@ -289,6 +289,9 @@ class MenuSection {
     required this.name,
     required this.position,
     required this.items,
+    this.eventId,
+    this.eventStarts,
+    this.eventEnds,
   });
 
   final String id;
@@ -296,17 +299,29 @@ class MenuSection {
   final int position;
   final List<MenuItem> items;
 
+  /// Dział tylko na wydarzenie specjalne lokalu (0080): widać go tylko w czasie wydarzenia.
+  final String? eventId;
+  final DateTime? eventStarts;
+  final DateTime? eventEnds;
+
+  bool visibleAt(DateTime t) =>
+      eventId == null || (eventStarts != null && eventEnds != null && !t.isBefore(eventStarts!) && t.isBefore(eventEnds!));
+
   factory MenuSection.fromJson(Map<String, dynamic> json) {
     final items =
         (json['menu_items'] as List? ?? const [])
             .map((e) => MenuItem.fromJson(e as Map<String, dynamic>))
             .toList()
           ..sort((a, b) => a.position.compareTo(b.position));
+    final event = json['event'] as Map<String, dynamic>?;
     return MenuSection(
       id: json['id'] as String,
       name: json['name'] as String,
       position: _toInt(json['position']),
       items: items,
+      eventId: json['event_id'] as String?,
+      eventStarts: event == null ? null : DateTime.tryParse(event['starts_at'] as String? ?? '')?.toLocal(),
+      eventEnds: event == null ? null : DateTime.tryParse(event['ends_at'] as String? ?? '')?.toLocal(),
     );
   }
 }
@@ -339,6 +354,67 @@ class Rating {
   }
 }
 
+/// Wydarzenie specjalne lokalu z Kalendarza w panelu (0080): promocja, zimowe menu, wieczór tematyczny.
+/// Na stronie lokalu nad godzinami otwarcia.
+class RestaurantEvent {
+  const RestaurantEvent({
+    required this.id,
+    required this.title,
+    required this.startsAt,
+    required this.endsAt,
+    this.description,
+    this.allDay = false,
+    this.color = 'green',
+  });
+
+  final String id;
+  final String title;
+  final String? description;
+  final DateTime startsAt;
+  final DateTime endsAt;
+  final bool allDay;
+
+  /// Kolor z panelu: green, blue, violet, amber, rose, teal, gray.
+  final String color;
+
+  bool activeAt(DateTime t) => !t.isBefore(startsAt) && t.isBefore(endsAt);
+
+  factory RestaurantEvent.fromJson(Map<String, dynamic> json) => RestaurantEvent(
+    id: json['id'] as String,
+    title: json['title'] as String? ?? '',
+    description: (json['description'] as String?)?.trim().isEmpty ?? true ? null : (json['description'] as String).trim(),
+    startsAt: DateTime.parse(json['starts_at'] as String).toLocal(),
+    endsAt: DateTime.parse(json['ends_at'] as String).toLocal(),
+    allDay: json['all_day'] == true,
+    color: json['color'] as String? ?? 'green',
+  );
+}
+
+/// „Dziś 18:00–23:00”, „Pt, 14 lis · 18:00–23:00”, „14–16 lis” (całodniowe i wielodniowe).
+String restaurantEventWhen(RestaurantEvent e, DateTime now) {
+  const months = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
+  const days = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Niedz'];
+  String two(int n) => n.toString().padLeft(2, '0');
+  String hm(DateTime t) => '${two(t.hour)}:${two(t.minute)}';
+  DateTime day(DateTime t) => DateTime(t.year, t.month, t.day);
+  final today = day(now);
+  String dayLabel(DateTime t) {
+    final d = day(t);
+    if (d == today) return 'Dziś';
+    if (d == today.add(const Duration(days: 1))) return 'Jutro';
+    return '${days[d.weekday - 1]}, ${d.day} ${months[d.month - 1]}';
+  }
+
+  final lastDay = e.allDay ? day(e.endsAt.subtract(const Duration(minutes: 1))) : day(e.endsAt.subtract(const Duration(microseconds: 1)));
+  if (day(e.startsAt) == lastDay) {
+    return e.allDay ? dayLabel(e.startsAt) : '${dayLabel(e.startsAt)} · ${hm(e.startsAt)}–${hm(e.endsAt)}';
+  }
+  final from = '${e.startsAt.day} ${months[e.startsAt.month - 1]}';
+  final to = '${lastDay.day} ${months[lastDay.month - 1]}';
+  if (e.activeAt(now)) return 'Do $to';
+  return e.startsAt.month == lastDay.month ? '${e.startsAt.day}–$to' : '$from – $to';
+}
+
 class RestaurantDetail {
   const RestaurantDetail({
     required this.id,
@@ -356,6 +432,7 @@ class RestaurantDetail {
     this.depositPerPersonGrosze,
     required this.hours,
     required this.menu,
+    this.events = const [],
     required this.rating,
     this.description,
     this.deliveryEnabled = false,
@@ -452,6 +529,9 @@ class RestaurantDetail {
   final int maxPartySize;
   final List<OpeningHours> hours;
   final List<MenuSection> menu;
+
+  /// Wydarzenia specjalne lokalu, które trwają albo dopiero będą (najbliższe pierwsze).
+  final List<RestaurantEvent> events;
   final Rating rating;
 
   /// Zadatek przy rezerwacji: od ilu osób i ile za osobę. Null: lokal nie bierze zadatku.
@@ -472,11 +552,19 @@ class RestaurantDetail {
             .map((e) => OpeningHours.fromJson(e as Map<String, dynamic>))
             .toList()
           ..sort((a, b) => a.weekday.compareTo(b.weekday));
+    // Działy na wydarzenie specjalne tylko w czasie wydarzenia.
+    final now = DateTime.now();
     final menu =
         (json['menu_sections'] as List? ?? const [])
             .map((e) => MenuSection.fromJson(e as Map<String, dynamic>))
+            .where((s) => s.visibleAt(now))
             .toList()
           ..sort((a, b) => a.position.compareTo(b.position));
+    final events =
+        (json['calendar_events'] as List? ?? const [])
+            .map((e) => RestaurantEvent.fromJson(e as Map<String, dynamic>))
+            .toList()
+          ..sort((a, b) => a.startsAt.compareTo(b.startsAt));
     return RestaurantDetail(
       id: json['id'] as String,
       name: json['name'] as String,
@@ -494,6 +582,7 @@ class RestaurantDetail {
       depositPerPersonGrosze: json['deposit_per_person_grosze'] == null ? null : _toInt(json['deposit_per_person_grosze']),
       hours: hours,
       menu: menu,
+      events: events,
       rating: rating,
       deliveryEnabled: json['delivery_enabled'] == true,
       pickupEnabled: json['pickup_enabled'] == true,

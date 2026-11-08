@@ -43,6 +43,8 @@ enum PanelSection {
   // Prowadzenie lokalu: koniec dnia, godziny pracowników, menu, inwentaryzacja i wyniki.
   management('Management', AppIcons.briefcase, [
     PanelTab(PanelRoutes.daySummary, 'Podsumowanie dnia', AppIcons.cashRegister),
+    // Kalendarz wydarzeń lokalu i pracowników (8.11.2026, wygląd jak Notion Calendar).
+    PanelTab(PanelRoutes.calendar, 'Kalendarz', AppIcons.calendar),
     PanelTab(PanelRoutes.unclosed, 'Niezamknięte zamówienia', AppIcons.hourglass),
     PanelTab(PanelRoutes.hours, 'Godziny pracy', AppIcons.clockUser),
     PanelTab(PanelRoutes.menu, 'Menu', AppIcons.bookOpen),

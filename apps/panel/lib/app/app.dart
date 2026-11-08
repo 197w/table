@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:table_core/table_core.dart';
 
 import '../features/auth/login_screen.dart';
+import '../features/calendar/calendar_screen.dart';
 import '../features/activity/activity_screen.dart';
 import '../features/customers/customers_screen.dart';
 import '../features/deliveries/deliveries_screen.dart';
@@ -200,6 +201,7 @@ GoRouter _buildRouter(
           _page(PanelRoutes.export, const ExportScreen()),
           _page(PanelRoutes.activity, const ActivityScreen()),
           _page(PanelRoutes.printers, const PrintersScreen()),
+          _page(PanelRoutes.calendar, const CalendarScreen()),
         ],
       ),
     ],
@@ -253,6 +255,7 @@ abstract final class PanelRoutes {
   static const export = '/eksport';
   static const activity = '/logi';
   static const printers = '/drukarki';
+  static const calendar = '/kalendarz';
 }
 
 /// Uprawnienia, z których wystarczy jedno, żeby otworzyć zakładkę.
@@ -287,6 +290,7 @@ const _routePermissions = {
   PanelRoutes.activity: {'activity'},
   // Drukarkę tego komputera ustawia też obsługa zamówień; wygląd etykiety zmienia tylko uprawnienie „profile”.
   PanelRoutes.printers: {'profile', 'orders'},
+  PanelRoutes.calendar: {'calendar'},
 };
 
 /// Nazwy zakładek, np. w logowaniu do zakładki.
@@ -318,6 +322,7 @@ const panelTabLabels = {
   PanelRoutes.export: 'Eksport',
   PanelRoutes.activity: 'Logi',
   PanelRoutes.printers: 'Drukarki i terminal',
+  PanelRoutes.calendar: 'Kalendarz',
 };
 
 /// Zakładka (jej ścieżka) dla adresu. Null: adres poza zakładkami.

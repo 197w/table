@@ -333,13 +333,17 @@ class WaiterRepository {
     final rows = await _db
         .from('menu_sections')
         .select(
-          'id, name, position, menu_items(id, name, description, price_grosze, variants, addons, available, position, '
+          'id, name, position, event_id, event:calendar_events!menu_sections_event_id_fkey(starts_at, ends_at), '
+          'menu_items(id, name, description, price_grosze, variants, addons, available, position, '
           'menu_item_ingredients(item_id, inventory_items(name)))',
         )
         .eq('restaurant_id', restaurantId)
         .order('position');
+    final now = DateTime.now();
     return [
       for (final s in rows)
+        // Dział tylko na wydarzenie specjalne (Kalendarz, 0080) kelner widzi tylko w czasie wydarzenia.
+        if (_eventActive(s, now))
         WMenuSection(
           id: s['id'] as String,
           name: s['name'] as String,
@@ -351,6 +355,14 @@ class WaiterRepository {
         ),
     ];
   });
+
+  static bool _eventActive(Map<String, dynamic> section, DateTime now) {
+    if (section['event_id'] == null) return true;
+    final event = section['event'] as Map<String, dynamic>?;
+    final start = DateTime.tryParse(event?['starts_at'] as String? ?? '');
+    final end = DateTime.tryParse(event?['ends_at'] as String? ?? '');
+    return start != null && end != null && !now.isBefore(start) && now.isBefore(end);
+  }
 
   Future<List<WOrder>> openOrders(String restaurantId) => _guard(() async {
     final rows = await _db

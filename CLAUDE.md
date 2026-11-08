@@ -116,7 +116,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
   Map i śledzenia dostawców nie ma od 0068 (usunięte na prośbę użytkownika, także mapa u gościa).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0079, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0080, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -153,6 +153,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Duotone `plus`, `minus` i `x` to te same kształty bez kwadratu w tle (4.11.2026: zielony „+” w Rezerwacjach,
   `GlowButton(primary)`, wyglądał jak kafelek; nie pobierać ich od nowa z better-icons). Tak samo duotone
   `clock-counter-clockwise` (Logi w pasku bocznym, 5.11.2026): bez zielonego koła w środku, sama linia.
+  Tak samo duotone `arrows-clockwise` (kafel „Powracający” w Klientach, 8.11.2026): sam zielony obrys, bez tła.
   Własne ikony do drukarek i edytora etykiet (6.11.2026, rysowane ręcznie w stylu Phosphor): `printer`, `text-t`,
   `text-b`, `text-align-left/center/right`, `line-segment`, `image`.
 - `apps/guest/lib`: `app` (router, dolne menu, preferencje), `core` (mapy, lokalizacja), `data`, `features`
@@ -254,7 +255,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Pracownicy (Pracownicy: Zespół i Stanowiska, Grafik `/grafik`, Statystyki zespołu `/zespol`, Informacje dla
   pracowników `/informacje`),
   Baza klientów (Klienci `/klienci`, Opinie),
-  Management (Podsumowanie dnia `/podsumowanie`, Niezamknięte zamówienia `/niezamkniete`, Godziny pracy `/godziny`,
+  Management (Podsumowanie dnia `/podsumowanie`, Kalendarz `/kalendarz`, Niezamknięte zamówienia `/niezamkniete`, Godziny pracy `/godziny`,
   Menu, Inwentaryzacja, Statystyki,
   Kody rabatowe `/rabaty`, Eksport `/eksport`);
   Kropki nowości (`tabNewsProvider`, `TabNews`, `_NewsDot`): nowa rezerwacja z aplikacji, nowe zamówienie na dostawę
@@ -290,20 +291,46 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   do pełnego ekranu, gdy ta opcja jest włączona.
 - Management (0048–0050): Podsumowanie dnia (`panel_day_summary`, uprawnienie `day_close`): sprzedaż według płatności
   (gotówka, karta z terminala, karta online z aplikacji i zadatki, inne), rabaty, raport dobowy z kasy fiskalnej
-  (napiwków tu nie pokazujemy, są w statystykach zespołu; „Obrót w panelu”, „Karty w panelu” i „Powinno być” to duże kafle;
+  (napiwków tu nie pokazujemy, są w statystykach zespołu;
   różnica między kartami z terminali a kartami w panelu przechodzi na gotówkę: mniej na terminalach = „Powinno być”
-  więcej o tę kwotę i odwrotnie, z wyjaśnieniem pod kaflem; na górze baner z niezamkniętymi zamówieniami z tego dnia
-  albo wcześniejszych i „Sprawdź”),
+  więcej o tę kwotę i odwrotnie, z wyjaśnieniem; na górze baner z niezamkniętymi zamówieniami z tego dnia
+  albo wcześniejszych i „Sprawdź”). Od 8.11.2026 (prośba użytkownika: „Prostszy, jedna kolumna”, `day_screen.dart`)
+  bez kafli: jedna kolumna sekcji jak Ustawienia lokalu (`SettingsSection`/`SettingsRow`, do 860 px na środku):
+  Sprzedaż (obrót, zamówienia netto, średni rachunek, formy płatności, kaucja), Kasa fiskalna (raport dobowy, netto
+  z raportu, „Obrót w panelu” ze znaczkiem „Zgadza się” / „Różnica”, `_Match`), Terminale płatnicze („Karty
+  w panelu”), Gotówka do koperty z rozbiciem, Gotówka w kasie (policzona, „Powinno być”), Platformy dostaw,
+  Notatka z „Zapisz podsumowanie”, Petty cash.
   terminale (kilka, nazwa i kwota), policzona gotówka i notatka (`day_reports`, `panel_save_day_report`), petty cash
   (wydatki i wpłaty z kasy, `petty_cash`, `panel_add_petty`, `panel_delete_petty`); zgodność kwot zielona albo żółta różnica.
-  Od 0079 (8.11.2026, prośby użytkownika): drugi rząd kafli „Zamówienia netto” (opłacone bez anulowanych i pustych;
+  Od 0079 (8.11.2026, prośby użytkownika): „Zamówienia netto” (opłacone bez anulowanych i pustych;
   „Część rachunku” ma ten sam stolik i chwilę otwarcia, więc liczy się raz z resztą rachunku, `orders_net`),
   „Średni rachunek” (netto z raportu dobowego, nowe pole „Netto z raportu”, `day_reports.fiscal_net_grosze`,
   `panel_save_day_report(p_fiscal_net)`; bez niego netto z panelu ze stawek menu, `revenue_net`, dostawa jak 8%;
   `averageBill`), „Kaucja” (składniki z kaucją w Inwentaryzacji, `kaucja_grosze`, `kaucja_count`) i „Gotówka do
   koperty” (`envelopeCash`: raport dobowy minus karta online i zadatki, minus terminale (suma wpisanych, bez nich
-  karty z panelu; bez napiwków kartą, których nie ma w raporcie), minus przelewy i inne, minus kaucja; kafel z
-  zapisanego raportu, a w raporcie liczona na żywo z rozbiciem).
+  karty z panelu; bez napiwków kartą, których nie ma w raporcie), minus przelewy i inne, minus kaucja; liczona na
+  żywo z rozbiciem).
+  Kalendarz (0080, Management → `/kalendarz`, uprawnienie `calendar`, w 0080 dostały je stanowiska ze `staff`,
+  `day_close` albo `schedule`; `features/calendar/calendar_screen.dart`; zadanie „Kalendarz” z Todoist, wygląd jak
+  Notion Calendar): po lewej `SidePanel` z „Nowe wydarzenie”, małym miesiącem (dziś na czerwono, zaznaczony zakres)
+  i przełącznikami rodzajów; u góry miesiąc, „Dziś”, strzałki i widok Dzień / Tydzień / Miesiąc. Tydzień i dzień:
+  siatka godzin (48 px na godzinę, co 15 min), pas „cały dzień”, czerwona kreska teraz; przeciąganie pustego miejsca
+  tworzy wydarzenie, przeciąganie wydarzenia je przesuwa, dolna krawędź zmienia koniec; nakładające się stoją obok
+  siebie (`layoutDay`, `PlacedEvent`). Miesiąc: wydarzenia w dniach, „+N więcej”, kliknięcie dnia otwiera dzień.
+  Po prawej panel wydarzenia (`_EventPanel`): nazwa, rodzaj, cały dzień, od–do, kolor, opis, działy „Menu na
+  wydarzenie”, kto dodał. Klawisze T, D, W, M, J/K i strzałki, Esc (nie w polach tekstowych). Rodzaje
+  (`calendar_events.kind`): `special` (wydarzenie specjalne: promocja, zimowe menu; widzą goście, RLS
+  `calendar_events_public` dla anon) i `staff` (spotkanie, szkolenie; tylko obsługa lokalu,
+  `has_staff_role(..., 'staff')`). Zapis `panel_save_calendar_event` (najwyżej 400 dni, autor `private.note_author`),
+  `panel_delete_calendar_event` (nie, gdy jest dział menu na wydarzenie). Menu tylko na wydarzenie: Menu → dział →
+  „Tylko na wydarzenie…” (`menu_sections.event_id`, `setSectionEvent`, podpis „Tylko na: …”); poza czasem
+  wydarzenia dział znika u gościa, w Zamówieniach panelu i u kelnera (`MenuSection.visibleAt`), a baza nie przyjmuje
+  takiej pozycji (trigger `order_items_event_menu`, `private.event_menu_check`, liczy `scheduled_for` albo teraz).
+  Table: sekcja „Wydarzenia” nad „Godziny otwarcia” na stronie lokalu (`_EventsCard`, `RestaurantEvent`,
+  `restaurantEventWhen`, najwyżej 6 trwających albo przyszłych, „TRWA TERAZ”). Table for employees: Grafik → ikona
+  kalendarza (`calendar_screen.dart`, `StaffCalendarScreen`, jak Apple Calendar: miesiąc z kropkami, dziś na
+  czerwono, przesuwanie palcem, wydarzenia wybranego dnia ze wszystkich lokali pracownika, `staffCalendarProvider`);
+  „+” przy uprawnieniu `calendar` dodaje wydarzenie (`panel_save_calendar_event` z `p_member_id`).
   Zamknięcie dnia (0079, „Ustawienia lokalu” → „Zamknięcie dnia”, `restaurants.day_close` 00:00–08:00, co 30 min do
   06:00 w panelu): lokal otwarty do 2 w nocy ustawia 02:00 i sprzedaż do tej godziny liczy się do poprzedniego dnia.
   Baza: `private.day_close`, `private.business_day`, przesunięte `private.day_range` (podsumowanie dnia) i

@@ -2,6 +2,7 @@
 /// i tabelom z supabase/migrations.
 library;
 
+import 'dart:ui' show Color;
 import 'package:table_core/table_core.dart';
 
 double? _toDouble(Object? value) {
@@ -847,7 +848,21 @@ class MenuSection {
     required this.name,
     required this.position,
     required this.items,
+    this.eventId,
+    this.eventTitle,
+    this.eventStarts,
+    this.eventEnds,
   });
+
+  /// Dział tylko na wydarzenie specjalne z Kalendarza (0080): poza jego czasem goście i obsługa go nie widzą.
+  final String? eventId;
+  final String? eventTitle;
+  final DateTime? eventStarts;
+  final DateTime? eventEnds;
+
+  /// Dział widoczny w chwili [t] (zwykły zawsze, na wydarzenie tylko w jego czasie).
+  bool visibleAt(DateTime t) =>
+      eventId == null || (eventStarts != null && eventEnds != null && !t.isBefore(eventStarts!) && t.isBefore(eventEnds!));
 
   final String id;
   final String name;
@@ -863,6 +878,10 @@ class MenuSection {
     return MenuSection(
       id: json['id'] as String,
       name: json['name'] as String,
+      eventId: json['event_id'] as String?,
+      eventTitle: (json['event'] as Map<String, dynamic>?)?['title'] as String?,
+      eventStarts: _toDateOrNull((json['event'] as Map<String, dynamic>?)?['starts_at']),
+      eventEnds: _toDateOrNull((json['event'] as Map<String, dynamic>?)?['ends_at']),
       position: _toInt(json['position']),
       items: items,
     );
@@ -1173,7 +1192,8 @@ enum StaffPermission {
   revenue('revenue', 'Przychody', 'Obrót i średni rachunek w historii zamówień', 'Management'),
   dayClose('day_close', 'Podsumowanie dnia', 'Raporty z kasy i terminali, petty cash', 'Management'),
   discounts('discounts', 'Kody rabatowe', 'Tworzenie i wyłączanie kodów rabatowych', 'Management'),
-  export('export', 'Eksport', 'Pliki dla księgowej: sprzedaż, VAT i czas pracy', 'Management');
+  export('export', 'Eksport', 'Pliki dla księgowej: sprzedaż, VAT i czas pracy', 'Management'),
+  calendar('calendar', 'Kalendarz', 'Dodawanie wydarzeń specjalnych lokalu i spotkań pracowników', 'Management');
 
   const StaffPermission(this.key, this.label, this.description, this.group);
 
@@ -4179,6 +4199,101 @@ EnvelopeCash? envelopeCash(DaySummary s, {required int? fiscalGrosze, int? termi
   if (s.ordersNet <= 0) return null;
   final net = fiscalNetGrosze ?? s.revenueNetGrosze;
   return (grosze: (net / s.ordersNet).round(), fromReport: fiscalNetGrosze != null);
+}
+
+/// Rodzaj wydarzenia w Kalendarzu (0080).
+enum CalendarKind {
+  special('special', 'Wydarzenie specjalne', 'Widzą je goście w aplikacji Table, nad godzinami otwarcia'),
+  staff('staff', 'Dla pracowników', 'Spotkania i szkolenia: widzą tylko pracownicy');
+
+  const CalendarKind(this.db, this.label, this.description);
+  final String db;
+  final String label;
+  final String description;
+
+  static CalendarKind from(Object? v) => v == 'staff' ? CalendarKind.staff : CalendarKind.special;
+}
+
+/// Kolor wydarzenia (jak kalendarze w Notion Calendar).
+enum CalendarColor {
+  green('green', Color(0xFF2FB673)),
+  blue('blue', Color(0xFF3B82F6)),
+  violet('violet', Color(0xFF7C5CFF)),
+  amber('amber', Color(0xFFD99A15)),
+  rose('rose', Color(0xFFE5484D)),
+  teal('teal', Color(0xFF14A3A8)),
+  gray('gray', Color(0xFF8A8F98));
+
+  const CalendarColor(this.db, this.color);
+  final String db;
+  final Color color;
+
+  static CalendarColor from(Object? v) => values.firstWhere((c) => c.db == v, orElse: () => CalendarColor.green);
+}
+
+/// Wydarzenie w Kalendarzu lokalu: specjalne (dla gości) albo dla pracowników.
+class CalendarEvent {
+  const CalendarEvent({
+    this.id,
+    required this.kind,
+    required this.title,
+    required this.startsAt,
+    required this.endsAt,
+    this.description,
+    this.allDay = false,
+    this.color = CalendarColor.green,
+    this.createdByName,
+  });
+
+  /// Null: nowe, jeszcze niezapisane.
+  final String? id;
+  final CalendarKind kind;
+  final String title;
+  final String? description;
+  final DateTime startsAt;
+  final DateTime endsAt;
+  final bool allDay;
+  final CalendarColor color;
+  final String? createdByName;
+
+  Duration get duration => endsAt.difference(startsAt);
+
+  /// Na pasku „cały dzień” u góry siatki: całodniowe i dłuższe niż doba.
+  bool get spansDays => allDay || duration >= const Duration(hours: 24);
+
+  bool overlaps(DateTime from, DateTime to) => startsAt.isBefore(to) && endsAt.isAfter(from);
+
+  CalendarEvent copyWith({
+    String? title,
+    CalendarKind? kind,
+    String? description,
+    DateTime? startsAt,
+    DateTime? endsAt,
+    bool? allDay,
+    CalendarColor? color,
+  }) => CalendarEvent(
+    id: id,
+    kind: kind ?? this.kind,
+    title: title ?? this.title,
+    description: description ?? this.description,
+    startsAt: startsAt ?? this.startsAt,
+    endsAt: endsAt ?? this.endsAt,
+    allDay: allDay ?? this.allDay,
+    color: color ?? this.color,
+    createdByName: createdByName,
+  );
+
+  factory CalendarEvent.fromJson(Map<String, dynamic> json) => CalendarEvent(
+    id: json['id'] as String,
+    kind: CalendarKind.from(json['kind']),
+    title: json['title'] as String? ?? '',
+    description: json['description'] as String?,
+    startsAt: _toDate(json['starts_at']).toLocal(),
+    endsAt: _toDate(json['ends_at']).toLocal(),
+    allDay: json['all_day'] == true,
+    color: CalendarColor.from(json['color']),
+    createdByName: json['created_by_name'] as String?,
+  );
 }
 
 /// Gość na liście oczekujących: dzień, liczba osób, przedział godzin i propozycja lokalu.

@@ -25,17 +25,18 @@ String _packs(int n) {
 }
 
 String _envelopeHint(EnvelopeCash e) => [
-  'raport ${Fmt.price(e.fiscal)}',
+  'Raport ${Fmt.price(e.fiscal)}',
   if (e.online > 0) '− online ${Fmt.price(e.online)}',
   '− terminale ${Fmt.price(e.terminals)}',
   if (e.other > 0) '− przelewy i inne ${Fmt.price(e.other)}',
   if (e.kaucja > 0) '− kaucja ${Fmt.price(e.kaucja)}',
 ].join(' ');
 
-/// Management → Podsumowanie dnia: sprzedaż według płatności, raporty z kasy fiskalnej i terminali,
-/// policzona gotówka i petty cash (drobne wydatki i wpłaty z kasy). Różnice są od razu widoczne.
-/// Różnica między kartami z terminali a kartami w panelu przechodzi na gotówkę, która powinna być w kasie.
-/// Niezamknięte zamówienia z tego dnia albo wcześniejszych widać na górze. Uprawnienie „Podsumowanie dnia”.
+/// Management → Podsumowanie dnia (8.11.2026, prośba użytkownika: prostszy wygląd w jednej kolumnie, jak lista
+/// w Ustawieniach lokalu). Od góry: sprzedaż dnia, kasa fiskalna (raport dobowy brutto i netto), terminale,
+/// gotówka do koperty, gotówka w kasie, platformy dostaw, notatka z „Zapisz” i petty cash. Różnice z panelem widać
+/// od razu (zielone „Zgadza się” albo żółta różnica). Niezamknięte zamówienia na górze. Uprawnienie „Podsumowanie
+/// dnia”.
 class DaySummaryScreen extends ConsumerStatefulWidget {
   const DaySummaryScreen({super.key});
 
@@ -96,166 +97,34 @@ class _DaySummaryScreenState extends ConsumerState<DaySummaryScreen> {
             loading: () => const LoadingView(),
             error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(daySummaryProvider(query))),
             data: (s) => SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (unclosed.isNotEmpty) ...[
-                    _UnclosedBanner(orders: unclosed),
-                    const SizedBox(height: 16),
-                  ],
-                  if (close > Duration.zero)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Text(
-                        'Dzień lokalu od ${hm(close)} do ${hm(close)} następnego dnia (zamknięcie dnia w Ustawieniach '
-                        'lokalu): sprzedaż po północy liczy się do tego dnia.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
-                      ),
-                    ),
-                  Row(
+              padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 860),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(
-                        child: StatTile(
-                          label: 'Obrót',
-                          value: Fmt.price(s.revenueGrosze),
-                          hint: [
-                            '${s.orders} rachunków',
-                            if (s.takeaway > 0) '${s.takeaway} na wynos',
-                            if (s.discountsGrosze > 0) 'rabaty ${Fmt.price(s.discountsGrosze)}',
-                          ].join(' · '),
-                          icon: AppIcons.receipt,
-                          color: TileColors.green,
-                        ),
+                      if (unclosed.isNotEmpty) ...[
+                        _UnclosedBanner(orders: unclosed),
+                        const SizedBox(height: 24),
+                      ],
+                      _DayReport(
+                        key: ValueKey(_day),
+                        restaurantId: restaurant.id,
+                        day: _day,
+                        summary: s,
+                        dayNote: close > Duration.zero
+                            ? 'Dzień lokalu od ${hm(close)} do ${hm(close)} następnego dnia: sprzedaż po północy '
+                                  'liczy się do tego dnia (zamknięcie dnia w Ustawieniach lokalu).'
+                            : null,
                       ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: StatTile(
-                          label: 'Gotówka',
-                          value: Fmt.price(s.cashGrosze),
-                          icon: AppIcons.money,
-                          color: TileColors.amber,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: StatTile(
-                          label: 'Karta (terminal)',
-                          value: Fmt.price(s.cardGrosze),
-                          icon: AppIcons.creditCard,
-                          color: TileColors.blue,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: StatTile(
-                          label: 'Karta online',
-                          value: Fmt.price(s.cardOnlineGrosze),
-                          hint: [
-                            if (s.depositsGrosze > 0) 'zadatki ${Fmt.price(s.depositsGrosze)}' else 'aplikacja Table',
-                            if (s.otherGrosze > 0) 'inne ${Fmt.price(s.otherGrosze)}',
-                          ].join(' · '),
-                          icon: AppIcons.deviceMobile,
-                          color: TileColors.violet,
-                        ),
-                      ),
+                      const SizedBox(height: 32),
+                      _PettySection(restaurantId: restaurant.id, day: _day, summary: s),
                     ],
                   ),
-                  const SizedBox(height: 14),
-                  _SecondRow(summary: s),
-                  const SizedBox(height: 16),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: _ReportCard(
-                          key: ValueKey(_day),
-                          restaurantId: restaurant.id,
-                          day: _day,
-                          summary: s,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        flex: 2,
-                        child: _PettyCard(restaurantId: restaurant.id, day: _day, summary: s),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Drugi rząd kafli (8.11.2026, prośba użytkownika): zamówienia netto, średni rachunek, kaucja i gotówka do
-/// koperty z zapisanego raportu dobowego.
-class _SecondRow extends StatelessWidget {
-  const _SecondRow({required this.summary});
-
-  final DaySummary summary;
-
-  @override
-  Widget build(BuildContext context) {
-    final s = summary;
-    final report = s.report;
-    final avg = averageBill(s, fiscalNetGrosze: report?.fiscalNetGrosze);
-    final env = envelopeCash(
-      s,
-      fiscalGrosze: report?.fiscalGrosze,
-      terminalsGrosze: (report?.terminals ?? const []).isEmpty ? null : report!.terminalsGrosze,
-    );
-    return Row(
-      children: [
-        Expanded(
-          child: StatTile(
-            label: 'Zamówienia netto',
-            value: '${s.ordersNet}',
-            hint: [
-              s.cancelled > 0 ? 'bez ${s.cancelled} anulowanych' : 'bez anulowanych',
-              if (s.orders != s.ordersNet) '${s.orders} rachunków',
-            ].join(' · '),
-            icon: AppIcons.receipt,
-            color: TileColors.blue,
-          ),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: StatTile(
-            label: 'Średni rachunek',
-            value: avg == null ? '—' : Fmt.price(avg.grosze),
-            hint: avg == null
-                ? 'brak zamówień'
-                : (avg.fromReport ? 'netto z raportu dobowego' : 'netto z panelu · wpisz netto z raportu'),
-            icon: AppIcons.chartBar,
-            color: TileColors.green,
-          ),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: StatTile(
-            label: 'Kaucja',
-            value: Fmt.price(s.kaucjaGrosze),
-            hint: s.kaucjaCount > 0 ? _packs(s.kaucjaCount) : 'składniki z kaucją: Inwentaryzacja',
-            icon: AppIcons.package,
-            color: TileColors.amber,
-          ),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: StatTile(
-            label: 'Gotówka do koperty',
-            value: env == null ? '—' : Fmt.price(env.total),
-            hint: env == null
-                ? 'po zapisaniu raportu dobowego'
-                : 'raport − online − terminale${env.other > 0 ? ' − inne' : ''}${env.kaucja > 0 ? ' − kaucja' : ''}',
-            icon: AppIcons.envelope,
-            color: TileColors.violet,
           ),
         ),
       ],
@@ -305,14 +174,34 @@ class _UnclosedBanner extends ConsumerWidget {
   }
 }
 
-/// Zgodność wpisanej kwoty z tym, co policzył panel: duża kwota z panelu i zielone „Zgadza się” albo żółta różnica.
-/// Widać ją od razu przy zamykaniu dnia.
-class _Check extends StatelessWidget {
-  const _Check({required this.expected, required this.actual, required this.label});
+/// Kwota po prawej stronie wiersza (liczby tabelaryczne, większe przy ważnych kwotach).
+class _Amount extends StatelessWidget {
+  const _Amount(this.value, {this.big = false, this.color});
+
+  final String value;
+  final bool big;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Text(
+      value,
+      style: (big ? text.titleLarge : text.titleSmall)?.copyWith(
+        fontWeight: FontWeight.w600,
+        color: color,
+        fontFeatures: _tabular,
+      ),
+    );
+  }
+}
+
+/// Zgodność wpisanej kwoty z panelem: kwota z panelu i zielone „Zgadza się” albo żółta różnica.
+class _Match extends StatelessWidget {
+  const _Match({required this.expected, required this.actual});
 
   final int expected;
   final int? actual;
-  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -320,129 +209,87 @@ class _Check extends StatelessWidget {
     final a = actual;
     final diff = a == null ? null : a - expected;
     final color = diff == null ? AppColors.textMuted : (diff == 0 ? _ok : _warn);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      decoration: BoxDecoration(
-        color: diff == null ? AppColors.surfaceRaised : color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: diff == null ? AppColors.ring : color.withValues(alpha: 0.5)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: text.labelLarge?.copyWith(color: AppColors.textMuted)),
-                Text(
-                  Fmt.price(expected),
-                  style: text.headlineMedium?.copyWith(fontWeight: FontWeight.w600, fontFeatures: _tabular),
-                ),
-              ],
-            ),
-          ),
-          if (diff != null) ...[
-            Glyph(diff == 0 ? AppIcons.checkCircle : AppIcons.warning, size: 22, color: color),
-            const SizedBox(width: 8),
-            Text(
-              diff == 0 ? 'Zgadza się' : 'Różnica ${diff > 0 ? '+' : '−'}${Fmt.price(diff.abs())}',
-              style: text.titleMedium?.copyWith(color: color, fontWeight: FontWeight.w600, fontFeatures: _tabular),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// Gotówka do koperty liczona na żywo z wpisanego raportu dobowego i terminali.
-class _Envelope extends StatelessWidget {
-  const _Envelope({required this.cash});
-
-  final EnvelopeCash? cash;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final c = cash;
-    final negative = c != null && c.total < 0;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceRaised,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: negative ? _warn.withValues(alpha: 0.6) : AppColors.ring),
-      ),
-      child: Row(
-        children: [
-          const Glyph(AppIcons.envelope, size: 22, color: TileColors.violet),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _Amount(Fmt.price(expected)),
+        if (diff != null) ...[
           const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
+                Glyph(diff == 0 ? AppIcons.checkCircle : AppIcons.warning, size: 14, color: color),
+                const SizedBox(width: 6),
                 Text(
-                  c == null ? 'Wpisz raport dobowy' : Fmt.price(c.total),
-                  style: text.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: negative ? _warn : null,
-                    fontFeatures: _tabular,
-                  ),
-                ),
-                Text(
-                  c == null
-                      ? 'Raport dobowy minus płatności online, terminale (bez napiwków kartą) i kaucja.'
-                      : _envelopeHint(c),
-                  style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                  diff == 0 ? 'Zgadza się' : 'Różnica ${diff > 0 ? '+' : '−'}${Fmt.price(diff.abs())}',
+                  style: text.labelMedium?.copyWith(color: color, fontWeight: FontWeight.w600, fontFeatures: _tabular),
                 ),
               ],
             ),
           ),
         ],
-      ),
+      ],
     );
   }
 }
 
 class _MoneyField extends StatelessWidget {
-  const _MoneyField({required this.controller, required this.label, this.onChanged});
+  const _MoneyField({required this.controller, this.onChanged, this.width = 180});
 
   final TextEditingController controller;
-  final String label;
   final VoidCallback? onChanged;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      onChanged: (_) => onChanged?.call(),
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
-      textAlign: TextAlign.right,
-      style: const TextStyle(fontFeatures: _tabular),
-      decoration: InputDecoration(labelText: label, suffixText: 'zł', isDense: true),
+    return SizedBox(
+      width: width,
+      child: TextField(
+        controller: controller,
+        onChanged: (_) => onChanged?.call(),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+        textAlign: TextAlign.right,
+        style: const TextStyle(fontFeatures: _tabular),
+        decoration: const InputDecoration(hintText: '0,00', suffixText: 'zł', isDense: true),
+      ),
     );
   }
 }
 
-/// Raporty z końca dnia: kasa fiskalna, terminale, policzona gotówka i notatka. Zapis jednym przyciskiem.
-class _ReportCard extends ConsumerStatefulWidget {
-  const _ReportCard({super.key, required this.restaurantId, required this.day, required this.summary});
+/// Raport dnia w jednej kolumnie: sprzedaż, kasa fiskalna, terminale, koperta, gotówka w kasie, platformy
+/// i notatka. Zapis jednym przyciskiem pod notatką.
+class _DayReport extends ConsumerStatefulWidget {
+  const _DayReport({
+    super.key,
+    required this.restaurantId,
+    required this.day,
+    required this.summary,
+    required this.dayNote,
+  });
 
   final String restaurantId;
   final DateTime day;
   final DaySummary summary;
+  final String? dayNote;
 
   @override
-  ConsumerState<_ReportCard> createState() => _ReportCardState();
+  ConsumerState<_DayReport> createState() => _DayReportState();
 }
 
-class _ReportCardState extends ConsumerState<_ReportCard> {
+class _DayReportState extends ConsumerState<_DayReport> {
   late final DayReport? _report = widget.summary.report;
   late final _fiscal = TextEditingController(text: _money(_report?.fiscalGrosze) ?? '');
   late final _fiscalNet = TextEditingController(text: _money(_report?.fiscalNetGrosze) ?? '');
   late final _cash = TextEditingController(text: _money(_report?.cashCountedGrosze) ?? '');
   late final _note = TextEditingController(text: _report?.note ?? '');
+
   /// Kwoty z platform dostaw według nazwy (lista platform z „Ustawienia lokalu” i te zapisane w raporcie).
   late final Map<String, TextEditingController> _platforms = {
     for (final p in _report?.platforms ?? const <TerminalReport>[]) p.name: TextEditingController(text: groszeToText(p.grosze)),
@@ -531,171 +378,229 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
     }
     final platformsSum = _platforms.values.fold<int>(0, (sum, c) => sum + (_parse(c) ?? 0));
     final expectedCash = s.expectedCashGrosze + cardDiff;
+    final avg = averageBill(s, fiscalNetGrosze: _parse(_fiscalNet));
+    final envelope = envelopeCash(s, fiscalGrosze: _parse(_fiscal), terminalsGrosze: terminals);
 
-    return PanelCard(
-      title: 'Raporty na koniec dnia',
-      icon: AppIcons.cashRegister,
-      iconColor: TileColors.green,
-      trailing: saved == null
-          ? null
-          : Text(
-              'Zapisano ${Fmt.time(saved)}${_report?.updatedBy == null ? '' : ' · ${_report!.updatedBy}'}',
-              style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SettingsSection(
+          title: 'Sprzedaż',
+          description: widget.dayNote ?? 'Rachunki zamknięte tego dnia.',
+          children: [
+            SettingsRow(
+              title: 'Obrót',
+              description: [
+                '${s.orders} rachunków',
+                if (s.takeaway > 0) '${s.takeaway} na wynos',
+                if (s.discountsGrosze > 0) 'rabaty ${Fmt.price(s.discountsGrosze)}',
+              ].join(' · '),
+              trailing: _Amount(Fmt.price(s.revenueGrosze), big: true),
             ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Kasa fiskalna', style: text.titleSmall),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              SizedBox(
-                width: 240,
-                child: Column(
+            SettingsRow(
+              title: 'Zamówienia netto',
+              description: s.cancelled > 0 ? 'Bez ${s.cancelled} anulowanych i pustych.' : 'Bez anulowanych i pustych.',
+              trailing: _Amount('${s.ordersNet}'),
+            ),
+            SettingsRow(
+              title: 'Średni rachunek',
+              description: avg == null
+                  ? 'Brak zamówień.'
+                  : avg.fromReport
+                  ? 'Netto z raportu dobowego / zamówienia netto.'
+                  : 'Netto z panelu (szacunek) / zamówienia netto. Wpisz netto z raportu dobowego niżej.',
+              trailing: _Amount(avg == null ? '—' : Fmt.price(avg.grosze)),
+            ),
+            SettingsRow(title: 'Gotówka', trailing: _Amount(Fmt.price(s.cashGrosze))),
+            SettingsRow(title: 'Karta (terminal)', trailing: _Amount(Fmt.price(s.cardGrosze))),
+            SettingsRow(
+              title: 'Karta online',
+              description: s.depositsGrosze > 0 ? 'Aplikacja Table i zadatki ${Fmt.price(s.depositsGrosze)}.' : 'Aplikacja Table.',
+              trailing: _Amount(Fmt.price(s.cardOnlineGrosze)),
+            ),
+            if (s.otherGrosze > 0) SettingsRow(title: 'Przelewy i inne', trailing: _Amount(Fmt.price(s.otherGrosze))),
+            SettingsRow(
+              title: 'Kaucja',
+              description: s.kaucjaCount > 0
+                  ? '${_packs(s.kaucjaCount)} ze składników z kaucją.'
+                  : 'Składniki z kaucją ustawia się w Inwentaryzacji → Składniki.',
+              trailing: _Amount(Fmt.price(s.kaucjaGrosze)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 32),
+        SettingsSection(
+          title: 'Kasa fiskalna',
+          description: 'Kwoty z raportu dobowego wydrukowanego na koniec dnia.',
+          children: [
+            SettingsRow(
+              title: 'Raport dobowy (brutto)',
+              trailing: _MoneyField(controller: _fiscal, onChanged: refresh),
+            ),
+            SettingsRow(
+              title: 'Netto z raportu',
+              description: 'Do średniego rachunku.',
+              trailing: _MoneyField(controller: _fiscalNet, onChanged: refresh),
+            ),
+            SettingsRow(
+              title: 'Obrót w panelu',
+              description: 'Zgodność raportu dobowego z rachunkami w panelu.',
+              trailing: _Match(expected: s.revenueGrosze, actual: _parse(_fiscal)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 32),
+        SettingsSection(
+          title: 'Terminale płatnicze',
+          description: 'Kwoty z raportów terminali; suma liczy się sama.',
+          children: [
+            for (final (i, (name, amount)) in _terminals.indexed)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                child: Row(
                   children: [
-                    _MoneyField(controller: _fiscal, label: 'Raport dobowy (brutto)', onChanged: refresh),
-                    const SizedBox(height: 10),
-                    _MoneyField(controller: _fiscalNet, label: 'Netto z raportu', onChanged: refresh),
+                    Expanded(
+                      child: TextField(
+                        controller: name,
+                        maxLength: 60,
+                        decoration: const InputDecoration(hintText: 'Nazwa terminala', isDense: true, counterText: ''),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    _MoneyField(controller: amount, onChanged: refresh),
+                    DeleteButton(
+                      tooltip: 'Usuń terminal',
+                      onPressed: _terminals.length == 1
+                          ? null
+                          : () => setState(() {
+                              final removed = _terminals.removeAt(i);
+                              removed.$1.dispose();
+                              removed.$2.dispose();
+                            }),
+                    ),
                   ],
                 ),
               ),
-              const SizedBox(width: 16),
-              Expanded(child: _Check(label: 'Obrót w panelu', expected: s.revenueGrosze, actual: _parse(_fiscal))),
-            ],
-          ),
-          if (averageBill(s, fiscalNetGrosze: _parse(_fiscalNet)) case final avg?)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                'Średni rachunek ${Fmt.price(avg.grosze)}: netto ${avg.fromReport ? 'z raportu' : 'z panelu'} '
-                '/ ${s.ordersNet} zamówień netto',
-                style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-              ),
-            ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(child: Text('Terminale płatnicze', style: text.titleSmall)),
-              TextButton.icon(
-                onPressed: () => setState(
-                  () => _terminals.add((
-                    TextEditingController(text: 'Terminal ${_terminals.length + 1}'),
-                    TextEditingController(),
-                  )),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => setState(
+                    () => _terminals.add((
+                      TextEditingController(text: 'Terminal ${_terminals.length + 1}'),
+                      TextEditingController(),
+                    )),
+                  ),
+                  icon: const Glyph(AppIcons.plus, size: 16),
+                  label: const Text('Dodaj terminal'),
                 ),
-                icon: const Glyph(AppIcons.plus, size: 16),
-                label: const Text('Dodaj terminal'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          for (final (i, (name, amount)) in _terminals.indexed)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: name,
-                      maxLength: 60,
-                      decoration: const InputDecoration(labelText: 'Nazwa', isDense: true, counterText: ''),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(width: 200, child: _MoneyField(controller: amount, label: 'Kwota', onChanged: refresh)),
-                  DeleteButton(
-                    tooltip: 'Usuń terminal',
-                    onPressed: _terminals.length == 1
-                        ? null
-                        : () => setState(() {
-                            final removed = _terminals.removeAt(i);
-                            removed.$1.dispose();
-                            removed.$2.dispose();
-                          }),
-                  ),
-                ],
               ),
             ),
-          _Check(label: 'Karty w panelu', expected: s.expectedCardGrosze, actual: _terminalsSum),
-          const SizedBox(height: 20),
-          Text('Gotówka do koperty', style: text.titleSmall),
-          const SizedBox(height: 8),
-          _Envelope(cash: envelopeCash(s, fiscalGrosze: _parse(_fiscal), terminalsGrosze: _terminalsSum)),
-          const SizedBox(height: 20),
-          Text('Gotówka w kasie', style: text.titleSmall),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              SizedBox(width: 240, child: _MoneyField(controller: _cash, label: 'Policzona gotówka', onChanged: refresh)),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _Check(label: 'Powinno być', expected: expectedCash, actual: _parse(_cash)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Gotówka z rachunków ${Fmt.price(s.cashGrosze + s.tipsCashGrosze)}'
-            '${s.pettyOutGrosze > 0 ? ' − wydatki ${Fmt.price(s.pettyOutGrosze)}' : ''}'
-            '${s.pettyInGrosze > 0 ? ' + wpłaty ${Fmt.price(s.pettyInGrosze)}' : ''}'
-            '${cardDiff > 0 ? ' + ${Fmt.price(cardDiff)} (na terminalach mniej niż kart w panelu)' : ''}'
-            '${cardDiff < 0 ? ' − ${Fmt.price(-cardDiff)} (na terminalach więcej niż kart w panelu)' : ''}',
-            style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-          ),
-          if (_platforms.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            Text('Platformy dostaw', style: text.titleSmall),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                for (final e in _platforms.entries)
-                  SizedBox(width: 200, child: _MoneyField(controller: e.value, label: e.key, onChanged: refresh)),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Razem z platform ${Fmt.price(platformsSum)} · osobno, poza kasą fiskalną i obrotem w panelu',
-              style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+            SettingsRow(
+              title: 'Karty w panelu',
+              description: 'Płatności kartą z napiwkami. Różnica przechodzi na gotówkę w kasie.',
+              trailing: _Match(expected: s.expectedCardGrosze, actual: terminals),
             ),
           ],
-          const SizedBox(height: 20),
-          TextField(
-            controller: _note,
-            minLines: 2,
-            maxLines: 5,
-            maxLength: 2000,
-            decoration: const InputDecoration(labelText: 'Notatka', counterText: ''),
-          ),
-          const SizedBox(height: 16),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton.icon(
-              onPressed: _busy ? null : _save,
-              icon: const Glyph(AppIcons.check, size: 18),
-              label: const Text('Zapisz podsumowanie'),
+        ),
+        const SizedBox(height: 32),
+        SettingsSection(
+          title: 'Gotówka do koperty',
+          children: [
+            SettingsRow(
+              title: envelope == null ? 'Wpisz raport dobowy' : 'Do koperty',
+              description: envelope == null
+                  ? 'Raport dobowy minus płatności online, terminale (bez napiwków kartą), przelewy i kaucja.'
+                  : _envelopeHint(envelope),
+              trailing: envelope == null
+                  ? null
+                  : _Amount(Fmt.price(envelope.total), big: true, color: envelope.total < 0 ? _warn : null),
             ),
+          ],
+        ),
+        const SizedBox(height: 32),
+        SettingsSection(
+          title: 'Gotówka w kasie',
+          children: [
+            SettingsRow(
+              title: 'Policzona gotówka',
+              trailing: _MoneyField(controller: _cash, onChanged: refresh),
+            ),
+            SettingsRow(
+              title: 'Powinno być',
+              description: 'Gotówka z rachunków ${Fmt.price(s.cashGrosze + s.tipsCashGrosze)}'
+                  '${s.pettyOutGrosze > 0 ? ' − wydatki ${Fmt.price(s.pettyOutGrosze)}' : ''}'
+                  '${s.pettyInGrosze > 0 ? ' + wpłaty ${Fmt.price(s.pettyInGrosze)}' : ''}'
+                  '${cardDiff > 0 ? ' + ${Fmt.price(cardDiff)} (na terminalach mniej niż kart w panelu)' : ''}'
+                  '${cardDiff < 0 ? ' − ${Fmt.price(-cardDiff)} (na terminalach więcej niż kart w panelu)' : ''}',
+              trailing: _Match(expected: expectedCash, actual: _parse(_cash)),
+            ),
+          ],
+        ),
+        if (_platforms.isNotEmpty) ...[
+          const SizedBox(height: 32),
+          SettingsSection(
+            title: 'Platformy dostaw',
+            description: 'Razem ${Fmt.price(platformsSum)}: osobno, poza kasą fiskalną i obrotem w panelu.',
+            children: [
+              for (final e in _platforms.entries)
+                SettingsRow(title: e.key, trailing: _MoneyField(controller: e.value, onChanged: refresh)),
+            ],
           ),
         ],
-      ),
+        const SizedBox(height: 32),
+        SettingsSection(
+          title: 'Notatka',
+          footer: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (saved != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 16),
+                  child: Text(
+                    'Zapisano ${Fmt.time(saved)}${_report?.updatedBy == null ? '' : ' · ${_report!.updatedBy}'}',
+                    style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                  ),
+                ),
+              FilledButton.icon(
+                onPressed: _busy ? null : _save,
+                icon: const Glyph(AppIcons.check, size: 18),
+                label: const Text('Zapisz podsumowanie'),
+              ),
+            ],
+          ),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
+              child: TextField(
+                controller: _note,
+                minLines: 2,
+                maxLines: 5,
+                maxLength: 2000,
+                decoration: const InputDecoration(hintText: 'Coś do zapamiętania z tego dnia', counterText: ''),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
 
 /// Petty cash: drobne wydatki z kasy (np. cytryny, taksówka) i wpłaty do kasy (np. drobne do wydawania).
-class _PettyCard extends ConsumerStatefulWidget {
-  const _PettyCard({required this.restaurantId, required this.day, required this.summary});
+class _PettySection extends ConsumerStatefulWidget {
+  const _PettySection({required this.restaurantId, required this.day, required this.summary});
 
   final String restaurantId;
   final DateTime day;
   final DaySummary summary;
 
   @override
-  ConsumerState<_PettyCard> createState() => _PettyCardState();
+  ConsumerState<_PettySection> createState() => _PettySectionState();
 }
 
-class _PettyCardState extends ConsumerState<_PettyCard> {
+class _PettySectionState extends ConsumerState<_PettySection> {
   final _description = TextEditingController();
   final _amount = TextEditingController();
   bool _out = true;
@@ -762,45 +667,36 @@ class _PettyCardState extends ConsumerState<_PettyCard> {
     final text = Theme.of(context).textTheme;
     final s = widget.summary;
     final balance = s.pettyInGrosze - s.pettyOutGrosze;
-    return PanelCard(
+    return SettingsSection(
       title: 'Petty cash',
-      icon: AppIcons.coins,
-      iconColor: TileColors.amber,
-      trailing: s.petty.isEmpty
-          ? null
-          : Text(
-              '${balance < 0 ? '−' : '+'}${Fmt.price(balance.abs())}',
-              style: text.titleSmall?.copyWith(color: balance < 0 ? _warn : _ok, fontFeatures: _tabular),
-            ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: SegmentedTabs<bool>(
-              options: const [(true, 'Wydatek'), (false, 'Wpłata')],
-              selected: _out,
-              onChanged: (v) => setState(() => _out = v),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
+      description: s.petty.isEmpty
+          ? 'Drobne wydatki z kasy i wpłaty do kasy.'
+          : 'Bilans dnia ${balance < 0 ? '−' : '+'}${Fmt.price(balance.abs())}: wliczony w „Powinno być”.',
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          child: Row(
             children: [
+              SegmentedTabs<bool>(
+                options: const [(true, 'Wydatek'), (false, 'Wpłata')],
+                selected: _out,
+                onChanged: (v) => setState(() => _out = v),
+              ),
+              const SizedBox(width: 12),
               Expanded(
                 child: TextField(
                   controller: _description,
                   maxLength: 200,
                   onSubmitted: (_) => _add(),
                   decoration: InputDecoration(
-                    labelText: _out ? 'Na co' : 'Skąd',
-                    hintText: _out ? 'Na przykład cytryny' : 'Na przykład drobne',
+                    hintText: _out ? 'Na co, np. cytryny' : 'Skąd, np. drobne',
                     isDense: true,
                     counterText: '',
                   ),
                 ),
               ),
               const SizedBox(width: 10),
-              SizedBox(width: 120, child: _MoneyField(controller: _amount, label: 'Kwota')),
+              _MoneyField(controller: _amount, width: 130),
               const SizedBox(width: 6),
               IconButton.filled(
                 tooltip: 'Dodaj',
@@ -809,51 +705,32 @@ class _PettyCardState extends ConsumerState<_PettyCard> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          if (s.petty.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                'Brak wpisów',
-                textAlign: TextAlign.center,
-                style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
-              ),
-            )
-          else
-            for (final e in s.petty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  children: [
-                    Glyph(e.out ? AppIcons.minus : AppIcons.plus, size: 14, color: e.out ? _warn : _ok),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(e.description, style: text.bodyMedium),
-                          Text(
-                            '${e.author ?? 'Pracownik'} · ${Fmt.time(e.createdAt)}',
-                            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-                          ),
-                        ],
+        ),
+        for (final e in s.petty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 12, 10),
+            child: Row(
+              children: [
+                Glyph(e.out ? AppIcons.minus : AppIcons.plus, size: 14, color: e.out ? _warn : _ok),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(e.description, style: text.bodyMedium),
+                      Text(
+                        '${e.author ?? 'Pracownik'} · ${Fmt.time(e.createdAt)}',
+                        style: text.bodySmall?.copyWith(color: AppColors.textMuted),
                       ),
-                    ),
-                    Text(
-                      '${e.out ? '−' : '+'}${Fmt.price(e.amountGrosze)}',
-                      style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
-                    ),
-                    DeleteButton(
-                      tooltip: 'Usuń',
-                      compact: true,
-                      onPressed: () => _delete(e),
-                      size: 15,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-        ],
-      ),
+                _Amount('${e.out ? '−' : '+'}${Fmt.price(e.amountGrosze)}'),
+                DeleteButton(tooltip: 'Usuń', compact: true, onPressed: () => _delete(e), size: 15),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

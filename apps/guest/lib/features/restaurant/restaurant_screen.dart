@@ -147,6 +147,16 @@ class _PageState extends ConsumerState<_Page> {
                 child: _RatingCard(rating: r.rating),
               ),
             ),
+            // Wydarzenia specjalne lokalu (Kalendarz w panelu) nad godzinami otwarcia.
+            if (r.events.isNotEmpty) ...[
+              const SliverToBoxAdapter(child: SectionTitle('Wydarzenia')),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _EventsCard(events: r.events),
+                ),
+              ),
+            ],
             const SliverToBoxAdapter(child: SectionTitle('Godziny otwarcia')),
             SliverToBoxAdapter(
               child: Padding(
@@ -897,6 +907,87 @@ class _Bar extends StatelessWidget {
               value == null ? '–' : Fmt.rating(v),
               style: const TextStyle(fontWeight: FontWeight.w600, fontFeatures: _tabular),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Wydarzenia specjalne lokalu: kolorowa kreska, nazwa, kiedy, opis i „Trwa teraz”.
+class _EventsCard extends StatelessWidget {
+  const _EventsCard({required this.events});
+
+  final List<RestaurantEvent> events;
+
+  static const _colors = {
+    'green': Color(0xFF2FB673),
+    'blue': Color(0xFF3B82F6),
+    'violet': Color(0xFF7C5CFF),
+    'amber': Color(0xFFD99A15),
+    'rose': Color(0xFFE5484D),
+    'teal': Color(0xFF14A3A8),
+    'gray': Color(0xFF8A8F98),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final now = DateTime.now();
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          children: [
+            for (final (i, e) in events.indexed) ...[
+              if (i > 0) Divider(height: 1, color: AppColors.ring),
+              Semantics(
+                label: '${e.title}, ${restaurantEventWhen(e, now)}${e.activeAt(now) ? ', trwa teraz' : ''}'
+                    '${e.description == null ? '' : '. ${e.description}'}',
+                excludeSemantics: true,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Container(
+                          width: 4,
+                          decoration: BoxDecoration(
+                            color: _colors[e.color] ?? AppColors.accent,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(child: Text(e.title, style: text.titleSmall)),
+                                  if (e.activeAt(now)) const Tag('TRWA TERAZ'),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                restaurantEventWhen(e, now),
+                                style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                              ),
+                              if (e.description != null) ...[
+                                const SizedBox(height: 4),
+                                Text(e.description!, style: text.bodyMedium),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

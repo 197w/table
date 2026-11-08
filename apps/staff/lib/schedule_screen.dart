@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+import 'calendar_screen.dart';
 import 'data.dart';
 import 'ui.dart';
 
@@ -280,7 +281,21 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     };
 
     return Scaffold(
-      appBar: AppBar(leading: glassLeading(context), title: const Text('Grafik')),
+      appBar: AppBar(
+        leading: glassLeading(context),
+        title: const Text('Grafik'),
+        actions: [
+          // Kalendarz lokalu (wydarzenia specjalne, spotkania, szkolenia).
+          IconButton(
+            tooltip: 'Kalendarz',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const StaffCalendarScreen()),
+            ),
+            icon: const Glyph(AppIcons.calendar),
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: () async => ref
           ..invalidate(jobsProvider)
