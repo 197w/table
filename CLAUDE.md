@@ -16,7 +16,8 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   Kalendarz (`schedule_screen.dart`, `ScheduleScreen`) to miesiąc jak w Apple Calendar z grafikiem i wydarzeniami lokali:
   zielone pola to dni okna zgłaszania (0081: jedyny okres lokalu, na który pracownik zgłasza teraz dyspozycyjność;
   tydzień, 2 tygodnie albo miesiąc, `restaurants.schedule_period`, ustawia „Ustawienia lokalu”), zgłaszanie godzin na
-  ten okres naraz. „Moje godziny” usunięte 9.11.2026 na prośbę.
+  ten okres. „Moje godziny”, legenda, wiersz okna i „Zgłoś godziny na …” usunięte 9.11.2026 na prośbę: w zakładce
+  jest tylko kalendarz i uwaga na tydzień.
   Napisy dolnego menu: 11 px, bez powiększania czcionki z ustawień telefonu (S23 ma 1,15), żeby się nie zawijały. Kelner nabija zamówienia (stoliki, menu, wysyłka na kuchnię, wydanie,
   zamknięcie rachunku; niewysłaną pozycję usuwa się przesunięciem w lewo, minus tylko zmniejsza ilość; w wyborze dań
   „Przejdź dalej” na dole wraca do rachunku stolika; zamknięcie z rabatem, zadatkiem, napiwkiem i podziałem), mój grafik
@@ -31,15 +32,18 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   Do wysłania / Na kuchni / Wydane” i podpowiedzią o przesuwaniu w lewo, niedostępne dania z chipem zamiast
   przezroczystości. Dostawy: etap kursu i „na 19:30” jako chipy, „Nawiguj” z obrysem (pełny kolor ma tylko
   „Odebrałem” albo „Dostarczone”), kolejka z „Wolny / W kursie”, kafle „Kursy” i „Gotówka”, pulsowanie stoi przy
-  „Ogranicz ruch”. Kalendarz (jak Apple Calendar): w pasku „‹ 2026” (czerwone, wraca do całego roku `_YearView`:
-  12 małych miesięcy, dziś w czerwonym kółku, dni okna na zielono, stuknięcie otwiera miesiąc, przesunięcie zmienia
-  rok), „Dziś” i „+” (nowe wydarzenie), wszystkie na Liquid Glass (`GlassTextButton`, `GlassIconButton(native: true)`).
-  Miesiąc ze strzałkami i przesuwaniem palcem, siatka 6 tygodni (`_DayCell`: dziś na czerwono, wybrany w kółku,
-  zielone pole = dzień okna zgłaszania bez zgłoszenia, kreska w kolorze stanu z `_dayStatus`, kropki wydarzeń),
-  legenda z liczbami w miesiącu, wiersz okna („Zgłoś dyspozycyjność na tydzień 16–22 lis do …”, stuknięcie pokazuje te
-  dni) i „Zgłoś godziny na …”, a pod kreską wybrany dzień: karta godzin (`_DayRow`, zielona do wpisania, przed oknem
-  „Niedostępny”, po nim „Zgłaszanie później”; drugie stuknięcie w dzień też ją otwiera), wydarzenia
-  (`CalendarEventTile`), uwaga na tydzień. Bez przygaszania przezroczystością.
+  „Ogranicz ruch”. Kalendarz (jak Apple Calendar, 9.11.2026 według zrzutu i nagrania użytkownika): w pasku po lewej
+  „‹ 2026” (natywna szklana pigułka, strzałka to znak symbolu SF U+100189 w napisie UIKit; poza iOS 26 `_YearPill`),
+  wraca do całego roku `_YearView` (12 małych miesięcy, dziś w czerwonym kółku, dni okna na zielono, stuknięcie
+  otwiera miesiąc, przesunięcie zmienia rok). Po prawej przycisk widoku z natywnym menu (`GlassMenuButton`, ptaszek
+  przy wybranym): Kompaktowy (kropki), Skumulowany (paski), Szczegóły (wysokie dni z etykietami godzin i wydarzeń,
+  domyślny), Lista (mały miesiąc i wybrany dzień pod spodem); widok zapisany w telefonie (`staff_calendar_view`).
+  Dalej „Dzisiaj” i „+” (nowe wydarzenie), wszystko na Liquid Glass. Miesiąc ze strzałkami i przesuwaniem palcem,
+  tyle tygodni, ile ma miesiąc, cienka kreska nad tygodniem (`_DayCell`: dziś na czerwono, zielone pole = dzień okna
+  zgłaszania bez zgłoszenia, kolory stanu z `_dayStatus`). Stuknięcie w dzień: zielony bez wydarzeń od razu otwiera
+  zgłoszenie godzin, inny okno dnia (`_openDay`: karta godzin `_DayRow` i wydarzenia `CalendarEventTile`); w Liście
+  pierwsze stuknięcie zaznacza, drugie otwiera. Pod siatką uwaga na tydzień wybranego dnia. Zgłaszania na cały okres
+  naraz już nie ma. Bez przygaszania przezroczystością.
   Ustawienia jak u gościa. Podgląd ekranów: test golden poza repozytorium, jak przy panelu.
   „Zakończ zmianę” (31.10.2026, wzór od użytkownika: okno wyboru sposobu zamówienia z aplikacji McDonald's) otwiera
   okno od dołu (`showOptionSheet` w `table_core/src/option_sheet.dart`: karta na całą szerokość telefonu aż do
@@ -224,9 +228,10 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Liquid Glass (wspólny moduł `table_core/src/liquid_glass.dart`, eksportowany z `table_core`), tylko iOS 26 i nowszy
   (iPhone 14 użytkownika ma iOS 27; `PlatformInfo.isIOS26OrHigher` to „co najmniej 26”). Od 9.11.2026 (prośba: „ma
   wyglądać tak jak dolne menu”) natywne są też: przełącznik kart i listy w Odkrywaj (`GlassSegmentedIcons`, natywny
-  UISegmentedControl z symbolami SF), „Zamknij” w oknie od dołu (`_SheetClose` w `option_sheet.dart`: natywny dopiero,
-  gdy okno wjechało i nic go nie przykrywa) i przyciski w pasku Kalendarza pracownika (`GlassTextButton` z napisem
-  UIKit). Gdy nad ekranem leży okno albo inna strona, w ich miejscu jest szkło Fluttera w tym samym kształcie.
+  UISegmentedControl z symbolami SF), „Zamknij” w oknie od dołu (`_SheetClose` w `option_sheet.dart`), przyciski
+  w pasku Kalendarza pracownika (`GlassTextButton` z napisem UIKit, `GlassMenuButton` z natywnym menu). Zostają
+  natywne także pod otwartym oknem (podmiana na szkło Fluttera wyglądała, jakby przyciski w tle „dziwnie się
+  zmieniały”); tylko „Zamknij” w oknie przykrytym drugim oknem znika, jak dolne menu.
   Natywne kontrolki UIKit tylko tam, gdzie stoją w miejscu i nic z Fluttera ich nie przykrywa: dolne menu
   (`NativeGlassTabBar`, natywny UITabBar), „Wstecz” i „Zamknij” w każdym pasku u góry
   (`AppBar(leading: glassLeading(context))`; poza iOS 26 null, czyli zwykły przycisk), „Wróć” i serce w pasku strony
@@ -242,7 +247,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   każda klatka z natywnym widokiem czeka na wątek główny, a każdy napis Fluttera na natywnym szkle to osobna warstwa
   wielkości ekranu rysowana w każdej klatce; kilkanaście pigułek i serc w przewijanej liście zacinało obie aplikacje.
   Nie dodawać natywnych kontrolek powtarzanych w wierszach i kartach list ani pod treścią Fluttera (pojedynczy
-  przełącznik nad listą jest natywny, ale pod oknem albo inną stroną ustępuje szkłu Fluttera). Wybrane: kolor akcentu z treścią
+  przełącznik nad listą jest natywny). Wybrane: kolor akcentu z treścią
   `AppColors.onAccent`. Natywny przycisk nie zmienia stylu po utworzeniu, więc klucz zawiera stan. Natywny pasek
   chowa się, gdy nad zakładką jest inny ekran. Android zostaje przy Material. Dolne menu nie ma podpowiedzi po przytrzymaniu (`NavigationDestination(tooltip: '')`); podpowiedzi są
   tylko w lewym pasku panelu. Sprawdzić da się tylko na iPhonie z iOS 26 (Xcode 26).

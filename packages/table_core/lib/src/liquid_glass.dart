@@ -6,9 +6,14 @@ import 'package:adaptive_platform_ui/adaptive_platform_ui.dart'
         AdaptiveButton,
         AdaptiveButtonStyle,
         AdaptiveNavigationDestination,
+        AdaptivePopupMenuButton,
+        AdaptivePopupMenuDivider,
+        AdaptivePopupMenuEntry,
+        AdaptivePopupMenuItem,
         IOS26NativeTabBar,
         IOS26SegmentedControl,
         PlatformInfo,
+        PopupButtonStyle,
         SFSymbol;
 import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
@@ -29,16 +34,14 @@ import 'widgets.dart';
 // tylko na iOS 26; serca z prawdziwym rozmyciem zdjęcia pod spodem.
 //
 // 8.11.2026 (prośba użytkownika: „ma wyglądać tak jak dolne menu”): natywne są też przyciski w pasku u góry
-// z napisem ([GlassTextButton], np. „Dziś”, „‹ 2026”), przełącznik kart i listy ([GlassSegmentedIcons], natywny
-// UISegmentedControl) i „Zamknij” w oknie od dołu, gdy okno stoi w miejscu i nic go nie przykrywa. Gdy nad
-// ekranem leży okno albo inna strona, w ich miejscu jest szkło Fluttera w tym samym kształcie (natywny widok pod
-// treścią Fluttera psuł rysowanie, 1.11.2026).
+// z napisem ([GlassTextButton], np. „Dzisiaj”), przełącznik kart i listy ([GlassSegmentedIcons], natywny
+// UISegmentedControl) i „Zamknij” w oknie od dołu. Zostają natywne także pod otwartym oknem, jak „Wstecz”
+// (9.11.2026: podmiana na szkło Fluttera pod oknem wyglądała, jakby przyciski w tle „dziwnie się zmieniały”).
+// Wyjątek: „Zamknij” w oknie przykrytym drugim oknem znika, jak dolne menu (natywny widok w przykrytym oknie psuł
+// rysowanie drugiego okna, 1.11.2026).
 
 /// Natywny Liquid Glass: iOS 26 i nowszy (też 27: `PlatformInfo` porównuje „co najmniej 26”).
 bool get nativeLiquidGlass => !kIsWeb && Platform.isIOS && PlatformInfo.isIOS26OrHigher();
-
-/// Nad ekranem leży okno albo inna strona: natywne szkło ustępuje szkłu Fluttera.
-bool _covered(BuildContext context) => !(ModalRoute.of(context)?.isCurrent ?? true);
 
 /// Zakładka dolnego menu: nazwa i symbol SF (zwykły i dla wybranej zakładki).
 typedef GlassTab = ({String label, String symbol, String selectedSymbol});
@@ -281,7 +284,7 @@ class GlassIconButton extends StatelessWidget {
     final tap = size < 48 ? 48.0 : size;
     final icon = this.icon;
     if (!native && icon == null) return fallback;
-    final Widget glass = native && (icon == null || !_covered(context))
+    final Widget glass = native
         ? AdaptiveButton.sfSymbol(
             // Natywny przycisk nie zmienia stylu po utworzeniu, więc zmiana wyglądu to nowy przycisk.
             key: ValueKey('$symbol-${color?.toARGB32()}-$selected'),
@@ -410,9 +413,8 @@ Widget? glassLeading(BuildContext context) {
   );
 }
 
-/// Przycisk z napisem w pasku u góry (np. „Dziś”, „‹ 2026”): na iOS 26 i nowszym natywny Liquid Glass z napisem
-/// UIKit, jak „Wstecz”. Gdy nad ekranem leży okno albo inna strona, ta sama pigułka ze szkła Fluttera.
-/// Poza iOS 26 [fallback].
+/// Przycisk z napisem w pasku u góry (np. „Dzisiaj”): na iOS 26 i nowszym natywny Liquid Glass z napisem UIKit,
+/// jak „Wstecz”, także pod otwartym oknem. Poza iOS 26 [fallback].
 class GlassTextButton extends StatelessWidget {
   const GlassTextButton({
     super.key,
@@ -443,25 +445,16 @@ class GlassTextButton extends StatelessWidget {
     )..layout();
     final width = painter.width + 36;
     painter.dispose();
-    final Widget glass = _covered(context)
-        ? PressScale(
-            onTap: onTap,
-            child: GlassSurface(
-              child: Center(
-                child: Text(label, style: _style.copyWith(color: color ?? AppColors.text)),
-              ),
-            ),
-          )
-        : AdaptiveButton(
-            // Natywny przycisk nie zmienia stylu po utworzeniu, więc zmiana koloru to nowy przycisk.
-            key: ValueKey('glass-text-${color?.toARGB32()}'),
-            onPressed: onTap,
-            label: label,
-            style: AdaptiveButtonStyle.glass,
-            textColor: color ?? AppColors.text,
-            useSmoothRectangleBorder: false,
-            borderRadius: BorderRadius.circular(22),
-          );
+    final glass = AdaptiveButton(
+      // Natywny przycisk nie zmienia stylu po utworzeniu, więc zmiana koloru to nowy przycisk.
+      key: ValueKey('glass-text-${color?.toARGB32()}'),
+      onPressed: onTap,
+      label: label,
+      style: AdaptiveButtonStyle.glass,
+      textColor: color ?? AppColors.text,
+      useSmoothRectangleBorder: false,
+      borderRadius: BorderRadius.circular(22),
+    );
     return Semantics(
       button: true,
       label: semanticLabel ?? label,
@@ -476,8 +469,7 @@ class GlassTextButton extends StatelessWidget {
 }
 
 /// Przełącznik ikon jak dolne menu (np. karty / lista): na iOS 26 i nowszym natywny UISegmentedControl z Liquid
-/// Glass i symbolami SF. Gdy nad ekranem leży okno albo inna strona, szkło Fluttera w tym samym kształcie
-/// z jaśniejszą „soczewką” pod wybraną ikoną. Poza iOS 26 [fallback].
+/// Glass i symbolami SF, także pod otwartym oknem. Poza iOS 26 [fallback].
 class GlassSegmentedIcons extends StatelessWidget {
   const GlassSegmentedIcons({
     super.key,
@@ -490,6 +482,8 @@ class GlassSegmentedIcons extends StatelessWidget {
   });
 
   final List<String> symbols;
+
+  /// Ikony dla czytnika ekranu i miejsc bez natywnego widoku (zostają w API dla [fallback]).
   final List<AppIconData> icons;
 
   /// Nazwy opcji dla czytnika ekranu.
@@ -504,76 +498,73 @@ class GlassSegmentedIcons extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!nativeLiquidGlass) return fallback;
-    final width = _segment * symbols.length;
-    if (!_covered(context)) {
-      return SizedBox(
-        width: width,
-        height: 48,
-        child: Center(
-          child: IOS26SegmentedControl(
-            labels: labels,
-            icons: symbols,
-            selectedIndex: selected,
-            onValueChanged: onChanged,
-            height: _height,
-            iconSize: 17,
-            iconColor: AppColors.text,
-          ),
-        ),
-      );
-    }
-    final dark = AppColors.palette.brightness == Brightness.dark;
     return SizedBox(
-      width: width,
+      width: _segment * symbols.length,
       height: 48,
       child: Center(
-        child: SizedBox(
-          width: width,
+        child: IOS26SegmentedControl(
+          labels: labels,
+          icons: symbols,
+          selectedIndex: selected,
+          onValueChanged: onChanged,
           height: _height,
-          child: GlassSurface(
-            child: Stack(
-              children: [
-                AnimatedPositioned(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeOutCubic,
-                  left: 3 + selected * _segment,
-                  top: 3,
-                  width: _segment - 6,
-                  height: _height - 6,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: (dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000)).withValues(alpha: dark ? 0.16 : 0.07),
-                      borderRadius: BorderRadius.circular(_height),
-                    ),
-                  ),
-                ),
-                Row(
-                  children: [
-                    for (var i = 0; i < icons.length; i++)
-                      Expanded(
-                        child: Semantics(
-                          button: true,
-                          selected: i == selected,
-                          label: labels[i],
-                          excludeSemantics: true,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => onChanged(i),
-                            child: Center(
-                              child: Glyph(
-                                icons[i],
-                                size: 18,
-                                color: i == selected ? AppColors.accent : AppColors.text,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          iconSize: 17,
+          iconColor: AppColors.text,
+        ),
+      ),
+    );
+  }
+}
+
+/// Opcja w [GlassMenuButton]: nazwa, symbol SF (natywne menu), ikona (gdzie indziej), wybrana (ptaszek)
+/// i kreska przed nią.
+typedef GlassMenuItem = ({String label, String symbol, AppIconData icon, bool selected, bool dividerBefore});
+
+/// Okrągły przycisk z menu, np. widok Kalendarza jak w Apple Calendar: na iOS 26 i nowszym natywny przycisk
+/// Liquid Glass z menu UIKit (ptaszek przy wybranej opcji, kreski między grupami). Poza iOS 26 [fallback].
+class GlassMenuButton extends StatelessWidget {
+  const GlassMenuButton({
+    super.key,
+    required this.symbol,
+    required this.items,
+    required this.onSelected,
+    required this.fallback,
+  });
+
+  /// Symbol SF na przycisku.
+  final String symbol;
+  final List<GlassMenuItem> items;
+
+  /// Numer wybranej opcji w [items].
+  final ValueChanged<int> onSelected;
+  final Widget fallback;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!nativeLiquidGlass) return fallback;
+    final entries = <AdaptivePopupMenuEntry>[
+      for (final (i, item) in items.indexed) ...[
+        if (item.dividerBefore) const AdaptivePopupMenuDivider(),
+        AdaptivePopupMenuItem<int>(label: item.label, icon: item.symbol, selected: item.selected, value: i),
+      ],
+    ];
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: Center(
+        child: AdaptivePopupMenuButton.icon<int>(
+          // Natywny przycisk i menu powstają od nowa przy zmianie symbolu albo wybranej opcji.
+          key: ValueKey('glass-menu-$symbol-${items.map((e) => e.selected ? 1 : 0).join()}'),
+          icon: symbol,
+          items: entries,
+          onSelected: (_, entry) {
+            final value = entry.value;
+            if (value != null) onSelected(value);
+          },
+          tint: AppColors.text,
+          size: 44,
+          iconSize: 18,
+          buttonStyle: PopupButtonStyle.glass,
         ),
       ),
     );
