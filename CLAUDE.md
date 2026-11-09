@@ -33,18 +33,21 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   przezroczystości. Dostawy: etap kursu i „na 19:30” jako chipy, „Nawiguj” z obrysem (pełny kolor ma tylko
   „Odebrałem” albo „Dostarczone”), kolejka z „Wolny / W kursie”, kafle „Kursy” i „Gotówka”, pulsowanie stoi przy
   „Ogranicz ruch”. Kalendarz (jak Apple Calendar, 9.11.2026 według zrzutu i nagrania użytkownika): w pasku po lewej
-  „‹ 2026” (natywna szklana pigułka, strzałka to znak symbolu SF U+100189 w napisie UIKit; poza iOS 26 `_YearPill`),
+  „‹ 2026” (natywna szklana pigułka ze strzałką i rokiem rysowanymi przez Fluttera, `GlassTextButton(icon:)`; znak
+  symbolu SF w napisie UIKit dawał „?”; poza iOS 26 `_YearPill`),
   wraca do całego roku `_YearView` (12 małych miesięcy, dziś w czerwonym kółku, dni okna na zielono, stuknięcie
-  otwiera miesiąc, przesunięcie zmienia rok). Po prawej przycisk widoku z natywnym menu (`GlassMenuButton`, ptaszek
-  przy wybranym): Kompaktowy (kropki), Skumulowany (paski), Szczegóły (wysokie dni z etykietami godzin i wydarzeń,
+  otwiera miesiąc, przesunięcie zmienia rok). Po prawej „Dzisiaj” i jedna szklana kapsuła (`GlassMenuCapsule`): po lewej widok z natywnym menu (ptaszek
+  przy wybranym), po prawej „+” (nowe wydarzenie; bez uprawnienia sam widok, `GlassMenuButton`): Kompaktowy (kropki), Skumulowany (paski), Szczegóły (wysokie dni z etykietami godzin i wydarzeń,
   domyślny), Lista (mały miesiąc i wybrany dzień pod spodem); widok zapisany w telefonie (`staff_calendar_view`).
-  Dalej „Dzisiaj” i „+” (nowe wydarzenie), wszystko na Liquid Glass. Miesiąc ze strzałkami i przesuwaniem palcem,
+  Wszystko na Liquid Glass. Miesiąc ze strzałkami i przesuwaniem palcem,
   tyle tygodni, ile ma miesiąc, cienka kreska nad tygodniem (`_DayCell`: dziś na czerwono, zielone pole = dzień okna
   zgłaszania bez zgłoszenia, kolory stanu z `_dayStatus`). Stuknięcie w dzień: zielony bez wydarzeń od razu otwiera
   zgłoszenie godzin, inny okno dnia (`_openDay`: karta godzin `_DayRow` i wydarzenia `CalendarEventTile`); w Liście
   pierwsze stuknięcie zaznacza, drugie otwiera. Pod siatką uwaga na tydzień wybranego dnia. Zgłaszania na cały okres
   naraz już nie ma. Bez przygaszania przezroczystością.
-  Ustawienia jak u gościa. Podgląd ekranów: test golden poza repozytorium, jak przy panelu.
+  Ustawienia jak u gościa. Pod pływającym dolnym menu iOS 26 (`extendBody`) listy zakładek mają u dołu dodane
+  `MediaQuery.paddingOf(context).bottom` (9.11.2026: uwaga na tydzień chowała się pod menu). Podgląd ekranów: test
+  golden poza repozytorium, jak przy panelu.
   „Zakończ zmianę” (31.10.2026, wzór od użytkownika: okno wyboru sposobu zamówienia z aplikacji McDonald's) otwiera
   okno od dołu (`showOptionSheet` w `table_core/src/option_sheet.dart`: karta na całą szerokość telefonu aż do
   dołu ekranu, zaokrąglona u góry, treść nad paskiem systemu (od 1.11.2026, prośba użytkownika; wcześniej karta
@@ -228,10 +231,12 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Liquid Glass (wspólny moduł `table_core/src/liquid_glass.dart`, eksportowany z `table_core`), tylko iOS 26 i nowszy
   (iPhone 14 użytkownika ma iOS 27; `PlatformInfo.isIOS26OrHigher` to „co najmniej 26”). Od 9.11.2026 (prośba: „ma
   wyglądać tak jak dolne menu”) natywne są też: przełącznik kart i listy w Odkrywaj (`GlassSegmentedIcons`, natywny
-  UISegmentedControl z symbolami SF), „Zamknij” w oknie od dołu (`_SheetClose` w `option_sheet.dart`), przyciski
-  w pasku Kalendarza pracownika (`GlassTextButton` z napisem UIKit, `GlassMenuButton` z natywnym menu). Zostają
-  natywne także pod otwartym oknem (podmiana na szkło Fluttera wyglądała, jakby przyciski w tle „dziwnie się
-  zmieniały”); tylko „Zamknij” w oknie przykrytym drugim oknem znika, jak dolne menu.
+  UISegmentedControl z symbolami SF i kolorami podanymi wprost, bo przy jasnym trybie telefonu i ciemnej aplikacji
+  wybrany segment był biały z białą ikoną) i przyciski w pasku Kalendarza pracownika (`GlassTextButton`,
+  `GlassMenuCapsule`, `GlassMenuButton`). Zostają natywne także pod otwartym oknem (podmiana na szkło Fluttera
+  wyglądała, jakby przyciski w tle „dziwnie się zmieniały”). W oknach od dołu NIE ma natywnych widoków: „Zamknij”
+  (`_SheetClose` w `option_sheet.dart`) to szkło Fluttera, bo natywny przycisk w oknie psuł okno (1.11.2026 puste
+  kółka godzin, 9.11.2026 nie dało się nic zrobić w „Zgłoś godziny” i „Nowe wydarzenie”).
   Natywne kontrolki UIKit tylko tam, gdzie stoją w miejscu i nic z Fluttera ich nie przykrywa: dolne menu
   (`NativeGlassTabBar`, natywny UITabBar), „Wstecz” i „Zamknij” w każdym pasku u góry
   (`AppBar(leading: glassLeading(context))`; poza iOS 26 null, czyli zwykły przycisk), „Wróć” i serce w pasku strony

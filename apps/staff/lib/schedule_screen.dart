@@ -511,8 +511,10 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       }
     }
 
+    // Uwaga na tydzień nad pływającym dolnym menu (iOS 26), a nie pod nim.
+    final bottom = 32 + MediaQuery.paddingOf(context).bottom;
     final month = ListView(
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 32),
+      padding: EdgeInsets.fromLTRB(8, 4, 8, bottom),
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 8, bottom: 8),
@@ -635,9 +637,18 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     );
 
     void goToday() => _goTo(today);
+    final viewItems = <GlassMenuItem>[
+      for (final v in _View.values)
+        (label: v.label, symbol: v.symbol, icon: v.icon, selected: v == _view, dividerBefore: v == _View.list),
+    ];
+    final viewFallback = IconButton(
+      tooltip: 'Widok: ${_view.label}',
+      onPressed: _pickView,
+      icon: Glyph(_view.icon),
+    );
     return Scaffold(
-      // Jak w Apple Calendar: „‹ 2026” wraca do całego roku, po prawej widok, „Dzisiaj” i „+”, wszystko na
-      // Liquid Glass.
+      // Jak w Apple Calendar: „‹ 2026” wraca do całego roku, po prawej „Dzisiaj” i kapsuła z widokiem i „+”,
+      // wszystko na Liquid Glass.
       appBar: AppBar(
         automaticallyImplyLeading: false,
         leadingWidth: _yearView ? 0 : 132,
@@ -647,9 +658,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                 padding: const EdgeInsets.only(left: 8),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  // Strzałka to znak symbolu SF „chevron.left” w napisie natywnego przycisku (U+100189).
                   child: GlassTextButton(
-                    label: '\u{100189} ${_month.year}',
+                    icon: AppIcons.caretLeft,
+                    label: '${_month.year}',
                     semanticLabel: 'Cały rok ${_month.year}',
                     onTap: _openYear,
                     fallback: _YearPill(year: _month.year, onTap: _openYear),
@@ -657,46 +668,40 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                 ),
               ),
         actions: [
-          if (!_yearView)
-            GlassMenuButton(
-              symbol: _view.symbol,
-              items: [
-                for (final v in _View.values)
-                  (
-                    label: v.label,
-                    symbol: v.symbol,
-                    icon: v.icon,
-                    selected: v == _view,
-                    dividerBefore: v == _View.list,
-                  ),
-              ],
-              onSelected: (i) => _setView(_View.values[i]),
-              fallback: IconButton(
-                tooltip: 'Widok: ${_view.label}',
-                onPressed: _pickView,
-                icon: Glyph(_view.icon),
-              ),
-            ),
           GlassTextButton(
             label: 'Dzisiaj',
             onTap: goToday,
             fallback: TextButton(onPressed: goToday, child: const Text('Dzisiaj')),
           ),
-          if (canAdd.isNotEmpty) ...[
-            const SizedBox(width: 2),
-            GlassIconButton(
-              symbol: 'plus',
-              icon: AppIcons.plus,
-              native: true,
-              label: 'Nowe wydarzenie',
-              onTap: () => _addEvent(canAdd),
-              fallback: IconButton(
-                tooltip: 'Nowe wydarzenie',
-                onPressed: () => _addEvent(canAdd),
-                icon: const Glyph(AppIcons.plus),
+          const SizedBox(width: 4),
+          // Widok i dodawanie w jednej kapsule jak w Apple Calendar: po lewej widok, po prawej „+”.
+          if (canAdd.isNotEmpty)
+            GlassMenuCapsule(
+              menuIcon: _view.icon,
+              items: viewItems,
+              onSelected: (i) => _setView(_View.values[i]),
+              actionIcon: AppIcons.plus,
+              actionLabel: 'Nowe wydarzenie',
+              onAction: () => _addEvent(canAdd),
+              fallback: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  viewFallback,
+                  IconButton(
+                    tooltip: 'Nowe wydarzenie',
+                    onPressed: () => _addEvent(canAdd),
+                    icon: const Glyph(AppIcons.plus),
+                  ),
+                ],
               ),
+            )
+          else
+            GlassMenuButton(
+              symbol: _view.symbol,
+              items: viewItems,
+              onSelected: (i) => _setView(_View.values[i]),
+              fallback: viewFallback,
             ),
-          ],
           const SizedBox(width: 8),
         ],
       ),
@@ -801,7 +806,7 @@ class _YearView extends StatelessWidget {
         if (v.abs() > 250) onYear(year + (v < 0 ? 1 : -1));
       },
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+        padding: EdgeInsets.fromLTRB(16, 4, 16, 32 + MediaQuery.paddingOf(context).bottom),
         children: [
           Row(
             children: [

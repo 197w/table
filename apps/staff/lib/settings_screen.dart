@@ -38,7 +38,8 @@ class SettingsScreen extends ConsumerWidget {
       appBar: AppBar(leading: glassLeading(context), title: const Text('Konto')),
       body: ContentWidth(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          // „Wyloguj się” nad pływającym dolnym menu.
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 32 + MediaQuery.paddingOf(context).bottom),
           children: [
             // Konto: okrągły znak z inicjałem, imię i numer, którym się logujesz.
             Semantics(

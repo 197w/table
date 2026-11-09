@@ -198,7 +198,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 )
               : ContentWidth(
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                    // Ostatnia karta nad pływającym dolnym menu.
+                    padding: EdgeInsets.fromLTRB(16, 4, 16, 24 + MediaQuery.paddingOf(context).bottom),
                     children: [
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 4),

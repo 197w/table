@@ -34,11 +34,10 @@ import 'widgets.dart';
 // tylko na iOS 26; serca z prawdziwym rozmyciem zdjęcia pod spodem.
 //
 // 8.11.2026 (prośba użytkownika: „ma wyglądać tak jak dolne menu”): natywne są też przyciski w pasku u góry
-// z napisem ([GlassTextButton], np. „Dzisiaj”), przełącznik kart i listy ([GlassSegmentedIcons], natywny
-// UISegmentedControl) i „Zamknij” w oknie od dołu. Zostają natywne także pod otwartym oknem, jak „Wstecz”
-// (9.11.2026: podmiana na szkło Fluttera pod oknem wyglądała, jakby przyciski w tle „dziwnie się zmieniały”).
-// Wyjątek: „Zamknij” w oknie przykrytym drugim oknem znika, jak dolne menu (natywny widok w przykrytym oknie psuł
-// rysowanie drugiego okna, 1.11.2026).
+// ([GlassTextButton], np. „Dzisiaj” i „‹ 2026”; [GlassMenuCapsule]: widok i „+” w jednej kapsule) oraz przełącznik
+// kart i listy ([GlassSegmentedIcons], natywny UISegmentedControl). Zostają natywne także pod otwartym oknem, jak
+// „Wstecz” (9.11.2026: podmiana na szkło Fluttera pod oknem wyglądała, jakby przyciski w tle „dziwnie się
+// zmieniały”). W oknach od dołu nie ma natywnych widoków (psuły okna, patrz `_SheetClose` w option_sheet.dart).
 
 /// Natywny Liquid Glass: iOS 26 i nowszy (też 27: `PlatformInfo` porównuje „co najmniej 26”).
 bool get nativeLiquidGlass => !kIsWeb && Platform.isIOS && PlatformInfo.isIOS26OrHigher();
@@ -413,8 +412,10 @@ Widget? glassLeading(BuildContext context) {
   );
 }
 
-/// Przycisk z napisem w pasku u góry (np. „Dzisiaj”): na iOS 26 i nowszym natywny Liquid Glass z napisem UIKit,
-/// jak „Wstecz”, także pod otwartym oknem. Poza iOS 26 [fallback].
+/// Przycisk z napisem w pasku u góry (np. „Dzisiaj”, „‹ 2026”): na iOS 26 i nowszym natywny Liquid Glass, jak
+/// „Wstecz”, także pod otwartym oknem. Sam napis rysuje UIKit; z [icon] (np. strzałka przed rokiem) ikona i napis
+/// leżą na natywnym szkle (natywny przycisk nie łączy symbolu z napisem, a znak symbolu SF w napisie dawał „?”,
+/// 9.11.2026). Poza iOS 26 [fallback].
 class GlassTextButton extends StatelessWidget {
   const GlassTextButton({
     super.key,
@@ -423,6 +424,7 @@ class GlassTextButton extends StatelessWidget {
     required this.fallback,
     this.semanticLabel,
     this.color,
+    this.icon,
   });
 
   final String label;
@@ -432,6 +434,9 @@ class GlassTextButton extends StatelessWidget {
 
   /// Kolor napisu. Null: kolor tekstu.
   final Color? color;
+
+  /// Ikona przed napisem.
+  final AppIconData? icon;
 
   static const _style = TextStyle(fontSize: 17, fontWeight: FontWeight.w500);
 
@@ -443,18 +448,39 @@ class GlassTextButton extends StatelessWidget {
       textDirection: TextDirection.ltr,
       textScaler: TextScaler.noScaling,
     )..layout();
-    final width = painter.width + 36;
+    final icon = this.icon;
+    final width = painter.width + 36 + (icon == null ? 0 : 24);
     painter.dispose();
-    final glass = AdaptiveButton(
-      // Natywny przycisk nie zmienia stylu po utworzeniu, więc zmiana koloru to nowy przycisk.
-      key: ValueKey('glass-text-${color?.toARGB32()}'),
-      onPressed: onTap,
-      label: label,
-      style: AdaptiveButtonStyle.glass,
-      textColor: color ?? AppColors.text,
-      useSmoothRectangleBorder: false,
-      borderRadius: BorderRadius.circular(22),
-    );
+    final ink = color ?? AppColors.text;
+    final glass = icon == null
+        ? AdaptiveButton(
+            // Natywny przycisk nie zmienia stylu po utworzeniu, więc zmiana koloru to nowy przycisk.
+            key: ValueKey('glass-text-${color?.toARGB32()}'),
+            onPressed: onTap,
+            label: label,
+            style: AdaptiveButtonStyle.glass,
+            textColor: ink,
+            useSmoothRectangleBorder: false,
+            borderRadius: BorderRadius.circular(22),
+          )
+        : AdaptiveButton.child(
+            onPressed: onTap,
+            style: AdaptiveButtonStyle.glass,
+            useSmoothRectangleBorder: false,
+            borderRadius: BorderRadius.circular(22),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Glyph(icon, size: 19, color: ink),
+                const SizedBox(width: 5),
+                Text(
+                  label,
+                  textScaler: TextScaler.noScaling,
+                  style: _style.copyWith(color: ink, fontFamily: AppTheme.fontFamily),
+                ),
+              ],
+            ),
+          );
     return Semantics(
       button: true,
       label: semanticLabel ?? label,
@@ -502,6 +528,9 @@ class GlassSegmentedIcons extends StatelessWidget {
       width: _segment * symbols.length,
       height: 48,
       child: Center(
+        // Kolory podane wprost jak w dolnym menu: jaśniejsza soczewka pod wybraną ikoną, wybrana ikona w kolorze
+        // akcentu. Bez nich przy jasnym trybie telefonu i ciemnej aplikacji wybrany segment był białą plamą
+        // z białą ikoną (9.11.2026).
         child: IOS26SegmentedControl(
           labels: labels,
           icons: symbols,
@@ -509,7 +538,10 @@ class GlassSegmentedIcons extends StatelessWidget {
           onValueChanged: onChanged,
           height: _height,
           iconSize: 17,
+          color: AppColors.palette.brightness == Brightness.dark ? const Color(0x38FFFFFF) : const Color(0x17000000),
           iconColor: AppColors.text,
+          textColor: AppColors.text,
+          selectedTextColor: AppColors.accent,
         ),
       ),
     );
@@ -565,6 +597,107 @@ class GlassMenuButton extends StatelessWidget {
           size: 44,
           iconSize: 18,
           buttonStyle: PopupButtonStyle.glass,
+        ),
+      ),
+    );
+  }
+}
+
+/// Kapsuła z dwoma przyciskami jak w Apple Calendar (9.11.2026, prośba użytkownika): po lewej menu (np. widok
+/// kalendarza, natywne menu UIKit z ptaszkiem), po prawej akcja (np. „+”). Na iOS 26 i nowszym jedno natywne szkło
+/// pod obiema ikonami. Poza iOS 26 [fallback].
+class GlassMenuCapsule extends StatelessWidget {
+  const GlassMenuCapsule({
+    super.key,
+    required this.menuIcon,
+    required this.items,
+    required this.onSelected,
+    required this.actionIcon,
+    required this.actionLabel,
+    required this.onAction,
+    required this.fallback,
+  });
+
+  /// Ikona przycisku menu (np. bieżący widok).
+  final AppIconData menuIcon;
+  final List<GlassMenuItem> items;
+  final ValueChanged<int> onSelected;
+  final AppIconData actionIcon;
+  final String actionLabel;
+  final VoidCallback onAction;
+  final Widget fallback;
+
+  static const double _half = 48;
+  static const double _height = 44;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!nativeLiquidGlass) return fallback;
+    final entries = <AdaptivePopupMenuEntry>[
+      for (final (i, item) in items.indexed) ...[
+        if (item.dividerBefore) const AdaptivePopupMenuDivider(),
+        AdaptivePopupMenuItem<int>(label: item.label, icon: item.symbol, selected: item.selected, value: i),
+      ],
+    ];
+    return SizedBox(
+      width: _half * 2,
+      height: 48,
+      child: Center(
+        child: SizedBox(
+          width: _half * 2,
+          height: _height,
+          child: Stack(
+            children: [
+              // Jedno natywne szkło pod obiema ikonami; dotyk trafia do ikon nad nim.
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: AdaptiveButton(
+                    onPressed: () {},
+                    label: '',
+                    style: AdaptiveButtonStyle.glass,
+                    useSmoothRectangleBorder: false,
+                    borderRadius: BorderRadius.circular(_height / 2),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  // Lewa połowa: natywne menu (przezroczysty przycisk UIKit nad ikoną).
+                  SizedBox(
+                    width: _half,
+                    height: _height,
+                    child: AdaptivePopupMenuButton.widget<int>(
+                      key: ValueKey('glass-capsule-menu-${items.map((e) => e.selected ? 1 : 0).join()}'),
+                      items: entries,
+                      onSelected: (_, entry) {
+                        final value = entry.value;
+                        if (value != null) onSelected(value);
+                      },
+                      child: SizedBox(
+                        width: _half,
+                        height: _height,
+                        child: Center(child: Glyph(menuIcon, size: 20, color: AppColors.text)),
+                      ),
+                    ),
+                  ),
+                  // Prawa połowa: akcja.
+                  SizedBox(
+                    width: _half,
+                    height: _height,
+                    child: Semantics(
+                      button: true,
+                      label: actionLabel,
+                      excludeSemantics: true,
+                      child: PressScale(
+                        onTap: onAction,
+                        child: Center(child: Glyph(actionIcon, size: 22, color: AppColors.text)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -72,7 +72,8 @@ class WaiterTablesScreen extends ConsumerWidget {
             },
             child: ContentWidth(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                // Ostatni stolik nad pływającym dolnym menu.
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 32 + MediaQuery.paddingOf(context).bottom),
                 children: [
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),

@@ -174,7 +174,8 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
             onRefresh: () async => ref.invalidate(deliveryBoardProvider(_key)),
             child: ContentWidth(
               child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+              // Ostatnia karta nad pływającym dolnym menu.
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 28 + MediaQuery.paddingOf(context).bottom),
               children: [
                 // Lokal z flotą: przed pierwszym kursem kontrola auta (bez niej kolejka nie daje kursów).
                 _VehicleCard(job: widget.job, onDone: () => ref.invalidate(deliveryBoardProvider(_key))),

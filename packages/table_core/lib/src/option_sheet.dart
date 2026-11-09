@@ -318,23 +318,19 @@ class _TextSheetState extends State<_TextSheet> {
   );
 }
 
-/// „Zamknij” w oknie od dołu. Na iOS 26 i nowszym natywny Liquid Glass od początku do końca (9.11.2026: podmiana
-/// ze szkła Fluttera na natywne po wjechaniu okna wyglądała dziwnie). Gdy okno przykryje drugie okno (np. kółka
-/// godzin nad „Zgłoś godziny”), przycisk znika jak dolne menu, a wraca po jego zamknięciu: natywny widok
-/// w przykrytym oknie psuł na iPhonie rysowanie drugiego okna (puste kółka godzin, 1.11.2026).
-/// Poza iOS 26 [_CloseCircle].
+/// „Zamknij” w oknie od dołu: na iOS 26 szkło rysowane przez Fluttera, nie natywny przycisk. Natywny widok w oknie,
+/// które jedzie od dołu, psuł na iPhonie okno: najpierw puste kółka godzin pod drugim oknem (1.11.2026), potem
+/// (9.11.2026, natywny od pierwszej klatki wjazdu) nie dało się nic zrobić w oknie „Zgłoś godziny” ani
+/// „Nowe wydarzenie”. Poza iOS 26 [_CloseCircle].
 class _SheetClose extends StatelessWidget {
   const _SheetClose();
 
   @override
   Widget build(BuildContext context) {
     void close() => Navigator.maybePop(context);
-    if (nativeLiquidGlass && !(ModalRoute.of(context)?.isCurrent ?? true)) {
-      return const SizedBox(width: 48, height: 48);
-    }
     return GlassIconButton(
       symbol: 'xmark',
-      native: true,
+      icon: AppIcons.close,
       label: 'Zamknij',
       onTap: close,
       fallback: _CloseCircle(onTap: close),
