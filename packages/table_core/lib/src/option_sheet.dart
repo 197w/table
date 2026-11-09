@@ -326,51 +326,19 @@ class _TextSheetState extends State<_TextSheet> {
   );
 }
 
-/// „Zamknij” w oknie od dołu. Na iOS 26 i nowszym natywny Liquid Glass, ale dopiero gdy okno wjechało i nic go nie
-/// przykrywa; w czasie wjazdu, wyjazdu i pod drugim oknem szkło rysowane przez Fluttera w tym samym miejscu.
-/// Natywny widok tworzony w trakcie wjazdu okna blokował całe okno („Zgłoś godziny”, „Nowe wydarzenie”, 9.11.2026),
-/// a w oknie przykrytym drugim oknem psuł rysowanie (puste kółka godzin, 1.11.2026). Poza iOS 26 [_CloseCircle].
-class _SheetClose extends StatefulWidget {
+/// „Zamknij” w oknie od dołu: na iOS 26 szkło rysowane przez Fluttera, NIGDY natywny przycisk. Każdy natywny widok
+/// w oknie, które jedzie od dołu, psuł na iPhonie okno: puste kółka godzin pod drugim oknem (1.11.2026), a natywny
+/// „Zamknij” (od pierwszej klatki wjazdu i tak samo dopiero po wjechaniu okna) blokował całe okno: nie dało się
+/// nic wpisać ani stuknąć w „Zgłoś godziny” ani „Nowe wydarzenie” (9.11.2026, dwa razy). Poza iOS 26 [_CloseCircle].
+class _SheetClose extends StatelessWidget {
   const _SheetClose();
 
   @override
-  State<_SheetClose> createState() => _SheetCloseState();
-}
-
-class _SheetCloseState extends State<_SheetClose> {
-  Animation<double>? _animation;
-  bool _settled = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final animation = ModalRoute.of(context)?.animation;
-    if (animation != _animation) {
-      _animation?.removeStatusListener(_onStatus);
-      _animation = animation?..addStatusListener(_onStatus);
-      _settled = (animation?.status ?? AnimationStatus.completed) == AnimationStatus.completed;
-    }
-  }
-
-  void _onStatus(AnimationStatus status) {
-    final settled = status == AnimationStatus.completed;
-    if (settled != _settled && mounted) setState(() => _settled = settled);
-  }
-
-  @override
-  void dispose() {
-    _animation?.removeStatusListener(_onStatus);
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final native = _settled && (ModalRoute.of(context)?.isCurrent ?? true);
     void close() => Navigator.maybePop(context);
     return GlassIconButton(
       symbol: 'xmark',
-      icon: native ? null : AppIcons.close,
-      native: native,
+      icon: AppIcons.close,
       label: 'Zamknij',
       onTap: close,
       fallback: _CloseCircle(onTap: close),
