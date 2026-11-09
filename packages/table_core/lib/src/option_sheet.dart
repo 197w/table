@@ -115,7 +115,10 @@ class TableSheet extends StatelessWidget {
       child: Material(
         color: dark ? AppColors.surfaceRaised : AppColors.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(36)),
-        clipBehavior: Clip.antiAlias,
+        // Bez przycinania: zaokrąglone tło rysuje się samo, a treść ma odstęp od rogów. Przycięcie zaokrąglonym
+        // prostokątem obejmowało natywny „Zamknij” (leży w zaokrąglonym rogu) i na iPhonie wtedy całe okno przestawało
+        // reagować na dotyk (9.11.2026); przycięcia prostokątne (listy, pasek u góry) natywnym przyciskom nie szkodzą.
+        clipBehavior: Clip.none,
         child: Padding(
           // Klawiatura i pasek systemu na dole mieszczą się w karcie: tło karty sięga pod klawiaturę, więc między
           // oknem a klawiaturą nie widać czarnego tła (zaokrąglona klawiatura iOS 26, 9.11.2026). Przy otwartej
@@ -326,19 +329,22 @@ class _TextSheetState extends State<_TextSheet> {
   );
 }
 
-/// „Zamknij” w oknie od dołu: na iOS 26 szkło rysowane przez Fluttera, NIGDY natywny przycisk. Każdy natywny widok
-/// w oknie, które jedzie od dołu, psuł na iPhonie okno: puste kółka godzin pod drugim oknem (1.11.2026), a natywny
-/// „Zamknij” (od pierwszej klatki wjazdu i tak samo dopiero po wjechaniu okna) blokował całe okno: nie dało się
-/// nic wpisać ani stuknąć w „Zgłoś godziny” ani „Nowe wydarzenie” (9.11.2026, dwa razy). Poza iOS 26 [_CloseCircle].
+/// „Zamknij” w oknie od dołu: na iOS 26 i nowszym natywny Liquid Glass (prośba użytkownika, 9.11.2026), w tym samym
+/// miejscu i rozmiarze co wcześniej. Okno go nie przycina (patrz [TableSheet]): natywny „Zamknij” w oknie przyciętym
+/// zaokrąglonym prostokątem blokował całe okno (9.11.2026, dwa razy). Pod drugim oknem (np. kółka godzin nad
+/// „Zgłoś godziny”) szkło rysowane przez Fluttera, bo natywny widok w przykrytym oknie psuł rysowanie drugiego okna
+/// (puste kółka godzin, 1.11.2026). Poza iOS 26 [_CloseCircle].
 class _SheetClose extends StatelessWidget {
   const _SheetClose();
 
   @override
   Widget build(BuildContext context) {
+    final native = ModalRoute.of(context)?.isCurrent ?? true;
     void close() => Navigator.maybePop(context);
     return GlassIconButton(
       symbol: 'xmark',
-      icon: AppIcons.close,
+      icon: native ? null : AppIcons.close,
+      native: native,
       label: 'Zamknij',
       onTap: close,
       fallback: _CloseCircle(onTap: close),

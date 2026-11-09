@@ -240,10 +240,12 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   wybrany segment był biały z białą ikoną) i przyciski w pasku Kalendarza pracownika (`GlassTextButton`,
   `GlassMenuCapsule`, `GlassMenuButton`), serca na kartach w Odkrywaj (`LikeButton(nativeGlass: true)`, od
   9.11.2026). Zostają natywne także pod otwartym oknem (podmiana na szkło Fluttera wyglądała, jakby przyciski w tle
-  „dziwnie się zmieniały”). „Zamknij” w oknie od dołu (`_SheetClose` w `option_sheet.dart`) to ZAWSZE szkło Fluttera:
-  natywny przycisk w oknie blokował całe okno (9.11.2026 dwa razy: tworzony od pierwszej klatki i tak samo dopiero
-  po wjechaniu okna), a w przykrytym oknie dawał puste kółka godzin (1.11.2026). Nie wstawiać natywnych widoków do
-  okien od dołu. Natywne szkło bierze
+  „dziwnie się zmieniały”). „Zamknij” w oknie od dołu (`_SheetClose` w `option_sheet.dart`) jest natywny, a karta okna
+  (`TableSheet`) NIE przycina treści (`Clip.none`, zaokrąglone tło rysuje się samo): natywny przycisk w oknie
+  przyciętym zaokrąglonym prostokątem (leży w zaokrąglonym rogu) blokował całe okno (9.11.2026 dwa razy); przycięcia
+  prostokątne (listy, okno z biblioteki) nie szkodzą. Nie przycinać zaokrągleniem niczego, co zawiera natywny widok.
+  Pod drugim oknem „Zamknij” jest szkłem Fluttera (natywny w przykrytym oknie dawał puste kółka godzin, 1.11.2026).
+  Kolor zaznaczenia w szkle (dolne menu, przełącznik) to firmowy zielony `accentFill` w obu motywach. Natywne szkło bierze
   jasność z `MediaQuery.platformBrightness`, więc obie aplikacje w `MaterialApp.builder` podają tam jasność motywu
   aplikacji (jasny motyw przy ciemnym telefonie miał ciemne szkło). Okna od dołu (`TableSheet`): tło karty sięga
   pod klawiaturę (bez czarnych rogów przy zaokrąglonej klawiaturze iOS 26), stuknięcie obok pola i przeciągnięcie

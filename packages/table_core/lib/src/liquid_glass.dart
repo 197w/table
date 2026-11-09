@@ -65,7 +65,8 @@ class NativeGlassTabBar extends StatelessWidget {
       ],
       selectedIndex: index,
       onTap: onTap,
-      tint: AppColors.accent,
+      // Firmowy zielony w obu motywach (9.11.2026: w jasnym `accent` był za ciemny na szkle).
+      tint: AppColors.accentFill,
       hidden: covered,
     );
   }
@@ -541,7 +542,8 @@ class GlassSegmentedIcons extends StatelessWidget {
           color: AppColors.palette.brightness == Brightness.dark ? const Color(0x38FFFFFF) : const Color(0x17000000),
           iconColor: AppColors.text,
           textColor: AppColors.text,
-          selectedTextColor: AppColors.accent,
+          // Firmowy zielony w obu motywach, jak w dolnym menu.
+          selectedTextColor: AppColors.accentFill,
         ),
       ),
     );
