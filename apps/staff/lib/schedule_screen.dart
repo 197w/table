@@ -20,8 +20,8 @@ const _monthsGenitive = [
   'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia',
 ];
 
-/// Dziś na czerwono, jak w Apple Calendar.
-const _red = Color(0xFFEB5757);
+/// Dziś i bieżący rok oraz miesiąc w kolorze aplikacji (9.11.2026; wcześniej czerwone jak w Apple Calendar).
+Color get _today => AppColors.accent;
 
 /// Kolor zgłoszenia, które czeka na decyzję przełożonego (czytelny w obu motywach).
 Color get _pending => StaffColors.pending;
@@ -383,7 +383,8 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     if (view != null) await _setView(view);
   }
 
-  /// Dzień z siatki (widoki poza „Lista”): moje godziny (stuknięcie otwiera zgłoszenie) i wydarzenia lokali.
+  /// Dzień z siatki (widoki poza „Lista”): godziny lokalu, moje godziny (stuknięcie otwiera zgłoszenie)
+  /// i wydarzenia lokali.
   Future<void> _openDay({
     required List<Job> jobs,
     required DateTime day,
@@ -392,6 +393,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     required List<StaffEvent> events,
     required bool canEnter,
     required Map<String, String> names,
+    required List<String> opening,
   }) async {
     final today = _day(DateTime.now());
     await showTableSheet<void>(
@@ -409,6 +411,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                   padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
                   child: Text(_dayTitle(day, today), style: Theme.of(context).textTheme.titleLarge),
                 ),
+                if (opening.isNotEmpty) _OpeningHours(lines: opening),
                 if (jobs.isNotEmpty)
                   _DayRow(
                     day: day,
@@ -474,6 +477,12 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       for (final j in jobs)
         if (j.permissions.contains('calendar')) j,
     ];
+    // Godziny otwarcia lokali z „Dane lokalu”: w dniu (Szczegóły), pod wybranym dniem i w oknie dnia.
+    final hours = ref.watch(staffOpeningHoursProvider(ids.join(','))).value ?? const <String, Map<int, List<({String opens, String closes})>>>{};
+    List<String> openingLines(DateTime d) => [
+      for (final id in ids)
+        if (openingText(hours, id, d.weekday) case final t?) ids.length > 1 ? '${names[id]}: $t' : t,
+    ];
     final monday = DateTime(_selected.year, _selected.month, _selected.day - (_selected.weekday - 1));
     final notes = ref.watch(weekNotesProvider((from: start, to: last))).value ?? const <DateTime, String>{};
 
@@ -507,6 +516,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
           events: dayEvents,
           canEnter: canEnter(day),
           names: names,
+          opening: openingLines(day),
         );
       }
     }
@@ -576,6 +586,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                       Expanded(
                         child: _DayCell(
                           view: _view,
+                          opening: ids.isEmpty ? null : openingText(hours, ids.first, day.weekday),
                           day: day,
                           inMonth: day.month == _month.month,
                           today: today,
@@ -604,6 +615,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (openingLines(_selected) case final lines when lines.isNotEmpty) _OpeningHours(lines: lines),
                 if (async.hasError && !async.hasValue)
                   ErrorView(error: async.error!, onRetry: () => ref.invalidate(schedulePeriodProvider))
                 else if (!loaded)
@@ -778,7 +790,7 @@ class _YearPill extends StatelessWidget {
   }
 }
 
-/// Cały rok jak w Apple Calendar: rok u góry (bieżący na czerwono), 12 małych miesięcy z dziś w czerwonym kółku
+/// Cały rok jak w Apple Calendar: rok u góry (bieżący w kolorze aplikacji), 12 małych miesięcy z dziś w kółku
 /// i zielonymi dniami okna zgłaszania. Stuknięcie w miesiąc otwiera go, przesunięcie palcem zmienia rok.
 class _YearView extends StatelessWidget {
   const _YearView({
@@ -818,7 +830,7 @@ class _YearView extends StatelessWidget {
                     style: text.headlineMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                       fontFeatures: _tabular,
-                      color: year == today.year ? _red : AppColors.text,
+                      color: year == today.year ? _today : AppColors.text,
                     ),
                   ),
                 ),
@@ -865,7 +877,7 @@ class _YearView extends StatelessWidget {
   }
 }
 
-/// Mały miesiąc w widoku roku: nazwa i dni (dziś w czerwonym kółku, dni okna zgłaszania na zielono).
+/// Mały miesiąc w widoku roku: nazwa i dni (dziś w kółku w kolorze aplikacji, dni okna zgłaszania na zielono).
 class _MiniMonth extends StatelessWidget {
   const _MiniMonth({required this.month, required this.today, required this.green, required this.onTap});
 
@@ -898,7 +910,7 @@ class _MiniMonth extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.fade,
                 softWrap: false,
-                style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: current ? _red : AppColors.text),
+                style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: current ? _today : AppColors.text),
               ),
               const SizedBox(height: 4),
               for (var r = 0; r < rows; r++)
@@ -920,7 +932,7 @@ class _MiniMonth extends StatelessWidget {
                                   height: 16,
                                   alignment: Alignment.center,
                                   decoration: isToday
-                                      ? const BoxDecoration(color: _red, shape: BoxShape.circle)
+                                      ? BoxDecoration(color: _today, shape: BoxShape.circle)
                                       : g
                                       ? BoxDecoration(color: AppColors.accentTint, borderRadius: BorderRadius.circular(4))
                                       : null,
@@ -931,7 +943,7 @@ class _MiniMonth extends StatelessWidget {
                                       fontSize: 9.5,
                                       fontFeatures: _tabular,
                                       fontWeight: isToday || g ? FontWeight.w700 : FontWeight.w500,
-                                      color: isToday ? Colors.white : (g ? AppColors.accent : AppColors.text),
+                                      color: isToday ? AppColors.onAccent : (g ? AppColors.accent : AppColors.text),
                                     ),
                                   ),
                                 ),
@@ -954,11 +966,12 @@ class _MiniMonth extends StatelessWidget {
 /// - Kompaktowy i Lista: numer, pod nim kreska grafiku w kolorze stanu i kropki wydarzeń;
 /// - Skumulowany: pod numerem paski (grafik w kolorze stanu, wydarzenia w swoich kolorach);
 /// - Szczegóły: wysoki dzień z etykietami (moje godziny i nazwy wydarzeń).
-/// Dziś na czerwono, wybrany dzień (w Liście) w kółku. Dzień okna zgłaszania, w który mogę jeszcze wpisać godziny,
+/// Dziś w kółku w kolorze aplikacji, wybrany dzień (w Liście) w kółku koloru tekstu. Dzień okna zgłaszania, w który mogę jeszcze wpisać godziny,
 /// jest zielonym polem.
 class _DayCell extends StatelessWidget {
   const _DayCell({
     required this.view,
+    required this.opening,
     required this.day,
     required this.inMonth,
     required this.today,
@@ -970,6 +983,9 @@ class _DayCell extends StatelessWidget {
   });
 
   final _View view;
+
+  /// Godziny lokalu w tym dniu („12:00–22:00”, „Zamknięte”), w widoku Szczegóły pod numerem.
+  final String? opening;
   final DateTime day;
   final bool inMonth;
   final DateTime today;
@@ -982,6 +998,9 @@ class _DayCell extends StatelessWidget {
   /// Godziny krótko: „10–18”, „10:30–18”.
   static String _short(String hm) => hm.endsWith(':00') ? hm.substring(0, hm.length - 3).replaceFirst(RegExp('^0'), '') : hm;
 
+  /// „12:00–22:00” krótko: „12–22”.
+  static String _shortRange(String range) => range.split('–').map(_short).join('–');
+
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
@@ -990,7 +1009,7 @@ class _DayCell extends StatelessWidget {
     final mark = e == null ? null : _dayStatus(e, past: day.isBefore(today));
     final hours = e != null && !e.off && !e.unavailable ? '${e.starts}–${e.ends}' : null;
     final height = switch (view) {
-      _View.details => 104.0,
+      _View.details => 112.0,
       _View.stacked => 74.0,
       _ => 56.0,
     };
@@ -1002,7 +1021,7 @@ class _DayCell extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: isToday ? _red : (selected ? AppColors.text : null),
+        color: isToday ? _today : (selected ? AppColors.text : null),
       ),
       child: Text(
         '${day.day}',
@@ -1010,7 +1029,7 @@ class _DayCell extends StatelessWidget {
           fontFeatures: _tabular,
           fontWeight: selected || isToday || canEnter ? FontWeight.w600 : FontWeight.w400,
           color: isToday
-              ? Colors.white
+              ? AppColors.onAccent
               : selected
               ? AppColors.background
               : canEnter
@@ -1063,6 +1082,24 @@ class _DayCell extends StatelessWidget {
       _View.details => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (opening case final o?)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 1),
+              child: Text(
+                o == 'Zamknięte' ? 'zamknięte' : o.split(', ').map(_shortRange).join(', '),
+                maxLines: 1,
+                overflow: TextOverflow.clip,
+                softWrap: false,
+                textAlign: TextAlign.center,
+                textScaler: TextScaler.noScaling,
+                style: TextStyle(
+                  fontFamily: AppTheme.fontFamily,
+                  fontSize: 9,
+                  fontFeatures: _tabular,
+                  color: AppColors.textMuted,
+                ),
+              ),
+            ),
           for (final item in items.take(items.length > 3 ? 2 : 3)) _Chip(label: item.label, color: item.color),
           if (items.length > 3)
             Padding(
@@ -1114,6 +1151,43 @@ class _DayCell extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Godziny otwarcia lokalu w dniu (z „Dane lokalu”): ikona sklepu i „12:00–22:00” albo „Zamknięte”.
+class _OpeningHours extends StatelessWidget {
+  const _OpeningHours({required this.lines});
+
+  final List<String> lines;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Glyph(AppIcons.storefront, size: 18, color: AppColors.textMuted),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final l in lines)
+                  Text(
+                    l.endsWith('Zamknięte') ? 'Lokal: ${_lowerFirst(l)}' : 'Lokal otwarty: $l',
+                    style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1577,6 +1651,8 @@ class _HoursSheetState extends ConsumerState<HoursSheet> {
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + (keyboard > system ? keyboard : system)),
       child: SingleChildScrollView(
+        // Przeciągnięcie chowa klawiaturę; stuknięcie obok pola też (okno od dołu).
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1623,6 +1699,8 @@ class _HoursSheetState extends ConsumerState<HoursSheet> {
             TextField(
               controller: _note,
               maxLength: 200,
+              // „Gotowe” na klawiaturze ją chowa.
+              textInputAction: TextInputAction.done,
               decoration: const InputDecoration(labelText: 'Uwagi (opcjonalnie)', hintText: 'Na przykład: rano mam zajęcia'),
             ),
             const SizedBox(height: 8),

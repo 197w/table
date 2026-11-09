@@ -31,7 +31,14 @@ Future<void> main() async {
   }
   // Logowanie przerwane między kodem z e-maila a hasłem wylogowuje.
   await AuthPending.restore();
-  runApp(const ProviderScope(child: StaffApp()));
+  // Motyw wczytany przed startem, żeby nie mignął zły (Konto → Motyw, 9.11.2026).
+  final themeSetting = await ThemeSettingNotifier.load();
+  runApp(
+    ProviderScope(
+      overrides: [themeSettingProvider.overrideWith(() => ThemeSettingNotifier(themeSetting))],
+      child: const StaffApp(),
+    ),
+  );
 }
 
 class StaffApp extends ConsumerWidget {
@@ -39,7 +46,11 @@ class StaffApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final brightness = MediaQuery.platformBrightnessOf(context);
+    final brightness = switch (ref.watch(themeSettingProvider)) {
+      AppThemeSetting.light => Brightness.light,
+      AppThemeSetting.dark => Brightness.dark,
+      AppThemeSetting.system => MediaQuery.platformBrightnessOf(context),
+    };
     final palette = brightness == Brightness.dark ? AppPalette.dark : AppPalette.light;
     AppColors.use(palette);
     final session = ref.watch(sessionProvider);
@@ -52,8 +63,12 @@ class StaffApp extends ConsumerWidget {
       locale: const Locale('pl', 'PL'),
       supportedLocales: const [Locale('pl', 'PL')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      // Powiadomienia w stylu Table nad całą aplikacją.
-      builder: (context, child) => ToastHost(child: child ?? const SizedBox.shrink()),
+      // Powiadomienia w stylu Table nad całą aplikacją. Natywne szkło (Liquid Glass) bierze jasność z telefonu,
+      // więc dostaje jasność motywu aplikacji: jasny motyw przy ciemnym telefonie miał ciemne szkło (9.11.2026).
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(platformBrightness: brightness),
+        child: ToastHost(child: child ?? const SizedBox.shrink()),
+      ),
       // Sesja z kodu z e-maila liczy się dopiero po haśle.
       home: ValueListenableBuilder<bool>(
         valueListenable: AuthPending.instance,

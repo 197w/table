@@ -381,7 +381,7 @@ class RestaurantCard extends StatelessWidget {
         Positioned(
           top: 4,
           right: 4,
-          child: LikeButton(restaurantId: r.id, restaurantName: r.name, glass: true),
+          child: LikeButton(restaurantId: r.id, restaurantName: r.name, nativeGlass: true),
         ),
       ],
     );

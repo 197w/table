@@ -26,10 +26,12 @@ class LikeButton extends ConsumerStatefulWidget {
   final String restaurantId;
   final String restaurantName;
 
-  /// Na iOS 26 natywny przycisk Liquid Glass (pasek strony lokalu, stoi w miejscu).
+  /// Na iOS 26 natywny przycisk Liquid Glass: pasek strony lokalu i od 9.11.2026 także karty w Odkrywaj (prośba
+  /// użytkownika: szkło Fluttera „to nie jest liquid glass”; 31.10.2026 kilkanaście natywnych pigułek i serc
+  /// w liście zacinało, teraz w liście są tylko serca i przełącznik widoku).
   final bool nativeGlass;
 
-  /// Na iOS 26 szkło rysowane przez Fluttera (karty w Odkrywaj: natywny widok w przewijanej liście zacinał).
+  /// Na iOS 26 szkło rysowane przez Fluttera.
   final bool glass;
 
   @override

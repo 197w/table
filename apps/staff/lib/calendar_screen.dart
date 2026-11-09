@@ -80,6 +80,40 @@ class StaffEvent {
   );
 }
 
+/// Godziny otwarcia lokali z „Dane lokalu” (`opening_hours`): lokal → dzień tygodnia (1 = poniedziałek) →
+/// przedziały „HH:MM”. Lokal bez żadnych godzin nie ma wpisu (nie wiadomo, kiedy jest otwarty).
+typedef OpeningHours = Map<String, Map<int, List<({String opens, String closes})>>>;
+
+final staffOpeningHoursProvider = FutureProvider.autoDispose.family<OpeningHours, String>((ref, restaurants) async {
+  if (restaurants.isEmpty) return const {};
+  final rows = await Supabase.instance.client
+      .from('opening_hours')
+      .select('restaurant_id, weekday, opens, closes')
+      .inFilter('restaurant_id', restaurants.split(','))
+      .order('opens');
+  final out = <String, Map<int, List<({String opens, String closes})>>>{};
+  for (final r in rows) {
+    final opens = (r['opens'] as String?)?.substring(0, 5);
+    final closes = (r['closes'] as String?)?.substring(0, 5);
+    if (opens == null || closes == null) continue;
+    out
+        .putIfAbsent(r['restaurant_id'] as String, () => {})
+        .putIfAbsent((r['weekday'] as num).toInt(), () => [])
+        .add((opens: opens, closes: closes));
+  }
+  return out;
+});
+
+/// Godziny lokalu w dniu tygodnia: „12:00–22:00” (kilka przedziałów po przecinku), „Zamknięte” albo null, gdy lokal
+/// nie wpisał godzin otwarcia.
+String? openingText(OpeningHours hours, String restaurantId, int weekday) {
+  final week = hours[restaurantId];
+  if (week == null) return null;
+  final day = week[weekday] ?? const [];
+  if (day.isEmpty) return 'Zamknięte';
+  return day.map((h) => '${h.opens}–${h.closes}').join(', ');
+}
+
 /// Wydarzenia lokali pracownika w zakresie dat (lokale po przecinku, żeby klucz rodziny był porównywalny).
 typedef StaffCalendarQuery = ({String restaurants, DateTime from, DateTime to});
 
@@ -184,7 +218,9 @@ class _AddEventSheetState extends ConsumerState<AddEventSheet> {
   late Job _job = widget.jobs.first;
   bool _special = false;
   bool _allDay = false;
-  late DateTime _date = widget.day;
+  // Wydarzenie od dnia do dnia (9.11.2026), np. zimowe menu na kilka tygodni.
+  late DateTime _startDate = widget.day;
+  late DateTime _endDate = widget.day;
   TimeOfDay _from = const TimeOfDay(hour: 10, minute: 0);
   TimeOfDay _to = const TimeOfDay(hour: 11, minute: 0);
   bool _busy = false;
@@ -196,17 +232,35 @@ class _AddEventSheetState extends ConsumerState<AddEventSheet> {
     super.dispose();
   }
 
-  Future<void> _pickDate() async {
+  Future<void> _pickDate({required bool start}) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final first = DateTime.now().subtract(const Duration(days: 365));
     final picked = await showDatePicker(
       context: context,
-      initialDate: _date,
-      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      initialDate: start ? _startDate : _endDate,
+      firstDate: start ? first : _startDate,
       lastDate: DateTime.now().add(const Duration(days: 730)),
+      helpText: start ? 'Od dnia' : 'Do dnia',
     );
-    if (picked != null) setState(() => _date = _day(picked));
+    if (picked == null) return;
+    setState(() {
+      if (start) {
+        _startDate = _day(picked);
+        // Ostatni dzień nie może być przed pierwszym.
+        if (_endDate.isBefore(_startDate)) _endDate = _startDate;
+      } else {
+        _endDate = _day(picked);
+      }
+    });
   }
 
+  /// „9 listopada”, w innym roku „9.11.2027”.
+  String _dateText(DateTime d) => d.year == DateTime.now().year
+      ? '${d.day} ${_monthsGenitive[d.month - 1]}'
+      : '${d.day}.${d.month.toString().padLeft(2, '0')}.${d.year}';
+
   Future<void> _pickTime({required bool from}) async {
+    FocusManager.instance.primaryFocus?.unfocus();
     final picked = await showTimeWheel(context, initial: from ? _from : _to, minuteStep: 15, title: from ? 'Od' : 'Do');
     if (picked == null) return;
     setState(() => from ? _from = picked : _to = picked);
@@ -218,12 +272,22 @@ class _AddEventSheetState extends ConsumerState<AddEventSheet> {
       showMessage(context, 'Wpisz nazwę wydarzenia.', tone: ToastTone.warning);
       return;
     }
-    final start = _allDay ? _date : DateTime(_date.year, _date.month, _date.day, _from.hour, _from.minute);
-    var end = _allDay
-        ? _date.add(const Duration(days: 1))
-        : DateTime(_date.year, _date.month, _date.day, _to.hour, _to.minute);
-    // Koniec wcześniej niż początek: następny dzień (np. 20:00–02:00).
-    if (!end.isAfter(start)) end = end.add(const Duration(days: 1));
+    if (_endDate.isBefore(_startDate)) {
+      showMessage(context, 'Ostatni dzień nie może być przed pierwszym.', tone: ToastTone.warning);
+      return;
+    }
+    final s = _startDate;
+    final e = _endDate;
+    final start = _allDay ? s : DateTime(s.year, s.month, s.day, _from.hour, _from.minute);
+    var end = _allDay ? DateTime(e.year, e.month, e.day + 1) : DateTime(e.year, e.month, e.day, _to.hour, _to.minute);
+    if (!end.isAfter(start)) {
+      if (_allDay || e != s) {
+        showMessage(context, 'Koniec musi być po początku.', tone: ToastTone.warning);
+        return;
+      }
+      // Jeden dzień, koniec wcześniej niż początek: do następnego dnia (np. 20:00–02:00).
+      end = DateTime(e.year, e.month, e.day + 1, _to.hour, _to.minute);
+    }
     setState(() => _busy = true);
     try {
       await Supabase.instance.client.rpc<dynamic>(
@@ -276,6 +340,8 @@ class _AddEventSheetState extends ConsumerState<AddEventSheet> {
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + (keyboard > system ? keyboard : system)),
       child: SingleChildScrollView(
+        // Przeciągnięcie chowa klawiaturę; stuknięcie obok pola też (okno od dołu).
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -285,6 +351,8 @@ class _AddEventSheetState extends ConsumerState<AddEventSheet> {
             TextField(
               controller: _title,
               maxLength: 120,
+              // „Gotowe” na klawiaturze ją chowa.
+              textInputAction: TextInputAction.done,
               textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(labelText: 'Nazwa', counterText: ''),
             ),
@@ -323,15 +391,19 @@ class _AddEventSheetState extends ConsumerState<AddEventSheet> {
             ),
             const SizedBox(height: 4),
             Row(
-              children: [picker('Dzień', '${_date.day} ${_monthsGenitive[_date.month - 1]} ${_date.year}', _pickDate)],
+              children: [
+                picker('Od dnia', _dateText(_startDate), () => _pickDate(start: true)),
+                const SizedBox(width: 12),
+                picker('Do dnia', _dateText(_endDate), () => _pickDate(start: false)),
+              ],
             ),
             if (!_allDay) ...[
               const SizedBox(height: 12),
               Row(
                 children: [
-                  picker('Od', _from.format24(), () => _pickTime(from: true)),
+                  picker('Od godziny', _from.format24(), () => _pickTime(from: true)),
                   const SizedBox(width: 12),
-                  picker('Do', _to.format24(), () => _pickTime(from: false)),
+                  picker('Do godziny', _to.format24(), () => _pickTime(from: false)),
                 ],
               ),
             ],

@@ -85,6 +85,8 @@ class TableSheet extends StatelessWidget {
     ];
     final Widget body = scrollable
         ? SingleChildScrollView(
+            // Przeciągnięcie treści chowa klawiaturę.
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.fromLTRB(16, 0, 20, 22),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -104,15 +106,21 @@ class TableSheet extends StatelessWidget {
               Flexible(child: child),
             ],
           );
-    return Padding(
-      padding: EdgeInsets.only(bottom: avoidKeyboard ? MediaQuery.viewInsetsOf(context).bottom : 0),
+    final keyboard = avoidKeyboard ? MediaQuery.viewInsetsOf(context).bottom : 0.0;
+    return GestureDetector(
+      // Stuknięcie obok pola chowa klawiaturę (9.11.2026: z „Nazwa”, „Opis” i uwagi na tydzień nie dało się
+      // jej schować). Przyciski i pola w oknie łapią stuknięcie pierwsze.
+      behavior: HitTestBehavior.translucent,
+      onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
       child: Material(
         color: dark ? AppColors.surfaceRaised : AppColors.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(36)),
         clipBehavior: Clip.antiAlias,
         child: Padding(
-          // Pasek systemu na dole (przy otwartej klawiaturze zero, bo wtedy karta stoi nad nią).
-          padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+          // Klawiatura i pasek systemu na dole mieszczą się w karcie: tło karty sięga pod klawiaturę, więc między
+          // oknem a klawiaturą nie widać czarnego tła (zaokrąglona klawiatura iOS 26, 9.11.2026). Przy otwartej
+          // klawiaturze pasek systemu to zero.
+          padding: EdgeInsets.only(bottom: keyboard + MediaQuery.paddingOf(context).bottom),
           // Ramka już odsunęła treść od paska systemu, więc treść nie dolicza go drugi raz (viewPadding).
           child: MediaQuery.removeViewPadding(
             context: context,
@@ -318,19 +326,51 @@ class _TextSheetState extends State<_TextSheet> {
   );
 }
 
-/// „Zamknij” w oknie od dołu: na iOS 26 szkło rysowane przez Fluttera, nie natywny przycisk. Natywny widok w oknie,
-/// które jedzie od dołu, psuł na iPhonie okno: najpierw puste kółka godzin pod drugim oknem (1.11.2026), potem
-/// (9.11.2026, natywny od pierwszej klatki wjazdu) nie dało się nic zrobić w oknie „Zgłoś godziny” ani
-/// „Nowe wydarzenie”. Poza iOS 26 [_CloseCircle].
-class _SheetClose extends StatelessWidget {
+/// „Zamknij” w oknie od dołu. Na iOS 26 i nowszym natywny Liquid Glass, ale dopiero gdy okno wjechało i nic go nie
+/// przykrywa; w czasie wjazdu, wyjazdu i pod drugim oknem szkło rysowane przez Fluttera w tym samym miejscu.
+/// Natywny widok tworzony w trakcie wjazdu okna blokował całe okno („Zgłoś godziny”, „Nowe wydarzenie”, 9.11.2026),
+/// a w oknie przykrytym drugim oknem psuł rysowanie (puste kółka godzin, 1.11.2026). Poza iOS 26 [_CloseCircle].
+class _SheetClose extends StatefulWidget {
   const _SheetClose();
 
   @override
+  State<_SheetClose> createState() => _SheetCloseState();
+}
+
+class _SheetCloseState extends State<_SheetClose> {
+  Animation<double>? _animation;
+  bool _settled = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final animation = ModalRoute.of(context)?.animation;
+    if (animation != _animation) {
+      _animation?.removeStatusListener(_onStatus);
+      _animation = animation?..addStatusListener(_onStatus);
+      _settled = (animation?.status ?? AnimationStatus.completed) == AnimationStatus.completed;
+    }
+  }
+
+  void _onStatus(AnimationStatus status) {
+    final settled = status == AnimationStatus.completed;
+    if (settled != _settled && mounted) setState(() => _settled = settled);
+  }
+
+  @override
+  void dispose() {
+    _animation?.removeStatusListener(_onStatus);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final native = _settled && (ModalRoute.of(context)?.isCurrent ?? true);
     void close() => Navigator.maybePop(context);
     return GlassIconButton(
       symbol: 'xmark',
-      icon: AppIcons.close,
+      icon: native ? null : AppIcons.close,
+      native: native,
       label: 'Zamknij',
       onTap: close,
       fallback: _CloseCircle(onTap: close),

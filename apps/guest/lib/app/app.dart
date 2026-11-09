@@ -96,9 +96,12 @@ class _TableAppState extends ConsumerState<TableApp>
         supportedLocales: const [Locale('pl', 'PL')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         routerConfig: _router,
-        // Powiadomienia w stylu Table nad całą aplikacją.
-        builder: (context, child) =>
-            ToastHost(child: child ?? const SizedBox.shrink()),
+        // Powiadomienia w stylu Table nad całą aplikacją. Natywne szkło (Liquid Glass) bierze jasność z telefonu,
+        // więc dostaje jasność motywu aplikacji: jasny motyw przy ciemnym telefonie miał ciemne szkło (9.11.2026).
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(platformBrightness: brightness),
+          child: ToastHost(child: child ?? const SizedBox.shrink()),
+        ),
       ),
     );
   }

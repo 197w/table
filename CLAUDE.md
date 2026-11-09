@@ -35,17 +35,22 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   „Ogranicz ruch”. Kalendarz (jak Apple Calendar, 9.11.2026 według zrzutu i nagrania użytkownika): w pasku po lewej
   „‹ 2026” (natywna szklana pigułka ze strzałką i rokiem rysowanymi przez Fluttera, `GlassTextButton(icon:)`; znak
   symbolu SF w napisie UIKit dawał „?”; poza iOS 26 `_YearPill`),
-  wraca do całego roku `_YearView` (12 małych miesięcy, dziś w czerwonym kółku, dni okna na zielono, stuknięcie
+  wraca do całego roku `_YearView` (12 małych miesięcy, dziś w kółku w kolorze aplikacji, dni okna na zielono, stuknięcie
   otwiera miesiąc, przesunięcie zmienia rok). Po prawej „Dzisiaj” i jedna szklana kapsuła (`GlassMenuCapsule`): po lewej widok z natywnym menu (ptaszek
   przy wybranym), po prawej „+” (nowe wydarzenie; bez uprawnienia sam widok, `GlassMenuButton`): Kompaktowy (kropki), Skumulowany (paski), Szczegóły (wysokie dni z etykietami godzin i wydarzeń,
   domyślny), Lista (mały miesiąc i wybrany dzień pod spodem); widok zapisany w telefonie (`staff_calendar_view`).
   Wszystko na Liquid Glass. Miesiąc ze strzałkami i przesuwaniem palcem,
-  tyle tygodni, ile ma miesiąc, cienka kreska nad tygodniem (`_DayCell`: dziś na czerwono, zielone pole = dzień okna
+  tyle tygodni, ile ma miesiąc, cienka kreska nad tygodniem (`_DayCell`: dziś w kolorze aplikacji (od 9.11.2026,
+  wcześniej czerwone), w Szczegółach pod numerem godziny lokalu „12–22”, zielone pole = dzień okna
   zgłaszania bez zgłoszenia, kolory stanu z `_dayStatus`). Stuknięcie w dzień: zielony bez wydarzeń od razu otwiera
   zgłoszenie godzin, inny okno dnia (`_openDay`: karta godzin `_DayRow` i wydarzenia `CalendarEventTile`); w Liście
-  pierwsze stuknięcie zaznacza, drugie otwiera. Pod siatką uwaga na tydzień wybranego dnia. Zgłaszania na cały okres
+  pierwsze stuknięcie zaznacza, drugie otwiera. Godziny otwarcia lokalu z „Dane lokalu” (`opening_hours`,
+  `staffOpeningHoursProvider`, `openingText`) w oknie dnia i pod wybranym dniem w Liście („Lokal otwarty: 12:00–22:00”).
+  „Nowe wydarzenie”: od dnia do dnia (`_startDate`, `_endDate`) i od godziny do godziny albo cały dzień.
+  Pod siatką uwaga na tydzień wybranego dnia. Zgłaszania na cały okres
   naraz już nie ma. Bez przygaszania przezroczystością.
-  Ustawienia jak u gościa. Pod pływającym dolnym menu iOS 26 (`extendBody`) listy zakładek mają u dołu dodane
+  Ustawienia jak u gościa; Konto → Motyw (Systemowy, Jasny, Ciemny, `themeSettingProvider` z `table_core`, od
+  9.11.2026; zakładka zostaje ta sama po zmianie motywu). Pod pływającym dolnym menu iOS 26 (`extendBody`) listy zakładek mają u dołu dodane
   `MediaQuery.paddingOf(context).bottom` (9.11.2026: uwaga na tydzień chowała się pod menu). Podgląd ekranów: test
   golden poza repozytorium, jak przy panelu.
   „Zakończ zmianę” (31.10.2026, wzór od użytkownika: okno wyboru sposobu zamówienia z aplikacji McDonald's) otwiera
@@ -233,10 +238,15 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   wyglądać tak jak dolne menu”) natywne są też: przełącznik kart i listy w Odkrywaj (`GlassSegmentedIcons`, natywny
   UISegmentedControl z symbolami SF i kolorami podanymi wprost, bo przy jasnym trybie telefonu i ciemnej aplikacji
   wybrany segment był biały z białą ikoną) i przyciski w pasku Kalendarza pracownika (`GlassTextButton`,
-  `GlassMenuCapsule`, `GlassMenuButton`). Zostają natywne także pod otwartym oknem (podmiana na szkło Fluttera
-  wyglądała, jakby przyciski w tle „dziwnie się zmieniały”). W oknach od dołu NIE ma natywnych widoków: „Zamknij”
-  (`_SheetClose` w `option_sheet.dart`) to szkło Fluttera, bo natywny przycisk w oknie psuł okno (1.11.2026 puste
-  kółka godzin, 9.11.2026 nie dało się nic zrobić w „Zgłoś godziny” i „Nowe wydarzenie”).
+  `GlassMenuCapsule`, `GlassMenuButton`), serca na kartach w Odkrywaj (`LikeButton(nativeGlass: true)`, od
+  9.11.2026). Zostają natywne także pod otwartym oknem (podmiana na szkło Fluttera wyglądała, jakby przyciski w tle
+  „dziwnie się zmieniały”). „Zamknij” w oknie od dołu (`_SheetClose` w `option_sheet.dart`) jest natywny dopiero,
+  gdy okno wjechało i nic go nie przykrywa; w czasie wjazdu i pod drugim oknem szkło Fluttera (natywny od pierwszej
+  klatki blokował całe okno 9.11.2026, w przykrytym oknie dawał puste kółka godzin 1.11.2026). Natywne szkło bierze
+  jasność z `MediaQuery.platformBrightness`, więc obie aplikacje w `MaterialApp.builder` podają tam jasność motywu
+  aplikacji (jasny motyw przy ciemnym telefonie miał ciemne szkło). Okna od dołu (`TableSheet`): tło karty sięga
+  pod klawiaturę (bez czarnych rogów przy zaokrąglonej klawiaturze iOS 26), stuknięcie obok pola i przeciągnięcie
+  chowają klawiaturę, pola jednowierszowe mają „Gotowe”.
   Natywne kontrolki UIKit tylko tam, gdzie stoją w miejscu i nic z Fluttera ich nie przykrywa: dolne menu
   (`NativeGlassTabBar`, natywny UITabBar), „Wstecz” i „Zamknij” w każdym pasku u góry
   (`AppBar(leading: glassLeading(context))`; poza iOS 26 null, czyli zwykły przycisk), „Wróć” i serce w pasku strony

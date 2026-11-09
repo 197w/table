@@ -23,10 +23,11 @@ class StaffShell extends ConsumerStatefulWidget {
 }
 
 class _StaffShellState extends ConsumerState<StaffShell> {
-  /// Na start „Zeskanuj”: tu zaczyna się zmianę.
-  int _tab = 2;
+  /// Na start „Zeskanuj”: tu zaczyna się zmianę. Po zmianie motywu (aplikacja buduje się od nowa) ta sama zakładka.
+  static int _lastTab = 2;
+  int _tab = _lastTab;
 
-  void _go(int tab) => setState(() => _tab = tab);
+  void _go(int tab) => setState(() => _tab = _lastTab = tab);
 
   StreamSubscription<CarConnection>? _car;
   CarConnection _connection = CarConnection.none;

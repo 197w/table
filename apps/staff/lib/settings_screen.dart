@@ -33,6 +33,7 @@ class SettingsScreen extends ConsumerWidget {
     final jobs = ref.watch(jobsProvider).value ?? const <Job>[];
     final codes = ref.watch(codesProvider).value ?? const <String, String>{};
     final name = jobs.firstOrNull?.memberName;
+    final theme = ref.watch(themeSettingProvider);
 
     return Scaffold(
       appBar: AppBar(leading: glassLeading(context), title: const Text('Konto')),
@@ -117,6 +118,32 @@ class SettingsScreen extends ConsumerWidget {
             _Group(
               title: 'Aplikacja',
               children: [
+                // Motyw jak w Table: systemowy, jasny albo ciemny (9.11.2026).
+                _Row(
+                  icon: theme.icon,
+                  title: 'Motyw',
+                  value: theme.label,
+                  onTap: () async {
+                    final picked = await showOptionSheet<AppThemeSetting>(
+                      context: context,
+                      title: 'Motyw',
+                      options: [
+                        for (final t in AppThemeSetting.values)
+                          SheetOption(
+                            value: t,
+                            icon: t.icon,
+                            title: t.label,
+                            subtitle: switch (t) {
+                              AppThemeSetting.system => 'Jak w telefonie',
+                              AppThemeSetting.light => 'Zawsze jasny',
+                              AppThemeSetting.dark => 'Zawsze ciemny',
+                            },
+                          ),
+                      ],
+                    );
+                    if (picked != null) await ref.read(themeSettingProvider.notifier).set(picked);
+                  },
+                ),
                 _Row(
                   icon: AppIcons.refresh,
                   title: 'Odśwież dane',
@@ -250,12 +277,15 @@ class _JobRow extends StatelessWidget {
 /// Wiersz z działaniem (bez strzałki, bo nie prowadzi do podstrony): co najmniej 56 px wysokości,
 /// nazwa przechodzi do drugiej linii zamiast się ucinać.
 class _Row extends StatelessWidget {
-  const _Row({required this.icon, required this.title, required this.onTap, this.destructive = false});
+  const _Row({required this.icon, required this.title, required this.onTap, this.destructive = false, this.value});
 
   final AppIconData icon;
   final String title;
   final VoidCallback onTap;
   final bool destructive;
+
+  /// Bieżący wybór po prawej (np. motyw).
+  final String? value;
 
   @override
   Widget build(BuildContext context) {
@@ -295,6 +325,12 @@ class _Row extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (value != null) ...[
+                  const SizedBox(width: 8),
+                  Text(value!, style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
+                  const SizedBox(width: 4),
+                  Glyph(AppIcons.caretRight, size: 18, color: AppColors.textMuted),
+                ],
               ],
             ),
           ),
