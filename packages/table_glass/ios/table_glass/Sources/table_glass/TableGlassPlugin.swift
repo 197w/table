@@ -6,8 +6,8 @@ import UIKit
 /// To nie są widoki platformy Fluttera (UiKitView): Flutter o nich nie wie, nie składa ich z treścią i nie
 /// przechwytuje dotyku. Natywny widok platformy w oknie od dołu blokował na iPhonie całe okno (9.11.2026, kilka
 /// razy), a tu przycisk to zwykły UIButton w UIWindow obok widoku Fluttera: dotyk w jego polu trafia do niego,
-/// reszta ekranu do Fluttera jak zawsze. Położenie (w punktach widoku Fluttera) podaje strona Dart, gdy okno stoi
-/// w miejscu; w ruchu przycisk jest schowany, a Flutter rysuje w tym miejscu swoje szkło.
+/// reszta ekranu do Fluttera jak zawsze. Położenie (w punktach widoku Fluttera) podaje strona Dart po każdej
+/// klatce, w której miejsce przycisku się ruszyło (`move`), więc przycisk jedzie razem z oknem.
 public class TableGlassPlugin: NSObject, FlutterPlugin {
   private var channel: FlutterMethodChannel?
   private var buttons: [Int: UIButton] = [:]
@@ -25,6 +25,11 @@ public class TableGlassPlugin: NSObject, FlutterPlugin {
     switch call.method {
     case "show":
       result(show(args))
+    case "move":
+      if let id = args["id"] as? Int, let button = buttons[id] {
+        place(button, args)
+      }
+      result(nil)
     case "hide":
       if let id = args["id"] as? Int, let button = buttons[id] {
         hide(button)
@@ -55,25 +60,30 @@ public class TableGlassPlugin: NSObject, FlutterPlugin {
       let view = findFlutterView(),
       let window = view.window
     else { return false }
-    let x = args["x"] as? Double ?? 0
-    let y = args["y"] as? Double ?? 0
-    let width = args["width"] as? Double ?? 44
-    let height = args["height"] as? Double ?? 44
-
     let button = buttons[id] ?? makeButton(id)
     configure(button, args)
     if button.superview !== window {
       window.addSubview(button)
     }
     window.bringSubviewToFront(button)
-    button.frame = view.convert(CGRect(x: x, y: y, width: width, height: height), to: window)
+    place(button, args)
+    button.layer.removeAllAnimations()
+    button.alpha = 1
     button.isUserInteractionEnabled = true
-    if button.alpha < 1 {
-      UIView.animate(withDuration: 0.15, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
-        button.alpha = 1
-      }
-    }
     return true
+  }
+
+  /// Ustawia przycisk w miejscu z Darta (punkty widoku Fluttera), bez animacji: jedzie razem z oknem.
+  private func place(_ button: UIButton, _ args: [String: Any]) {
+    guard let view = findFlutterView(), let window = button.superview else { return }
+    let rect = CGRect(
+      x: args["x"] as? Double ?? 0,
+      y: args["y"] as? Double ?? 0,
+      width: args["width"] as? Double ?? 44,
+      height: args["height"] as? Double ?? 44)
+    UIView.performWithoutAnimation {
+      button.frame = view.convert(rect, to: window)
+    }
   }
 
   private func hide(_ button: UIButton) {
@@ -95,8 +105,7 @@ public class TableGlassPlugin: NSObject, FlutterPlugin {
   }
 
   @objc private func pressed(_ button: UIButton) {
-    // Okno zaraz zjedzie w dół: przycisk chowa się od razu, a nie dopiero przy następnej klatce Fluttera.
-    hide(button)
+    // Przycisk zostaje: zjeżdża razem z oknem, a znika, gdy okno się zamknie (`remove`).
     channel?.invokeMethod("pressed", arguments: button.tag)
   }
 

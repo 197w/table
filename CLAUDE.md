@@ -246,10 +246,12 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   „dziwnie się zmieniały”). „Zamknij” w oknie od dołu (`_SheetClose` w `option_sheet.dart`) to prawdziwy przycisk
   Liquid Glass, ale NIE widok platformy: `OverlayGlassButton` (`overlay_glass_button.dart`) pokazuje przycisk UIKit
   w oknie aplikacji nad widokiem Fluttera przez wtyczkę `packages/table_glass` (kanał `pl.table.glass`: `show` z
-  położeniem w punktach, `hide`, `remove`, `reset`; stuknięcie wraca jako `pressed`). Flutter go nie składa i nie
-  przechwytuje jego dotyku. Natywny przycisk stoi tylko, gdy okno wjechało, jest na wierzchu i jego miejsce nie
-  ruszało się przez 120 ms; w ruchu (wjazd, zjazd, przeciąganie, klawiatura) i pod drugim oknem w tym samym miejscu
-  jest szkło Fluttera (`GlassSurface`), natywny pojawia się w 0,15 s. Test: `apps/staff/test/sheet_close_test.dart`.
+  położeniem w punktach, `move`, `hide`, `remove`, `reset`; stuknięcie wraca jako `pressed`). Flutter go nie składa
+  i nie przechwytuje jego dotyku. Natywny jest cały czas (prośba użytkownika 9.11.2026: „non stop ma być liquid
+  glass”, bez podmiany na szkło Fluttera w ruchu): od pierwszej klatki okna, a po każdej klatce, w której jego
+  miejsce się ruszyło (wjazd, zjazd, przeciąganie, klawiatura), dostaje nowe położenie (`move`). Szkło Fluttera
+  (`GlassSurface`) tylko pod drugim oknem (natywny leżałby nad nim) i gdy natywnego nie da się pokazać.
+  Test: `apps/staff/test/sheet_close_test.dart`.
   Powód (9.11.2026): natywny widok platformy (`AdaptiveButton`) w oknie od dołu blokował na iPhonie całe okno, nie
   dało się nic wpisać ani stuknąć (trzy próby: od pierwszej klatki, dopiero po wjechaniu okna, bez zaokrąglonego
   przycięcia karty), a w przykrytym oknie dawał puste kółka godzin (1.11.2026). Symulator iOS 27 tego nie odtwarza.
@@ -268,7 +270,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   „Sortuj”, wróciły 8.11.2026 na prośbę do wyglądu sprzed Liquid Glass i nie są na szkle): serca na kartach
   (`LikeButton(glass: true)`, od 9.11.2026 przejrzyste szkło z prawdziwym rozmyciem i nasyceniem zdjęcia pod spodem,
   `GlassIconButton(blur: true)`), „Zarezerwuj stolik”, „Zadzwoń, żeby zarezerwować” i „Zamów” (z rozmyciem, bez paska
-  pod spodem), u kelnera filtry działów menu, „Zamknij” w oknie od dołu w ruchu i pod drugim oknem
+  pod spodem), u kelnera filtry działów menu, „Zamknij” w oknie od dołu pod drugim oknem
   (wyżej: `OverlayGlassButton`). Powód (31.10.2026, „aplikacje są zlagowane”): we Flutterze 3.47 na iOS
   każda klatka z natywnym widokiem czeka na wątek główny, a każdy napis Fluttera na natywnym szkle to osobna warstwa
   wielkości ekranu rysowana w każdej klatce; kilkanaście pigułek i serc w przewijanej liście zacinało obie aplikacje.

@@ -3,7 +3,7 @@
 /// Inaczej niż widoki platformy (UiKitView) Flutter ich nie składa z treścią i nie przechwytuje ich dotyku:
 /// to zwykłe przyciski UIKit leżące nad ekranem Fluttera. Dlatego mogą stać w oknach od dołu, w których
 /// natywny widok platformy blokował na iPhonie całe okno (9.11.2026). Strona Dart podaje położenie w punktach
-/// (logiczne piksele Fluttera) i chowa przycisk, gdy jego miejsce się rusza.
+/// (logiczne piksele Fluttera) po każdej klatce, w której miejsce przycisku się ruszyło.
 library;
 
 import 'package:flutter/services.dart';
@@ -25,7 +25,7 @@ abstract final class TableGlass {
     _invoke('reset');
   }
 
-  /// Nowy przycisk. [onPressed]: stuknięcie w natywny przycisk (sam się wtedy chowa).
+  /// Nowy przycisk. [onPressed]: stuknięcie w natywny przycisk.
   static int register(VoidCallback onPressed) {
     _init();
     final id = _nextId++;
@@ -57,7 +57,16 @@ abstract final class TableGlass {
     return ok ?? false;
   }
 
-  /// Chowa przycisk [id] od razu (np. okno zaczyna jechać).
+  /// Przesuwa widoczny przycisk [id] w miejsce [rect] (np. okno jedzie).
+  static void move(int id, Rect rect) => _invoke('move', {
+    'id': id,
+    'x': rect.left,
+    'y': rect.top,
+    'width': rect.width,
+    'height': rect.height,
+  });
+
+  /// Chowa przycisk [id] od razu (np. przykryło go drugie okno).
   static void hide(int id) => _invoke('hide', {'id': id});
 
   /// Usuwa przycisk [id] na stałe.
