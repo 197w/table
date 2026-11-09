@@ -37,7 +37,8 @@ import 'widgets.dart';
 // ([GlassTextButton], np. „Dzisiaj” i „‹ 2026”; [GlassMenuCapsule]: widok i „+” w jednej kapsule) oraz przełącznik
 // kart i listy ([GlassSegmentedIcons], natywny UISegmentedControl). Zostają natywne także pod otwartym oknem, jak
 // „Wstecz” (9.11.2026: podmiana na szkło Fluttera pod oknem wyglądała, jakby przyciski w tle „dziwnie się
-// zmieniały”). W oknach od dołu nie ma natywnych widoków (psuły okna, patrz `_SheetClose` w option_sheet.dart).
+// zmieniały”). W oknach od dołu nie ma natywnych widoków platformy (psuły okna); „Zamknij” w oknie to przycisk
+// UIKit nad Flutterem ([OverlayGlassButton] w overlay_glass_button.dart, `package:table_glass`).
 
 /// Natywny Liquid Glass: iOS 26 i nowszy (też 27: `PlatformInfo` porównuje „co najmniej 26”).
 bool get nativeLiquidGlass => !kIsWeb && Platform.isIOS && PlatformInfo.isIOS26OrHigher();

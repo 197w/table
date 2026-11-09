@@ -10,6 +10,7 @@ export 'src/formatters.dart';
 export 'src/inventory_format.dart';
 export 'src/liquid_glass.dart';
 export 'src/option_sheet.dart';
+export 'src/overlay_glass_button.dart';
 export 'src/theme.dart';
 export 'src/theme_fade.dart';
 export 'src/theme_setting.dart';

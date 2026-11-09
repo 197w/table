@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'app_icons.dart';
 import 'liquid_glass.dart';
+import 'overlay_glass_button.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -115,9 +116,7 @@ class TableSheet extends StatelessWidget {
       child: Material(
         color: dark ? AppColors.surfaceRaised : AppColors.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(36)),
-        // Bez przycinania: zaokrąglone tło rysuje się samo, a treść ma odstęp od rogów. Przycięcie zaokrąglonym
-        // prostokątem obejmowało natywny „Zamknij” (leży w zaokrąglonym rogu) i na iPhonie wtedy całe okno przestawało
-        // reagować na dotyk (9.11.2026); przycięcia prostokątne (listy, pasek u góry) natywnym przyciskom nie szkodzą.
+        // Bez przycinania: zaokrąglone tło rysuje się samo, a treść ma odstęp od rogów.
         clipBehavior: Clip.none,
         child: Padding(
           // Klawiatura i pasek systemu na dole mieszczą się w karcie: tło karty sięga pod klawiaturę, więc między
@@ -329,26 +328,19 @@ class _TextSheetState extends State<_TextSheet> {
   );
 }
 
-/// „Zamknij” w oknie od dołu: na iOS 26 i nowszym natywny Liquid Glass (prośba użytkownika, 9.11.2026), w tym samym
-/// miejscu i rozmiarze co wcześniej. Okno go nie przycina (patrz [TableSheet]): natywny „Zamknij” w oknie przyciętym
-/// zaokrąglonym prostokątem blokował całe okno (9.11.2026, dwa razy). Pod drugim oknem (np. kółka godzin nad
-/// „Zgłoś godziny”) szkło rysowane przez Fluttera, bo natywny widok w przykrytym oknie psuł rysowanie drugiego okna
-/// (puste kółka godzin, 1.11.2026). Poza iOS 26 [_CloseCircle].
+/// „Zamknij” w oknie od dołu: na iOS 26 i nowszym prawdziwy przycisk Liquid Glass ([OverlayGlassButton]: przycisk
+/// UIKit nad widokiem Fluttera, a nie widok platformy w oknie), w tym samym miejscu i rozmiarze co wcześniej.
+/// Natywny widok platformy w oknie blokował na iPhonie całe okno (9.11.2026, trzy próby: od pierwszej klatki, po
+/// wjechaniu okna i bez zaokrąglonego przycięcia), a w przykrytym oknie dawał puste kółka godzin (1.11.2026).
+/// Poza iOS 26 [_CloseCircle].
 class _SheetClose extends StatelessWidget {
   const _SheetClose();
 
   @override
   Widget build(BuildContext context) {
-    final native = ModalRoute.of(context)?.isCurrent ?? true;
     void close() => Navigator.maybePop(context);
-    return GlassIconButton(
-      symbol: 'xmark',
-      icon: native ? null : AppIcons.close,
-      native: native,
-      label: 'Zamknij',
-      onTap: close,
-      fallback: _CloseCircle(onTap: close),
-    );
+    if (!nativeLiquidGlass) return _CloseCircle(onTap: close);
+    return OverlayGlassButton(symbol: 'xmark', icon: AppIcons.close, label: 'Zamknij', onTap: close);
   }
 }
 

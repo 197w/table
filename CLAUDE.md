@@ -72,6 +72,9 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   północ: koniec wcześniej niż początek to następny dzień („02:00+1”, „Do 02:00 następnego dnia”), odrzucane są tylko
   równe godziny.
 - `packages/table_core`: wspólny motyw, czcionka Geist, ikony Phosphor, formatery, widżety i konfiguracja.
+- `packages/table_glass`: wtyczka Flutter tylko na iOS (Swift, `TableGlassPlugin`, CocoaPods i Swift Package jak
+  `table_car`): natywne przyciski Liquid Glass (`UIButton.Configuration.glass()`, iOS 26) w UIWindow nad widokiem
+  Fluttera, bez widoków platformy. Używa jej `table_core` (`OverlayGlassButton`, „Zamknij” w oknach od dołu).
 - `packages/table_car`: wtyczka Flutter tylko dla Table for employees: kurs dostawcy w Android Auto (Kotlin, Car App
   Library, szablon Pane, kategoria POI) i CarPlay (Swift, CPInformationTemplate, scena `TableCarSceneDelegate`
   w Info.plist) oraz rozpoznanie podłączenia do auta (`TableCar.connection`: aplikacja sama przechodzi na „Dostawy”).
@@ -240,11 +243,17 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   wybrany segment był biały z białą ikoną) i przyciski w pasku Kalendarza pracownika (`GlassTextButton`,
   `GlassMenuCapsule`, `GlassMenuButton`), serca na kartach w Odkrywaj (`LikeButton(nativeGlass: true)`, od
   9.11.2026). Zostają natywne także pod otwartym oknem (podmiana na szkło Fluttera wyglądała, jakby przyciski w tle
-  „dziwnie się zmieniały”). „Zamknij” w oknie od dołu (`_SheetClose` w `option_sheet.dart`) jest natywny, a karta okna
-  (`TableSheet`) NIE przycina treści (`Clip.none`, zaokrąglone tło rysuje się samo): natywny przycisk w oknie
-  przyciętym zaokrąglonym prostokątem (leży w zaokrąglonym rogu) blokował całe okno (9.11.2026 dwa razy); przycięcia
-  prostokątne (listy, okno z biblioteki) nie szkodzą. Nie przycinać zaokrągleniem niczego, co zawiera natywny widok.
-  Pod drugim oknem „Zamknij” jest szkłem Fluttera (natywny w przykrytym oknie dawał puste kółka godzin, 1.11.2026).
+  „dziwnie się zmieniały”). „Zamknij” w oknie od dołu (`_SheetClose` w `option_sheet.dart`) to prawdziwy przycisk
+  Liquid Glass, ale NIE widok platformy: `OverlayGlassButton` (`overlay_glass_button.dart`) pokazuje przycisk UIKit
+  w oknie aplikacji nad widokiem Fluttera przez wtyczkę `packages/table_glass` (kanał `pl.table.glass`: `show` z
+  położeniem w punktach, `hide`, `remove`, `reset`; stuknięcie wraca jako `pressed`). Flutter go nie składa i nie
+  przechwytuje jego dotyku. Natywny przycisk stoi tylko, gdy okno wjechało, jest na wierzchu i jego miejsce nie
+  ruszało się przez 120 ms; w ruchu (wjazd, zjazd, przeciąganie, klawiatura) i pod drugim oknem w tym samym miejscu
+  jest szkło Fluttera (`GlassSurface`), natywny pojawia się w 0,15 s. Test: `apps/staff/test/sheet_close_test.dart`.
+  Powód (9.11.2026): natywny widok platformy (`AdaptiveButton`) w oknie od dołu blokował na iPhonie całe okno, nie
+  dało się nic wpisać ani stuknąć (trzy próby: od pierwszej klatki, dopiero po wjechaniu okna, bez zaokrąglonego
+  przycięcia karty), a w przykrytym oknie dawał puste kółka godzin (1.11.2026). Symulator iOS 27 tego nie odtwarza.
+  Nie wstawiać widoków platformy (`AdaptiveButton`, `UiKitView`) do okien od dołu.
   Kolor zaznaczenia w szkle (dolne menu, przełącznik) to firmowy zielony `accentFill` w obu motywach. Natywne szkło bierze
   jasność z `MediaQuery.platformBrightness`, więc obie aplikacje w `MaterialApp.builder` podają tam jasność motywu
   aplikacji (jasny motyw przy ciemnym telefonie miał ciemne szkło). Okna od dołu (`TableSheet`): tło karty sięga
@@ -259,9 +268,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   „Sortuj”, wróciły 8.11.2026 na prośbę do wyglądu sprzed Liquid Glass i nie są na szkle): serca na kartach
   (`LikeButton(glass: true)`, od 9.11.2026 przejrzyste szkło z prawdziwym rozmyciem i nasyceniem zdjęcia pod spodem,
   `GlassIconButton(blur: true)`), „Zarezerwuj stolik”, „Zadzwoń, żeby zarezerwować” i „Zamów” (z rozmyciem, bez paska
-  pod spodem), u kelnera filtry działów menu, „Zamknij” w oknie od dołu (`GlassIconButton` z `icon`; natywny
-  przycisk w oknie, które jedzie od dołu i które przykrywa drugie okno, psuł na iPhonie rysowanie treści okna:
-  puste kółka godzin, 1.11.2026). Powód (31.10.2026, „aplikacje są zlagowane”): we Flutterze 3.47 na iOS
+  pod spodem), u kelnera filtry działów menu, „Zamknij” w oknie od dołu w ruchu i pod drugim oknem
+  (wyżej: `OverlayGlassButton`). Powód (31.10.2026, „aplikacje są zlagowane”): we Flutterze 3.47 na iOS
   każda klatka z natywnym widokiem czeka na wątek główny, a każdy napis Fluttera na natywnym szkle to osobna warstwa
   wielkości ekranu rysowana w każdej klatce; kilkanaście pigułek i serc w przewijanej liście zacinało obie aplikacje.
   Nie dodawać natywnych kontrolek powtarzanych w wierszach i kartach list ani pod treścią Fluttera (pojedynczy

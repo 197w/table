@@ -11,3 +11,4 @@ workspace:
   - apps/staff
   - packages/table_car
   - packages/table_core
+  - packages/table_glass
