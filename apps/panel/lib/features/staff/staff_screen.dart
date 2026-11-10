@@ -70,7 +70,6 @@ enum _Status {
 }
 
 /// Szerokość okna dodawania obok panelu.
-const _sheetWidth = 368.0;
 
 /// Panel po lewej wspólny dla Pracowników i Grafiku: zaznaczone filtry ('' = bez stanowiska), zwinięte grupy
 /// i czy panel jest rozwinięty. Zostaje przy przejściu między zakładkami. Na start tylko aktywni.
@@ -566,7 +565,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
           ? null
           : SizedBox(
               key: ValueKey(memberSheetOpen ? 'okno pracownika ${editMember?.id}' : 'okno stanowiska'),
-              width: _sheetWidth,
+              width: sideSheetWidth,
               child: IndexedStack(index: sheets.length - 1, sizing: StackFit.expand, children: sheets),
             ),
       content: TabContent(tab: '$view ${openMember?.id} ${openPosition?.id}', child: content),
@@ -874,7 +873,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
           ? null
           : SizedBox(
               key: ValueKey('okno pracownika ${editMember.id}'),
-              width: _sheetWidth,
+              width: sideSheetWidth,
               child: _MemberSheet(
                 restaurantId: restaurantId,
                 positions: positions,
@@ -2820,189 +2819,6 @@ class _PositionsTable extends ConsumerWidget {
 // Okna obok panelu: nowy pracownik i stanowisko (jak „Add New Person” w UniFi)
 // ---------------------------------------------------------------
 
-/// Ramka okna obok panelu: tytuł z „Zamknij”, przewijana treść i przycisk na dole.
-class _SheetFrame extends StatelessWidget {
-  const _SheetFrame({required this.title, required this.onClose, required this.children, required this.footer});
-
-  final String title;
-  final VoidCallback onClose;
-  final List<Widget> children;
-  final Widget footer;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border(right: BorderSide(color: AppColors.ring)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 10, 4),
-            child: SizedBox(
-              height: 40,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Zamknij',
-                    onPressed: onClose,
-                    icon: const Glyph(AppIcons.close, size: 18),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-              children: children,
-            ),
-          ),
-          Divider(height: 1, color: AppColors.ring),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
-            child: footer,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Pole w oknie: mały napis nad nim, jak w UniFi.
-class _SheetField extends StatelessWidget {
-  const _SheetField({required this.label, required this.child});
-
-  final String label;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: AppColors.textMuted)),
-        const SizedBox(height: 6),
-        child,
-      ],
-    );
-  }
-}
-
-/// Nagłówek części okna, np. „Stanowisko” albo „Dodatkowe stanowiska (opcjonalnie)”.
-class _SheetHeading extends StatelessWidget {
-  const _SheetHeading(this.title, {this.optional = false, this.trailing});
-
-  final String title;
-  final bool optional;
-  final String? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    return Row(
-      children: [
-        Text(title, style: text.titleSmall),
-        if (optional) ...[
-          const SizedBox(width: 6),
-          Text('(opcjonalnie)', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
-        ],
-        const Spacer(),
-        if (trailing != null)
-          Text(trailing!, style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular)),
-      ],
-    );
-  }
-}
-
-InputDecoration _sheetInput({String? hint, String? suffix}) => InputDecoration(
-  isDense: true,
-  hintText: hint,
-  suffixText: suffix,
-  counterText: '',
-  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-);
-
-/// Karty po dwie w rzędzie (stanowiska w oknie pracownika, jak role w UniFi).
-class _CardGrid extends StatelessWidget {
-  const _CardGrid({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, box) {
-        final width = (box.maxWidth - 10) / 2;
-        return Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [for (final c in children) SizedBox(width: width, height: 60, child: c)],
-        );
-      },
-    );
-  }
-}
-
-/// Karta wyboru: ikona i nazwa (bez opisu, prośba użytkownika). Wybrana ma obrys i tło w kolorze akcentu.
-class _ChoiceCard extends StatelessWidget {
-  const _ChoiceCard({
-    required this.icon,
-    required this.title,
-    required this.onTap,
-    this.selected = false,
-  });
-
-  final AppIconData icon;
-  final String title;
-  final VoidCallback onTap;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    return Material(
-      color: selected ? AppColors.accentTint : AppColors.surfaceRaised,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: selected ? AppColors.accent : Colors.transparent, width: 1.5),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Glyph(selected ? icon.duotone : icon, size: 20, color: AppColors.accent),
-              const SizedBox(width: 10),
-              // Dłuższa nazwa (np. „Nowe stanowisko”, „Kierownik zmiany”) mieści się w dwóch liniach.
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: text.labelLarge?.copyWith(height: 1.2),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Szary przycisk na całą szerokość z plusem, jak „Add site” w UniFi.
 class _AddRow extends StatelessWidget {
   const _AddRow({required this.label, this.enabled = true});
@@ -3270,7 +3086,7 @@ class _MemberSheetState extends ConsumerState<_MemberSheet> {
     final decimal = [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))];
 
     final editing = widget.member != null;
-    return _SheetFrame(
+    return SideSheetFrame(
       title: editing ? widget.member!.name : 'Nowy pracownik',
       onClose: widget.onClose,
       footer: Row(
@@ -3297,33 +3113,33 @@ class _MemberSheetState extends ConsumerState<_MemberSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: _SheetField(
+              child: SheetField(
                 label: 'Imię',
                 child: TextField(
                   controller: _firstName,
                   autofocus: !editing,
                   maxLength: 40,
                   textCapitalization: TextCapitalization.words,
-                  decoration: _sheetInput(),
+                  decoration: sheetInput(),
                 ),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _SheetField(
+              child: SheetField(
                 label: 'Nazwisko',
                 child: TextField(
                   controller: _lastName,
                   maxLength: 60,
                   textCapitalization: TextCapitalization.words,
-                  decoration: _sheetInput(),
+                  decoration: sheetInput(),
                 ),
               ),
             ),
           ],
         ),
         const SizedBox(height: 14),
-        _SheetField(
+        SheetField(
           label: 'Numer telefonu',
           child: TextField(
             controller: _phone,
@@ -3333,7 +3149,7 @@ class _MemberSheetState extends ConsumerState<_MemberSheet> {
               LengthLimitingTextInputFormatter(20),
             ],
             style: const TextStyle(fontFeatures: _tabular),
-            decoration: _sheetInput(hint: '+48 600 100 200'),
+            decoration: sheetInput(hint: '+48 600 100 200'),
           ),
         ),
         const SizedBox(height: 6),
@@ -3342,13 +3158,13 @@ class _MemberSheetState extends ConsumerState<_MemberSheet> {
           style: text.bodySmall?.copyWith(color: AppColors.textMuted),
         ),
         const SizedBox(height: 24),
-        const _SheetHeading('Stanowisko'),
+        const SheetHeading('Stanowisko'),
         const SizedBox(height: 10),
         // Same nazwy stanowisk, bez opisów uprawnień (prośba użytkownika).
-        _CardGrid(
+        CardGrid(
           children: [
             for (final p in positions)
-              _ChoiceCard(
+              ChoiceCard(
                 icon: p.isAll ? AppIcons.userGear : AppIcons.identification,
                 title: p.name,
                 selected: p.id == _positionId,
@@ -3358,11 +3174,11 @@ class _MemberSheetState extends ConsumerState<_MemberSheet> {
                 }),
               ),
             if (widget.onNewRole case final newRole?)
-              _ChoiceCard(icon: AppIcons.plus, title: 'Nowe stanowisko', onTap: newRole),
+              ChoiceCard(icon: AppIcons.plus, title: 'Nowe stanowisko', onTap: newRole),
           ],
         ),
         const SizedBox(height: 24),
-        const _SheetHeading('Dodatkowe stanowiska', optional: true),
+        const SheetHeading('Dodatkowe stanowiska', optional: true),
         const SizedBox(height: 4),
         Text(
           'Uprawnienia są sumą wszystkich stanowisk, a w grafiku wybiera się stanowisko na dany dzień.',
@@ -3395,11 +3211,11 @@ class _MemberSheetState extends ConsumerState<_MemberSheet> {
           child: _AddRow(label: 'Dodaj stanowisko', enabled: extrasLeft.isNotEmpty),
         ),
         const SizedBox(height: 24),
-        const _SheetHeading('Umowa i stawka', optional: true),
+        const SheetHeading('Umowa i stawka', optional: true),
         const SizedBox(height: 10),
         DropdownButtonFormField<Contract>(
           initialValue: _contract,
-          decoration: _sheetInput(),
+          decoration: sheetInput(),
           icon: const Glyph(AppIcons.caretDown, size: 16),
           items: [for (final c in Contract.values) DropdownMenuItem(value: c, child: Text(c.label))],
           onChanged: _rateLoaded
@@ -3413,7 +3229,7 @@ class _MemberSheetState extends ConsumerState<_MemberSheet> {
         Row(
           children: [
             Expanded(
-              child: _SheetField(
+              child: SheetField(
                 label: 'Stawka brutto',
                 child: TextField(
                   controller: _gross,
@@ -3422,13 +3238,13 @@ class _MemberSheetState extends ConsumerState<_MemberSheet> {
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: decimal,
                   style: const TextStyle(fontFeatures: _tabular),
-                  decoration: _sheetInput(suffix: 'zł/h'),
+                  decoration: sheetInput(suffix: 'zł/h'),
                 ),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _SheetField(
+              child: SheetField(
                 label: 'Stawka netto',
                 child: TextField(
                   controller: _net,
@@ -3437,14 +3253,14 @@ class _MemberSheetState extends ConsumerState<_MemberSheet> {
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: decimal,
                   style: const TextStyle(fontFeatures: _tabular),
-                  decoration: _sheetInput(suffix: 'zł/h'),
+                  decoration: sheetInput(suffix: 'zł/h'),
                 ),
               ),
             ),
           ],
         ),
         const SizedBox(height: 24),
-        const _SheetHeading('Kolor w grafiku'),
+        const SheetHeading('Kolor w grafiku'),
         const SizedBox(height: 10),
         Wrap(
           spacing: 8,
@@ -3590,17 +3406,17 @@ class _RoleEditorState extends ConsumerState<_RoleEditor> {
           onAll: (on) => setState(() => on ? _permissions.addAll(list) : _permissions.removeAll(list)),
         ),
     ];
-    final nameField = _SheetField(
+    final nameField = SheetField(
       label: 'Nazwa',
       child: TextField(
         controller: _name,
         autofocus: position == null,
         maxLength: 40,
         textCapitalization: TextCapitalization.sentences,
-        decoration: _sheetInput(hint: 'Barman, Kierownik zmiany, Hostessa'),
+        decoration: sheetInput(hint: 'Barman, Kierownik zmiany, Hostessa'),
       ),
     );
-    final heading = _SheetHeading('Uprawnienia', trailing: '${_permissions.length} z ${StaffPermission.values.length}');
+    final heading = SheetHeading('Uprawnienia', trailing: '${_permissions.length} z ${StaffPermission.values.length}');
     final hint = Text(
       system
           ? 'Stanowisko dodane przez system: nie da się zmienić jego nazwy ani uprawnień.'
@@ -3622,7 +3438,7 @@ class _RoleEditorState extends ConsumerState<_RoleEditor> {
           );
 
     if (!widget.inline) {
-      return _SheetFrame(
+      return SideSheetFrame(
         title: position == null ? 'Nowe stanowisko' : position.name,
         onClose: widget.onClose,
         footer: Row(

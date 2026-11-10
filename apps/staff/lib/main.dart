@@ -55,7 +55,9 @@ class StaffApp extends ConsumerWidget {
     AppColors.use(palette);
     final session = ref.watch(sessionProvider);
 
-    return MaterialApp(
+    // Zmiana motywu przechodzi płynnie jak w Table: ThemeFade wygasza zdjęcie starego wyglądu.
+    return ThemeFade(
+      child: MaterialApp(
       key: ValueKey(brightness),
       title: 'Table for employees',
       debugShowCheckedModeBanner: false,
@@ -73,6 +75,7 @@ class StaffApp extends ConsumerWidget {
       home: ValueListenableBuilder<bool>(
         valueListenable: AuthPending.instance,
         builder: (context, pending, _) => session != null && !pending ? const StaffShell() : const LoginScreen(),
+      ),
       ),
     );
   }

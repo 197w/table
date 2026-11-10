@@ -954,6 +954,7 @@ class PanelReview {
 
   String get verificationLabel => switch (verification) {
     'reservation' => 'Zweryfikowana wizyta',
+    'order' => 'Zweryfikowane zamówienie',
     'receipt' => 'Zweryfikowana paragonem',
     _ => 'Niezweryfikowana',
   };
@@ -4214,21 +4215,29 @@ enum CalendarKind {
   static CalendarKind from(Object? v) => v == 'staff' ? CalendarKind.staff : CalendarKind.special;
 }
 
-/// Kolor wydarzenia (jak kalendarze w Notion Calendar).
-enum CalendarColor {
-  green('green', Color(0xFF2FB673)),
-  blue('blue', Color(0xFF3B82F6)),
-  violet('violet', Color(0xFF7C5CFF)),
-  amber('amber', Color(0xFFD99A15)),
-  rose('rose', Color(0xFFE5484D)),
-  teal('teal', Color(0xFF14A3A8)),
-  gray('gray', Color(0xFF8A8F98));
+/// Kolor wydarzenia: gotowy (jak kalendarze w Notion Calendar, `calendarPresetColors` w table_core) albo własny RGB
+/// „#RRGGBB” (0085, 10.11.2026).
+class CalendarColor {
+  const CalendarColor._(this.db, this.color);
 
-  const CalendarColor(this.db, this.color);
+  /// Wartość w bazie: nazwa gotowego koloru albo „#RRGGBB”.
   final String db;
   final Color color;
 
-  static CalendarColor from(Object? v) => values.firstWhere((c) => c.db == v, orElse: () => CalendarColor.green);
+  static const green = CalendarColor._('green', Color(0xFF2FB673));
+  static const blue = CalendarColor._('blue', Color(0xFF3B82F6));
+
+  static CalendarColor from(Object? v) {
+    final db = v is String ? v : null;
+    final color = calendarColorFromDb(db);
+    return color == null ? green : CalendarColor._(db!, color);
+  }
+
+  @override
+  bool operator ==(Object other) => other is CalendarColor && other.db == db;
+
+  @override
+  int get hashCode => db.hashCode;
 }
 
 /// Wydarzenie w Kalendarzu lokalu: specjalne (dla gości) albo dla pracowników.

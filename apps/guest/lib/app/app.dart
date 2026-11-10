@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:table_core/email_auth.dart';
+import 'package:table_core/settings_list.dart';
 import 'package:table_core/table_core.dart';
 
 import '../features/auth/auth_screens.dart';
@@ -223,6 +224,14 @@ GoRouter _buildRouter(Listenable refresh) {
                     path: 'adres',
                     builder: (_, _) =>
                         const TabletWidth(child: AddressScreen()),
+                    routes: [
+                      GoRoute(
+                        path: ':slot',
+                        builder: (_, state) => TabletWidth(
+                          child: AddressEditScreen(slot: state.pathParameters['slot'] == '2' ? 2 : 1),
+                        ),
+                      ),
+                    ],
                   ),
                   GoRoute(
                     path: 'konto',
@@ -296,6 +305,7 @@ GoRouter _buildRouter(Listenable refresh) {
               child: WriteReviewScreen(
                 restaurantId: state.pathParameters['id']!,
                 reservationId: state.uri.queryParameters['rezerwacja'],
+                orderId: state.uri.queryParameters['zamowienie'],
               ),
             ),
           ),
@@ -379,6 +389,7 @@ abstract final class AppRoutes {
   static const reportBug = '/ustawienia/pomoc/zglos-blad';
   static const settingsAccount = '/ustawienia/konto';
   static const deliveryAddress = '/ustawienia/adres';
+  static String deliveryAddressEdit(int slot) => '/ustawienia/adres/$slot';
   static const liked = '/ustawienia/polubione';
   static const codes = '/ustawienia/kody';
   static const accountDetails = '/ustawienia/konto/szczegoly';
@@ -398,11 +409,11 @@ abstract final class AppRoutes {
   static String orderMenu(String id) => '/restauracja/$id/zamow';
   static String checkout(String id) => '/restauracja/$id/zamow/koszyk';
   static String orderDetail(String id) => '/zamowienia/$id';
-  static String review(String id, {String? reservationId}) => Uri(
+  static String review(String id, {String? reservationId, String? orderId}) => Uri(
     path: '/restauracja/$id/opinia',
-    queryParameters: reservationId == null
+    queryParameters: reservationId == null && orderId == null
         ? null
-        : {'rezerwacja': reservationId},
+        : {'rezerwacja': ?reservationId, 'zamowienie': ?orderId},
   ).toString();
 
   static String withNext(String path, String? next, {String? phone}) => Uri(

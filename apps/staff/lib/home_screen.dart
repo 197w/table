@@ -345,8 +345,8 @@ class _JobCard extends StatelessWidget {
               ),
             ),
             if (code != null) ...[const SizedBox(height: 10), _CodeRow(code: code!)],
-            // Spis składników z telefonu, także poza zmianą.
-            if (job.permissions.contains('inventory_count')) ...[
+            // Spis składników z telefonu tylko w trakcie zmiany (0084, 10.11.2026; baza też nie przyjmie go poza zmianą).
+            if (job.permissions.contains('inventory_count') && job.working) ...[
               const SizedBox(height: 10),
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(

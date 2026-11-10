@@ -390,6 +390,11 @@ final myReviewedReservationsProvider = FutureProvider.autoDispose<Set<String>>((
   return ref.watch(repositoryProvider).myReviewedReservations();
 });
 
+final myReviewedOrdersProvider = FutureProvider.autoDispose<Set<String>>((ref) {
+  if (ref.watch(userIdProvider) == null) return Future.value(const {});
+  return ref.watch(repositoryProvider).myReviewedOrders();
+});
+
 final reservationDetailProvider = FutureProvider.autoDispose
     .family<ReservationDetail?, String>((ref, id) {
       if (ref.watch(userIdProvider) == null) return Future.value(null);

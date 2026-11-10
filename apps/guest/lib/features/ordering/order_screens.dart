@@ -424,15 +424,25 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     _prefilled = true;
     _name.text = profile?.firstName ?? profile?.fullName ?? '';
     _phone.text = profile?.phone == null ? '' : Fmt.phone(profile!.phone);
-    // Adres z ustawień (Konto → Adres dostawy), a kod do klatki i opis budynku jako uwagi do adresu dla dostawcy
-    // (przy odbiorze osobistym ich nie ma).
-    if (profile != null && profile.hasAddress) {
-      _street.text = profile.addressLine;
-      _city.text = profile.cityLine;
-      if (profile.deliveryHint case final hint?) _addressNote.text = hint;
+    // Adres domyślny z ustawień (Konto → Adresy dostawy), a kod do klatki i opis budynku jako uwagi do adresu dla
+    // dostawcy (przy odbiorze osobistym ich nie ma). Drugi adres wybiera się nad polami adresu.
+    if (profile?.effectiveDefaultSlot case final slot?) {
+      _fillAddress(profile!, slot);
     } else {
       _city.text = r.city;
     }
+  }
+
+  /// Wybrany zapisany adres w koszyku (1 albo 2). Null: wpisany ręcznie albo brak.
+  int? _addressSlot;
+
+  void _fillAddress(Profile profile, int slot) {
+    final a = profile.address(slot);
+    if (a == null) return;
+    _addressSlot = slot;
+    _street.text = a.line;
+    _city.text = a.cityLine;
+    _addressNote.text = a.deliveryHint ?? '';
   }
 
   Future<void> _submit(RestaurantDetail r, List<CartLine> cart) async {
@@ -691,6 +701,22 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 decoration: const InputDecoration(labelText: 'Telefon'),
               ),
               if (kind == OrderKind.delivery) ...[
+                if (profile?.address1 != null && profile?.address2 != null) ...[
+                  // Dwa zapisane adresy (0083): wybór nad polami, domyślny zaznaczony na start.
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final slot in const [1, 2])
+                        ChoiceChip(
+                          label: Text(profile!.address(slot)!.line),
+                          selected: _addressSlot == slot,
+                          onSelected: (_) => setState(() => _fillAddress(profile, slot)),
+                        ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 10),
                 TextField(
                   controller: _street,
@@ -987,6 +1013,7 @@ class OrderDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final text = Theme.of(context).textTheme;
     final async = ref.watch(guestOrderProvider(orderId));
+    final reviewed = ref.watch(myReviewedOrdersProvider).value ?? const <String>{};
     return Scaffold(
       appBar: AppBar(leading: glassLeading(context), title: Text(async.value == null ? 'Zamówienie' : 'Zamówienie #${async.value!.number}')),
       body: async.when(
@@ -1095,6 +1122,15 @@ class OrderDetailScreen extends ConsumerWidget {
                   style: text.bodyMedium,
                 ),
                 const SizedBox(height: 16),
+                if (o.canReview && !reviewed.contains(o.id)) ...[
+                  // Zweryfikowana opinia tylko przez 48 godzin po dostawie albo odbiorze (0082).
+                  FilledButton.icon(
+                    onPressed: () => context.push(AppRoutes.review(o.restaurantId, orderId: o.id)),
+                    icon: const Glyph(AppIcons.star, size: 18),
+                    label: Text('Oceń zamówienie do ${Fmt.time(o.reviewDeadline!)}, ${Fmt.dayShort(o.reviewDeadline!)}'),
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 OutlinedButton.icon(
                   onPressed: () => launchUrl(Uri(scheme: 'tel', path: o.restaurantPhone)),
                   icon: const Glyph(AppIcons.phone, size: 18),

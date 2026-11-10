@@ -24,18 +24,8 @@ const _monthsGenitive = [
   'listopada',
   'grudnia',
 ];
-const _colors = {
-  'green': Color(0xFF2FB673),
-  'blue': Color(0xFF3B82F6),
-  'violet': Color(0xFF7C5CFF),
-  'amber': Color(0xFFD99A15),
-  'rose': Color(0xFFE5484D),
-  'teal': Color(0xFF14A3A8),
-  'gray': Color(0xFF8A8F98),
-};
-
-/// Kolor wydarzenia z panelu (green, blue, violet, amber, rose, teal, gray).
-Color eventColor(StaffEvent e) => _colors[e.color] ?? AppColors.accent;
+/// Kolor wydarzenia: gotowy (green, blue, violet, amber, rose, teal, gray) albo własny „#RRGGBB” (0085).
+Color eventColor(StaffEvent e) => calendarColorFromDb(e.color) ?? AppColors.accent;
 
 DateTime _day(DateTime t) => DateTime(t.year, t.month, t.day);
 
@@ -225,6 +215,10 @@ class _AddEventSheetState extends ConsumerState<AddEventSheet> {
   TimeOfDay _to = const TimeOfDay(hour: 11, minute: 0);
   bool _busy = false;
 
+  /// Kolor wydarzenia: gotowy albo własny RGB (10.11.2026). Null: jak dotąd, zielony dla gości, niebieski dla
+  /// pracowników.
+  String? _color;
+
   @override
   void dispose() {
     _title.dispose();
@@ -266,6 +260,36 @@ class _AddEventSheetState extends ConsumerState<AddEventSheet> {
     setState(() => from ? _from = picked : _to = picked);
   }
 
+  /// Własny kolor RGB w drugim oknie od dołu (10.11.2026, prośba użytkownika).
+  Future<Color?> _pickRgb(Color initial) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    var picked = initial;
+    return showTableSheet<Color>(
+      context: context,
+      builder: (context) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Własny kolor', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 16),
+              RgbColorPicker(initial: initial, onChanged: (c) => picked = c),
+              const SizedBox(height: 20),
+              FilledButton(
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+                onPressed: () => Navigator.pop(context, picked),
+                child: const Text('Wybierz kolor'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _save() async {
     final title = _title.text.trim();
     if (title.isEmpty) {
@@ -301,7 +325,7 @@ class _AddEventSheetState extends ConsumerState<AddEventSheet> {
           'p_starts_at': start.toUtc().toIso8601String(),
           'p_ends_at': end.toUtc().toIso8601String(),
           'p_all_day': _allDay,
-          'p_color': _special ? 'green' : 'blue',
+          'p_color': _color ?? (_special ? 'green' : 'blue'),
           'p_member_id': _job.memberId,
         },
       );
@@ -407,6 +431,15 @@ class _AddEventSheetState extends ConsumerState<AddEventSheet> {
                 ],
               ),
             ],
+            const SizedBox(height: 16),
+            Text('Kolor', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
+            const SizedBox(height: 6),
+            CalendarColorSwatches(
+              value: _color ?? (_special ? 'green' : 'blue'),
+              size: 30,
+              onChanged: (v) => setState(() => _color = v),
+              onCustom: _pickRgb,
+            ),
             const SizedBox(height: 16),
             TextField(
               controller: _description,

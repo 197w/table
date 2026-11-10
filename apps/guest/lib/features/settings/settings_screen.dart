@@ -1,13 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:table_core/settings_list.dart';
 import 'package:table_core/table_core.dart';
 
 import '../../app/app.dart';
 import '../../app/preferences.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
-import 'settings_widgets.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -41,7 +41,8 @@ class SettingsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(leading: glassLeading(context), title: const Text('Konto')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        // Pod pływającym dolnym menu iOS 26 (10.11.2026: menu lekko zasłaniało „Zaawansowane”).
+        padding: EdgeInsets.fromLTRB(16, 8, 16, 32 + MediaQuery.paddingOf(context).bottom),
         children: [
           _AccountHeader(
             profile: profile,
@@ -123,7 +124,7 @@ class SettingsScreen extends ConsumerWidget {
             children: [
               SettingsRow(
                 icon: AppIcons.mapPin,
-                title: 'Adres dostawy',
+                title: 'Adresy dostawy',
                 value: profile?.hasAddress ?? false ? profile!.addressLine : null,
                 locked: !loggedIn,
                 onTap: () => open(AppRoutes.deliveryAddress, needsAccount: true),

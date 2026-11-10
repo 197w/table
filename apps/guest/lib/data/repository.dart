@@ -304,17 +304,21 @@ class Repository {
     });
   }
 
+  /// Rezerwacje z aplikacji i telefoniczne z numerem tego konta (0082), najnowsze pierwsze.
   Future<List<Reservation>> myReservations() {
     return _guard(() async {
-      final rows = await _db
-          .from('reservations')
-          .select(
-            'id, restaurant_id, party_size, starts_at, ends_at, status, occasion, message, '
-            'restaurants(name, address, phone, logo_url)',
-          )
-          .order('starts_at', ascending: false)
-          .limit(100);
-      return rows.map(Reservation.fromJson).toList();
+      final rows = await _db.rpc<List<dynamic>>('guest_my_reservations');
+      return [for (final r in rows) Reservation.fromJson((r as Map).cast<String, dynamic>())];
+    });
+  }
+
+  Future<Set<String>> myReviewedOrders() {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>('my_reviewed_orders');
+      return rows.map((e) {
+        if (e is Map) return e.values.first as String;
+        return e as String;
+      }).toSet();
     });
   }
 
@@ -346,6 +350,7 @@ class Repository {
     required int ambience,
     String? body,
     String? reservationId,
+    String? orderId,
     int? pricePerPerson,
   }) {
     return _guard(
@@ -359,6 +364,7 @@ class Repository {
           'p_body': body,
           'p_reservation_id': reservationId,
           'p_price_per_person': pricePerPerson,
+          'p_order_id': ?orderId,
         },
       ),
     );
@@ -376,7 +382,8 @@ class Repository {
           .from('profiles')
           .select(
             'id, first_name, full_name, phone, address_street, address_house, address_postcode, address_city, '
-            'address_entry_code, address_building',
+            'address_entry_code, address_building, address2_street, address2_house, address2_postcode, '
+            'address2_city, address2_entry_code, address2_building, address_default',
           )
           .eq('id', user.id)
           .maybeSingle();
@@ -387,12 +394,9 @@ class Repository {
         // Numer konta z profilu (logowanie e-mailem), u starych kont z logowania SMS.
         phone: row?['phone'] as String? ?? user.phone,
         email: user.email == null || user.email!.isEmpty ? null : user.email,
-        addressStreet: row?['address_street'] as String?,
-        addressHouse: row?['address_house'] as String?,
-        addressPostcode: row?['address_postcode'] as String?,
-        addressCity: row?['address_city'] as String?,
-        addressEntryCode: row?['address_entry_code'] as String?,
-        addressBuilding: row?['address_building'] as String?,
+        address1: SavedAddress.fromRow(row, 'address_'),
+        address2: SavedAddress.fromRow(row, 'address2_'),
+        defaultSlot: (row?['address_default'] as num?)?.toInt() == 2 ? 2 : 1,
       );
     });
   }
@@ -421,8 +425,8 @@ class Repository {
     });
   }
 
-  /// Adres dostawy z ustawień. Puste pola zapisują się jako brak wartości.
-  Future<void> updateAddress(GuestAddress a) {
+  /// Adres dostawy [slot] (1 albo 2, 0083) z ustawień. Puste pola zapisują się jako brak wartości.
+  Future<void> updateAddress(GuestAddress a, {int slot = 1}) {
     return _guard(() async {
       final user = _db.auth.currentUser;
       if (user == null) {
@@ -434,18 +438,30 @@ class Repository {
       }
 
       final street = clean(a.street);
+      final p = slot == 2 ? 'address2_' : 'address_';
       await _db
           .from('profiles')
           .update({
-            'address_street': street,
-            'address_house': clean(a.house),
-            'address_postcode': clean(a.postcode),
-            'address_city': clean(a.city),
-            'address_entry_code': clean(a.entryCode),
-            'address_building': clean(a.building),
-            'address_updated_at': street == null ? null : DateTime.now().toUtc().toIso8601String(),
+            '${p}street': street,
+            '${p}house': clean(a.house),
+            '${p}postcode': clean(a.postcode),
+            '${p}city': clean(a.city),
+            '${p}entry_code': clean(a.entryCode),
+            '${p}building': clean(a.building),
+            'address_updated_at': DateTime.now().toUtc().toIso8601String(),
           })
           .eq('id', user.id);
+    });
+  }
+
+  /// Domyślny adres dostawy: 1 albo 2 (0083).
+  Future<void> setDefaultAddress(int slot) {
+    return _guard(() async {
+      final user = _db.auth.currentUser;
+      if (user == null) {
+        throw const AppFailure('Zaloguj się, żeby zapisać adres.');
+      }
+      await _db.from('profiles').update({'address_default': slot == 2 ? 2 : 1}).eq('id', user.id);
     });
   }
 
@@ -564,7 +580,7 @@ class Repository {
 
   static const _orderColumns =
       'id, restaurant_id, kind, number, fulfillment, opened_at, delivery_address, delivery_fee_grosze, '
-      'payment_choice, payment_status, payment_test, promised_at, reject_reason, scheduled_for, '
+      'payment_choice, payment_status, payment_test, promised_at, reject_reason, scheduled_for, delivered_at, '
       'restaurants(name, phone, address, city), order_items(name, quantity, unit_price_grosze, variant, addons, note, status)';
 
   /// Składa zamówienie. Ceny liczy baza z menu. Zwraca numer zamówienia.

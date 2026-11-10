@@ -330,7 +330,8 @@ class _ReservationCard extends StatelessWidget {
                     style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
                     onPressed: () => context.push(AppRoutes.review(r.restaurantId, reservationId: r.id)),
                     icon: const Glyph(AppIcons.star, size: 16),
-                    label: const Text('Oceń wizytę'),
+                    // Zweryfikowana opinia tylko przez 48 godzin po wizycie (0082).
+                    label: Text('Oceń wizytę do ${Fmt.time(r.reviewDeadline)}, ${Fmt.dayShort(r.reviewDeadline)}'),
                   ),
                 ),
               ],

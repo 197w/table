@@ -49,8 +49,13 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   „Nowe wydarzenie”: od dnia do dnia (`_startDate`, `_endDate`) i od godziny do godziny albo cały dzień.
   Pod siatką uwaga na tydzień wybranego dnia. Zgłaszania na cały okres
   naraz już nie ma. Bez przygaszania przezroczystością.
-  Ustawienia jak u gościa; Konto → Motyw (Systemowy, Jasny, Ciemny, `themeSettingProvider` z `table_core`, od
-  9.11.2026; zakładka zostaje ta sama po zmianie motywu). Pod pływającym dolnym menu iOS 26 (`extendBody`) listy zakładek mają u dołu dodane
+  Ustawienia jak u gościa; Konto (10.11.2026, prośba użytkownika: motyw „jak w aplikacji dla klientów,
+  identycznie posegregowany”, bez zbędnych opisów): karta konta, „Moje lokale” z kodami, osobna grupa „Motyw”
+  (strona `ThemeSettingsScreen` z `package:table_core/settings_list.dart`, ta sama co w Table; po zmianie motywu
+  aplikacja buduje się od nowa, więc Konto otwiera stronę z powrotem, `_themeOpen`; zmiana z `ThemeFade` jak w Table),
+  grupa „Odśwież dane” i „Wyloguj się”. Wiersze z `settings_list.dart` (`SettingsGroup`, `SettingsRow`,
+  `SettingsChoiceRow`, `SettingsSwitchRow`; osobna biblioteka, bo panel ma własne `SettingsRow`). Zakładka zostaje ta
+  sama po zmianie motywu. Inwentaryzacja z telefonu tylko na zmianie (0084, przycisk tylko przy `job.working`). Pod pływającym dolnym menu iOS 26 (`extendBody`) listy zakładek mają u dołu dodane
   `MediaQuery.paddingOf(context).bottom` (9.11.2026: uwaga na tydzień chowała się pod menu). Podgląd ekranów: test
   golden poza repozytorium, jak przy panelu.
   „Zakończ zmianę” (31.10.2026, wzór od użytkownika: okno wyboru sposobu zamówienia z aplikacji McDonald's) otwiera
@@ -140,7 +145,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
   Map i śledzenia dostawców nie ma od 0068 (usunięte na prośbę użytkownika, także mapa u gościa).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0081, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0085, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -224,10 +229,27 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`panel_order_set_discount` sprawdza najpierw `guest_codes`, `orders.guest_code_id`), zamknięcie oznacza go jako
   użyty (`orders_guest_code_used`). Lista: `guest_my_codes`. Panel: Kody rabatowe → „Kody dla gości z aplikacji”
   (`guest_code_rules.dart`, `panel_guest_code_rules`, `panel_save_guest_code_rule`).
-  Ustawienia → „Adres dostawy” (0065, `features/settings/address_screen.dart`, `/ustawienia/adres`): ulica, numer
-  domu/lokalu, opis budynku i kod do wejścia (opcjonalne), miasto, kod pocztowy (`profiles.address_*`,
-  `Repository.updateAddress`). Koszyk dostawy uzupełnia się z niego (opis budynku i kod wejścia trafiają do notatki).
-  Lokal widzi go w Bazie klientów nad notatkami („Adres z aplikacji Table”, `panel_customer_app_address`).
+  Konto → „Adresy dostawy” (0065, drugi adres i domyślny od 0083, 10.11.2026; `features/settings/address_screen.dart`:
+  lista `AddressScreen` na `/ustawienia/adres` i edycja `AddressEditScreen` na `/ustawienia/adres/1` albo `/2`): najwyżej
+  dwa adresy (ulica, numer domu/lokalu, opis budynku i kod do wejścia opcjonalnie, miasto, kod pocztowy;
+  `profiles.address_*` i `address2_*`, `SavedAddress`, `Repository.updateAddress(slot:)`) i „Domyślny adres”
+  (`profiles.address_default` 1 albo 2, `setDefaultAddress`, `Profile.defaultAddress`). Koszyk dostawy uzupełnia się
+  z domyślnego, a przy dwóch adresach nad polami jest wybór (`_fillAddress`; opis budynku i kod wejścia trafiają do
+  uwag do adresu). Lokal widzi domyślny w Bazie klientów nad notatkami („Adres z aplikacji Table”,
+  `panel_customer_app_address`). W Koncie „Ogólne”, „Motyw”, „Powiadomienia” i reszta to wspólne wiersze
+  z `package:table_core/settings_list.dart`; wybór bez ikony (język, jednostki) zaczyna się przy lewej krawędzi,
+  z kreską od napisu (`dividerIndent: 14`); w „Powiadomienia” przy „Nowości w Table” bez opisów (10.11.2026).
+  Lista Konta kończy się nad pływającym dolnym menu (menu zasłaniało „Zaawansowane”). Na stronie lokalu „Zamów”
+  w kolorach odwrotnych do tła: w ciemnym motywie białe z czarnym napisem, w jasnym czarne z białym (`_orderColors`).
+  Opinie (0082, 10.11.2026): zweryfikowana tylko przez 48 godzin po wizycie z rezerwacji (`ends_at`), dostawie albo
+  odbiorze (`delivered_at`; `verification = 'order'`, `reviews.order_id`, „Oceń zamówienie do …” w szczegółach
+  zamówienia, `my_reviewed_orders`); później `submit_review` zapisuje opinię jako niezweryfikowaną bez powiązania.
+  „Oceń wizytę do …” tylko w tym oknie (`reviewWindow` w `models.dart` = `private.review_window`). Rezerwacja
+  telefoniczna wpisana w panelu z numerem gościa (bez konta) należy do konta Table z tym samym numerem
+  (`private.guest_owns_reservation`, ostatnie 9 cyfr): „Moje” → Rezerwacje czyta `guest_my_reservations` (z `by_phone`),
+  szczegóły `reservation_details` też dla niej (bez wiadomości, diety i odwołania w aplikacji, wiersz „Rezerwacja:
+  przez telefon”), opinia o niej jest zweryfikowana w tych samych 48 godzinach. Numer konta nie jest potwierdzany SMS-em,
+  więc ktoś, kto wpisze cudzy numer, zobaczy telefoniczne rezerwacje tego numeru (powiedziane użytkownikowi).
   Stan otwarcia na kafelkach lokali (0064, `search_restaurants` i `guest_liked_restaurants` zwracają `hours`):
   `openingStatus` w `models.dart` („Otwarte do 22:00”, „Wkrótce zamknięcie – 22:00” i „Wkrótce otwarcie – 12:00”
   na godzinę przed, „Zamknięte · otwiera …”), `OpenStatusLine` w `restaurant_cards.dart`.
@@ -366,8 +388,14 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   siatka godzin (48 px na godzinę, co 15 min), pas „cały dzień”, czerwona kreska teraz; przeciąganie pustego miejsca
   tworzy wydarzenie, przeciąganie wydarzenia je przesuwa, dolna krawędź zmienia koniec; nakładające się stoją obok
   siebie (`layoutDay`, `PlacedEvent`). Miesiąc: wydarzenia w dniach, „+N więcej”, kliknięcie dnia otwiera dzień.
-  Po prawej panel wydarzenia (`_EventPanel`): nazwa, rodzaj, cały dzień, od–do, kolor, opis, działy „Menu na
-  wydarzenie”, kto dodał. Klawisze T, D, W, M, J/K i strzałki, Esc (nie w polach tekstowych). Rodzaje
+  Nowe albo kliknięte wydarzenie otwiera okno obok panelu jak „Nowy pracownik” w Pracownikach (10.11.2026, prośba
+  użytkownika; `_EventPanel` w `SideSheetFrame` jako `sheet` w `SidePanelLayout`; wcześniej karta po prawej siatki):
+  Nazwa, „Dla kogo” jako dwie karty (`ChoiceCard`: Dla gości, Dla pracowników), Kiedy (cały dzień, początek, koniec),
+  Kolor (gotowe kółka i własny RGB: `CalendarColorSwatches`, `RgbColorPicker` z `table_core/calendar_color.dart`,
+  w bazie „#RRGGBB” od 0085), Opis, działy „Menu na wydarzenie”, kto dodał; na dole „Usuń” i „Dodaj wydarzenie” /
+  „Zapisz”. Ramka, pola, nagłówki i karty okna (`SideSheetFrame`, `SheetField`, `SheetHeading`, `sheetInput`,
+  `CardGrid`, `ChoiceCard`, `sideSheetWidth`) są wspólne w `shared/side_panel.dart`. W Table for employees „Nowe
+  wydarzenie” też ma kolor z RGB (drugie okno od dołu). Klawisze T, D, W, M, J/K i strzałki, Esc (nie w polach tekstowych). Rodzaje
   (`calendar_events.kind`): `special` (wydarzenie specjalne: promocja, zimowe menu; widzą goście, RLS
   `calendar_events_public` dla anon) i `staff` (spotkanie, szkolenie; tylko obsługa lokalu,
   `has_staff_role(..., 'staff')`). Zapis `panel_save_calendar_event` (najwyżej 400 dni, autor `private.note_author`),
@@ -921,7 +949,8 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - Pierścienie zamiast twardych obramowań, zgodne promienie (karta 22 = element 8 + odstęp 14), `PressScale` 0.96.
 - Liczby tabelaryczne w cenach, godzinach i telefonach.
 - Wszystkie powiadomienia przez push, SMS tylko do logowania. Push jeszcze niepodłączony (wymaga Firebase i konta Apple Developer).
-- Opinie bez weryfikacji (rezerwacja albo paragon) nie liczą się do rankingu ani poziomu cen.
+- Opinie bez weryfikacji (rezerwacja albo zamówienie z aplikacji, najwyżej 48 godzin po wizycie, dostawie albo
+  odbiorze, 0082) nie liczą się do rankingu ani poziomu cen.
 - Poziom cen $–$$$$ liczy trigger z mediany `price_per_person` w zweryfikowanych opiniach (≤30, ≤50, ≤80, >80 zł).
 - Po usunięciu konta opinie zostają jako anonimowe („Były gość”).
 - Profil gościa ma `first_name` (widoczne przy opiniach) i `full_name` (tylko dla restauracji).

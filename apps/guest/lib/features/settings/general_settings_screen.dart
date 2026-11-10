@@ -1,9 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:table_core/settings_list.dart';
 import 'package:table_core/table_core.dart';
 
 import '../../app/preferences.dart';
-import 'settings_widgets.dart';
 
 class GeneralSettingsScreen extends ConsumerWidget {
   const GeneralSettingsScreen({super.key});
@@ -20,6 +20,7 @@ class GeneralSettingsScreen extends ConsumerWidget {
         children: [
           SettingsGroup(
             title: 'Język',
+            dividerIndent: 14,
             children: [
               for (final option in AppLanguage.values)
                 SettingsChoiceRow(
@@ -32,6 +33,7 @@ class GeneralSettingsScreen extends ConsumerWidget {
           const SizedBox(height: 24),
           SettingsGroup(
             title: 'Jednostki odległości',
+            dividerIndent: 14,
             footer:
                 'Dotyczy odległości do lokali i promienia wyszukiwania w pobliżu.',
             children: [
@@ -41,40 +43,6 @@ class GeneralSettingsScreen extends ConsumerWidget {
                   selected: option == unit,
                   onTap: () =>
                       ref.read(distanceUnitProvider.notifier).set(option),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class ThemeSettingsScreen extends ConsumerWidget {
-  const ThemeSettingsScreen({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final setting = ref.watch(themeSettingProvider);
-
-    return Scaffold(
-      appBar: AppBar(leading: glassLeading(context), title: const Text('Motyw')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        children: [
-          SettingsGroup(
-            footer:
-                'Motyw systemowy zmienia się razem z ustawieniami telefonu.',
-            children: [
-              for (final option in AppThemeSetting.values)
-                SettingsChoiceRow(
-                  icon: option.icon,
-                  title: option.label,
-                  selected: option == setting,
-                  onTap: () => ThemeFade.run(
-                    context,
-                    () => ref.read(themeSettingProvider.notifier).set(option),
-                  ),
                 ),
             ],
           ),

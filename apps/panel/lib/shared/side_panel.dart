@@ -413,3 +413,197 @@ Widget tableHead(BuildContext context, String label, int flex, {TextAlign align 
   );
   return width == null ? Expanded(flex: flex, child: child) : SizedBox(width: width, child: child);
 }
+
+// Okno dodawania albo zmiany obok panelu, jak „Add New Person” w UniFi (Pracownicy, od 10.11.2026 też nowe wydarzenie
+// w Kalendarzu): ramka z tytułem i „Zamknij”, pola z małym napisem nad nimi, karty wyboru po dwie i przyciski na dole.
+
+/// Szerokość okna obok panelu.
+const sideSheetWidth = 368.0;
+
+/// Ramka okna obok panelu: tytuł z „Zamknij”, przewijana treść i przycisk na dole.
+class SideSheetFrame extends StatelessWidget {
+  const SideSheetFrame({super.key, required this.title, required this.onClose, required this.children, this.footer});
+
+  final String title;
+  final VoidCallback onClose;
+  final List<Widget> children;
+
+  /// Przyciski na dole (np. „Usuń” i „Zapisz”). Null: bez paska na dole.
+  final Widget? footer;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border(right: BorderSide(color: AppColors.ring)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 10, 4),
+            child: SizedBox(
+              height: 40,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Zamknij',
+                    onPressed: onClose,
+                    icon: const Glyph(AppIcons.close, size: 18),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+              children: children,
+            ),
+          ),
+          if (footer case final footer?) ...[
+            Divider(height: 1, color: AppColors.ring),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+              child: footer,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Pole w oknie: mały napis nad nim, jak w UniFi.
+class SheetField extends StatelessWidget {
+  const SheetField({super.key, required this.label, required this.child});
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: AppColors.textMuted)),
+        const SizedBox(height: 6),
+        child,
+      ],
+    );
+  }
+}
+
+/// Nagłówek części okna, np. „Stanowisko” albo „Dodatkowe stanowiska (opcjonalnie)”.
+class SheetHeading extends StatelessWidget {
+  const SheetHeading(this.title, {super.key, this.optional = false, this.trailing});
+
+  final String title;
+  final bool optional;
+  final String? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Row(
+      children: [
+        Text(title, style: text.titleSmall),
+        if (optional) ...[
+          const SizedBox(width: 6),
+          Text('(opcjonalnie)', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+        ],
+        const Spacer(),
+        if (trailing != null)
+          Text(trailing!, style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular)),
+      ],
+    );
+  }
+}
+
+InputDecoration sheetInput({String? hint, String? suffix}) => InputDecoration(
+  isDense: true,
+  hintText: hint,
+  suffixText: suffix,
+  counterText: '',
+  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+);
+
+/// Karty po dwie w rzędzie (stanowiska w oknie pracownika, jak role w UniFi).
+class CardGrid extends StatelessWidget {
+  const CardGrid({super.key, required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, box) {
+        final width = (box.maxWidth - 10) / 2;
+        return Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [for (final c in children) SizedBox(width: width, height: 60, child: c)],
+        );
+      },
+    );
+  }
+}
+
+/// Karta wyboru: ikona i nazwa (bez opisu, prośba użytkownika). Wybrana ma obrys i tło w kolorze akcentu.
+class ChoiceCard extends StatelessWidget {
+  const ChoiceCard({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.onTap,
+    this.selected = false,
+  });
+
+  final AppIconData icon;
+  final String title;
+  final VoidCallback onTap;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Material(
+      color: selected ? AppColors.accentTint : AppColors.surfaceRaised,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: selected ? AppColors.accent : Colors.transparent, width: 1.5),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Glyph(selected ? icon.duotone : icon, size: 20, color: AppColors.accent),
+              const SizedBox(width: 10),
+              // Dłuższa nazwa (np. „Nowe stanowisko”, „Kierownik zmiany”) mieści się w dwóch liniach.
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.labelLarge?.copyWith(height: 1.2),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

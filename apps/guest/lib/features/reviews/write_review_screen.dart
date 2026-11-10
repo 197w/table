@@ -20,12 +20,15 @@ class WriteReviewScreen extends ConsumerStatefulWidget {
     super.key,
     required this.restaurantId,
     this.reservationId,
+    this.orderId,
   });
 
   final String restaurantId;
 
-  /// Z rezerwacją opinia jest zweryfikowana, bez niej nie.
+  /// Z rezerwacją (także telefoniczną z numerem konta) albo zamówieniem z aplikacji opinia jest zweryfikowana,
+  /// jeśli od wizyty, dostawy albo odbioru minęło najwyżej 48 godzin (0082). Bez nich nie.
   final String? reservationId;
+  final String? orderId;
 
   @override
   ConsumerState<WriteReviewScreen> createState() => _WriteReviewScreenState();
@@ -71,17 +74,21 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
             ambience: _ambience,
             body: _body.text,
             reservationId: widget.reservationId,
+            orderId: widget.orderId,
             pricePerPerson: price,
           );
       ref
         ..invalidate(reviewsProvider(widget.restaurantId))
         ..invalidate(restaurantProvider(widget.restaurantId))
         ..invalidate(myReviewedReservationsProvider)
+        ..invalidate(myReviewedOrdersProvider)
         ..invalidate(searchResultsProvider);
       final reservationId = widget.reservationId;
       if (reservationId != null) {
         ref.invalidate(reservationDetailProvider(reservationId));
       }
+      final orderId = widget.orderId;
+      if (orderId != null) ref.invalidate(guestOrderProvider(orderId));
       if (!mounted) return;
       showMessage(context, 'Dziękujemy za opinię.');
       context.pop();
@@ -96,7 +103,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final name = ref.watch(restaurantProvider(widget.restaurantId)).value?.name;
-    final verified = widget.reservationId != null;
+    final verified = widget.reservationId != null || widget.orderId != null;
 
     return Scaffold(
       appBar: AppBar(leading: glassLeading(context), title: Text(name ?? 'Opinia')),
@@ -107,9 +114,10 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
           const SizedBox(height: 8),
           Text(
             verified
-                ? 'Opinia zostanie oznaczona jako zweryfikowana wizyta i wpłynie na ranking kuchni.'
-                : 'Bez rezerwacji w aplikacji opinia będzie niezweryfikowana. Będzie widoczna, '
-                      'ale nie wpłynie na ranking ani na poziom cen. Weryfikacja paragonem pojawi się wkrótce.',
+                ? 'Opinia zostanie oznaczona jako ${widget.orderId != null ? 'zweryfikowane zamówienie' : 'zweryfikowana wizyta'} '
+                      'i wpłynie na ranking kuchni.'
+                : 'Zweryfikowaną opinię dodasz do 48 godzin po wizycie z rezerwacji, dostawie albo odbiorze. Ta będzie '
+                      'niezweryfikowana: widoczna, ale bez wpływu na ranking i poziom cen.',
             style: text.bodyMedium?.copyWith(
               color: verified ? AppColors.accent : AppColors.textMuted,
             ),

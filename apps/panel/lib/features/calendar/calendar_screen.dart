@@ -406,28 +406,6 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                         : grid,
                   ),
                 ),
-                if (_editing case final e?) ...[
-                  const SizedBox(width: 16),
-                  SizedBox(
-                    width: 340,
-                    child: Card(
-                      margin: EdgeInsets.zero,
-                      child: _EventPanel(
-                        key: ValueKey(e.id ?? 'nowe'),
-                        event: e,
-                        editable: editable,
-                        restaurantId: rid,
-                        onClose: () => setState(() => _editing = null),
-                        onSave: (updated) => _save(rid, updated),
-                        onDelete: e.id == null ? null : () => _delete(e),
-                        onDraft: (updated) {
-                          // Nowe wydarzenie: zmiany godzin w panelu przesuwają też szkic w siatce.
-                          if (e.id == null) setState(() => _editing = updated);
-                        },
-                      ),
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -444,6 +422,28 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         onToggle: () => setState(() => _panelOpen = !_panelOpen),
         panel: panel,
         content: content,
+        // Nowe albo kliknięte wydarzenie w oknie obok panelu, jak „Nowy pracownik” w Pracownikach (10.11.2026,
+        // prośba użytkownika; wcześniej karta po prawej stronie siatki).
+        sheet: switch (_editing) {
+          final e? => SizedBox(
+            key: ValueKey('wydarzenie ${e.id ?? 'nowe'}'),
+            width: sideSheetWidth,
+            child: _EventPanel(
+              key: ValueKey(e.id ?? 'nowe'),
+              event: e,
+              editable: editable,
+              restaurantId: rid,
+              onClose: () => setState(() => _editing = null),
+              onSave: (updated) => _save(rid, updated),
+              onDelete: e.id == null ? null : () => _delete(e),
+              onDraft: (updated) {
+                // Nowe wydarzenie: zmiany godzin w oknie przesuwają też szkic w siatce.
+                if (e.id == null) setState(() => _editing = updated);
+              },
+            ),
+          ),
+          null => null,
+        },
       ),
     );
   }
@@ -1420,6 +1420,34 @@ class _EventPanelState extends ConsumerState<_EventPanel> {
     _changed();
   }
 
+  /// Własny kolor RGB (10.11.2026, prośba użytkownika).
+  Future<Color?> _pickRgb(Color initial) async {
+    var picked = initial;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Własny kolor'),
+        content: SizedBox(
+          width: 340,
+          child: RgbColorPicker(initial: initial, onChanged: (c) => picked = c),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Anuluj')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Wybierz')),
+        ],
+      ),
+    );
+    return ok == true ? picked : null;
+  }
+
+  void _setKind(CalendarKind k) {
+    setState(() {
+      _kind = k;
+      if (widget.event.id == null) _color = k == CalendarKind.special ? CalendarColor.green : CalendarColor.blue;
+    });
+    _changed();
+  }
+
   Future<void> _save() async {
     if (_title.text.trim().isEmpty) {
       showMessage(context, 'Wpisz nazwę wydarzenia.', tone: ToastTone.warning);
@@ -1467,150 +1495,136 @@ class _EventPanelState extends ConsumerState<_EventPanel> {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 8, 0),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  e.id == null ? 'Nowe wydarzenie' : 'Wydarzenie',
-                  style: text.labelLarge?.copyWith(color: AppColors.textMuted),
-                ),
-              ),
-              if (on && widget.onDelete != null) DeleteButton(onPressed: widget.onDelete),
-              IconButton(tooltip: 'Zamknij (Esc)', onPressed: widget.onClose, icon: const Glyph(AppIcons.close, size: 16)),
-            ],
-          ),
-        ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-            children: [
-              TextField(
-                controller: _title,
-                enabled: on,
-                autofocus: e.id == null,
-                maxLength: 120,
-                style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-                decoration: const InputDecoration(hintText: 'Nazwa wydarzenia', counterText: ''),
-                onChanged: (_) => _changed(),
-                onSubmitted: (_) => on ? _save() : null,
-              ),
-              const SizedBox(height: 14),
-              IgnorePointer(
-                ignoring: !on,
-                child: SegmentedTabs<CalendarKind>(
-                  options: const [(CalendarKind.special, 'Specjalne'), (CalendarKind.staff, 'Dla pracowników')],
-                  selected: _kind,
-                  expand: true,
-                  onChanged: (k) {
-                    setState(() {
-                      _kind = k;
-                      if (e.id == null) _color = k == CalendarKind.special ? CalendarColor.green : CalendarColor.blue;
-                    });
-                    _changed();
-                  },
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(_kind.description, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(child: Text('Cały dzień', style: text.bodyMedium)),
-                  Switch(value: _allDay, onChanged: on ? _setAllDay : null),
-                ],
-              ),
-              const SizedBox(height: 8),
-              when('Początek', start: true),
-              const SizedBox(height: 8),
-              when('Koniec', start: false),
-              const SizedBox(height: 16),
-              Text('Kolor', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final c in CalendarColor.values)
-                    InkWell(
-                      onTap: on
-                          ? () {
-                              setState(() => _color = c);
-                              _changed();
-                            }
-                          : null,
-                      customBorder: const CircleBorder(),
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: c.color,
-                          shape: BoxShape.circle,
-                          border: _color == c ? Border.all(color: AppColors.text, width: 2) : null,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _description,
-                enabled: on,
-                minLines: 3,
-                maxLines: 8,
-                maxLength: 2000,
-                decoration: const InputDecoration(labelText: 'Opis', counterText: ''),
-                onChanged: (_) => _changed(),
-              ),
-              if (_kind == CalendarKind.special) ...[
-                const SizedBox(height: 16),
-                Text('Menu na wydarzenie', style: text.labelMedium?.copyWith(color: AppColors.textMuted)),
-                const SizedBox(height: 6),
-                if (sections.isEmpty)
-                  Text(
-                    e.id == null
-                        ? 'Po zapisaniu przypnij do wydarzenia dział menu: Menu → dział → „Tylko na wydarzenie”. '
-                              'Goście zobaczą go tylko w czasie wydarzenia.'
-                        : 'Bez osobnego menu. Dział tylko na to wydarzenie przypniesz w Menu → dział → „Tylko na '
-                              'wydarzenie”.',
-                    style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-                  )
-                else
-                  for (final s in sections)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Row(
-                        children: [
-                          Glyph(AppIcons.bookOpen, size: 16, color: AppColors.textMuted),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text('${s.name} · ${s.items.length} dań', style: text.bodyMedium)),
-                        ],
-                      ),
-                    ),
-              ],
-              if (e.createdByName != null) ...[
-                const SizedBox(height: 16),
-                Text('Dodał(a): ${e.createdByName}', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
-              ],
-            ],
-          ),
-        ),
-        if (on)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Row(
+    return SideSheetFrame(
+      title: e.id == null ? 'Nowe wydarzenie' : (on || e.title.isEmpty ? 'Wydarzenie' : e.title),
+      onClose: widget.onClose,
+      footer: on
+          ? Row(
               children: [
-                TextButton(onPressed: widget.onClose, child: const Text('Anuluj')),
-                const Spacer(),
-                FilledButton(onPressed: _busy ? null : _save, child: Text(e.id == null ? 'Dodaj' : 'Zapisz')),
+                if (widget.onDelete != null) ...[
+                  TextButton(
+                    onPressed: _busy ? null : widget.onDelete,
+                    style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                    child: const Text('Usuń'),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _busy ? null : _save,
+                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+                    child: Text(e.id == null ? 'Dodaj wydarzenie' : 'Zapisz'),
+                  ),
+                ),
               ],
-            ),
+            )
+          : null,
+      children: [
+        SheetField(
+          label: 'Nazwa',
+          child: TextField(
+            controller: _title,
+            enabled: on,
+            autofocus: e.id == null,
+            maxLength: 120,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: sheetInput(hint: 'Na przykład: Wieczór degustacyjny'),
+            onChanged: (_) => _changed(),
+            onSubmitted: (_) => on ? _save() : null,
           ),
+        ),
+        const SizedBox(height: 24),
+        const SheetHeading('Dla kogo'),
+        const SizedBox(height: 10),
+        IgnorePointer(
+          ignoring: !on,
+          child: CardGrid(
+            children: [
+              ChoiceCard(
+                icon: AppIcons.confetti,
+                title: 'Dla gości',
+                selected: _kind == CalendarKind.special,
+                onTap: () => _setKind(CalendarKind.special),
+              ),
+              ChoiceCard(
+                icon: AppIcons.users,
+                title: 'Dla pracowników',
+                selected: _kind == CalendarKind.staff,
+                onTap: () => _setKind(CalendarKind.staff),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(_kind.description, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+        const SizedBox(height: 24),
+        const SheetHeading('Kiedy'),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(child: Text('Cały dzień', style: text.bodyMedium)),
+            Switch(value: _allDay, onChanged: on ? _setAllDay : null),
+          ],
+        ),
+        const SizedBox(height: 8),
+        when('Początek', start: true),
+        const SizedBox(height: 8),
+        when('Koniec', start: false),
+        const SizedBox(height: 24),
+        const SheetHeading('Kolor'),
+        const SizedBox(height: 8),
+        CalendarColorSwatches(
+          value: _color.db,
+          enabled: on,
+          onChanged: (db) {
+            setState(() => _color = CalendarColor.from(db));
+            _changed();
+          },
+          onCustom: _pickRgb,
+        ),
+        const SizedBox(height: 24),
+        const SheetHeading('Opis', optional: true),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _description,
+          enabled: on,
+          minLines: 3,
+          maxLines: 8,
+          maxLength: 2000,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: sheetInput(),
+          onChanged: (_) => _changed(),
+        ),
+        if (_kind == CalendarKind.special) ...[
+          const SizedBox(height: 24),
+          const SheetHeading('Menu na wydarzenie'),
+          const SizedBox(height: 8),
+          if (sections.isEmpty)
+            Text(
+              e.id == null
+                  ? 'Po zapisaniu przypnij do wydarzenia dział menu: Menu → dział → „Tylko na wydarzenie”. '
+                        'Goście zobaczą go tylko w czasie wydarzenia.'
+                  : 'Bez osobnego menu. Dział tylko na to wydarzenie przypniesz w Menu → dział → „Tylko na '
+                        'wydarzenie”.',
+              style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+            )
+          else
+            for (final s in sections)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    Glyph(AppIcons.bookOpen, size: 16, color: AppColors.textMuted),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text('${s.name} · ${s.items.length} dań', style: text.bodyMedium)),
+                  ],
+                ),
+              ),
+        ],
+        if (e.createdByName != null) ...[
+          const SizedBox(height: 24),
+          Text('Dodał(a): ${e.createdByName}', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+        ],
       ],
     );
   }

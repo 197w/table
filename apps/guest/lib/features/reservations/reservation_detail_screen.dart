@@ -208,6 +208,11 @@ class _BodyState extends ConsumerState<_Body> {
             padding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
             child: Column(
               children: [
+                if (d.byPhone) ...[
+                  // Rezerwacja wpisana przez lokal z numerem tego konta (0082): zmiany i odwołanie telefonem.
+                  const _InfoRow(icon: AppIcons.phone, label: 'Rezerwacja', value: 'przez telefon'),
+                  const Divider(height: 1),
+                ],
                 _InfoRow(
                   icon: AppIcons.calendar,
                   label: 'Data',
@@ -276,7 +281,7 @@ class _BodyState extends ConsumerState<_Body> {
             onPressed: () => context.push(
               AppRoutes.review(d.restaurantId, reservationId: d.id),
             ),
-            child: const Text('Oceń wizytę'),
+            child: Text('Oceń wizytę do ${Fmt.time(d.reviewDeadline)}, ${Fmt.dayShort(d.reviewDeadline)}'),
           ),
           const SizedBox(height: 10),
         ],

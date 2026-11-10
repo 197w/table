@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:table_core/settings_list.dart';
 import 'package:table_core/table_core.dart';
 
 import '../../app/app.dart';
@@ -94,13 +95,10 @@ class _NotificationFormState extends ConsumerState<_NotificationForm> {
         const SizedBox(height: 24),
         SettingsGroup(
           title: 'Inne',
-          footer:
-              'Nowości wysyłamy tylko za twoją zgodą. Możesz ją wycofać w każdej chwili.',
           children: [
             SettingsSwitchRow(
               icon: AppIcons.megaphone,
               title: 'Nowości w Table',
-              subtitle: 'Nowe lokale i funkcje aplikacji',
               value: _prefs.news,
               onChanged: (v) => _update(_prefs.copyWith(news: v)),
             ),

@@ -678,6 +678,7 @@ class Review {
 
   String get verificationLabel => switch (verification) {
     'reservation' => 'Zweryfikowana wizyta',
+    'order' => 'Zweryfikowane zamówienie',
     'receipt' => 'Zweryfikowana paragonem',
     _ => 'Niezweryfikowana',
   };
@@ -916,6 +917,7 @@ class Reservation {
     required this.status,
     this.occasion,
     this.message,
+    this.byPhone = false,
   });
 
   final String id;
@@ -931,16 +933,24 @@ class Reservation {
   final Occasion? occasion;
   final String? message;
 
+  /// Rezerwacja telefoniczna wpisana przez lokal z numerem tego konta (0082). Odwołuje się ją telefonem.
+  final bool byPhone;
+
   bool get isUpcoming =>
       status == ReservationStatus.confirmed && startsAt.isAfter(DateTime.now());
 
-  bool get canCancel => isUpcoming;
+  bool get canCancel => isUpcoming && !byPhone;
 
+  /// Do kiedy opinia o tej wizycie jest zweryfikowana.
+  DateTime get reviewDeadline => endsAt.add(reviewWindow);
+
+  /// Zweryfikowana opinia: po wizycie i najwyżej 48 godzin od jej końca.
   bool get canReview =>
       (status == ReservationStatus.confirmed ||
           status == ReservationStatus.seated ||
           status == ReservationStatus.completed) &&
-      endsAt.isBefore(DateTime.now());
+      endsAt.isBefore(DateTime.now()) &&
+      reviewDeadline.isAfter(DateTime.now());
 
   factory Reservation.fromJson(Map<String, dynamic> json) {
     final restaurant = json['restaurants'] as Map<String, dynamic>? ?? const {};
@@ -957,9 +967,14 @@ class Reservation {
       status: ReservationStatus.fromDb(json['status']),
       occasion: Occasion.fromDb(json['occasion']),
       message: json['message'] as String?,
+      byPhone: json['by_phone'] == true,
     );
   }
 }
+
+/// Ile czasu po wizycie, dostawie albo odbiorze opinia jest zweryfikowana. Musi zgadzać się
+/// z private.review_window w bazie (0082).
+const reviewWindow = Duration(hours: 48);
 
 // ---------------------------------------------------------------
 // Profil i błędy
@@ -972,12 +987,9 @@ class Profile {
     this.fullName,
     this.phone,
     this.email,
-    this.addressStreet,
-    this.addressHouse,
-    this.addressPostcode,
-    this.addressCity,
-    this.addressEntryCode,
-    this.addressBuilding,
+    this.address1,
+    this.address2,
+    this.defaultSlot = 1,
   });
 
   final String id;
@@ -992,31 +1004,82 @@ class Profile {
   /// E-mail logowania. Null: stare konto z logowania SMS (Ustawienia → „Dodaj e-mail”).
   final String? email;
 
-  /// Adres dostawy z ustawień (Ustawienia → Adres dostawy).
-  final String? addressStreet;
-  final String? addressHouse;
-  final String? addressPostcode;
-  final String? addressCity;
+  /// Adresy dostawy z Konta → „Adresy dostawy” (0065, drugi od 0083). Null: niewpisany.
+  final SavedAddress? address1;
+  final SavedAddress? address2;
+
+  /// Który adres jest domyślny: 1 albo 2 (`profiles.address_default`).
+  final int defaultSlot;
+
+  SavedAddress? address(int slot) => slot == 2 ? address2 : address1;
+
+  /// Domyślny adres, a gdy go nie ma, ten drugi.
+  SavedAddress? get defaultAddress => address(defaultSlot) ?? address1 ?? address2;
+
+  /// Numer domyślnego adresu, który naprawdę jest wpisany (1 albo 2). Null: brak adresów.
+  int? get effectiveDefaultSlot {
+    final a = defaultAddress;
+    if (a == null) return null;
+    return identical(a, address2) ? 2 : 1;
+  }
+
+  bool get hasAddress => defaultAddress != null;
+
+  /// „Lipowa 14/3” z adresu domyślnego.
+  String get addressLine => defaultAddress?.line ?? '';
+}
+
+/// Zapisany adres dostawy gościa: ulica i miejscowość zawsze, reszta opcjonalnie.
+class SavedAddress {
+  const SavedAddress({
+    required this.street,
+    required this.city,
+    this.house,
+    this.postcode,
+    this.entryCode,
+    this.building,
+  });
+
+  final String street;
+  final String city;
+  final String? house;
+  final String? postcode;
 
   /// Dla dostawcy: kod do klatki i jak rozpoznać budynek.
-  final String? addressEntryCode;
-  final String? addressBuilding;
-
-  bool get hasAddress => addressStreet != null && addressCity != null;
+  final String? entryCode;
+  final String? building;
 
   /// „Lipowa 14/3”.
-  String get addressLine => [?addressStreet, ?addressHouse].join(' ');
+  String get line => [street, ?house].join(' ');
 
   /// „15-001 Białystok”.
-  String get cityLine => [?addressPostcode, ?addressCity].join(' ');
+  String get cityLine => [?postcode, city].join(' ');
+
+  /// „Lipowa 14/3, Białystok”.
+  String get summary => '$line, $city';
 
   /// Kod do klatki i opis budynku jako uwaga do zamówienia. Null: brak.
   String? get deliveryHint {
     final parts = [
-      if (addressEntryCode != null) 'Kod do klatki: $addressEntryCode',
-      ?addressBuilding,
+      if (entryCode != null) 'Kod do klatki: $entryCode',
+      ?building,
     ];
     return parts.isEmpty ? null : parts.join('. ');
+  }
+
+  /// Z wiersza `profiles` z przedrostkiem kolumn (`address_` albo `address2_`). Null bez ulicy albo miejscowości.
+  static SavedAddress? fromRow(Map<String, dynamic>? row, String prefix) {
+    final street = row?['${prefix}street'] as String?;
+    final city = row?['${prefix}city'] as String?;
+    if (street == null || city == null) return null;
+    return SavedAddress(
+      street: street,
+      city: city,
+      house: row?['${prefix}house'] as String?,
+      postcode: row?['${prefix}postcode'] as String?,
+      entryCode: row?['${prefix}entry_code'] as String?,
+      building: row?['${prefix}building'] as String?,
+    );
   }
 }
 
@@ -1092,7 +1155,11 @@ class ReservationDetail {
     this.discountLabel,
     this.depositGrosze = 0,
     this.depositStatus = 'none',
+    this.byPhone = false,
   });
+
+  /// Rezerwacja telefoniczna wpisana przez lokal z numerem tego konta (0082). Odwołuje się ją telefonem.
+  final bool byPhone;
 
   /// Kod rabatowy z rezerwacji, np. „REVE10 · −10% od rachunku”.
   final String? discountLabel;
@@ -1132,14 +1199,19 @@ class ReservationDetail {
   bool get isUpcoming =>
       status == ReservationStatus.confirmed && startsAt.isAfter(DateTime.now());
 
-  bool get canCancel => isUpcoming;
+  bool get canCancel => isUpcoming && !byPhone;
 
+  /// Do kiedy opinia o tej wizycie jest zweryfikowana.
+  DateTime get reviewDeadline => endsAt.add(reviewWindow);
+
+  /// Zweryfikowana opinia: po wizycie i najwyżej 48 godzin od jej końca.
   bool get canReview =>
       !reviewed &&
       (status == ReservationStatus.confirmed ||
           status == ReservationStatus.seated ||
           status == ReservationStatus.completed) &&
-      endsAt.isBefore(DateTime.now());
+      endsAt.isBefore(DateTime.now()) &&
+      reviewDeadline.isAfter(DateTime.now());
 
   factory ReservationDetail.fromJson(Map<String, dynamic> json) {
     return ReservationDetail(
@@ -1164,6 +1236,7 @@ class ReservationDetail {
           : '${json['discount_code']} · ${GuestDiscount(code: json['discount_code'] as String, percent: json['discount_kind'] == 'percent', value: _toInt(json['discount_value'])).label}',
       depositGrosze: _toInt(json['deposit_grosze']),
       depositStatus: json['deposit_status'] as String? ?? 'none',
+      byPhone: json['by_phone'] == true,
     );
   }
 }
@@ -1326,6 +1399,7 @@ class GuestOrder {
     this.promisedAt,
     this.rejectReason,
     this.scheduledFor,
+    this.deliveredAt,
   });
 
   final String id;
@@ -1349,9 +1423,19 @@ class GuestOrder {
   /// Zamówienie na godzinę: odbiór w lokalu albo dostawa o tej porze. Null: jak najszybciej.
   final DateTime? scheduledFor;
 
+  /// Dostarczone albo odebrane.
+  final DateTime? deliveredAt;
+
   int get totalGrosze => feeGrosze + items.fold(0, (sum, i) => sum + i.totalGrosze);
 
   bool get canCancel => stage == OrderStage.awaitingPayment || stage == OrderStage.placed;
+
+  /// Do kiedy opinia o tym zamówieniu jest zweryfikowana (48 godzin po dostawie albo odbiorze, 0082).
+  DateTime? get reviewDeadline => deliveredAt?.add(reviewWindow);
+
+  /// Zweryfikowana opinia o zamówieniu: po dostawie albo odbiorze, najwyżej 48 godzin.
+  bool get canReview =>
+      stage == OrderStage.delivered && (reviewDeadline?.isAfter(DateTime.now()) ?? false);
 
   factory GuestOrder.fromJson(Map<String, dynamic> json) {
     final r = json['restaurants'] as Map<String, dynamic>? ?? const {};
@@ -1378,6 +1462,7 @@ class GuestOrder {
       promisedAt: json['promised_at'] == null ? null : DateTime.parse(json['promised_at'] as String).toLocal(),
       rejectReason: json['reject_reason'] as String?,
       scheduledFor: json['scheduled_for'] == null ? null : DateTime.parse(json['scheduled_for'] as String).toLocal(),
+      deliveredAt: json['delivered_at'] == null ? null : DateTime.parse(json['delivered_at'] as String).toLocal(),
     );
   }
 }

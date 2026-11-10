@@ -1227,10 +1227,12 @@ class _BottomBar extends StatelessWidget {
             icon: const Glyph(AppIcons.phone, size: 20),
             label: const Text('Zadzwoń, żeby zarezerwować'),
           );
+    final (fill, ink) = _orderColors;
     final secondary = order
-        ? OutlinedButton.icon(
+        ? FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: fill, foregroundColor: ink),
             onPressed: () => context.push(AppRoutes.orderMenu(r.id)),
-            icon: Glyph(r.deliveryEnabled ? AppIcons.moped : AppIcons.shoppingBag, size: 20),
+            icon: Glyph(r.deliveryEnabled ? AppIcons.moped : AppIcons.shoppingBag, size: 20, color: ink),
             label: const Text('Zamów'),
           )
         : null;
@@ -1261,6 +1263,12 @@ class _BottomBar extends StatelessWidget {
   }
 }
 
+/// „Zamów” w kolorach odwrotnych do tła (10.11.2026, prośba użytkownika): w ciemnym motywie białe tło i czarny
+/// napis, w jasnym czarne tło i biały napis.
+(Color, Color) get _orderColors => AppColors.palette.brightness == Brightness.dark
+    ? (const Color(0xFFFFFFFF), const Color(0xFF000000))
+    : (const Color(0xFF000000), const Color(0xFFFFFFFF));
+
 extension on _BottomBar {
   /// iOS 26: przyciski na szkle (rysowanym przez Fluttera, z rozmyciem treści pod spodem) bez paska pod spodem;
   /// główne działanie w kolorze akcentu.
@@ -1286,13 +1294,16 @@ extension on _BottomBar {
       ),
       fallback: const SizedBox.shrink(),
     );
+    final (fill, ink) = _orderColors;
     final secondary = order
         ? GlassPill(
             height: 52,
             blur: true,
+            selected: true,
+            tint: fill,
             onPressed: () => context.push(AppRoutes.orderMenu(r.id)),
             semanticLabel: 'Zamów',
-            content: label(r.deliveryEnabled ? AppIcons.moped : AppIcons.shoppingBag, 'Zamów', AppColors.text),
+            content: label(r.deliveryEnabled ? AppIcons.moped : AppIcons.shoppingBag, 'Zamów', ink),
             fallback: const SizedBox.shrink(),
           )
         : null;

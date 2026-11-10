@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:table_core/settings_list.dart';
 import 'package:table_core/table_core.dart';
 
 import 'data.dart';
@@ -8,9 +9,43 @@ import 'ui.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
-/// Konto: moje konto, lokale z kodami do panelu i wylogowanie. Układ jak w aplikacji dla gości.
-class SettingsScreen extends ConsumerWidget {
+/// Konto: moje konto, lokale z kodami do panelu, motyw i wylogowanie. Układ i wiersze jak w Koncie aplikacji Table
+/// (`package:table_core/settings_list.dart`, 10.11.2026), bez opisów pod grupami.
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  /// Strona „Motyw” jest otwarta. Zmiana motywu buduje aplikację od nowa (klucz z jasnością w `main.dart`), więc
+  /// Konto otwiera ją z powrotem bez animacji, jak w Table, gdzie strona zostaje po wyborze.
+  static bool _themeOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_themeOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openTheme(animate: false);
+      });
+    }
+  }
+
+  Future<void> _openTheme({bool animate = true}) async {
+    _themeOpen = true;
+    await Navigator.of(context).push(
+      animate
+          ? MaterialPageRoute<void>(builder: (_) => const ThemeSettingsScreen())
+          : PageRouteBuilder<void>(
+              transitionDuration: Duration.zero,
+              reverseTransitionDuration: const Duration(milliseconds: 300),
+              pageBuilder: (_, _, _) => const ThemeSettingsScreen(),
+            ),
+    );
+    if (mounted) _themeOpen = false;
+  }
 
   Future<void> _signOut(BuildContext context, WidgetRef ref) async {
     final ok = await showConfirmSheet(
@@ -25,7 +60,7 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final account = ref.watch(accountProvider).value;
     final phone = account?.phone;
@@ -91,13 +126,10 @@ class SettingsScreen extends ConsumerWidget {
             // Stare konto z logowania SMS: e-mail do logowania.
             if (account != null && (email == null || email.isEmpty)) ...[
               const SizedBox(height: 24),
-              _Group(
+              SettingsGroup(
                 title: 'Logowanie',
-                footer:
-                    'Konto założone numerem telefonu. Dodaj e-mail: odtąd zalogujesz się e-mailem, '
-                    'kodem z e-maila i hasłem.',
                 children: [
-                  _Row(
+                  SettingsRow(
                     icon: AppIcons.envelope,
                     title: 'Dodaj e-mail',
                     onTap: () =>
@@ -109,44 +141,23 @@ class SettingsScreen extends ConsumerWidget {
             const SizedBox(height: 24),
             _Group(
               title: 'Moje lokale',
-              footer: jobs.isEmpty
-                  ? 'Nie jesteś jeszcze na liście pracowników żadnego lokalu.'
-                  : 'Kod wpisujesz w panelu na komputerze, gdy nie masz przy sobie telefonu.',
+              footer: jobs.isEmpty ? 'Nie jesteś jeszcze na liście pracowników żadnego lokalu.' : null,
               children: [for (final job in jobs) _JobRow(job: job, code: codes[job.memberId])],
             ),
-            const SizedBox(height: 24),
-            _Group(
-              title: 'Aplikacja',
+            const SizedBox(height: 20),
+            // Motyw jak w Table: osobna strona z wyborem (10.11.2026, prośba użytkownika).
+            SettingsGroup(
               children: [
-                // Motyw jak w Table: systemowy, jasny albo ciemny (9.11.2026).
-                _Row(
-                  icon: theme.icon,
-                  title: 'Motyw',
-                  value: theme.label,
-                  onTap: () async {
-                    final picked = await showOptionSheet<AppThemeSetting>(
-                      context: context,
-                      title: 'Motyw',
-                      options: [
-                        for (final t in AppThemeSetting.values)
-                          SheetOption(
-                            value: t,
-                            icon: t.icon,
-                            title: t.label,
-                            subtitle: switch (t) {
-                              AppThemeSetting.system => 'Jak w telefonie',
-                              AppThemeSetting.light => 'Zawsze jasny',
-                              AppThemeSetting.dark => 'Zawsze ciemny',
-                            },
-                          ),
-                      ],
-                    );
-                    if (picked != null) await ref.read(themeSettingProvider.notifier).set(picked);
-                  },
-                ),
-                _Row(
+                SettingsRow(icon: theme.icon, title: 'Motyw', value: theme.label, onTap: _openTheme),
+              ],
+            ),
+            const SizedBox(height: 20),
+            SettingsGroup(
+              children: [
+                SettingsRow(
                   icon: AppIcons.refresh,
                   title: 'Odśwież dane',
+                  showChevron: false,
                   onTap: () {
                     ref
                       ..invalidate(jobsProvider)
@@ -156,10 +167,11 @@ class SettingsScreen extends ConsumerWidget {
                     showMessage(context, 'Odświeżono.');
                   },
                 ),
-                _Row(
+                SettingsRow(
                   icon: AppIcons.signOut,
                   title: 'Wyloguj się',
                   destructive: true,
+                  showChevron: false,
                   onTap: () => _signOut(context, ref),
                 ),
               ],
@@ -261,78 +273,12 @@ class _JobRow extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  // Krótki podpis, żeby nazwa lokalu się mieściła; co to za kod, mówi opis pod kartą.
+                  // Krótki podpis, żeby nazwa lokalu się mieściła.
                   Text('Kod', style: text.labelSmall?.copyWith(color: AppColors.textMuted)),
                   Text(code ?? '—', style: text.titleLarge?.copyWith(letterSpacing: 4, fontFeatures: _tabular)),
                 ],
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Wiersz z działaniem (bez strzałki, bo nie prowadzi do podstrony): co najmniej 56 px wysokości,
-/// nazwa przechodzi do drugiej linii zamiast się ucinać.
-class _Row extends StatelessWidget {
-  const _Row({required this.icon, required this.title, required this.onTap, this.destructive = false, this.value});
-
-  final AppIconData icon;
-  final String title;
-  final VoidCallback onTap;
-  final bool destructive;
-
-  /// Bieżący wybór po prawej (np. motyw).
-  final String? value;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final color = destructive ? AppColors.error : AppColors.accent;
-    return Semantics(
-      button: true,
-      child: InkWell(
-        onTap: onTap,
-        splashColor: Colors.transparent,
-        highlightColor: AppColors.ring,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 56),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: destructive ? AppColors.error.withValues(alpha: 0.12) : AppColors.surfaceRaised,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Glyph(icon, size: 18, color: color),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: text.bodyLarge?.copyWith(
-                      fontWeight: FontWeight.w500,
-                      color: destructive ? AppColors.error : AppColors.text,
-                    ),
-                  ),
-                ),
-                if (value != null) ...[
-                  const SizedBox(width: 8),
-                  Text(value!, style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
-                  const SizedBox(width: 4),
-                  Glyph(AppIcons.caretRight, size: 18, color: AppColors.textMuted),
-                ],
-              ],
-            ),
           ),
         ),
       ),
