@@ -1252,7 +1252,7 @@ class PanelRepository {
     return _guard(() async {
       final rows = await _db
           .from('inventory_items')
-          .select('id, name, unit, capacity, sort, location, pack_name, container_id, deposit_grosze')
+          .select('id, name, unit, capacity, sort, location, pack_name, container_id, deposit_grosze, reorder_at')
           .eq('restaurant_id', restaurantId)
           .isFilter('deleted_at', null)
           .order('sort')
@@ -1272,6 +1272,7 @@ class PanelRepository {
     String? packName,
     String? containerId,
     int? depositGrosze,
+    double? reorderAt,
     bool details = false,
   }) {
     return _guard(() async {
@@ -1285,6 +1286,7 @@ class PanelRepository {
           'pack_name': packName?.trim().isEmpty ?? true ? null : packName!.trim(),
           'container_id': containerId,
           'deposit_grosze': depositGrosze,
+          'reorder_at': reorderAt,
         },
       };
       try {
@@ -1323,6 +1325,17 @@ class PanelRepository {
     return _guard(() async {
       final rows = await _db.rpc<List<dynamic>>('panel_inventory_stock', params: {'p_restaurant_id': restaurantId});
       return [for (final r in rows) InventoryStock.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
+  /// Zużycie składników dzień po dniu za ostatnie [days] dni lokalu, ze stanem teraz (Statystyki, 0086).
+  Future<InventoryUsageReport> inventoryUsage(String restaurantId, int days) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>(
+        'panel_inventory_usage',
+        params: {'p_restaurant_id': restaurantId, 'p_days': days},
+      );
+      return InventoryUsageReport.fromJson(json);
     });
   }
 

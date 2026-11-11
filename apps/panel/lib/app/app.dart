@@ -65,6 +65,8 @@ class _PanelAppState extends ConsumerState<PanelApp>
     ReservationAlerts.instance.onOpen = () => _router.go(PanelRoutes.reservations);
     ReservationAlerts.instance.onOpenTakeaway =
         (kind) => _router.go(kind == OrderKind.pickup ? PanelRoutes.pickup : PanelRoutes.deliveries);
+    // „Pokaż” w powiadomieniu o zamówieniu składnika otwiera Inwentaryzację.
+    ReservationAlerts.instance.onOpenInventory = () => _router.go(PanelRoutes.inventory);
   }
 
   @override
@@ -72,6 +74,7 @@ class _PanelAppState extends ConsumerState<PanelApp>
     WidgetsBinding.instance.removeObserver(this);
     ReservationAlerts.instance.onOpen = null;
     ReservationAlerts.instance.onOpenTakeaway = null;
+    ReservationAlerts.instance.onOpenInventory = null;
     _router.dispose();
     _authRefresh.dispose();
     super.dispose();

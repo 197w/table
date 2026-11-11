@@ -3675,11 +3675,19 @@ class InventoryItem {
     this.packName,
     this.containerId,
     this.depositGrosze,
+    this.reorderAt,
   });
 
   final String id;
   final String name;
   final InventoryUnit unit;
+
+  /// „Powiadom o zamówieniu przy” (0086, 11.11.2026): ilość w jednostce składnika, przy której panel powiadamia,
+  /// że trzeba zamówić. Null: bez powiadomień.
+  final double? reorderAt;
+
+  /// Stan teraz doszedł do progu zamówienia.
+  bool needsOrder(double? stock) => reorderAt != null && stock != null && stock <= reorderAt! + 0.0005;
 
   /// Kaucja za opakowanie (np. 50 gr za butelkę albo puszkę). Null: bez kaucji.
   final int? depositGrosze;
@@ -3713,7 +3721,138 @@ class InventoryItem {
     packName: json['pack_name'] as String?,
     containerId: json['container_id'] as String?,
     depositGrosze: json['deposit_grosze'] == null ? null : _toInt(json['deposit_grosze']),
+    reorderAt: _toDouble(json['reorder_at']),
   );
+}
+
+/// Dzień z bazy („2026-11-11”) jako data UTC, żeby różnica dni nie zależała od zmiany czasu.
+DateTime _day(Object? value) {
+  final d = DateTime.parse(value as String);
+  return DateTime.utc(d.year, d.month, d.day);
+}
+
+/// Zużycie składników w Statystykach (0086, 11.11.2026, prośba użytkownika): okres w dniach lokalu i składniki.
+class InventoryUsageReport {
+  const InventoryUsageReport({required this.from, required this.today, required this.items});
+
+  /// Pierwszy i ostatni dzień okresu (daty UTC).
+  final DateTime from;
+  final DateTime today;
+  final List<InventoryUsage> items;
+
+  /// Dni okresu po kolei.
+  List<DateTime> get days => [
+    for (var d = from; !d.isAfter(today); d = DateTime.utc(d.year, d.month, d.day + 1)) d,
+  ];
+
+  factory InventoryUsageReport.fromJson(Map<String, dynamic> json) {
+    final from = _day(json['from']);
+    final today = _day(json['today']);
+    return InventoryUsageReport(
+      from: from,
+      today: today,
+      items: [
+        for (final i in json['items'] as List? ?? const [])
+          InventoryUsage.fromJson(i as Map<String, dynamic>, from: from, today: today),
+      ],
+    );
+  }
+}
+
+/// Zużycie jednego składnika w okresie: sprzedaż z receptur oraz straty i posiłki pracownicze (bez przekazań
+/// i zwrotów), średnio dziennie i prognoza ze stanu teraz.
+class InventoryUsage {
+  const InventoryUsage({
+    required this.itemId,
+    required this.name,
+    required this.unit,
+    required this.capacity,
+    required this.days,
+    required this.activeDays,
+    this.location,
+    this.packName,
+    this.reorderAt,
+    this.stock,
+  });
+
+  final String itemId;
+  final String name;
+  final InventoryUnit unit;
+  final double capacity;
+  final String? location;
+  final String? packName;
+  final double? reorderAt;
+
+  /// Stan teraz. Null: składnika jeszcze nie liczono.
+  final double? stock;
+
+  /// Dni ze zużyciem: sprzedaż i straty (dni bez zużycia pominięte).
+  final Map<DateTime, ({double sold, double lost})> days;
+
+  /// Dni okresu, w których składnik już był (nowy liczy się od dodania), co najmniej 1.
+  final int activeDays;
+
+  double get sold => days.values.fold(0.0, (a, d) => a + d.sold);
+  double get lost => days.values.fold(0.0, (a, d) => a + d.lost);
+  double get used => sold + lost;
+
+  /// Średnie zużycie dziennie.
+  double get perDay => used / activeDays;
+
+  /// Zużycie w dniu (0 bez zużycia).
+  double usedOn(DateTime day) {
+    final d = days[day];
+    return d == null ? 0 : d.sold + d.lost;
+  }
+
+  /// Na ile dni wystarczy stan teraz przy średnim zużyciu: 0 przy braku, null bez stanu albo bez zużycia.
+  double? get daysLeft {
+    final s = stock;
+    if (s == null) return null;
+    if (s <= 0.0005) return 0;
+    if (perDay <= 0) return null;
+    return s / perDay;
+  }
+
+  bool get needsOrder => reorderAt != null && stock != null && stock! <= reorderAt! + 0.0005;
+
+  /// Za ile dni stan dojdzie do progu zamówienia. Null bez progu, stanu albo zużycia; 0, gdy już doszedł.
+  double? get daysToOrder {
+    if (reorderAt == null || stock == null) return null;
+    if (needsOrder) return 0;
+    if (perDay <= 0) return null;
+    return (stock! - reorderAt!) / perDay;
+  }
+
+  factory InventoryUsage.fromJson(Map<String, dynamic> json, {required DateTime from, required DateTime today}) {
+    final since = json['since'] == null ? from : _day(json['since']);
+    final start = since.isAfter(from) ? since : from;
+    final active = today.difference(start).inDays + 1;
+    final location = (json['location'] as String?)?.trim();
+    return InventoryUsage(
+      itemId: json['id'] as String,
+      name: json['name'] as String,
+      unit: InventoryUnit.fromKey(json['unit']),
+      capacity: _toDouble(json['capacity']) ?? 1,
+      location: location == null || location.isEmpty ? null : location,
+      packName: json['pack_name'] as String?,
+      reorderAt: _toDouble(json['reorder_at']),
+      stock: _toDouble(json['stock']),
+      activeDays: active < 1 ? 1 : active,
+      days: {
+        for (final d in json['days'] as List? ?? const [])
+          _day((d as Map<String, dynamic>)['day']): (sold: _toDouble(d['sold']) ?? 0, lost: _toDouble(d['lost']) ?? 0),
+      },
+    );
+  }
+}
+
+/// „ok. 4 dni”, „ok. 1 dzień”, „mniej niż dzień”, „ponad rok”.
+String inventoryDaysText(double days) {
+  if (days < 1) return 'mniej niż dzień';
+  if (days > 365) return 'ponad rok';
+  final n = days.floor();
+  return 'ok. $n ${n == 1 ? 'dzień' : 'dni'}';
 }
 
 /// Pojemnik do ważenia (mały, średni, duży). Przy „ważone w pojemniku” jego waga odejmuje się sama.

@@ -145,7 +145,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
   Map i śledzenia dostawców nie ma od 0068 (usunięte na prośbę użytkownika, także mapa u gościa).
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0085, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0086, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -669,15 +669,27 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`staff_schedule.position_id`, wybór w oknie dnia, widać w aplikacji). Pod siatką: przyjętych osób, godziny pracy dnia
   i ile osób na jakim stanowisku; kolumna „Tydzień” z godzinami pracownika.
 - Statystyki (Management) w układzie jak Pracownicy (4.11.2026, prośba użytkownika; kafle i wykresy zostały): po
-  lewej zwijany panel (bez wyszukiwania) z zakładkami Sprzedaż (`panel_sales_stats`) i Rezerwacje i goście
+  lewej zwijany panel (bez wyszukiwania) z zakładkami Sprzedaż (`panel_sales_stats`), Goście (dawniej „Rezerwacje
+  i goście”, krótsza nazwa od 11.11.2026, żeby zmieściły się trzy zakładki) i Inwentaryzacja (niżej)
   i w Sprzedaży filtrami z liczbą rachunków w okresie: Rodzaj zamówienia (Na miejscu, Dostawa, Odbiór
   osobisty) i Obsługa (kto otworzył rachunek, „Bez przypisania” na końcu). Filtry liczy baza (0076:
   `panel_sales_stats(p_kinds, p_members)`, `''` = bez przypisania, liczby bez filtrów w `facets`; stara wersja bez
   filtrów usunięta, bo domyślne parametry obsługują starsze panele); w panelu `SalesQuery` z filtrami po przecinku.
   Okres 7D / 30D / 90D stoi w prawym górnym rogu treści, nad kaflami (5.11.2026, prośba użytkownika; wcześniej
-  w panelu jako „7 dni”). W „Rezerwacje i goście” kafel „Polubienia” (wszystkie i „+N w tym okresie”, także plan Free)
+  w panelu jako „7 dni”). W „Goście” kafel „Polubienia” (wszystkie i „+N w tym okresie”, także plan Free)
   i wykres nowych polubień dzień po dniu (`panel_stats` od 0063: `likes`, `likes_total`); kafle mają równą wysokość. W Sprzedaży tabela „Sprzedaż w godzinach” (godziny z zamówieniami: liczba, kwota, na miejscu,
   dostawa, odbiór osobisty, wiersz „Razem”; `hourly` z `dine_in`, `delivery`, `pickup` od 0062). Historia zamówień jest osobną zakładką w grupie Rezerwacje.
+  Inwentaryzacja (0086, 11.11.2026, prośba użytkownika: „średnie zużycie dziennie i prognoza »wystarczy na ok. X
+  dni«”; `features/stats/inventory_stats_view.dart`, `panel_inventory_usage`, `InventoryUsageReport`): zużycie to
+  sprzedaż z receptur oraz usunięcia ze stratą albo posiłkiem pracowniczym (bez przekazań i zwrotów), dzień po dniu
+  w dniach lokalu (z zamknięciem dnia). Średnio dziennie = zużycie w okresie 7D / 30D / 90D podzielone przez dni
+  okresu albo dni od dodania składnika; „Wystarczy na” = stan teraz / średnia („ok. 4 dni”, `inventoryDaysText`;
+  „Brak” przy stanie zero); „Zamówić” = kiedy stan dojdzie do progu „Powiadom o zamówieniu przy” („Teraz”, „za ok.
+  3 dni”). Kafle (do zamówienia, wystarczy na mniej niż tydzień, najszybciej się skończy, składniki ze zużyciem),
+  tabela od składnika, który skończy się najszybciej, i wykres zużycia dzień po dniu klikniętego składnika. Filtry
+  w panelu: Stan (do zamówienia, mniej niż tydzień, bez zużycia) i Lokalizacja. Baza wpuszcza z `stats` albo
+  uprawnieniem inwentaryzacji; stan teraz liczy wspólne `private.inventory_stock` (też `panel_inventory_stock`
+  i `staff_inventory`).
 - Role w `restaurant_staff`: owner, manager, staff. Kierownik i właściciel zmieniają salę, menu, dane lokalu
   i odpowiadają na opinie. Obsługa prowadzi rezerwacje. Uprawnień pilnuje baza (RLS i funkcje `panel_*`).
 - Rezerwacje i plan sali tylko w planie Pro. Plan Free widzi opinie, menu, lokal i statystyki wyświetleń.
@@ -920,13 +932,24 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   razem z `inventoryNumber`) i zwykły pojemnik. Pojemniki do ważenia lokalu (`inventory_containers`, waga pustego
   w g; Składniki → „Pojemniki”, `panel_save_inventory_container`): przy wadze w spisie wybór pojemnika, wpisuje się
   wagę z pojemnikiem, a baza zapisuje bez niego (`inventory_count_lines.gross`, `tare`, `container_name`;
-  `panel_inventory_set(p_container_id)`). Spis pokazuje „Powinno być” (stan teraz) i różnicę w trakcie pisania.
+  `panel_inventory_set(p_container_id)`). Spis pokazuje różnicę od stanu teraz w trakcie pisania, ale bez samego
+  stanu: „Powinno być” jest tylko w Historii (i w jej PDF), w spisie w panelu i w telefonie go nie ma (11.11.2026,
+  prośba użytkownika).
+  Próg zamówienia (0086, 11.11.2026, prośba użytkownika: „przy jakiej ilości ma powiadamiać o zamówieniu”): w oknie
+  składnika „Powiadom o zamówieniu przy” w jednostce składnika (`inventory_items.reorder_at`, null = bez powiadomień;
+  pod polem ile to opakowań). Gdy stan teraz dojdzie do progu (`InventoryItem.needsOrder`): w Składnikach stan na
+  pomarańczowo z „Do zamówienia” (inaczej „zamówić przy …”), pigułka „Do zamówienia: N” nad zakładkami
+  i powiadomienie w panelu na każdej zakładce „Czas zamówić: …” z „Pokaż” (Inwentaryzacja), w tle także systemowe,
+  z kropką na Inwentaryzacji (`reorderItemsProvider` co 3 minuty, trzyma go `shell.dart` przy uprawnieniu do
+  Inwentaryzacji; `ReservationAlerts.onReorder`, `TabNews.inventory`). Raz na zejście do progu: powiadomione
+  składniki zapisuje ten komputer (`panel_zamowienie_powiadomione_<lokal>`), a składnik powiadamia znowu dopiero po
+  powrocie nad próg (dostawa, inwentaryzacja).
   Dostawy (kiedy przyjechały, dostawca, numer dokumentu) i usunięcia (powód: przekazanie do innego lokalu, zwrot,
   strata, posiłek pracowniczy, inny; wyjaśnienie wymagane) to `inventory_docs` z `inventory_doc_lines`
   (`panel_inventory_save_doc`, `panel_inventory_docs`, `panel_inventory_delete_doc` tylko `inventory_edit`); ruchy
   mają datę wpisu, więc dostawa sprzed spisu się nie dubluje. `panel_inventory_stock` zwraca sprzedaż, dostawy
   i usunięcia osobno, `panel_inventory_counts` w pozycjach poprzednio / sprzedaż / dostawy / usunięte / „powinno
-  być”, a w spisie `docs` od poprzedniej zakończonej inwentaryzacji (widać je na końcu spisu i w szczegółach).
+  być” (pokazuje je Historia), a w spisie `docs` od poprzedniej zakończonej inwentaryzacji (widać je na końcu spisu i w szczegółach).
   Szczegóły w Historii mają „Zapisz PDF” (`inventory_pdf.dart`, `exportPdfDocument` z kilkoma tabelami: spis,
   dostawy, usunięcia). Uprawnienia sprawdza `private.inventory_allowed` (konto panelu albo własny pracownik
   z uprawnieniem). Table for employees: przycisk „Inwentaryzacja” na karcie lokalu przy `inventory_count`

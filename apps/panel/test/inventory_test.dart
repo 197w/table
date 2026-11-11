@@ -164,4 +164,86 @@ void main() {
     expect(doc.lines.first.text, '2 zgrzewki + 3 szt. = 27 szt.');
     expect(doc.lines.last.text, '5 szt.');
   });
+
+  test('próg zamówienia przy składniku (0086)', () {
+    final item = InventoryItem.fromJson({
+      'id': 'i1',
+      'name': 'Mąka',
+      'unit': 'kg',
+      'capacity': 25,
+      'reorder_at': '5.000',
+    });
+    expect(item.reorderAt, 5);
+    expect(item.needsOrder(12), isFalse);
+    expect(item.needsOrder(5), isTrue);
+    expect(item.needsOrder(-1), isTrue);
+    expect(item.needsOrder(null), isFalse, reason: 'bez inwentaryzacji nie wiadomo, ile jest');
+    final noAlert = InventoryItem.fromJson({'id': 'i2', 'name': 'Sól', 'unit': 'kg', 'capacity': 1});
+    expect(noAlert.reorderAt, isNull);
+    expect(noAlert.needsOrder(0), isFalse);
+  });
+
+  test('zużycie dziennie i prognoza „wystarczy na” w Statystykach (0086)', () {
+    final report = InventoryUsageReport.fromJson({
+      'from': '2026-11-05',
+      'today': '2026-11-11',
+      'items': [
+        {
+          'id': 'm',
+          'name': 'Mąka',
+          'unit': 'kg',
+          'capacity': 25,
+          'reorder_at': 4,
+          'since': '2026-09-30',
+          'stock': 10,
+          'days': [
+            {'day': '2026-11-06', 'sold': 4, 'lost': 0},
+            {'day': '2026-11-10', 'sold': 2, 'lost': 1},
+          ],
+        },
+        // Dodany przedwczoraj: średnia liczy się od dodania, nie z całego tygodnia.
+        {
+          'id': 'o',
+          'name': 'Olej',
+          'unit': 'l',
+          'capacity': 10,
+          'since': '2026-11-09',
+          'stock': 0,
+          'days': [
+            {'day': '2026-11-09', 'sold': 1.5, 'lost': 0},
+          ],
+        },
+        {'id': 's', 'name': 'Sól', 'unit': 'kg', 'capacity': 1, 'since': '2026-09-30', 'stock': null, 'days': []},
+      ],
+    });
+    expect(report.days.length, 7);
+    expect(report.days.first, DateTime.utc(2026, 11, 5));
+    expect(report.days.last, DateTime.utc(2026, 11, 11));
+
+    final flour = report.items.first;
+    expect(flour.used, 7);
+    expect(flour.lost, 1);
+    expect(flour.activeDays, 7);
+    expect(flour.perDay, 1);
+    expect(flour.usedOn(DateTime.utc(2026, 11, 10)), 3);
+    expect(flour.usedOn(DateTime.utc(2026, 11, 7)), 0);
+    expect(flour.daysLeft, 10);
+    expect(flour.needsOrder, isFalse);
+    expect(flour.daysToOrder, 6);
+
+    final oil = report.items[1];
+    expect(oil.activeDays, 3);
+    expect(oil.perDay, 0.5);
+    expect(oil.daysLeft, 0, reason: 'stan zero to brak');
+
+    final salt = report.items.last;
+    expect(salt.daysLeft, isNull);
+    expect(salt.daysToOrder, isNull);
+    expect(salt.perDay, 0);
+
+    expect(inventoryDaysText(0.4), 'mniej niż dzień');
+    expect(inventoryDaysText(1.9), 'ok. 1 dzień');
+    expect(inventoryDaysText(4.2), 'ok. 4 dni');
+    expect(inventoryDaysText(400), 'ponad rok');
+  });
 }

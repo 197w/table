@@ -17,8 +17,9 @@ String _hm(DateTime t) => '${_two(t.toLocal().hour)}:${_two(t.toLocal().minute)}
 /// Kolumny Składników: składnik, opakowanie, inwentaryzacja, ruchy od niej, stan teraz.
 const _flex = [5, 3, 3, 3, 2];
 
-/// Kolumny spisu: składnik, opakowanie, pełne opakowania, reszta, razem, powinno być, różnica.
-const _countFlex = [5, 3, 3, 4, 2, 2, 2];
+/// Kolumny spisu: składnik, opakowanie, pełne opakowania, reszta, razem, różnica. Stanu „powinno być” w spisie
+/// nie ma (11.11.2026, prośba użytkownika: tylko w Historii), różnica liczy się dalej na żywo.
+const _countFlex = [5, 3, 3, 4, 2, 2];
 
 /// „+2,5 kg”, „−300 g”, „0 kg”.
 String _signed(double v, InventoryUnit unit) {
@@ -101,7 +102,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       await ref.read(repositoryProvider).finishInventory(count.id, memberId: _memberId);
       ref
         ..invalidate(inventoryCountsProvider(restaurantId))
-        ..invalidate(inventoryStockProvider(restaurantId));
+        ..invalidate(inventoryStockProvider(restaurantId))
+        ..invalidate(reorderItemsProvider(restaurantId));
       if (mounted) setState(() => _tab = 3);
     }, 'Inwentaryzacja zapisana.');
   }
@@ -144,7 +146,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     if (saved == null) return;
     ref
       ..invalidate(inventoryItemsProvider(restaurantId))
-      ..invalidate(inventoryStockProvider(restaurantId));
+      ..invalidate(inventoryStockProvider(restaurantId))
+      ..invalidate(reorderItemsProvider(restaurantId));
   }
 
   Future<void> _addDoc(String restaurantId, List<InventoryItem> items, bool delivery) async {
@@ -153,6 +156,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       builder: (_) =>
           InventoryDocDialog(restaurantId: restaurantId, delivery: delivery, items: items, memberId: _memberId),
     );
+    if (saved == true) ref.invalidate(reorderItemsProvider(restaurantId));
     if (saved == true && mounted && _tab != 2 && _tab != 0) setState(() => _tab = 2);
   }
 
@@ -181,6 +185,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final today = dateOnly(DateTime.now());
     final due = last == null || !today.isBefore(next!);
     final tab = _tab ?? (open != null ? 0 : 1);
+    final toOrder = items.where((i) => i.needsOrder(stock[i.id]?.stock)).length;
 
     final loading = (itemsAsync.isLoading && !itemsAsync.hasValue) || (countsAsync.isLoading && !countsAsync.hasValue);
     final error = itemsAsync.error ?? countsAsync.error;
@@ -198,6 +203,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 onChanged: (t) => setState(() => _tab = t),
               ),
               const Spacer(),
+              // Składniki, których stan doszedł do progu „Powiadom o zamówieniu przy” (0086).
+              if (toOrder > 0) ...[
+                PanelPill('Do zamówienia: $toOrder', dotColor: AppColors.warning),
+                if (open == null && due) const SizedBox(width: 8),
+              ],
               // Przypomnienie, gdy minął okres od ostatniej inwentaryzacji.
               if (open == null && due) const PanelPill('Czas na inwentaryzację', dotColor: Color(0xFFE0A21B)),
             ],
@@ -482,7 +492,7 @@ class _CountSheet extends StatelessWidget {
             canCount
                 ? 'Wpisz pełne opakowania, a obok resztę w gramach, mililitrach albo sztukach (np. woda: 11 zgrzewek '
                       'i 9 butelek). Ważysz w pojemniku? Wybierz go przy wadze: panel sam odejmie jego wagę. '
-                      'Różnica od stanu „powinno być” liczy się w trakcie pisania. Enter przechodzi dalej.'
+                      'Różnica liczy się w trakcie pisania. Enter przechodzi dalej.'
                 : 'Ilości wpisuje osoba z uprawnieniem „Wpisywanie ilości składników”.',
             style: text.bodySmall?.copyWith(color: AppColors.textMuted),
           ),
@@ -501,7 +511,6 @@ class _CountSheet extends StatelessWidget {
                     ('Pełne opakowania', TextAlign.left),
                     ('Reszta', TextAlign.left),
                     ('Razem', TextAlign.right),
-                    ('Powinno być', TextAlign.right),
                     ('Różnica', TextAlign.right),
                   ],
                 ),
@@ -554,7 +563,8 @@ class _CountRow extends StatefulWidget {
   final InventoryItem item;
   final InventoryLine? line;
 
-  /// Stan „powinno być” w jednostce składnika. Null: składnik jeszcze nie był liczony.
+  /// Stan teraz w jednostce składnika, od którego liczy się różnica (bez pokazywania go w spisie). Null: składnik
+  /// jeszcze nie był liczony.
   final double? expected;
   final List<InventoryContainer> containers;
   final bool enabled;
@@ -700,14 +710,6 @@ class _CountRowState extends State<_CountRow> {
           ),
           Expanded(
             flex: _countFlex[5],
-            child: Text(
-              expected == null ? '—' : '${inventoryNumber(expected)} ${item.unit.label}',
-              textAlign: TextAlign.right,
-              style: muted,
-            ),
-          ),
-          Expanded(
-            flex: _countFlex[6],
             child: Text(
               diff == null ? '—' : _signed(diff, item.unit),
               textAlign: TextAlign.right,
@@ -969,13 +971,23 @@ class _ItemsTable extends StatelessWidget {
                                   '${inventoryNumber(v)} ${item.unit.label}',
                                   style: text.titleSmall?.copyWith(
                                     fontFeatures: _tabular,
-                                    color: v < 0 ? AppColors.error : null,
+                                    color: v < 0
+                                        ? AppColors.error
+                                        : (item.needsOrder(v) ? AppColors.warning : null),
                                   ),
                                 ),
                                 Text(
                                   packCount((v / item.capacity * 10).round() / 10, item.packName),
                                   style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
                                 ),
+                                if (item.needsOrder(v)) ...[
+                                  const SizedBox(height: 4),
+                                  StatusChip(label: 'Do zamówienia', icon: AppIcons.warning, color: AppColors.warning),
+                                ] else if (item.reorderAt != null)
+                                  Text(
+                                    'zamówić przy ${inventoryNumber(item.reorderAt!)} ${item.unit.label}',
+                                    style: small?.copyWith(color: AppColors.textMuted),
+                                  ),
                               ],
                             ),
                             _ => Text('—', textAlign: TextAlign.right, style: text.titleSmall),
@@ -1278,6 +1290,9 @@ class _InventoryItemDialogState extends ConsumerState<InventoryItemDialog> {
   late final _capacity = TextEditingController(text: widget.item == null ? '' : inventoryNumber(widget.item!.capacity));
   late final _pack = TextEditingController(text: widget.item?.packName ?? '');
   late final _location = TextEditingController(text: widget.item?.location ?? '');
+  late final _reorder = TextEditingController(
+    text: widget.item?.reorderAt == null ? '' : inventoryNumber(widget.item!.reorderAt!),
+  );
   late InventoryUnit _unit = widget.item?.unit ?? InventoryUnit.l;
   late String? _containerId = widget.item?.containerId;
 
@@ -1286,6 +1301,7 @@ class _InventoryItemDialogState extends ConsumerState<InventoryItemDialog> {
   bool _busy = false;
   String? _nameError;
   String? _capacityError;
+  String? _reorderError;
 
   @override
   void dispose() {
@@ -1293,19 +1309,25 @@ class _InventoryItemDialogState extends ConsumerState<InventoryItemDialog> {
     _capacity.dispose();
     _pack.dispose();
     _location.dispose();
+    _reorder.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     final name = _name.text.trim();
     final capacity = parseInventoryNumber(_capacity.text);
+    final reorderRaw = _reorder.text.trim();
+    final reorder = reorderRaw.isEmpty ? null : parseInventoryNumber(reorderRaw);
     setState(() {
       _nameError = name.isEmpty ? 'Wpisz nazwę składnika.' : null;
       _capacityError = capacity == null || capacity <= 0
           ? (_unit == InventoryUnit.szt ? 'Wpisz, ile sztuk jest w opakowaniu.' : 'Wpisz pojemność opakowania.')
           : null;
+      _reorderError = reorderRaw.isNotEmpty && (reorder == null || reorder < 0)
+          ? 'Wpisz ilość albo zostaw puste.'
+          : null;
     });
-    if (_nameError != null || _capacityError != null) return;
+    if (_nameError != null || _capacityError != null || _reorderError != null) return;
     final weighed = _unit == InventoryUnit.g || _unit == InventoryUnit.kg;
     setState(() => _busy = true);
     try {
@@ -1322,6 +1344,7 @@ class _InventoryItemDialogState extends ConsumerState<InventoryItemDialog> {
             location: _location.text,
             containerId: weighed ? _containerId : null,
             depositGrosze: _deposit,
+            reorderAt: reorder,
           );
       if (!mounted) return;
       Navigator.pop(context, id);
@@ -1373,6 +1396,8 @@ class _InventoryItemDialogState extends ConsumerState<InventoryItemDialog> {
         ? ref.watch(inventoryContainersProvider(widget.restaurantId)).value ?? const <InventoryContainer>[]
         : const <InventoryContainer>[];
     final packLabel = _pack.text.trim().isEmpty ? 'opakowanie' : _pack.text.trim();
+    final capacityNow = parseInventoryNumber(_capacity.text);
+    final reorderNow = _reorder.text.trim().isEmpty ? null : parseInventoryNumber(_reorder.text);
     return AlertDialog(
       title: Text(widget.item == null ? 'Nowy składnik' : 'Składnik'),
       content: SizedBox(
@@ -1444,6 +1469,26 @@ class _InventoryItemDialogState extends ConsumerState<InventoryItemDialog> {
                 ),
               ),
               if (widget.details) ...[
+                const SizedBox(height: 16),
+                // Próg zamówienia (0086, 11.11.2026, prośba użytkownika).
+                TextField(
+                  controller: _reorder,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+                  onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) => _save(),
+                  decoration: InputDecoration(
+                    labelText: 'Powiadom o zamówieniu przy (opcjonalnie)',
+                    hintText: pieces ? 'Na przykład: 24' : 'Na przykład: 5',
+                    suffixText: _unit.label,
+                    errorText: _reorderError,
+                    helperText: reorderNow != null && capacityNow != null && capacityNow > 0
+                        ? 'To ${packCount((reorderNow / capacityNow * 10).round() / 10, _pack.text.trim().isEmpty ? null : _pack.text.trim())}. '
+                              'Panel powiadomi, gdy stan spadnie do tej ilości.'
+                        : 'Panel powiadomi, gdy stan składnika spadnie do tej ilości.',
+                    helperMaxLines: 2,
+                  ),
+                ),
                 const SizedBox(height: 16),
                 Autocomplete<String>(
                   initialValue: TextEditingValue(text: _location.text),

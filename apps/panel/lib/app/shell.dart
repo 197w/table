@@ -77,6 +77,15 @@ class PanelShell extends ConsumerWidget {
       }
     }
 
+    // Składnik doszedł do progu „Powiadom o zamówieniu przy” (0086): powiadomienie i kropka na Inwentaryzacji.
+    if (current != null && allowed(PanelRoutes.inventory)) {
+      ref.listen(reorderItemsProvider(current.id), (_, next) async {
+        final low = next.value;
+        if (low == null) return;
+        if (await ReservationAlerts.instance.onReorder(current.id, low)) news.add(TabNews.inventory);
+      });
+    }
+
     // Kropki: zakładka z czymś nowym, dopóki ktoś do niej nie zajrzy.
     final unseen = ref.watch(tabNewsProvider);
     final open = _newsOf(tabForRoute(location));
@@ -171,6 +180,7 @@ TabNews? _newsOf(String? route) => switch (route) {
   PanelRoutes.deliveries => TabNews.deliveries,
   PanelRoutes.pickup => TabNews.pickup,
   PanelRoutes.serving => TabNews.serving,
+  PanelRoutes.inventory => TabNews.inventory,
   _ => null,
 };
 

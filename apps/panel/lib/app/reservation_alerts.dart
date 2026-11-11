@@ -1,6 +1,7 @@
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:local_notifier/local_notifier.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:table_core/table_core.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -26,6 +27,74 @@ class ReservationAlerts {
 
   /// Otwiera zakładkę Dostawy albo Odbiór (według rodzaju zamówienia).
   void Function(OrderKind kind)? onOpenTakeaway;
+
+  /// Otwiera Inwentaryzację (powiadomienie o zamówieniu).
+  VoidCallback? onOpenInventory;
+
+  /// Składniki, których stan doszedł do progu „Powiadom o zamówieniu przy” (0086, 11.11.2026, prośba użytkownika):
+  /// powiadomienie w panelu z „Pokaż”, a gdy panel jest w tle, także systemowe. Raz na zejście do progu: składnik
+  /// powiadamia znowu dopiero wtedy, gdy stan wróci nad próg (dostawa, inwentaryzacja) i spadnie jeszcze raz.
+  /// Powiadomione zapisuje na tym komputerze, więc ponowne uruchomienie panelu ich nie powtarza.
+  /// Zwraca true, gdy pokazało powiadomienie.
+  Future<bool> onReorder(String restaurantId, List<(InventoryItem, double)> low) async {
+    final key = 'panel_zamowienie_powiadomione_$restaurantId';
+    final prefs = SharedPreferencesAsync();
+    Set<String> before;
+    try {
+      before = (await prefs.getStringList(key) ?? const <String>[]).toSet();
+    } catch (_) {
+      before = {};
+    }
+    final now = {for (final (item, _) in low) item.id};
+    if (!setEquals(before, now)) {
+      try {
+        await prefs.setStringList(key, now.toList());
+      } catch (_) {
+        // Bez zapisu powiadomienie najwyżej powtórzy się po ponownym uruchomieniu.
+      }
+    }
+    final fresh = [
+      for (final entry in low)
+        if (!before.contains(entry.$1.id)) entry,
+    ];
+    if (fresh.isEmpty) return false;
+    String left((InventoryItem, double) e) => '${e.$1.name}: zostało ${inventoryNumber(e.$2 < 0 ? 0 : e.$2)} '
+        '${e.$1.unit.label}';
+    final title = fresh.length == 1
+        ? 'Czas zamówić: ${fresh.first.$1.name}'
+        : 'Czas zamówić: ${fresh.length} ${_ingredients(fresh.length)}';
+    final details = fresh.length == 1
+        ? 'Zostało ${inventoryNumber(fresh.first.$2 < 0 ? 0 : fresh.first.$2)} ${fresh.first.$1.unit.label}, '
+              'powiadomienie przy ${inventoryNumber(fresh.first.$1.reorderAt!)} ${fresh.first.$1.unit.label}.'
+        : fresh.take(4).map(left).join(' · ') + (fresh.length > 4 ? ' · i ${fresh.length - 4} więcej' : '');
+    Toasts.instance.show(
+      details,
+      title: title,
+      tone: ToastTone.warning,
+      icon: AppIcons.package,
+      actionLabel: onOpenInventory == null ? null : 'Pokaż',
+      onAction: onOpenInventory,
+      duration: const Duration(seconds: 20),
+    );
+    if (!_ready) return true;
+    try {
+      if (await windowManager.isFocused()) return true;
+    } catch (_) {
+      // Bez informacji o oknie pokazujemy też powiadomienie systemowe.
+    }
+    try {
+      await LocalNotification(title: title, body: details).show();
+    } catch (_) {
+      // System odmówił powiadomienia.
+    }
+    return true;
+  }
+
+  static String _ingredients(int n) {
+    final last = n % 10;
+    final teen = n % 100 >= 12 && n % 100 <= 14;
+    return last >= 2 && last <= 4 && !teen ? 'składniki' : 'składników';
+  }
 
   /// Nowe zamówienie z dostawą albo odbiorem osobistym z aplikacji Table.
   Future<void> onTakeaway(TakeawayOrder order, {required bool muted}) async {

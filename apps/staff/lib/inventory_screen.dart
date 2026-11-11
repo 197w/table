@@ -35,7 +35,7 @@ class InvContainer {
       InvContainer(id: j['id'] as String, name: j['name'] as String, tareG: _num(j['tare_g']) ?? 0);
 }
 
-/// Składnik w spisie na telefonie: opakowanie, lokalizacja, stan „powinno być” i to, co już wpisano.
+/// Składnik w spisie na telefonie: opakowanie, lokalizacja, stan teraz (tylko do różnicy) i to, co już wpisano.
 class InvItem {
   const InvItem({
     required this.id,
@@ -63,7 +63,8 @@ class InvItem {
   /// Zwykły pojemnik do ważenia.
   final String? containerId;
 
-  /// Stan „powinno być” w jednostce składnika. Null: jeszcze nie liczono.
+  /// Stan teraz w jednostce składnika, od którego liczy się różnica. Samego stanu spis nie pokazuje (11.11.2026,
+  /// prośba użytkownika: „powinno być” tylko w Historii w panelu). Null: jeszcze nie liczono.
   final double? expected;
 
   /// Już wpisany w tej inwentaryzacji.
@@ -138,7 +139,7 @@ final staffInventoryProvider = FutureProvider.autoDispose.family<StaffInventory,
 
 /// Inwentaryzacja w telefonie (uprawnienie „Wpisywanie ilości składników”): ten sam spis co w panelu, zapisuje się
 /// od razu, więc można liczyć w kilka osób naraz. Składniki pogrupowane po lokalizacji, pełne opakowania i reszta,
-/// pojemnik do ważenia odejmuje się sam, a różnica od stanu „powinno być” liczy się w trakcie pisania.
+/// pojemnik do ważenia odejmuje się sam, a różnica liczy się w trakcie pisania.
 class InventoryScreen extends ConsumerStatefulWidget {
   const InventoryScreen({super.key, required this.job});
 
@@ -500,10 +501,7 @@ class _ItemCardState extends State<_ItemCard> {
             ],
             const SizedBox(height: 10),
             Text(
-              [
-                total == null ? 'Razem: —' : 'Razem ${inventoryNumber(total)} $unit',
-                if (item.expected != null) 'powinno być ${inventoryNumber(item.expected!)} $unit',
-              ].join(' · '),
+              total == null ? 'Razem: —' : 'Razem ${inventoryNumber(total)} $unit',
               style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
             ),
             if (diff != null)

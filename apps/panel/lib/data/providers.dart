@@ -290,6 +290,29 @@ final inventoryStockProvider = FutureProvider.autoDispose.family<List<InventoryS
   (ref, id) => (ref..cacheFor()).watch(repositoryProvider).inventoryStock(id),
 );
 
+/// Składniki do zamówienia (0086): stan teraz doszedł do „Powiadom o zamówieniu przy”, z tym stanem. Odświeża się
+/// co 3 minuty, bo stan spada z każdym daniem wysłanym na kuchnię. Trzyma go `shell.dart`, żeby powiadomienie
+/// przyszło na każdej zakładce.
+final reorderItemsProvider = FutureProvider.autoDispose.family<List<(InventoryItem, double)>, String>((ref, id) async {
+  final timer = Timer(const Duration(minutes: 3), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
+  final repository = ref.watch(repositoryProvider);
+  final items = await repository.inventoryItems(id);
+  if (!items.any((i) => i.reorderAt != null)) return const [];
+  final stock = {for (final s in await repository.inventoryStock(id)) s.itemId: s.stock};
+  return [
+    for (final i in items)
+      if (i.needsOrder(stock[i.id])) (i, stock[i.id]!),
+  ];
+});
+
+typedef InventoryUsageQuery = ({String restaurantId, int days});
+
+/// Zużycie składników i prognoza w Statystykach → Inwentaryzacja.
+final inventoryUsageProvider = FutureProvider.autoDispose.family<InventoryUsageReport, InventoryUsageQuery>(
+  (ref, q) => (ref..cacheFor()).watch(repositoryProvider).inventoryUsage(q.restaurantId, q.days),
+);
+
 final inventoryContainersProvider = FutureProvider.autoDispose.family<List<InventoryContainer>, String>(
   (ref, id) => (ref..cacheFor()).watch(repositoryProvider).inventoryContainers(id),
 );
@@ -561,7 +584,8 @@ final panelSectionProvider = NotifierProvider<PanelSectionNotifier, String?>(Pan
 
 /// Coś nowego w zakładce: nowa rezerwacja z aplikacji, nowe zamówienie na dostawę albo odbiór, nowe danie
 /// do wydania. Kropka na ikonie zakładki i jej grupy, dopóki ktoś nie zajrzy do zakładki.
-enum TabNews { reservations, deliveries, pickup, serving }
+/// Od 0086 także składnik do zamówienia (kropka na Inwentaryzacji).
+enum TabNews { reservations, deliveries, pickup, serving, inventory }
 
 class TabNewsNotifier extends Notifier<Set<TabNews>> {
   @override

@@ -8,6 +8,7 @@ import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_widgets.dart';
 import '../../shared/side_panel.dart';
+import 'inventory_stats_view.dart';
 import 'sales_view.dart';
 
 enum _Metric {
@@ -42,9 +43,11 @@ enum _Metric {
 const _kinds = [('dine_in', 'Na miejscu'), ('delivery', 'Dostawa'), ('pickup', 'Odbiór osobisty')];
 
 /// Statystyki (Management) w układzie jak Pracownicy (4.11.2026, prośba użytkownika; kafle zostały): po lewej
-/// zwijany panel z zakładkami Sprzedaż / Rezerwacje i goście i w Sprzedaży filtrami z liczbą rachunków w okresie
-/// (rodzaj zamówienia, kto otworzył rachunek; puste grupy nie filtrują), po prawej okres 7D / 30D / 90D w górnym
-/// rogu, kafle i wykresy. Filtry liczy baza (`panel_sales_stats` z `p_kinds` i `p_members`).
+/// zwijany panel z zakładkami Sprzedaż / Goście / Inwentaryzacja (od 11.11.2026; „Goście” to dawne „Rezerwacje
+/// i goście”, krótsza nazwa, żeby zmieściły się trzy) i w Sprzedaży filtrami z liczbą rachunków w okresie (rodzaj
+/// zamówienia, kto otworzył rachunek; puste grupy nie filtrują), w Inwentaryzacji ze stanem i lokalizacją składnika,
+/// po prawej okres 7D / 30D / 90D w górnym rogu, kafle i wykresy. Filtry Sprzedaży liczy baza (`panel_sales_stats`
+/// z `p_kinds` i `p_members`).
 class StatsScreen extends ConsumerStatefulWidget {
   const StatsScreen({super.key});
 
@@ -56,12 +59,15 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
   int _days = 30;
   _Metric? _metric;
 
-  /// 0: sprzedaż, 1: rezerwacje i goście.
+  /// 0: sprzedaż, 1: goście (rezerwacje, wyświetlenia, polubienia), 2: inwentaryzacja.
   int _tab = 0;
 
-  // Panel po lewej: zaznaczone filtry Sprzedaży (puste: wszystko), zwinięte grupy i zwinięcie panelu.
+  // Panel po lewej: zaznaczone filtry Sprzedaży i Inwentaryzacji (puste: wszystko), zwinięte grupy i zwinięcie
+  // panelu.
   final _kindFilter = <String>{};
   final _memberFilter = <String>{};
+  final _stockFilter = <String>{};
+  final _locationFilter = <String>{};
   final _closed = <String>{};
   bool _panelOpen = true;
 
@@ -113,6 +119,51 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     ];
   }
 
+  /// Filtry Inwentaryzacji z liczbą składników: stan (do zamówienia, mniej niż tydzień, bez zużycia) i lokalizacja.
+  List<Widget> _inventoryFilters(InventoryUsageReport? report) {
+    final items = report?.items ?? const <InventoryUsage>[];
+    final locations = <String, int>{};
+    for (final u in items) {
+      locations.update(inventoryStatLocation(u), (n) => n + 1, ifAbsent: () => 1);
+    }
+    final named = locations.keys.where((l) => l.isNotEmpty).toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return [
+      FilterSection(
+        title: 'Stan',
+        first: true,
+        open: !_closed.contains('stock'),
+        onToggle: () => _toggle(_closed, 'stock'),
+        options: [
+          for (final (key, label) in inventoryStatStates)
+            (
+              label: label,
+              count: items.where((u) => inventoryStatMatches(u, key)).length,
+              checked: _stockFilter.contains(key),
+              onChanged: (_) => _toggle(_stockFilter, key),
+              dot: null,
+            ),
+        ],
+      ),
+      if (named.isNotEmpty)
+        FilterSection(
+          title: 'Lokalizacja',
+          open: !_closed.contains('location'),
+          onToggle: () => _toggle(_closed, 'location'),
+          options: [
+            for (final l in [...named, if (locations.containsKey('')) ''])
+              (
+                label: l.isEmpty ? 'Bez lokalizacji' : l,
+                count: locations[l]!,
+                checked: _locationFilter.contains(l),
+                onChanged: (_) => _toggle(_locationFilter, l),
+                dot: null,
+              ),
+          ],
+        ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final restaurant = ref.watch(currentRestaurantProvider);
@@ -127,15 +178,17 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     final unfiltered = sales
         ? ref.watch(salesStatsProvider((restaurantId: restaurant.id, days: _days, kinds: '', members: ''))).value
         : null;
+    final inventoryQuery = (restaurantId: restaurant.id, days: _days);
+    final usage = _tab == 2 ? ref.watch(inventoryUsageProvider(inventoryQuery)).value : null;
 
     final panel = SidePanel(
       header: SegmentedTabs<int>(
-        options: const [(0, 'Sprzedaż'), (1, 'Rezerwacje i goście')],
+        options: const [(0, 'Sprzedaż'), (1, 'Goście'), (2, 'Inwentaryzacja')],
         selected: _tab,
         expand: true,
         onChanged: (t) => setState(() => _tab = t),
       ),
-      children: sales ? _salesFilters(unfiltered) : const [],
+      children: sales ? _salesFilters(unfiltered) : (_tab == 2 ? _inventoryFilters(usage) : const []),
     );
 
     return SidePanelLayout(
@@ -145,7 +198,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Okres w prawym górnym rogu (5.11.2026, prośba użytkownika), wspólny dla obu zakładek.
+          // Okres w prawym górnym rogu (5.11.2026, prośba użytkownika), wspólny dla wszystkich zakładek.
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 16, 32, 12),
             child: Align(
@@ -160,7 +213,9 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           Expanded(
             child: TabContent(
               tab: _tab,
-              child: _tab == 0
+              child: _tab == 2
+                  ? InventoryStatsView(query: inventoryQuery, states: _stockFilter, locations: _locationFilter)
+                  : _tab == 0
                   ? (restaurant.isPro
                         ? SalesView(
                             query: (
