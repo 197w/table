@@ -47,7 +47,7 @@ typedef _Route = ({String signature, DateTime at, LatLng start, List<String> sto
 /// Mapa dostawców (Dostawy → Mapa, 14.11.2026, prośba użytkownika: stary projekt „Mapa” na mapie Mapbox; na razie
 /// w panelu na komputerze, potem telefony, CarPlay i Android Auto). Mapa Mapbox (styl ciemny albo jasny według
 /// motywu), lokal, cele dostaw z numerem przystanku, kursy w kolorze dostawcy z najszybszą trasą (kolejność
-/// przystanków dobiera Mapbox Optimization, z korkami), czas jazdy i przyjazd pod każdy adres, dostawcy z pozycją
+/// przystanków z czasów jazdy z korkami z Mapbox), czas jazdy i przyjazd pod każdy adres, dostawcy z pozycją
 /// z telefonu, gdy ją wysyła. Sama proponuje połączenie dostaw czekających w lokalu, gdy adresy są blisko siebie
 /// („Połącz” = `panel_takeaway_merge`). Po lewej panel z zakładkami Kursy i Dostawcy. Dane z bazy co 15 sekund,
 /// trasy co 5 minut albo po zmianie kursu.
@@ -68,6 +68,8 @@ class _DeliveryMapScreenState extends ConsumerState<DeliveryMapScreen> {
   bool _panelOpen = true;
   int _tab = 0;
   bool _mapReady = false;
+
+  /// Widok dopasowany do znalezionych adresów (raz, po pierwszym szukaniu; potem widok ustawia obsługa).
   bool _fitted = false;
   DateTime _now = DateTime.now();
 
@@ -159,7 +161,7 @@ class _DeliveryMapScreenState extends ConsumerState<DeliveryMapScreen> {
         rethrow;
       }
     }
-    if (!_fitted && _mapReady) {
+    if (!_fitted && _mapReady && _targets.isNotEmpty) {
       _fitted = true;
       _fitAll(map);
     }
@@ -421,10 +423,8 @@ class _DeliveryMapScreenState extends ConsumerState<DeliveryMapScreen> {
                 interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
                 onMapReady: () {
                   _mapReady = true;
-                  if (!_fitted) {
-                    _fitted = true;
-                    _fitAll(map);
-                  }
+                  // Najpierw lokal i dostawcy, a po znalezieniu adresów widok na wszystko (`_geocode`).
+                  _fitAll(map);
                   unawaited(_update(map));
                 },
                 onTap: (_, _) => setState(() => _selected = null),

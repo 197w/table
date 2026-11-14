@@ -242,31 +242,56 @@ class MapTrip {
   }
 }
 
-/// Odpowiedź Optimization API v1 (`optimized-trips`): punkt 0 to start, kolejne to cele w podanej kolejności.
-MapTrip? parseOptimizedTrip(Map<String, dynamic> json, int stops) {
-  if (json['code'] != 'Ok') return null;
-  final trip = (json['trips'] as List?)?.firstOrNull as Map<String, dynamic>?;
-  final waypoints = (json['waypoints'] as List? ?? const []).cast<Map<String, dynamic>>();
-  if (trip == null || waypoints.length != stops + 1) return null;
-  final position = [for (final w in waypoints) _i(w['waypoint_index']) ?? 0];
-  final order = [for (var i = 1; i <= stops; i++) i - 1]..sort((a, b) => position[a + 1].compareTo(position[b + 1]));
-  final legs = (trip['legs'] as List? ?? const []).cast<Map<String, dynamic>>();
-  return MapTrip(
-    order: order,
-    legSeconds: [for (final l in legs) _d(l['duration']) ?? 0],
-    legMeters: [for (final l in legs) _d(l['distance']) ?? 0],
-    geometry: decodePolyline(trip['geometry'] as String? ?? '', precision: 6),
-  );
+/// Najszybsza kolejność przystanków z czasów jazdy (wiersz 0 = start, kolejne = przystanki): dla najwyżej 7
+/// przystanków sprawdza wszystkie kolejności, dla większej liczby jedzie zawsze do najbliższego. Brak czasu między
+/// punktami liczy się jak bardzo długa jazda. Zwraca indeksy przystanków (0 = pierwszy cel) w kolejności jazdy.
+List<int> fastestOrder(List<List<double?>> seconds) {
+  final n = seconds.length - 1;
+  if (n <= 0) return const [];
+  double cost(int from, int to) => seconds[from][to] ?? 1e9;
+  if (n > 7) {
+    final order = <int>[];
+    final left = {for (var i = 1; i <= n; i++) i};
+    var at = 0;
+    while (left.isNotEmpty) {
+      final next = left.reduce((a, b) => cost(at, a) <= cost(at, b) ? a : b);
+      order.add(next - 1);
+      left.remove(next);
+      at = next;
+    }
+    return order;
+  }
+  var best = <int>[for (var i = 0; i < n; i++) i];
+  var bestCost = double.infinity;
+  void walk(List<int> path, Set<int> left, double sum) {
+    if (sum >= bestCost) return;
+    if (left.isEmpty) {
+      bestCost = sum;
+      best = List.of(path);
+      return;
+    }
+    final at = path.isEmpty ? 0 : path.last + 1;
+    for (final i in left.toList()) {
+      path.add(i);
+      left.remove(i);
+      walk(path, left, sum + cost(at, i + 1));
+      left.add(i);
+      path.removeLast();
+    }
+  }
+
+  walk([], {for (var i = 0; i < n; i++) i}, 0);
+  return best;
 }
 
-/// Odpowiedź Directions API v5: przystanki w podanej kolejności.
-MapTrip? parseDirections(Map<String, dynamic> json, int stops) {
+/// Odpowiedź Directions API v5: przystanki w podanej kolejności ([order]: którymi celami po kolei jechała trasa).
+MapTrip? parseDirections(Map<String, dynamic> json, int stops, {List<int>? order}) {
   if (json['code'] != 'Ok') return null;
   final route = (json['routes'] as List?)?.firstOrNull as Map<String, dynamic>?;
   if (route == null) return null;
   final legs = (route['legs'] as List? ?? const []).cast<Map<String, dynamic>>();
   return MapTrip(
-    order: [for (var i = 0; i < stops; i++) i],
+    order: order ?? [for (var i = 0; i < stops; i++) i],
     legSeconds: [for (final l in legs) _d(l['duration']) ?? 0],
     legMeters: [for (final l in legs) _d(l['distance']) ?? 0],
     geometry: decodePolyline(route['geometry'] as String? ?? '', precision: 6),
@@ -403,7 +428,7 @@ List<CourseSuggestion> suggestCourses({
 // ---------------------------------------------------------------
 
 /// Zapytania do Mapbox z publicznym kluczem z env.json: adresy (Geocoding v6), najszybsza kolejność przystanków
-/// (Optimization v1), trasa (Directions v5) i czasy jazdy między punktami (Matrix v1). Wyniki adresów trzymamy
+/// (z czasów Matrix v1), trasa (Directions v5) i czasy jazdy między punktami (Matrix v1). Wyniki adresów trzymamy
 /// tylko w pamięci na czas działania panelu (wyniki tymczasowe Mapbox nie mogą trafiać do bazy).
 class MapboxClient {
   MapboxClient(this.token, {http.Client? client}) : _client = client ?? http.Client();
@@ -455,31 +480,24 @@ class MapboxClient {
     return point;
   }
 
-  /// Najszybsza trasa od [start] przez wszystkie [stops]: przy kilku celach kolejność dobiera Mapbox (Optimization,
-  /// najwyżej 11 celów), przy jednym zwykła trasa. Z korkami (`driving-traffic`), a przy odmowie bez nich.
-  Future<MapTrip?> trip(LatLng start, List<LatLng> stops, {bool optimize = true}) async {
+  /// Najszybsza trasa od [start] przez wszystkie [stops]: przy kilku celach kolejność z czasów jazdy z korkami
+  /// (Matrix, `fastestOrder`; Optimization API Mapbox odpowiada na tym koncie „not supported”), potem trasa po kolei
+  /// (Directions) z korkami (`driving-traffic`), a przy odmowie bez nich.
+  Future<MapTrip?> trip(LatLng start, List<LatLng> stops) async {
     if (stops.isEmpty) return null;
-    final points = [start, ...stops];
+    var order = [for (var i = 0; i < stops.length; i++) i];
+    if (stops.length > 1) {
+      final seconds = await matrix([start, ...stops]);
+      if (seconds != null) order = fastestOrder(seconds);
+    }
+    final points = [start, for (final i in order) stops[i]];
     for (final profile in const ['driving-traffic', 'driving']) {
-      final Map<String, dynamic>? json;
-      if (optimize && stops.length > 1 && stops.length <= 11) {
-        json = await _get('/optimized-trips/v1/mapbox/$profile/${_coords(points)}', {
-          'source': 'first',
-          'destination': 'any',
-          'roundtrip': 'false',
-          'geometries': 'polyline6',
-          'overview': 'full',
-        });
-        final trip = json == null ? null : parseOptimizedTrip(json, stops.length);
-        if (trip != null) return trip;
-      } else {
-        json = await _get('/directions/v5/mapbox/$profile/${_coords(points)}', {
-          'geometries': 'polyline6',
-          'overview': 'full',
-        });
-        final trip = json == null ? null : parseDirections(json, stops.length);
-        if (trip != null) return trip;
-      }
+      final json = await _get('/directions/v5/mapbox/$profile/${_coords(points)}', {
+        'geometries': 'polyline6',
+        'overview': 'full',
+      });
+      final trip = json == null ? null : parseDirections(json, stops.length, order: order);
+      if (trip != null) return trip;
     }
     return null;
   }

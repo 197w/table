@@ -56,32 +56,33 @@ void main() {
     expect(courses.last.ready, isTrue);
   });
 
-  test('najszybsza kolejność przystanków z Optimization API i czasy z postojami', () {
-    final trip = parseOptimizedTrip({
-      'code': 'Ok',
-      'waypoints': [
-        {'waypoint_index': 0},
-        {'waypoint_index': 2},
-        {'waypoint_index': 3},
-        {'waypoint_index': 1},
-      ],
-      'trips': [
-        {
-          'geometry': '_p~iF~ps|U_ulLnnqC',
-          'legs': [
-            {'duration': 300, 'distance': 2000},
-            {'duration': 240, 'distance': 1500},
-            {'duration': 180, 'distance': 900},
-          ],
-        },
-      ],
-    }, 3)!;
-    // Cel 2 jest pierwszy, potem cel 0, potem cel 1.
-    expect(trip.order, [2, 0, 1]);
+  test('najszybsza kolejność przystanków z czasów jazdy i czasy z postojami', () {
+    // Start (0) i trzy cele: najkrócej 0 → cel 2 → cel 0 → cel 1 (100 + 50 + 60 = 210 s).
+    const seconds = <List<double?>>[
+      [null, 300, 400, 100],
+      [300, null, 60, 50],
+      [400, 60, null, 500],
+      [100, 50, 500, null],
+    ];
+    expect(fastestOrder(seconds), [2, 0, 1]);
+    expect(fastestOrder(const [
+      [null],
+    ]), isEmpty);
+    // Więcej niż 7 celów: zawsze do najbliższego.
+    final line = [
+      for (var i = 0; i <= 9; i++) [for (var j = 0; j <= 9; j++) i == j ? null : (j - i).abs() * 60.0],
+    ];
+    expect(fastestOrder(line), [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+
+    const trip = MapTrip(
+      order: [2, 0, 1],
+      legSeconds: [300, 240, 180],
+      legMeters: [2000, 1500, 900],
+      geometry: [],
+    );
     expect(trip.seconds, 720);
     expect(trip.meters, 4400);
     expect(trip.cumulative(), const [Duration(seconds: 300), Duration(seconds: 660), Duration(seconds: 960)]);
-    expect(parseOptimizedTrip({'code': 'NoRoute'}, 3), isNull);
     final single = parseDirections({
       'code': 'Ok',
       'routes': [
@@ -134,7 +135,7 @@ void main() {
     expect(suggestCourses(courses: late, seconds: seconds, now: now), isEmpty);
   });
 
-  test('Mapbox: adres z miastem lokalu w pamięci, trasa z korkami, a przy odmowie bez nich', () async {
+  test('Mapbox: adres z miastem lokalu w pamięci, kolejność z czasów jazdy, trasa z korkami, a przy odmowie bez nich', () async {
     final requests = <Uri>[];
     final client = MockClient((req) async {
       requests.add(req.url);
@@ -153,17 +154,26 @@ void main() {
           200,
         );
       }
-      if (path.contains('/optimized-trips/v1/mapbox/driving-traffic/')) return http.Response('{}', 422);
-      if (path.contains('/optimized-trips/v1/mapbox/driving/')) {
+      if (path.contains('/directions-matrix/v1/mapbox/driving-traffic/')) {
+        // Drugi cel jest bliżej lokalu, więc jedzie się do niego najpierw.
         return http.Response(
           jsonEncode({
             'code': 'Ok',
-            'waypoints': [
-              {'waypoint_index': 0},
-              {'waypoint_index': 1},
-              {'waypoint_index': 2},
+            'durations': [
+              [0, 300, 100],
+              [300, 0, 150],
+              [100, 150, 0],
             ],
-            'trips': [
+          }),
+          200,
+        );
+      }
+      if (path.contains('/directions/v5/mapbox/driving-traffic/')) return http.Response('{}', 422);
+      if (path.contains('/directions/v5/mapbox/driving/')) {
+        return http.Response(
+          jsonEncode({
+            'code': 'Ok',
+            'routes': [
               {
                 'geometry': '',
                 'legs': [
@@ -195,10 +205,12 @@ void main() {
 
     final trip = await mapbox.trip(const LatLng(53.13, 23.17), const [LatLng(53.12, 23.15), LatLng(53.11, 23.16)]);
     expect(trip!.seconds, 300);
-    expect(requests[1].path, contains('driving-traffic'));
-    expect(requests[2].path, contains('/mapbox/driving/23.170000,53.130000;23.150000,53.120000;23.160000,53.110000'));
-    expect(requests[2].queryParameters['source'], 'first');
-    expect(requests[2].queryParameters['roundtrip'], 'false');
+    expect(trip.order, [1, 0]);
+    expect(requests[1].path, contains('/directions-matrix/v1/mapbox/driving-traffic/'));
+    expect(requests[2].path, contains('/directions/v5/mapbox/driving-traffic/'));
+    // Z korkami odmówił, więc bez nich, już w najszybszej kolejności: lokal, drugi cel, pierwszy cel.
+    expect(requests[3].path, contains('/mapbox/driving/23.170000,53.130000;23.160000,53.110000;23.150000,53.120000'));
+    expect(requests[3].queryParameters['geometries'], 'polyline6');
   });
 
   test('zakładka Mapa w Dostawach z uprawnieniem do zamówień', () {

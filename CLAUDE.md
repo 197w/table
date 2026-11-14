@@ -120,14 +120,15 @@ Z użytkownikiem rozmawiamy po polsku. Teksty w aplikacjach i komentarze w kodzi
   (aktualizuje się od razu) i co 4 godziny (wiersz „Nowa wersja” w menu). Uruchomiony z folderu projektu
   nigdy się nie aktualizuje.
 - Sekrety repozytorium: `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` i `SUPABASE_SERVICE_ROLE_KEY` (ten ostatni wpisuje użytkownik),
-  opcjonalnie `MAPBOX_TOKEN` (publiczny klucz Mapbox do mapy dostawców, wpisuje użytkownik; bez niego mapa jest bez kafelków).
+  `MAPBOX_TOKEN` (publiczny klucz Mapbox do mapy dostawców; dodany 14.11.2026 na prośbę użytkownika, ten sam co
+  w env.json; bez niego mapa jest bez kafelków).
 - Link do pierwszej instalacji: `<SUPABASE_URL>/storage/v1/object/public/panel-releases/windows/TablePanelSetup.exe`.
 
 ## Uruchamianie
 
 `env.json` leży w katalogu głównym repozytorium i nie trafia do Gita. Poza `SUPABASE_URL` i `SUPABASE_PUBLISHABLE_KEY`
-może mieć `MAPBOX_TOKEN` (publiczny klucz „pk.…” z konta Mapbox użytkownika, do mapy dostawców w panelu; klucz zakłada
-i wpisuje użytkownik) oraz `MAPBOX_STYLE_DARK` / `MAPBOX_STYLE_LIGHT` (własne style z Mapbox Studio, domyślnie
+ma `MAPBOX_TOKEN` (publiczny klucz „pk.…” z konta Mapbox użytkownika, do mapy dostawców w panelu; wpisany 14.11.2026
+na prośbę użytkownika, na Macu trzeba go dopisać do env.json tak samo) oraz `MAPBOX_STYLE_DARK` / `MAPBOX_STYLE_LIGHT` (własne style z Mapbox Studio, domyślnie
 `mapbox/dark-v11` i `mapbox/light-v11`).
 
 ```bash
@@ -896,9 +897,11 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   liczy panel w Mapbox z publicznym kluczem z env.json (`MapboxClient`, `mapboxProvider`, `Env.mapboxToken`):
   kafelki stylu ciemnego albo jasnego według motywu (`TileLayer` 512 px, `{r}` na ekranach o dużej gęstości), adresy
   (Geocoding v6, Polska, blisko lokalu, bez miasta w adresie dopisuje miasto lokalu; wyniki tylko w pamięci panelu,
-  bo tymczasowych wyników Mapbox nie wolno zapisywać w bazie), najszybsza kolejność przystanków kursu (Optimization
-  v1 `driving-traffic`, przy odmowie `driving`; jeden adres: Directions v5) i czasy między adresami czekającymi
-  w lokalu (Matrix v1). Kurs = dostawy z tym samym `course_id` albo jedna dostawa (`groupCourses`); trasa liczy się
+  bo tymczasowych wyników Mapbox nie wolno zapisywać w bazie), najszybsza kolejność przystanków kursu (czasy jazdy
+  z korkami z Matrix v1 `driving-traffic` i `fastestOrder`: do 7 adresów wszystkie kolejności, więcej: zawsze do
+  najbliższego; Optimization API odpowiada na koncie użytkownika „This request is not supported”), trasa po kolei
+  z Directions v5 (`driving-traffic`, przy odmowie `driving`) i czasy między adresami czekającymi w lokalu (Matrix v1).
+  Widok dopasowuje się do adresów raz, po pierwszym ich znalezieniu. Kurs = dostawy z tym samym `course_id` albo jedna dostawa (`groupCourses`); trasa liczy się
   od lokalu, a dla kursu w drodze od pozycji dostawcy, gdy telefon ją wysyła; od nowa co 5 minut albo po zmianie
   przystanków. Panel po lewej (`SidePanelLayout`): Kursy (propozycje, potem karty kursów: dostawca albo „Czeka na
   dostawcę”, etap, cała trasa w minutach i km, przystanki po kolei z numerem; w drodze „Będzie ok. 19:42” od odbioru
