@@ -8,6 +8,7 @@
 # Sekrety repozytorium:
 #   SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY – to samo co w env.json, trafia do programu.
 #   SUPABASE_SERVICE_ROLE_KEY – tylko do wysłania plików do katalogu panel-releases.
+#   MAPBOX_TOKEN – publiczny klucz Mapbox do mapy dostawców (opcjonalny, wpisuje użytkownik).
 name: Wydanie panelu na Windows
 
 on:
@@ -35,6 +36,8 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+      # Publiczny klucz Mapbox do mapy dostawców (opcjonalny: bez niego mapa jest bez kafelków).
+      MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
       SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       # Wartości z formularza idą przez zmienne środowiskowe, nigdy wprost do skryptu.
       INPUT_VERSION: ${{ inputs.version }}
@@ -81,7 +84,8 @@ jobs:
             --build-name ${{ steps.v.outputs.version }} `
             --build-number ${{ github.run_number }} `
             --dart-define=SUPABASE_URL=$env:SUPABASE_URL `
-            --dart-define=SUPABASE_PUBLISHABLE_KEY=$env:SUPABASE_PUBLISHABLE_KEY
+            --dart-define=SUPABASE_PUBLISHABLE_KEY=$env:SUPABASE_PUBLISHABLE_KEY `
+            --dart-define=MAPBOX_TOKEN=$env:MAPBOX_TOKEN
           # Biblioteki Visual C++ obok programu, żeby działał bez osobnej instalacji pakietu.
           $release = 'build\windows\x64\runner\Release'
           Copy-Item "$env:WINDIR\System32\msvcp140.dll", "$env:WINDIR\System32\vcruntime140.dll", "$env:WINDIR\System32\vcruntime140_1.dll" $release

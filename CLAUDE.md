@@ -119,12 +119,16 @@ Z użytkownikiem rozmawiamy po polsku. Teksty w aplikacjach i komentarze w kodzi
 - Panel zainstalowany w `%LOCALAPPDATA%\Programs\Table Panel` sprawdza `latest.json` przy starcie
   (aktualizuje się od razu) i co 4 godziny (wiersz „Nowa wersja” w menu). Uruchomiony z folderu projektu
   nigdy się nie aktualizuje.
-- Sekrety repozytorium: `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` i `SUPABASE_SERVICE_ROLE_KEY` (ten ostatni wpisuje użytkownik).
+- Sekrety repozytorium: `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` i `SUPABASE_SERVICE_ROLE_KEY` (ten ostatni wpisuje użytkownik),
+  opcjonalnie `MAPBOX_TOKEN` (publiczny klucz Mapbox do mapy dostawców, wpisuje użytkownik; bez niego mapa jest bez kafelków).
 - Link do pierwszej instalacji: `<SUPABASE_URL>/storage/v1/object/public/panel-releases/windows/TablePanelSetup.exe`.
 
 ## Uruchamianie
 
-`env.json` leży w katalogu głównym repozytorium i nie trafia do Gita.
+`env.json` leży w katalogu głównym repozytorium i nie trafia do Gita. Poza `SUPABASE_URL` i `SUPABASE_PUBLISHABLE_KEY`
+może mieć `MAPBOX_TOKEN` (publiczny klucz „pk.…” z konta Mapbox użytkownika, do mapy dostawców w panelu; klucz zakłada
+i wpisuje użytkownik) oraz `MAPBOX_STYLE_DARK` / `MAPBOX_STYLE_LIGHT` (własne style z Mapbox Studio, domyślnie
+`mapbox/dark-v11` i `mapbox/light-v11`).
 
 ```bash
 cd apps/guest && flutter run -d <telefon albo symulator> --dart-define-from-file=../../env.json
@@ -143,9 +147,10 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720), file_selector (logo, zdjęcia, zapis plików eksportu), pdf (eksport do PDF).
   Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
-  Map i śledzenia dostawców nie ma od 0068 (usunięte na prośbę użytkownika, także mapa u gościa).
+  Panel: flutter_map i latlong2 (mapa dostawców na kafelkach Mapbox, od 14.11.2026). Śledzenia dostawców z telefonów
+  nie ma od 0068 (wróci w drugim etapie mapy), mapy u gościa też nie.
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0086, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0087, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -322,7 +327,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   bez tła i bez napisu (`TableMark` z ekranu logowania, na środku nad ikonami bocznego paska; od 0.27.0 na prośbę
   użytkownika, wcześniej był tu lokal), grupy zakładek (`PanelSection`, `_SectionTab`: same ikony bez ramek, wybrana w kolorze akcentu z nazwą):
   Rezerwacje (Rezerwacje), Zamówienia (Zamówienia, Historia zamówień `/historia`, Kompletowanie `/wydanie`,
-  Odbiór `/odbior`), Kuchnia (Kuchnia), Dostawy (Dostawy, Flota),
+  Odbiór `/odbior`), Kuchnia (Kuchnia), Dostawy (Dostawy, Mapa `/mapa` od 14.11.2026, Flota),
   Pracownicy (Pracownicy: Zespół i Stanowiska, Grafik `/grafik`, Statystyki zespołu `/zespol`, Informacje dla
   pracowników `/informacje`),
   Baza klientów (Klienci `/klienci`, Opinie),
@@ -882,10 +887,38 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   w panelu „Połącz z inną dostawą” łączy przyjęte dostawy (jeszcze w lokalu) w jeden kurs jednego dostawcy
   (`panel_takeaway_merge`, wybór dostawcy albo bez zmiany), „Wyjmij” oddaje dostawę kolejce (`panel_takeaway_split`);
   kolejka, zmiana dostawcy, oddanie kursu i „Odebrałem” działają na cały kurs, „Dostarczone” na każdy adres osobno.
-  Mapy dostawców i śledzenia pozycji nie ma (0068): `staff_share_location`, `staff_courier_position` nic nie robią
-  (dla starszych wersji aplikacji), `guest_courier_position` zwraca null, `courier_tracking` wyłączone, pozycje
-  i trasy skasowane. Funkcja Edge `maps` i sekret `GOOGLE_MAPS_SERVER_KEY` zostały w Supabase, ale nic ich nie używa
-  (do usunięcia przez użytkownika w panelu Supabase).
+  Mapa dostawców wróciła 14.11.2026 (prośba użytkownika: „przywrócimy stary projekt Mapa, tylko z mapą Mapbox”;
+  najpierw panel na komputerze, a jeśli będzie dobrze wyglądać, telefony w Dostawach, CarPlay i Android Auto z
+  nawigacją i pozycją kierowców). Dostawy → Mapa (`/mapa`, uprawnienie `orders`, tylko Pro,
+  `features/deliveries/delivery_map_screen.dart`, dane `data/delivery_map.dart`): baza daje tylko dane
+  (`panel_delivery_map`, 0087: lokal z położeniem, dostawcy z `private.courier_queue` z kolorem, autem na dziś
+  z `vehicle_days` i pozycją z `staff_locations` z ostatnich 15 min, dostawy accepted/ready/on_the_way), a resztę
+  liczy panel w Mapbox z publicznym kluczem z env.json (`MapboxClient`, `mapboxProvider`, `Env.mapboxToken`):
+  kafelki stylu ciemnego albo jasnego według motywu (`TileLayer` 512 px, `{r}` na ekranach o dużej gęstości), adresy
+  (Geocoding v6, Polska, blisko lokalu, bez miasta w adresie dopisuje miasto lokalu; wyniki tylko w pamięci panelu,
+  bo tymczasowych wyników Mapbox nie wolno zapisywać w bazie), najszybsza kolejność przystanków kursu (Optimization
+  v1 `driving-traffic`, przy odmowie `driving`; jeden adres: Directions v5) i czasy między adresami czekającymi
+  w lokalu (Matrix v1). Kurs = dostawy z tym samym `course_id` albo jedna dostawa (`groupCourses`); trasa liczy się
+  od lokalu, a dla kursu w drodze od pozycji dostawcy, gdy telefon ją wysyła; od nowa co 5 minut albo po zmianie
+  przystanków. Panel po lewej (`SidePanelLayout`): Kursy (propozycje, potem karty kursów: dostawca albo „Czeka na
+  dostawcę”, etap, cała trasa w minutach i km, przystanki po kolei z numerem; w drodze „Będzie ok. 19:42” od odbioru
+  albo pozycji i „spóźni się ok. N min” na czerwono po obiecanej godzinie, w lokalu „Jazda ok. 8 min · na 19:30”)
+  i Dostawcy (auto na dziś, pozycja z telefonu albo „Brak pozycji z telefonu”, Wolny / W kursie / Bez kontroli
+  auta). Mapa: lokal, cele w kolorze kursu (kolor dostawcy, bez dostawcy pomarańczowy) z numerem przystanku, trasy
+  kursów, dostawcy z pozycją, u góry liczby (na zmianie, w drodze, czekają, bez adresu na mapie, „Mapbox nie
+  odpowiada”), po prawej „Pokaż wszystko”, przybliż, oddal, w rogu oznaczenie Mapbox i OpenStreetMap. Kliknięcie
+  kursu albo celu zaznacza kurs i pokazuje jego trasę (reszta przygaszona). Propozycje kursów (`suggestCourses`,
+  „automatycznie ma zaznaczać kursy”): kursy jeszcze w lokalu (bez zamówień na godzinę przed porą kuchni), adresy
+  najwyżej 7 min jazdy od siebie, razem najwyżej 4 adresy, obiecane godziny najwyżej 25 min od siebie, a ostatni
+  klient czeka najwyżej 10 min dłużej; najbliższe pierwsze, każdy kurs w jednej propozycji; na mapie przerywana
+  kreska między adresami, na liście „Połącz” (`panel_takeaway_merge`, dostawca jak w Dostawach) i „Pomiń”. Dane
+  z bazy co 15 s. Bez klucza Mapbox mapa jest bez kafelków z informacją, jak go dodać, a lista kursów działa bez
+  tras. Testy: `test/delivery_map_test.dart` (udawane odpowiedzi Mapbox). Drugi etap (telefony): wysyłanie pozycji
+  (`staff_share_location` nadal nic nie zapisuje), nawigacja, CarPlay i Android Auto.
+  Ze starej mapy (0053, 0061, wyłączonej w 0068) zostały: `staff_locations`, `courier_routes`, kolumny
+  `orders.delivery_lat/lng/geo` i `restaurants.courier_tracking` (nieużywane), `staff_courier_position` nic nie robi,
+  `guest_courier_position` zwraca null. Funkcja Edge `maps` i sekret `GOOGLE_MAPS_SERVER_KEY` zostały w Supabase,
+  ale nic ich nie używa (do usunięcia przez użytkownika w panelu Supabase).
 - Ekran kuchni (`/kuchnia`, uprawnienie `kitchen`, np. Kucharz): bileciki z pozycjami wysłanymi na kuchnię,
   pogrupowane po rachunku i chwili wysłania, najstarsze pierwsze. Czas liczony od wysłania z sekundami;
   kolory po progach z `restaurants.kitchen_warn_minutes`/`kitchen_late_minutes` (domyślnie 4 i 6 min).

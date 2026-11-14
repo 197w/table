@@ -11,6 +11,7 @@ import '../features/calendar/calendar_screen.dart';
 import '../features/activity/activity_screen.dart';
 import '../features/customers/customers_screen.dart';
 import '../features/deliveries/deliveries_screen.dart';
+import '../features/deliveries/delivery_map_screen.dart';
 import '../features/fleet/fleet_screen.dart';
 import '../features/floor/floor_screen.dart';
 import '../features/inventory/inventory_screen.dart';
@@ -182,6 +183,7 @@ GoRouter _buildRouter(
           ),
           _page(PanelRoutes.history, const OrderHistoryScreen()),
           _page(PanelRoutes.deliveries, const DeliveriesScreen()),
+          _page(PanelRoutes.deliveryMap, const DeliveryMapScreen()),
           _page(PanelRoutes.pickup, const DeliveriesScreen(kind: OrderKind.pickup)),
           _page(PanelRoutes.fleet, const FleetScreen()),
           _page(PanelRoutes.kitchen, const KitchenScreen()),
@@ -236,6 +238,7 @@ abstract final class PanelRoutes {
   static const orders = '/zamowienia';
   static const history = '/historia';
   static const deliveries = '/dostawy';
+  static const deliveryMap = '/mapa';
   static const fleet = '/flota';
   static const kitchen = '/kuchnia';
   static const serving = '/wydanie';
@@ -267,6 +270,7 @@ const _routePermissions = {
   PanelRoutes.orders: {'orders'},
   PanelRoutes.history: {'orders', 'stats'},
   PanelRoutes.deliveries: {'orders'},
+  PanelRoutes.deliveryMap: {'orders'},
   PanelRoutes.fleet: {'fleet'},
   PanelRoutes.kitchen: {'kitchen'},
   PanelRoutes.serving: {'serving'},
@@ -302,6 +306,7 @@ const panelTabLabels = {
   PanelRoutes.orders: 'Zamówienia',
   PanelRoutes.history: 'Historia zamówień',
   PanelRoutes.deliveries: 'Dostawy',
+  PanelRoutes.deliveryMap: 'Mapa dostawców',
   PanelRoutes.fleet: 'Flota',
   PanelRoutes.kitchen: 'Kuchnia',
   PanelRoutes.serving: 'Kompletowanie',

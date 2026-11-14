@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:table_core/table_core.dart';
 
+import 'delivery_map.dart';
 import 'models.dart';
 
 /// Jedyne miejsce panelu, które rozmawia z Supabase.
@@ -782,6 +783,17 @@ class PanelRepository {
       'p_member_id': memberId,
     }),
   );
+
+  /// Mapa dostawców (0087): lokal z położeniem, dostawcy na zmianie i dostawy w toku.
+  Future<DeliveryMap> deliveryMap(String restaurantId) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>(
+        'panel_delivery_map',
+        params: {'p_restaurant_id': restaurantId},
+      );
+      return DeliveryMap.fromJson(json);
+    });
+  }
 
   /// Wyjmuje dostawę z kursu; wraca do kolejki dostawców.
   Future<void> splitCourse(String orderId, {String? memberId}) => _guard(
