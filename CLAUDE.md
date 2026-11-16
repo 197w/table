@@ -617,7 +617,18 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   uprawnienia, liczba pracowników); kliknięte stanowisko pokazuje się w miejscu tabeli (`_RoleEditor(inline: true)`:
   „‹ Stanowiska”, nazwa i uprawnienia w dwóch kolumnach, „Usuń” i „Zapisz” u góry, obok kto ma to stanowisko;
   systemowe tylko do podglądu).
-  `SegmentedTabs` ma podświetlenie (`_SlidingSegments`), które przesuwa się do wybranej opcji (`IconTabs` od 1.11.2026 bez pigułki). Każdy pracownik ma czterocyfrowy kod, unikalny w lokalu
+  `SegmentedTabs` ma podświetlenie (`_SlidingSegments`), które przesuwa się do wybranej opcji (`IconTabs` od 1.11.2026 bez pigułki).
+  Od 16.11.2026 (prośba użytkownika, według zrzutu „Sprzedaż / Goście / Inwentaryzacja”) wszystkie opcje mają tę samą
+  szerokość (najdłuższego napisu, a z `expand` równa część całej szerokości; `_RenderIndicatorRow._childConstraints`),
+  a wybór można zrobić też przeciągnięciem po pigułce (`onSelect`, opcje pod myszą albo palcem).
+  Rozwijane listy wyboru (od 16.11.2026, prośba: „wszystkie menu takiego wyboru zmieniamy na podobny wygląd”, zrzut
+  z UniFi) to `PanelSelect<T>` z `shared/panel_select.dart` zamiast `DropdownButtonFormField` (te same pozycje
+  `DropdownMenuItem`, pole pamięta wybór samo i nie reaguje na zmianę `initialValue`, więc inna wartość początkowa
+  wymaga nowego klucza): pole z ramką akcentu przy otwartej liście i strzałką w górę, pod nim ciemny panel o szerokości
+  pola (`MenuAnchor` z `crossAxisUnconstrained: false`), wiersze 40 px, najechany jaśniejszy, wybrany z haczykiem
+  i pogrubiony. Wspólny styl: `panelMenuStyle`, `panelMenuItemStyle`, `panelMenuCheck`; `PanelTheme` daje ten wygląd
+  też menu „⋯” (`popupMenuTheme`) i liście ze wpisywaniem (`dropdownMenuTheme`, składniki w Dokumentach
+  inwentaryzacji). Tylko panel; aplikacje na telefony zostają przy swoich wyborach. Każdy pracownik ma czterocyfrowy kod, unikalny w lokalu
   (nadaje go baza przy dodaniu, trigger `staff_members_code`; zmiana: `panel_set_staff_code`, wpisany albo losowy).
   Kod widać stale w szczegółach (uprawnienie `staff_logins`, „Kody pracowników”, `panel_staff_codes`) i w aplikacji
   pracownika (`staff_my_codes`). Kod leży zaszyfrowany w Supabase Vault (`staff_codes.code_secret`), logowanie szuka

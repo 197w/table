@@ -473,7 +473,9 @@ class StatTile extends StatelessWidget {
   }
 }
 
-/// Wybór jednej opcji z kilku, jak zakładki w pigułce. Podświetlenie przesuwa się do wybranej opcji.
+/// Wybór jednej opcji z kilku, jak zakładki w pigułce. Wszystkie opcje mają tę samą szerokość (16.11.2026, prośba
+/// użytkownika; wcześniej każda miała szerokość swojego napisu), a podświetlenie przesuwa się do wybranej opcji.
+/// Wybór można też zrobić przeciągnięciem po pigułce: podświetlenie jedzie za myszą albo palcem.
 class SegmentedTabs<T> extends StatelessWidget {
   const SegmentedTabs({
     super.key,
@@ -488,8 +490,9 @@ class SegmentedTabs<T> extends StatelessWidget {
   final T selected;
   final ValueChanged<T> onChanged;
 
-  /// Na całą dostępną szerokość (np. nad osią czasu w Logach, w panelu Pracowników): każda opcja dostaje
-  /// swoją szerokość i równą część zapasu, a napisy mają mniejszy margines, żeby zmieściły się trzy.
+  /// Na całą dostępną szerokość (np. nad osią czasu w Logach, w panelu Pracowników): opcje dzielą ją po równo,
+  /// a napisy mają mniejszy margines, żeby zmieściły się trzy. Bez tego każda opcja ma szerokość najdłuższego
+  /// napisu.
   final bool expand;
 
   /// Ikony przed napisami, w kolejności opcji (jak „People” i „Roles” w UniFi).
@@ -497,9 +500,13 @@ class SegmentedTabs<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final selectedIndex = options.indexWhere((o) => o.$1 == selected);
     return _SlidingSegments(
-      selectedIndex: options.indexWhere((o) => o.$1 == selected),
+      selectedIndex: selectedIndex,
       expand: expand,
+      onSelect: (i) {
+        if (i != selectedIndex && i >= 0 && i < options.length) onChanged(options[i].$1);
+      },
       children: [
         for (final (i, (value, label)) in options.indexed)
           _TextSegment(
@@ -557,12 +564,15 @@ const _segmentDuration = Duration(milliseconds: 340);
 /// Pigułka z opcjami. Jedno podświetlenie przesuwa się między opcjami i dopasowuje szerokość,
 /// zamiast gasnąć w jednej opcji i zapalać się w drugiej.
 class _SlidingSegments extends StatefulWidget {
-  const _SlidingSegments({required this.selectedIndex, required this.children, this.expand = false});
+  const _SlidingSegments({required this.selectedIndex, required this.children, this.expand = false, this.onSelect});
 
   /// -1: nic nie jest wybrane.
   final int selectedIndex;
   final List<Widget> children;
   final bool expand;
+
+  /// Opcja pod myszą albo palcem przy przeciąganiu po pigułce (opcje mają równe szerokości).
+  final ValueChanged<int>? onSelect;
 
   @override
   State<_SlidingSegments> createState() => _SlidingSegmentsState();
@@ -591,8 +601,30 @@ class _SlidingSegmentsState extends State<_SlidingSegments> with SingleTickerPro
     super.dispose();
   }
 
+  /// Numer opcji pod poziomym położeniem [dx] w pigułce (3 px obrzeża z każdej strony).
+  int _indexAt(double dx) {
+    final width = (context.size?.width ?? 0) - 6;
+    final count = widget.children.length;
+    if (width <= 0 || count == 0) return -1;
+    return ((dx - 3) / (width / count)).floor().clamp(0, count - 1);
+  }
+
+  void _drag(double dx) {
+    final i = _indexAt(dx);
+    if (i >= 0) widget.onSelect?.call(i);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final drag = widget.onSelect != null;
+    return GestureDetector(
+      onHorizontalDragStart: drag ? (d) => _drag(d.localPosition.dx) : null,
+      onHorizontalDragUpdate: drag ? (d) => _drag(d.localPosition.dx) : null,
+      child: _pill(),
+    );
+  }
+
+  Widget _pill() {
     final dark = AppColors.palette.brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(3),
@@ -744,13 +776,14 @@ class _RenderIndicatorRow extends RenderBox
     }
   }
 
+  // Wszystkie opcje mają szerokość najdłuższej, więc rząd to liczba opcji razy ta szerokość.
   @override
   double computeMinIntrinsicWidth(double height) =>
-      _children.fold(0, (sum, c) => sum + c.getMinIntrinsicWidth(height));
+      childCount * _children.fold<double>(0, (m, c) => math.max(m, c.getMinIntrinsicWidth(height)));
 
   @override
   double computeMaxIntrinsicWidth(double height) =>
-      _children.fold(0, (sum, c) => sum + c.getMaxIntrinsicWidth(height));
+      childCount * _children.fold<double>(0, (m, c) => math.max(m, c.getMaxIntrinsicWidth(height)));
 
   @override
   double computeMinIntrinsicHeight(double width) =>
@@ -764,20 +797,19 @@ class _RenderIndicatorRow extends RenderBox
   double? computeDistanceToActualBaseline(TextBaseline baseline) =>
       defaultComputeDistanceToHighestActualBaseline(baseline);
 
-  /// Ograniczenia każdej opcji: swoja szerokość, a przy [_expand] swoja szerokość i równa część wolnego miejsca
-  /// (gdy miejsca brakuje, wszystkie po równo).
+  /// Ograniczenia każdej opcji: ta sama szerokość dla wszystkich. Bez [_expand] to szerokość najdłuższego napisu
+  /// (gdy miejsca brakuje, równa część dostępnej szerokości), z [_expand] równa część całej dostępnej szerokości.
   List<BoxConstraints> _childConstraints(BoxConstraints constraints) {
-    final loose = BoxConstraints(maxHeight: constraints.maxHeight);
-    if (!_expand || !constraints.hasBoundedWidth || childCount == 0) {
-      return List.filled(childCount, loose);
+    if (childCount == 0) return const [];
+    var each = _children.fold<double>(0, (m, c) => math.max(m, c.getMaxIntrinsicWidth(constraints.maxHeight)));
+    if (constraints.hasBoundedWidth) {
+      final fair = constraints.maxWidth / childCount;
+      each = _expand ? fair : math.min(each, fair);
     }
-    final own = [for (final c in _children) c.getMaxIntrinsicWidth(constraints.maxHeight)];
-    final extra = (constraints.maxWidth - own.fold(0.0, (a, b) => a + b)) / childCount;
-    return [
-      for (final w in own)
-        BoxConstraints.tightFor(width: extra >= 0 ? w + extra : constraints.maxWidth / childCount)
-            .copyWith(maxHeight: constraints.maxHeight),
-    ];
+    return List.filled(
+      childCount,
+      BoxConstraints.tightFor(width: each).copyWith(maxHeight: constraints.maxHeight),
+    );
   }
 
   @override

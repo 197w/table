@@ -4,6 +4,7 @@ import 'package:table_core/table_core.dart';
 
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../shared/panel_select.dart';
 import '../../shared/panel_widgets.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
@@ -42,7 +43,7 @@ class VehicleDayPicker extends ConsumerWidget {
         if (d.memberId != memberId) d.vehicleId,
     };
 
-    return DropdownButtonFormField<String?>(
+    return PanelSelect<String?>(
       key: ValueKey('auto-$memberId-$mine'),
       initialValue: vehicles.any((v) => v.id == mine) ? mine : null,
       decoration: const InputDecoration(
@@ -50,7 +51,6 @@ class VehicleDayPicker extends ConsumerWidget {
         helperText: 'Zapisuje się od razu. Dostawca zrobi zdjęcia i wpisze przebieg przed pierwszym kursem.',
         helperMaxLines: 2,
       ),
-      icon: const Glyph(AppIcons.caretDown, size: 16),
       items: [
         const DropdownMenuItem<String?>(value: null, child: Text('Bez auta')),
         for (final v in vehicles)

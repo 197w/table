@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
 import '../../data/providers.dart';
+import '../../shared/panel_select.dart';
 
 /// Rodzaje kuchni: klucz w bazie i nazwa. Te same klucze zna aplikacja dla gości.
 const cuisines = <String, String>{
@@ -166,7 +167,7 @@ class _CreateRestaurantScreenState extends ConsumerState<CreateRestaurantScreen>
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: DropdownButtonFormField<String>(
+                        child: PanelSelect<String>(
                           initialValue: _cuisine,
                           decoration: const InputDecoration(labelText: 'Kuchnia'),
                           items: [

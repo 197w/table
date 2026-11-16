@@ -5,6 +5,7 @@ import 'package:table_core/table_core.dart';
 
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../shared/panel_select.dart';
 import '../../shared/panel_widgets.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
@@ -260,7 +261,7 @@ class _NewReservationDialogState extends ConsumerState<NewReservationDialog> {
                       children: [
                         if (!_block) ...[
                           Expanded(
-                            child: DropdownButtonFormField<Occasion?>(
+                            child: PanelSelect<Occasion?>(
                               initialValue: _occasion,
                               decoration: const InputDecoration(labelText: 'Okazja'),
                               items: [
@@ -274,7 +275,7 @@ class _NewReservationDialogState extends ConsumerState<NewReservationDialog> {
                           const SizedBox(width: 12),
                         ],
                         Expanded(
-                          child: DropdownButtonFormField<int?>(
+                          child: PanelSelect<int?>(
                             initialValue: _duration,
                             decoration: const InputDecoration(labelText: 'Czas wizyty'),
                             items: [

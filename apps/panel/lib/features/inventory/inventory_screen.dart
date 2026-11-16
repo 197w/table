@@ -5,6 +5,7 @@ import 'package:table_core/table_core.dart';
 
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../shared/panel_select.dart';
 import '../../shared/panel_widgets.dart';
 import 'inventory_docs.dart';
 import 'inventory_pdf.dart';
@@ -1546,10 +1547,9 @@ class _InventoryItemDialogState extends ConsumerState<InventoryItemDialog> {
                 ],
                 if (weighed && containers.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  DropdownButtonFormField<String?>(
+                  PanelSelect<String?>(
                     initialValue: containers.any((c) => c.id == _containerId) ? _containerId : null,
                     decoration: const InputDecoration(labelText: 'Zwykle ważony w pojemniku'),
-                    icon: const Glyph(AppIcons.caretDown, size: 16),
                     items: [
                       const DropdownMenuItem<String?>(value: null, child: Text('Bez pojemnika')),
                       for (final c in containers) DropdownMenuItem<String?>(value: c.id, child: Text(c.label)),

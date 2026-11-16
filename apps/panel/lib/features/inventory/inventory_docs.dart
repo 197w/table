@@ -5,6 +5,7 @@ import 'package:table_core/table_core.dart';
 
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../shared/panel_select.dart';
 import '../../shared/panel_widgets.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
@@ -366,10 +367,9 @@ class _InventoryDocDialogState extends ConsumerState<InventoryDocDialog> {
                   ],
                 )
               else
-                DropdownButtonFormField<RemovalReason>(
+                PanelSelect<RemovalReason>(
                   initialValue: _reason,
                   decoration: const InputDecoration(labelText: 'Powód'),
-                  icon: const Glyph(AppIcons.caretDown, size: 16),
                   items: [for (final r in RemovalReason.values) DropdownMenuItem(value: r, child: Text(r.label))],
                   onChanged: (r) => setState(() => _reason = r),
                 ),
@@ -396,7 +396,13 @@ class _InventoryDocDialogState extends ConsumerState<InventoryDocDialog> {
                           selectedTrailingIcon: const Glyph(AppIcons.caretUp, size: 16),
                           dropdownMenuEntries: [
                             for (final item in sorted)
-                              DropdownMenuEntry(value: item.id, label: item.name, labelWidget: Text(item.name)),
+                              DropdownMenuEntry(
+                                value: item.id,
+                                label: item.name,
+                                labelWidget: Text(item.name),
+                                leadingIcon: panelMenuCheck(selected: item.id == l.itemId),
+                                style: panelMenuItemStyle(context, selected: item.id == l.itemId),
+                              ),
                           ],
                           onSelected: (id) => setState(() => l.itemId = id),
                         ),

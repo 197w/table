@@ -4,6 +4,7 @@ import 'package:table_core/table_core.dart';
 
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../shared/panel_select.dart';
 import '../../shared/panel_widgets.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
@@ -659,10 +660,9 @@ class _ShiftDialogState extends ConsumerState<ShiftDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            DropdownButtonFormField<String>(
+            PanelSelect<String>(
               initialValue: _memberId,
               decoration: const InputDecoration(labelText: 'Pracownik'),
-              icon: const Glyph(AppIcons.caretDown, size: 16),
               items: [
                 for (final m in widget.members.where((m) => m.active || m.id == _memberId))
                   DropdownMenuItem(value: m.id, child: Text(m.name)),

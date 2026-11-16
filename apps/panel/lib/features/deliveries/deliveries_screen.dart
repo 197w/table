@@ -5,6 +5,7 @@ import 'package:table_core/table_core.dart';
 import '../../app/panel_theme.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../shared/panel_select.dart';
 import '../../shared/panel_widgets.dart';
 import '../printing/label_printing.dart';
 import 'order_risk.dart';
@@ -727,10 +728,9 @@ class _MergeDialogState extends State<_MergeDialog> {
                 ),
               ),
             const SizedBox(height: 14),
-            DropdownButtonFormField<String?>(
+            PanelSelect<String?>(
               initialValue: _courier,
               decoration: const InputDecoration(labelText: 'Dostawca kursu'),
-              icon: const Glyph(AppIcons.caretDown, size: 16),
               items: [
                 DropdownMenuItem(
                   value: null,

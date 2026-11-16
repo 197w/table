@@ -6,6 +6,7 @@ import 'package:table_core/table_core.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/menu_photo.dart';
+import '../../shared/panel_select.dart';
 import '../../shared/panel_widgets.dart';
 import '../../shared/side_panel.dart';
 import '../inventory/inventory_screen.dart';
@@ -1463,12 +1464,9 @@ class _ItemSheetState extends ConsumerState<_ItemSheet> {
         const SizedBox(height: 16),
         SheetField(
           label: 'Sekcja',
-          child: DropdownButtonFormField<String>(
+          child: PanelSelect<String>(
             key: ValueKey('sekcja-$sectionName'),
             initialValue: widget.sections.any((s) => s.id == _sectionId) ? _sectionId : null,
-            isExpanded: true,
-            isDense: true,
-            icon: Glyph(AppIcons.caretDown, size: 14, color: AppColors.textMuted),
             decoration: sheetInput(),
             items: [
               for (final s in widget.sections)
@@ -1691,13 +1689,10 @@ class _RecipeEditor extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: DropdownButtonFormField<String>(
+                    child: PanelSelect<String>(
                       // Klucz ze składnikiem: wybór wstawiony z „Nowy składnik” odświeża pole.
                       key: ValueKey('${identityHashCode(row)}-${row.itemId}'),
                       initialValue: byId.containsKey(row.itemId) ? row.itemId : null,
-                      isExpanded: true,
-                      isDense: true,
-                      icon: Glyph(AppIcons.caretDown, size: 14, color: AppColors.textMuted),
                       hint: const Text('Wybierz składnik'),
                       decoration: sheetInput(),
                       items: [
@@ -1741,12 +1736,9 @@ class _RecipeEditor extends StatelessWidget {
                   SizedBox(
                     width: 104,
                     child: switch (byId[row.itemId]) {
-                      final item? when item.unit.compatible.length > 1 => DropdownButtonFormField<InventoryUnit>(
+                      final item? when item.unit.compatible.length > 1 => PanelSelect<InventoryUnit>(
                         key: ValueKey('${row.itemId}-unit'),
                         initialValue: row.unit ?? item.unit.portion,
-                        isDense: true,
-                        isExpanded: true,
-                        icon: Glyph(AppIcons.caretDown, size: 14, color: AppColors.textMuted),
                         decoration: sheetInput(),
                         items: [
                           for (final u in item.unit.compatible) DropdownMenuItem(value: u, child: Text(u.label)),

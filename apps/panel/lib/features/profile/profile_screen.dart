@@ -7,6 +7,7 @@ import 'package:table_core/table_core.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/menu_photo.dart';
+import '../../shared/panel_select.dart';
 import '../../shared/panel_widgets.dart';
 import 'schedule_conflicts.dart';
 
@@ -565,11 +566,9 @@ class _DayCloseCardState extends ConsumerState<_DayCloseCard> {
               'w podsumowaniu dnia, statystykach, Historii zamówień i eksporcie.',
           trailing: SizedBox(
             width: 140,
-            child: DropdownButtonFormField<String>(
+            child: PanelSelect<String>(
               key: ValueKey(current),
               initialValue: _options.contains(current) ? current : null,
-              isDense: true,
-              icon: const Glyph(AppIcons.caretDown, size: 16),
               items: [
                 for (final o in _options)
                   DropdownMenuItem(value: o, child: Text(o == '00:00' ? '00:00 (północ)' : o)),
@@ -716,7 +715,7 @@ class _DetailsFormState extends ConsumerState<_DetailsForm> {
           Row(
             children: [
               Expanded(
-                child: DropdownButtonFormField<String>(
+                child: PanelSelect<String>(
                   initialValue: _cuisine,
                   decoration: const InputDecoration(labelText: 'Kuchnia'),
                   items: [
@@ -1591,9 +1590,8 @@ class _SchedulePeriodCardState extends ConsumerState<_SchedulePeriodCard> {
               children: [
                 SizedBox(
                   width: 210,
-                  child: DropdownButtonFormField<int?>(
+                  child: PanelSelect<int?>(
                     initialValue: widget.profile.scheduleDeadlineDow,
-                    icon: const Glyph(AppIcons.caretDown, size: 16),
                     items: [
                       const DropdownMenuItem(value: null, child: Text('Bez terminu')),
                       for (var d = 1; d <= 7; d++)

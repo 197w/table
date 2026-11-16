@@ -10,6 +10,7 @@ import 'package:table_core/table_core.dart';
 import '../../app/panel_theme.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../shared/panel_select.dart';
 import '../../shared/panel_widgets.dart';
 import '../../shared/side_panel.dart';
 import 'devices_pages.dart';
@@ -683,11 +684,9 @@ class _PrinterSectionState extends ConsumerState<_PrinterSection> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _GroupTitle('Drukarka etykiet', subtitle: 'na tym komputerze', first: true),
-        DropdownButtonFormField<String>(
+        PanelSelect<String>(
           key: ValueKey('$choice${printers.length}'),
           initialValue: choice,
-          isExpanded: true,
-          icon: const Glyph(AppIcons.caretDown, size: 16),
           decoration: const InputDecoration(labelText: 'Drukarka', isDense: true),
           hint: Text(settings.printer.isNotEmpty ? '${settings.printer} (niedostępna)' : 'Wybierz drukarkę'),
           items: [

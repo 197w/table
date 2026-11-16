@@ -9,6 +9,7 @@ import 'package:table_core/table_core.dart';
 
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../shared/panel_select.dart';
 import '../../shared/panel_widgets.dart';
 import '../reservations/reservations_screen.dart' show StatusPill;
 import 'floor_canvas.dart';
@@ -2126,7 +2127,7 @@ class _TableInspectorState extends State<_TableInspector> {
             ),
           ],
           const SizedBox(height: 10),
-          DropdownButtonFormField<String>(
+          PanelSelect<String>(
             initialValue: widget.zones.contains(t.zone) ? t.zone : null,
             decoration: const InputDecoration(labelText: 'Strefa'),
             items: [for (final z in widget.zones) DropdownMenuItem(value: z, child: Text(Fmt.capitalize(z)))],

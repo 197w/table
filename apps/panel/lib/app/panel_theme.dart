@@ -1,6 +1,8 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+import '../shared/panel_select.dart';
+
 /// Ciemna paleta panelu. Mniej poziomów szarości niż w aplikacji dla gości:
 /// tło i menu mają jeden kolor, karty są o krok jaśniejsze, a elementy na kartach
 /// o kolejny. Obrysy to biel z małą przezroczystością, bo cienie na czerni nie działają.
@@ -189,6 +191,21 @@ abstract final class PanelTheme {
         trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
       ),
       snackBarTheme: base.snackBarTheme.copyWith(width: 420),
+      // Rozwijane menu (listy wyboru, menu „⋯”, lista ze wpisywaniem) mają jeden wygląd: ciemny panel z linią
+      // i zaokrągleniem, jak w UniFi (16.11.2026, prośba użytkownika).
+      popupMenuTheme: PopupMenuThemeData(
+        color: dark ? p.surfaceRaised : p.surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 12,
+        shadowColor: Colors.black.withValues(alpha: dark ? 0.6 : 0.2),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: p.ringStrong),
+        ),
+        menuPadding: const EdgeInsets.all(6),
+        mouseCursor: const WidgetStatePropertyAll(SystemMouseCursors.click),
+      ),
+      dropdownMenuTheme: DropdownMenuThemeData(menuStyle: panelMenuStyle(palette: p)),
     );
   }
 }

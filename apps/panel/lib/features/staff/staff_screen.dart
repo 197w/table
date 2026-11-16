@@ -5,6 +5,7 @@ import 'package:table_core/table_core.dart';
 
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../shared/panel_select.dart';
 import '../../shared/panel_widgets.dart';
 import '../../shared/side_panel.dart';
 import '../fleet/vehicle_days.dart';
@@ -2563,10 +2564,9 @@ class _HoursDialogState extends State<_HoursDialog> {
             // Stanowisko na ten dzień: u osób z kilkoma stanowiskami do wyboru.
             if (widget.positions.length > 1) ...[
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
+              PanelSelect<String>(
                 initialValue: widget.positions.any((p) => p.id == _positionId) ? _positionId : widget.positions.first.id,
                 decoration: const InputDecoration(labelText: 'Stanowisko tego dnia'),
-                icon: const Glyph(AppIcons.caretDown, size: 16),
                 items: [for (final p in widget.positions) DropdownMenuItem(value: p.id, child: Text(p.name))],
                 onChanged: (v) => setState(() => _positionId = v),
               ),
@@ -3213,10 +3213,9 @@ class _MemberSheetState extends ConsumerState<_MemberSheet> {
         const SizedBox(height: 24),
         const SheetHeading('Umowa i stawka', optional: true),
         const SizedBox(height: 10),
-        DropdownButtonFormField<Contract>(
+        PanelSelect<Contract>(
           initialValue: _contract,
           decoration: sheetInput(),
-          icon: const Glyph(AppIcons.caretDown, size: 16),
           items: [for (final c in Contract.values) DropdownMenuItem(value: c, child: Text(c.label))],
           onChanged: _rateLoaded
               ? (c) {
