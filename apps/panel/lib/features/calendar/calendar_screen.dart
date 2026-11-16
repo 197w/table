@@ -80,9 +80,9 @@ String eventTimeLabel(CalendarEvent e) {
 }
 
 enum _View {
-  day('Dzień'),
-  week('Tydzień'),
-  month('Miesiąc');
+  day('D'),
+  week('T'),
+  month('M');
 
   const _View(this.label);
   final String label;
@@ -549,7 +549,9 @@ class _MiniMonth extends StatelessWidget {
                             width: 24,
                             height: 24,
                             alignment: Alignment.center,
-                            decoration: isToday ? const BoxDecoration(color: _red, shape: BoxShape.circle) : null,
+                            decoration: isToday
+                                ? const BoxDecoration(color: _red, borderRadius: BorderRadius.all(Radius.circular(6)))
+                                : null,
                             child: Text(
                               '${day.day}',
                               style: text.labelMedium?.copyWith(

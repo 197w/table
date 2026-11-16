@@ -1360,7 +1360,7 @@ class StepSwitcher extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.ring),
       ),
       child: Row(
@@ -1392,7 +1392,7 @@ class _StepArrow extends StatelessWidget {
       message: tooltip,
       child: Material(
         type: MaterialType.transparency,
-        shape: const CircleBorder(),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(7))),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,

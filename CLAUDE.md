@@ -628,7 +628,14 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   pola (`MenuAnchor` z `crossAxisUnconstrained: false`), wiersze 40 px, najechany jaśniejszy, wybrany z haczykiem
   i pogrubiony. Wspólny styl: `panelMenuStyle`, `panelMenuItemStyle`, `panelMenuCheck`; `PanelTheme` daje ten wygląd
   też menu „⋯” (`popupMenuTheme`) i liście ze wpisywaniem (`dropdownMenuTheme`, składniki w Dokumentach
-  inwentaryzacji). Tylko panel; aplikacje na telefony zostają przy swoich wyborach. Każdy pracownik ma czterocyfrowy kod, unikalny w lokalu
+  inwentaryzacji). Tylko panel; aplikacje na telefony zostają przy swoich wyborach.
+  Zaokrąglenie (16.11.2026, prośba użytkownika, według zrzutów „Nowe wydarzenie” i „Zespół / Stanowiska”): przyciski
+  z obrysem i tekstowe (`outlinedButtonTheme`, `textButtonTheme`, więc też `PanelAction`) mają promień 10 jak
+  przyciski wypełnione i pola, a nie kształt pigułki (`StadiumBorder`). Tak samo wybór daty: `StepSwitcher`
+  (też `MonthSwitcher` i dzień w Historii zamówień) ma promień 10 i prostokątne strzałki (7), mini kalendarz
+  w Kalendarzu zaznacza „dziś” prostokątem (6), a okno `showDatePicker` zaznacza dzień i rok prostokątem 10
+  (`datePickerTheme`). Widok Kalendarza przełącza „D / T / M” (skróty klawiszowe bez zmian: D, W, M; T to „dziś”).
+  Każdy pracownik ma czterocyfrowy kod, unikalny w lokalu
   (nadaje go baza przy dodaniu, trigger `staff_members_code`; zmiana: `panel_set_staff_code`, wpisany albo losowy).
   Kod widać stale w szczegółach (uprawnienie `staff_logins`, „Kody pracowników”, `panel_staff_codes`) i w aplikacji
   pracownika (`staff_my_codes`). Kod leży zaszyfrowany w Supabase Vault (`staff_codes.code_secret`), logowanie szuka

@@ -100,7 +100,7 @@ abstract final class PanelTheme {
           shadowColor: dark ? Colors.transparent : shadow.withValues(alpha: 0.12),
           minimumSize: size,
           padding: padding,
-          shape: const StadiumBorder(),
+          shape: const RoundedRectangleBorder(borderRadius: radius10),
           textStyle: buttonText,
           enabledMouseCursor: SystemMouseCursors.click,
         ),
@@ -110,7 +110,7 @@ abstract final class PanelTheme {
           foregroundColor: p.accent,
           minimumSize: size,
           padding: const EdgeInsets.symmetric(horizontal: 14),
-          shape: const StadiumBorder(),
+          shape: const RoundedRectangleBorder(borderRadius: radius10),
           textStyle: buttonText,
         ),
       ),
@@ -206,6 +206,14 @@ abstract final class PanelTheme {
         mouseCursor: const WidgetStatePropertyAll(SystemMouseCursors.click),
       ),
       dropdownMenuTheme: DropdownMenuThemeData(menuStyle: panelMenuStyle(palette: p)),
+      // Okno wyboru daty: dzień i rok zaznaczone prostokątem z zaokrąglonymi rogami zamiast koła, jak przyciski
+      // (16.11.2026, prośba użytkownika).
+      datePickerTheme: const DatePickerThemeData(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(22))),
+        dayShape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: radius10)),
+        yearShape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: radius10)),
+        todayBorder: BorderSide.none,
+      ),
     );
   }
 }
