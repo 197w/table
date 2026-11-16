@@ -180,7 +180,7 @@ class Repository {
               'delivery_enabled, pickup_enabled, takeaway_cash, takeaway_card, delivery_fee_grosze, delivery_min_grosze, delivery_area, '
               'kitchen_lead_pickup_min, kitchen_lead_delivery_min, cover_url, takeaway_max_items, takeaway_max_per_item, '
               'opening_hours(weekday, opens, closes), '
-              'menu_sections(id, name, position, event_id, '
+              'menu_sections(id, name, position, event_id, season_from, season_to, season_yearly, '
               'event:calendar_events!menu_sections_event_id_fkey(starts_at, ends_at), '
               'menu_items(id, name, description, price_grosze, allergens, position, variants, addons, available, photo_url)), '
               // Wydarzenia specjalne lokalu (0080), które jeszcze trwają albo dopiero będą.

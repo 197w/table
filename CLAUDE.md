@@ -151,7 +151,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Panel: flutter_map i latlong2 (mapa dostawców na kafelkach Mapbox, od 14.11.2026). Śledzenia dostawców z telefonów
   nie ma od 0068 (wróci w drugim etapie mapy), mapy u gościa też nie.
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0087, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0088, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -405,10 +405,16 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`calendar_events.kind`): `special` (wydarzenie specjalne: promocja, zimowe menu; widzą goście, RLS
   `calendar_events_public` dla anon) i `staff` (spotkanie, szkolenie; tylko obsługa lokalu,
   `has_staff_role(..., 'staff')`). Zapis `panel_save_calendar_event` (najwyżej 400 dni, autor `private.note_author`),
-  `panel_delete_calendar_event` (nie, gdy jest dział menu na wydarzenie). Menu tylko na wydarzenie: Menu → dział →
-  „Tylko na wydarzenie…” (`menu_sections.event_id`, `setSectionEvent`, podpis „Tylko na: …”); poza czasem
+  `panel_delete_calendar_event` (nie, gdy jest dział menu na wydarzenie). Menu tylko na wydarzenie
+  (`menu_sections.event_id`, podpis „Tylko na: …”): z okna wydarzenia w Kalendarzu (16.11.2026, prośba użytkownika:
+  „w Kalendarz dodaj możliwość przypisania menu do danego wydarzenia”; sekcja „Menu na wydarzenie”, tylko dla rodzaju
+  „Dla gości”: lista przypiętych działów z „odepnij”, „Dodaj dział z menu” z wolnych działów (zwykłych, bez
+  wydarzenia i sezonu) i „Nowy dział” z nazwą; zmiana idzie po zapisie wydarzenia przez `panel_set_event_menu`
+  (0088, wymaga `calendar` i `menu_edit`, odpięty dział wraca do zwykłego menu, panel to pokazuje), a gdy zapis menu
+  się nie uda, okno zostaje z numerem wydarzenia) albo z Menu → sekcja → „Kiedy w menu” → „Wydarzenie”; poza czasem
   wydarzenia dział znika u gościa, w Zamówieniach panelu i u kelnera (`MenuSection.visibleAt`), a baza nie przyjmuje
   takiej pozycji (trigger `order_items_event_menu`, `private.event_menu_check`, liczy `scheduled_for` albo teraz).
+  Zmiana rodzaju na „Dla pracowników” jest zablokowana, dopóki wydarzenie ma menu.
   Table: sekcja „Wydarzenia” nad „Godziny otwarcia” na stronie lokalu (`_EventsCard`, `RestaurantEvent`,
   `restaurantEventWhen`, najwyżej 6 trwających albo przyszłych, „TRWA TERAZ”). Table for employees: zakładka
   Kalendarz (dawniej Grafik, `schedule_screen.dart`) pokazuje wydarzenia ze wszystkich lokali pracownika jako kropki
@@ -943,6 +949,21 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   na kuchni (`order_items.served_at` z triggera, 0062; na karcie wydane od chwili, gdy czeka najstarsza gotowa),
   stuknięcie przekreślonej cofa wydanie; karta znika, gdy nic na niej nie czeka. Zamówienia na wynos w przygotowaniu: „Spakowane” (`panel_takeaway_ready`),
   gdy kuchnia zrobi wszystko. Nowe gotowe danie dzwoni (wyciszenie `servingMutedProvider`).
+- Menu w panelu (`features/menu/menu_screen.dart`, układ jak Pracownicy od 16.11.2026, prośba użytkownika: „zmień
+  wygląd Menu na nowy”): `SidePanelLayout` z lewym panelem (wyszukiwanie po daniu, wariantach, dodatkach i alergenach
+  oraz nazwie sekcji, „Dodaj pozycję”, „Nowa sekcja”, filtry z liczbą dań: Sekcja, Kiedy w menu, Dostępność) i tabelą
+  dań pogrupowaną w sekcje (zdjęcie, nazwa i opis, opcje i alergeny, cena, stan do przełączenia kliknięciem, menu „⋯”).
+  Nagłówek sekcji ma „dodaj pozycję”, „zmień sekcję” i przesuwanie. Dodawanie i zmiana dania (`_ItemSheet`: nazwa,
+  sekcja z możliwością przeniesienia, cena, opis, warianty, dodatki, receptura w dwóch liniach na wiersz, VAT,
+  dostępność, kuchnia, alergeny, zdjęcie po zapisaniu) i sekcji (`_SectionSheet`) otwierają okno obok panelu
+  (`SideSheetFrame`), zamiast okien na środku. Sezonowe działy (0088, prośba: „tworzenie sezonowych sekcji menu na daty
+  okres”): sekcja jest w menu „Zawsze”, w „Sezon” (od dnia do dnia, opcjonalnie „Powtarzaj co roku”; okres może
+  przechodzić przez Nowy Rok; gotowe okresy Wiosna, Lato, Jesień, Zima, Święta) albo na „Wydarzenie” (nie sezon
+  i wydarzenie naraz, pilnuje tego CHECK). `menu_sections.season_from`, `season_to`, `season_yearly`; wspólna logika
+  `MenuSeason` w `table_core/menu_season.dart` (`contains`, `label`, `statusAt`, `menuSeasonPresets`), a `visibleAt`
+  w modelach panelu i gościa oraz filtr kelnera (`orders_data.dart`) chowają dział poza okresem. Baza liczy to samo
+  (`private.season_active`, dzień w strefie lokalu) i przez `private.event_menu_check` nie przyjmuje pozycji
+  z działu poza sezonem. Przy sekcji w tabeli: „W menu teraz”, „Poza sezonem”, „Od 1 gru” albo „Zakończony”.
 - Menu: zdjęcia dań (`menu_items.photo_url`, bucket `menu-photos`, panel zmniejsza zdjęcie do 1200 px JPG,
   goście widzą je w aplikacji Table: miniatura po prawej przy daniu, stuknięcie powiększa; menu gościa pobiera dane
   od nowa przy otwarciu i przeciągnięciem w dół, bo strona lokalu pod spodem trzyma stare). Uprawnienia: `menu` (zakładka), `menu_edit` (dania, ceny, sekcje, zdjęcia),

@@ -154,18 +154,34 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
   bool get _canEdit => ref.read(memberPermissionsProvider).contains('calendar');
 
-  Future<void> _save(String restaurantId, CalendarEvent e) async {
+  Future<void> _save(String restaurantId, CalendarEvent e, [_MenuChange? menu]) async {
+    final repo = ref.read(repositoryProvider);
+    final String id;
     try {
-      await ref
-          .read(repositoryProvider)
-          .saveCalendarEvent(restaurantId, e, memberId: ref.read(panelMemberProvider)?.dbMemberId);
+      id = await repo.saveCalendarEvent(restaurantId, e, memberId: ref.read(panelMemberProvider)?.dbMemberId);
       ref.invalidate(calendarEventsProvider);
-      if (!mounted) return;
-      setState(() => _editing = null);
-      showMessage(context, e.id == null ? 'Dodano: ${e.title}.' : 'Zapisano: ${e.title}.', tone: ToastTone.success);
     } catch (err) {
       if (mounted) showError(context, err);
+      return;
     }
+    // Menu na wydarzenie (0088) idzie po zapisie wydarzenia, bo potrzebuje jego numeru. Gdy się nie uda, okno
+    // zostaje otwarte już z numerem wydarzenia, żeby kolejny zapis nie założył drugiego.
+    if (menu != null) {
+      try {
+        await repo.setEventMenu(id, sectionIds: menu.ids, newNames: menu.names);
+        ref.invalidate(menuProvider(restaurantId));
+      } catch (err) {
+        ref.invalidate(menuProvider(restaurantId));
+        if (mounted) {
+          setState(() => _editing = e.copyWith(id: id));
+          showError(context, err);
+        }
+        return;
+      }
+    }
+    if (!mounted) return;
+    setState(() => _editing = null);
+    showMessage(context, e.id == null ? 'Dodano: ${e.title}.' : 'Zapisano: ${e.title}.', tone: ToastTone.success);
   }
 
   Future<void> _move(String restaurantId, CalendarEvent e) async {
@@ -434,7 +450,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               editable: editable,
               restaurantId: rid,
               onClose: () => setState(() => _editing = null),
-              onSave: (updated) => _save(rid, updated),
+              onSave: (updated, menu) => _save(rid, updated, menu),
               onDelete: e.id == null ? null : () => _delete(e),
               onDraft: (updated) {
                 // Nowe wydarzenie: zmiany godzin w oknie przesuwają też szkic w siatce.
@@ -1292,6 +1308,10 @@ class _MonthGrid extends StatelessWidget {
   }
 }
 
+/// Zmiana menu przypiętego do wydarzenia: numery działów, które zostają przypięte (pozostałe się odpinają),
+/// i nazwy nowych, pustych działów (0088).
+typedef _MenuChange = ({List<String> ids, List<String> names});
+
 /// Panel wydarzenia po prawej (jak szczegóły w Notion Calendar): nazwa, rodzaj, czas, kolor, opis i menu na
 /// wydarzenie specjalne. Bez uprawnienia „Kalendarz” tylko do odczytu.
 class _EventPanel extends ConsumerStatefulWidget {
@@ -1310,7 +1330,7 @@ class _EventPanel extends ConsumerStatefulWidget {
   final bool editable;
   final String restaurantId;
   final VoidCallback onClose;
-  final ValueChanged<CalendarEvent> onSave;
+  final void Function(CalendarEvent event, _MenuChange? menu) onSave;
   final VoidCallback? onDelete;
   final ValueChanged<CalendarEvent> onDraft;
 
@@ -1328,6 +1348,13 @@ class _EventPanelState extends ConsumerState<_EventPanel> {
   late CalendarColor _color = widget.event.color;
   bool _busy = false;
 
+  /// Działy menu przypięte do wydarzenia po zmianach w oknie. Null: bez zmian, czyli te z bazy.
+  Set<String>? _pickedIds;
+
+  /// Nazwy nowych, pustych działów, które powstaną po zapisie wydarzenia.
+  final _newSections = <String>[];
+  final _newSection = TextEditingController();
+
   @override
   void didUpdateWidget(_EventPanel old) {
     super.didUpdateWidget(old);
@@ -1342,7 +1369,32 @@ class _EventPanelState extends ConsumerState<_EventPanel> {
   void dispose() {
     _title.dispose();
     _description.dispose();
+    _newSection.dispose();
     super.dispose();
+  }
+
+  /// Działy przypięte do tego wydarzenia w bazie.
+  Set<String> _attached(List<MenuSection> all) => {
+    for (final s in all)
+      if (widget.event.id != null && s.eventId == widget.event.id) s.id,
+  };
+
+  /// Zmiana menu do zapisu razem z wydarzeniem. Null, gdy w oknie nic się nie zmieniło.
+  _MenuChange? _menuChange(List<MenuSection> all) {
+    final attached = _attached(all);
+    final picked = _pickedIds ?? attached;
+    final same = picked.length == attached.length && picked.containsAll(attached);
+    if (same && _newSections.isEmpty) return null;
+    return (ids: picked.toList(), names: List.of(_newSections));
+  }
+
+  void _addNewSection() {
+    final name = _newSection.text.trim();
+    if (name.isEmpty) return;
+    setState(() {
+      if (!_newSections.contains(name)) _newSections.add(name);
+      _newSection.clear();
+    });
   }
 
   CalendarEvent get _current => widget.event.copyWith(
@@ -1441,6 +1493,17 @@ class _EventPanelState extends ConsumerState<_EventPanel> {
   }
 
   void _setKind(CalendarKind k) {
+    if (k == CalendarKind.staff) {
+      final all = ref.read(menuProvider(widget.restaurantId)).value ?? const <MenuSection>[];
+      if ((_pickedIds ?? _attached(all)).isNotEmpty || _newSections.isNotEmpty) {
+        showMessage(
+          context,
+          'Wydarzenie ma menu. Odepnij je albo usuń nowe działy, zanim zmienisz je na wydarzenie dla pracowników.',
+          tone: ToastTone.warning,
+        );
+        return;
+      }
+    }
     setState(() {
       _kind = k;
       if (widget.event.id == null) _color = k == CalendarKind.special ? CalendarColor.green : CalendarColor.blue;
@@ -1454,7 +1517,8 @@ class _EventPanelState extends ConsumerState<_EventPanel> {
       return;
     }
     setState(() => _busy = true);
-    widget.onSave(_current);
+    final all = ref.read(menuProvider(widget.restaurantId)).value ?? const <MenuSection>[];
+    widget.onSave(_current, _kind == CalendarKind.special ? _menuChange(all) : null);
     if (mounted) setState(() => _busy = false);
   }
 
@@ -1463,10 +1527,18 @@ class _EventPanelState extends ConsumerState<_EventPanel> {
     final text = Theme.of(context).textTheme;
     final on = widget.editable;
     final e = widget.event;
-    final sections = [
-      for (final s in ref.watch(menuProvider(widget.restaurantId)).value ?? const <MenuSection>[])
-        if (e.id != null && s.eventId == e.id) s,
+    final allSections = ref.watch(menuProvider(widget.restaurantId)).value ?? const <MenuSection>[];
+    final attachedNow = _attached(allSections);
+    final pickedIds = _pickedIds ?? attachedNow;
+    final attachedSections = [for (final s in allSections) if (pickedIds.contains(s.id)) s];
+    final removed = [for (final s in allSections) if (attachedNow.contains(s.id) && !pickedIds.contains(s.id)) s];
+    // Wolne działy do przypięcia: zwykłe (bez wydarzenia i bez sezonu), jeszcze nie wybrane.
+    final free = [
+      for (final s in allSections)
+        if (!pickedIds.contains(s.id) && s.eventId == null && s.season == null) s,
     ];
+    final restaurant = ref.watch(currentRestaurantProvider);
+    final canMenu = on && (restaurant?.canManage ?? false) && ref.watch(memberPermissionsProvider).contains('menu_edit');
     Widget when(String label, {required bool start}) {
       final value = start ? _start : (_allDay ? _addDays(_end, -1) : _end);
       return Row(
@@ -1598,34 +1670,162 @@ class _EventPanelState extends ConsumerState<_EventPanel> {
         if (_kind == CalendarKind.special) ...[
           const SizedBox(height: 24),
           const SheetHeading('Menu na wydarzenie'),
+          const SizedBox(height: 4),
+          Text(
+            'Działy menu tylko na to wydarzenie. Goście, kelnerzy i Zamówienia widzą je tylko w czasie wydarzenia.',
+            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+          ),
           const SizedBox(height: 8),
-          if (sections.isEmpty)
+          if (attachedSections.isEmpty && _newSections.isEmpty)
+            Text('Bez osobnego menu.', style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
+          for (final s in attachedSections)
+            _MenuLine(
+              name: s.name,
+              detail: _dishes(s.items.length),
+              onRemove: canMenu ? () => setState(() => _pickedIds = {...pickedIds}..remove(s.id)) : null,
+            ),
+          for (final name in _newSections)
+            _MenuLine(
+              name: name,
+              detail: 'nowy, pusty dział',
+              onRemove: canMenu ? () => setState(() => _newSections.remove(name)) : null,
+            ),
+          if (removed.isNotEmpty) ...[
+            const SizedBox(height: 4),
             Text(
-              e.id == null
-                  ? 'Po zapisaniu przypnij do wydarzenia dział menu: Menu → dział → „Tylko na wydarzenie”. '
-                        'Goście zobaczą go tylko w czasie wydarzenia.'
-                  : 'Bez osobnego menu. Dział tylko na to wydarzenie przypniesz w Menu → dział → „Tylko na '
-                        'wydarzenie”.',
-              style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-            )
-          else
-            for (final s in sections)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  children: [
-                    Glyph(AppIcons.bookOpen, size: 16, color: AppColors.textMuted),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text('${s.name} · ${s.items.length} dań', style: text.bodyMedium)),
-                  ],
-                ),
+              'Po zapisaniu wrócą do zwykłego menu: ${removed.map((s) => s.name).join(', ')}.',
+              style: text.bodySmall?.copyWith(color: AppColors.accent),
+            ),
+          ],
+          if (canMenu) ...[
+            const SizedBox(height: 10),
+            PopupMenuButton<String>(
+              tooltip: 'Dodaj dział z menu',
+              enabled: free.isNotEmpty,
+              onSelected: (id) => setState(() => _pickedIds = {...pickedIds, id}),
+              itemBuilder: (_) => [
+                for (final s in free) PopupMenuItem(value: s.id, child: Text('${s.name} · ${_dishes(s.items.length)}')),
+              ],
+              child: _MenuAddButton(
+                label: free.isEmpty ? 'Brak wolnych działów w menu' : 'Dodaj dział z menu',
+                enabled: free.isNotEmpty,
               ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _newSection,
+                    maxLength: 60,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: sheetInput(hint: 'Nowy dział, np. Menu degustacyjne'),
+                    onSubmitted: (_) => _addNewSection(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(onPressed: _addNewSection, child: const Text('Dodaj')),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Dania do nowego działu dodasz w Menu po zapisaniu wydarzenia.',
+              style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+            ),
+          ] else if (on)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Menu na wydarzenie zmienia kierownik albo osoba z uprawnieniem „Edycja menu”.',
+                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+              ),
+            ),
         ],
         if (e.createdByName != null) ...[
           const SizedBox(height: 24),
           Text('Dodał(a): ${e.createdByName}', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
         ],
       ],
+    );
+  }
+}
+
+/// „1 danie”, „3 dania”, „5 dań”.
+String _dishes(int n) {
+  if (n == 1) return '1 danie';
+  final mod10 = n % 10;
+  final mod100 = n % 100;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return '$n dania';
+  return '$n dań';
+}
+
+/// Dział menu przypięty do wydarzenia: nazwa, ile ma dań i przycisk „odepnij”.
+class _MenuLine extends StatelessWidget {
+  const _MenuLine({required this.name, required this.detail, required this.onRemove});
+
+  final String name;
+  final String detail;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        children: [
+          Glyph(AppIcons.bookOpen, size: 16, color: AppColors.textMuted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(text: name, style: text.bodyMedium),
+                  TextSpan(text: ' · $detail', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+                ],
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (onRemove != null)
+            IconButton(
+              tooltip: 'Odepnij od wydarzenia',
+              visualDensity: VisualDensity.compact,
+              icon: const Glyph(AppIcons.close, size: 14),
+              onPressed: onRemove,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Przycisk „Dodaj dział z menu” w oknie wydarzenia (otwiera listę działów).
+class _MenuAddButton extends StatelessWidget {
+  const _MenuAddButton({required this.label, required this.enabled});
+
+  final String label;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = enabled ? AppColors.accent : AppColors.textDisabled;
+    return Container(
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.7)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Glyph(AppIcons.plus, size: 14, color: color),
+          const SizedBox(width: 8),
+          Text(label, style: Theme.of(context).textTheme.labelLarge?.copyWith(color: color)),
+        ],
+      ),
     );
   }
 }

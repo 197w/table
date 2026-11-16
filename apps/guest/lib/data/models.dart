@@ -1,6 +1,8 @@
 /// Modele danych. Nazwy pól w JSON odpowiadają kolumnom i funkcjom z supabase/migrations.
 library;
 
+import 'package:table_core/table_core.dart' show MenuSeason;
+
 double? _toDouble(Object? value) {
   if (value == null) return null;
   if (value is num) return value.toDouble();
@@ -292,6 +294,7 @@ class MenuSection {
     this.eventId,
     this.eventStarts,
     this.eventEnds,
+    this.season,
   });
 
   final String id;
@@ -304,8 +307,12 @@ class MenuSection {
   final DateTime? eventStarts;
   final DateTime? eventEnds;
 
+  /// Dział sezonowy (0088): widać go tylko w jego okresie (od dnia do dnia, może co roku).
+  final MenuSeason? season;
+
   bool visibleAt(DateTime t) =>
-      eventId == null || (eventStarts != null && eventEnds != null && !t.isBefore(eventStarts!) && t.isBefore(eventEnds!));
+      (eventId == null || (eventStarts != null && eventEnds != null && !t.isBefore(eventStarts!) && t.isBefore(eventEnds!))) &&
+      (season?.contains(t) ?? true);
 
   factory MenuSection.fromJson(Map<String, dynamic> json) {
     final items =
@@ -322,6 +329,7 @@ class MenuSection {
       eventId: json['event_id'] as String?,
       eventStarts: event == null ? null : DateTime.tryParse(event['starts_at'] as String? ?? '')?.toLocal(),
       eventEnds: event == null ? null : DateTime.tryParse(event['ends_at'] as String? ?? '')?.toLocal(),
+      season: MenuSeason.fromJson(json),
     );
   }
 }

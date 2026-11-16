@@ -429,7 +429,8 @@ class PanelRepository {
       final rows = await _db
           .from('menu_sections')
           .select(
-            'id, name, position, event_id, event:calendar_events(title, starts_at, ends_at), '
+            'id, name, position, event_id, season_from, season_to, season_yearly, '
+            'event:calendar_events(title, starts_at, ends_at), '
             'menu_items(id, section_id, name, description, price_grosze, allergens, position, '
             'variants, addons, vat_rate, available, show_in_kitchen, photo_url, '
             'menu_item_ingredients(item_id, amount, unit, inventory_items(name)))',
@@ -462,6 +463,47 @@ class PanelRepository {
   /// Dział menu tylko na wydarzenie specjalne (null: zwykły dział).
   Future<void> setSectionEvent(String sectionId, String? eventId) {
     return _guard(() => _db.from('menu_sections').update({'event_id': eventId}).eq('id', sectionId));
+  }
+
+  /// Zapis działu: nowy (bez [id]) albo zmiana nazwy i tego, kiedy dział jest w menu (zawsze, w okresie [season]
+  /// albo tylko na wydarzenie [eventId]; okres i wydarzenie nie idą razem, baza tego pilnuje).
+  Future<void> saveSection({
+    String? id,
+    required String restaurantId,
+    required String name,
+    required int position,
+    String? eventId,
+    MenuSeason? season,
+  }) {
+    final when = {
+      'event_id': season == null ? eventId : null,
+      'season_from': season == null ? null : MenuSeason.dbDay(season.from),
+      'season_to': season == null ? null : MenuSeason.dbDay(season.to),
+      'season_yearly': season?.yearly ?? false,
+    };
+    return _guard(() async {
+      if (id == null) {
+        await _db.from('menu_sections').insert({
+          'restaurant_id': restaurantId,
+          'name': name.trim(),
+          'position': position,
+          ...when,
+        });
+      } else {
+        await _db.from('menu_sections').update({'name': name.trim(), ...when}).eq('id', id);
+      }
+    });
+  }
+
+  /// Menu na wydarzenie z okna wydarzenia (0088): [sectionIds] to działy przypięte do wydarzenia (pozostałe
+  /// zostają odpięte), [newNames] zakłada puste działy od razu przypięte.
+  Future<void> setEventMenu(String eventId, {required List<String> sectionIds, List<String> newNames = const []}) {
+    return _guard(
+      () => _db.rpc<void>(
+        'panel_set_event_menu',
+        params: {'p_event_id': eventId, 'p_section_ids': sectionIds, 'p_new_names': newNames},
+      ),
+    );
   }
 
   // Kalendarz (0080).

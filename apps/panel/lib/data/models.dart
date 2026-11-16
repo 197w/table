@@ -852,6 +852,7 @@ class MenuSection {
     this.eventTitle,
     this.eventStarts,
     this.eventEnds,
+    this.season,
   });
 
   /// Dział tylko na wydarzenie specjalne z Kalendarza (0080): poza jego czasem goście i obsługa go nie widzą.
@@ -860,9 +861,13 @@ class MenuSection {
   final DateTime? eventStarts;
   final DateTime? eventEnds;
 
-  /// Dział widoczny w chwili [t] (zwykły zawsze, na wydarzenie tylko w jego czasie).
+  /// Dział sezonowy (0088): w menu tylko w swoim okresie. Ma okres albo wydarzenie, nie oba naraz.
+  final MenuSeason? season;
+
+  /// Dział widoczny w chwili [t] (zwykły zawsze, na wydarzenie tylko w jego czasie, sezonowy w swoim okresie).
   bool visibleAt(DateTime t) =>
-      eventId == null || (eventStarts != null && eventEnds != null && !t.isBefore(eventStarts!) && t.isBefore(eventEnds!));
+      (eventId == null || (eventStarts != null && eventEnds != null && !t.isBefore(eventStarts!) && t.isBefore(eventEnds!))) &&
+      (season?.contains(t) ?? true);
 
   final String id;
   final String name;
@@ -882,6 +887,7 @@ class MenuSection {
       eventTitle: (json['event'] as Map<String, dynamic>?)?['title'] as String?,
       eventStarts: _toDateOrNull((json['event'] as Map<String, dynamic>?)?['starts_at']),
       eventEnds: _toDateOrNull((json['event'] as Map<String, dynamic>?)?['ends_at']),
+      season: MenuSeason.fromJson(json),
       position: _toInt(json['position']),
       items: items,
     );
@@ -4412,6 +4418,7 @@ class CalendarEvent {
   bool overlaps(DateTime from, DateTime to) => startsAt.isBefore(to) && endsAt.isAfter(from);
 
   CalendarEvent copyWith({
+    String? id,
     String? title,
     CalendarKind? kind,
     String? description,
@@ -4420,7 +4427,7 @@ class CalendarEvent {
     bool? allDay,
     CalendarColor? color,
   }) => CalendarEvent(
-    id: id,
+    id: id ?? this.id,
     kind: kind ?? this.kind,
     title: title ?? this.title,
     description: description ?? this.description,

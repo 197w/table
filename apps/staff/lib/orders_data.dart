@@ -333,7 +333,8 @@ class WaiterRepository {
     final rows = await _db
         .from('menu_sections')
         .select(
-          'id, name, position, event_id, event:calendar_events!menu_sections_event_id_fkey(starts_at, ends_at), '
+          'id, name, position, event_id, season_from, season_to, season_yearly, '
+          'event:calendar_events!menu_sections_event_id_fkey(starts_at, ends_at), '
           'menu_items(id, name, description, price_grosze, variants, addons, available, position, '
           'menu_item_ingredients(item_id, inventory_items(name)))',
         )
@@ -342,8 +343,9 @@ class WaiterRepository {
     final now = DateTime.now();
     return [
       for (final s in rows)
-        // Dział tylko na wydarzenie specjalne (Kalendarz, 0080) kelner widzi tylko w czasie wydarzenia.
-        if (_eventActive(s, now))
+        // Dział tylko na wydarzenie specjalne (Kalendarz, 0080) kelner widzi tylko w czasie wydarzenia,
+        // a sezonowy (0088) tylko w jego okresie.
+        if (_eventActive(s, now) && (MenuSeason.fromJson(s)?.contains(now) ?? true))
         WMenuSection(
           id: s['id'] as String,
           name: s['name'] as String,

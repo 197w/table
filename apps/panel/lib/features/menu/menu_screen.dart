@@ -7,8 +7,54 @@ import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/menu_photo.dart';
 import '../../shared/panel_widgets.dart';
+import '../../shared/side_panel.dart';
 import '../inventory/inventory_screen.dart';
 
+const _tabular = [FontFeature.tabularFigures()];
+
+/// Stałe szerokości wąskich kolumn tabeli dań; pozycja i opcje dzielą resztę.
+const _priceWidth = 104.0;
+const _stateWidth = 140.0;
+const _actionsWidth = 48.0;
+
+/// Kiedy dział jest w menu: zawsze, w okresie (sezon, 0088) albo tylko na wydarzenie z Kalendarza (0080).
+enum MenuWhen { always, season, event }
+
+MenuWhen menuWhenOf(MenuSection s) => s.eventId != null ? MenuWhen.event : (s.season != null ? MenuWhen.season : MenuWhen.always);
+
+/// Okno obok panelu: dodawanie i zmiana dania albo działu.
+sealed class _MenuSheet {
+  const _MenuSheet();
+}
+
+class _ItemSheetOpen extends _MenuSheet {
+  const _ItemSheetOpen({required this.sectionId, this.itemId});
+
+  final String sectionId;
+  final String? itemId;
+}
+
+class _SectionSheetOpen extends _MenuSheet {
+  const _SectionSheetOpen([this.sectionId]);
+
+  /// Null: nowy dział.
+  final String? sectionId;
+}
+
+/// Dział z daniami po filtrach i jego miejsce na liście wszystkich działów (do zmiany kolejności).
+class _Group {
+  const _Group(this.section, this.items, this.index);
+
+  final MenuSection section;
+  final List<MenuItem> items;
+  final int index;
+}
+
+/// Menu w układzie jak Pracownicy (16.11.2026, prośba użytkownika: „zmień wygląd Menu na nowy”): po lewej zwijany
+/// panel z wyszukiwaniem, „Dodaj pozycję”, „Nowa sekcja” i filtrami z liczbą dań (sekcja, kiedy w menu,
+/// dostępność), po prawej tabela dań pogrupowana w sekcje. Dodawanie i zmiana dania albo sekcji otwierają okno
+/// obok panelu (`SideSheetFrame`). Sekcja jest w menu zawsze, w okresie od dnia do dnia (sezonowa, co roku albo
+/// jednorazowo, 0088) albo tylko na wydarzenie z Kalendarza (0080).
 class MenuScreen extends ConsumerStatefulWidget {
   const MenuScreen({super.key});
 
@@ -17,8 +63,22 @@ class MenuScreen extends ConsumerStatefulWidget {
 }
 
 class _MenuScreenState extends ConsumerState<MenuScreen> {
-  String? _sectionId;
+  final _search = TextEditingController();
+  final _sectionIds = <String>{};
+  final _whens = <MenuWhen>{};
+  final _states = <String>{};
+  final _closed = <String>{};
+  bool _panelOpen = true;
   bool _busy = false;
+  _MenuSheet? _sheet;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _toggle<T>(Set<T> set, T value) => setState(() => set.contains(value) ? set.remove(value) : set.add(value));
 
   Future<void> _run(Future<void> Function() action, String restaurantId, [String? done]) async {
     if (_busy) return;
@@ -34,85 +94,12 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     }
   }
 
-  Future<void> _addSection(String restaurantId, int count) async {
-    final name = await _askName(context, title: 'Nowa sekcja menu', action: 'Dodaj');
-    if (name == null) return;
-    await _run(
-      () => ref.read(repositoryProvider).addSection(restaurantId, name, count),
-      restaurantId,
-      'Sekcja dodana.',
-    );
-  }
-
-  Future<void> _renameSection(String restaurantId, MenuSection section) async {
-    final name = await _askName(
-      context,
-      title: 'Zmień nazwę sekcji',
-      action: 'Zapisz',
-      initial: section.name,
-    );
-    if (name == null || name == section.name) return;
-    await _run(
-      () => ref.read(repositoryProvider).renameSection(section.id, name),
-      restaurantId,
-    );
-  }
-
-  /// Dział tylko na wydarzenie specjalne z Kalendarza (0080): poza jego czasem goście i obsługa go nie widzą.
-  Future<void> _sectionEvent(String restaurantId, MenuSection section) async {
-    final from = DateTime.now().subtract(const Duration(days: 1));
-    List<CalendarEvent> events;
-    try {
-      events = [
-        for (final e in await ref.read(
-          calendarEventsProvider((restaurantId: restaurantId, from: from, to: from.add(const Duration(days: 400)))).future,
-        ))
-          if (e.kind == CalendarKind.special) e,
-      ];
-    } catch (e) {
-      if (mounted) showError(context, e);
-      return;
-    }
-    if (!mounted) return;
-    if (events.isEmpty && section.eventId == null) {
-      showMessage(context, 'Najpierw dodaj wydarzenie specjalne w Management → Kalendarz.');
-      return;
-    }
-    final picked = await showDialog<String>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text('„${section.name}” tylko na wydarzenie'),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, ''),
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Glyph(section.eventId == null ? AppIcons.checkCircle : AppIcons.circle, size: 18),
-              title: const Text('Zawsze w menu'),
-              subtitle: const Text('Zwykły dział, bez wydarzenia'),
-            ),
-          ),
-          for (final e in events)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, e.id),
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Glyph(section.eventId == e.id ? AppIcons.checkCircle : AppIcons.circle, size: 18, color: e.color.color),
-                title: Text(e.title),
-                subtitle: Text(sectionEventRange(e.startsAt, e.endsAt)),
-              ),
-            ),
-        ],
-      ),
-    );
-    if (picked == null) return;
-    final eventId = picked.isEmpty ? null : picked;
-    if (eventId == section.eventId) return;
-    await _run(
-      () => ref.read(repositoryProvider).setSectionEvent(section.id, eventId),
-      restaurantId,
-      eventId == null ? '„${section.name}” jest znowu zwykłym działem.' : '„${section.name}” tylko na wydarzenie.',
-    );
+  void _afterSave(String restaurantId, String message) {
+    ref
+      ..invalidate(menuProvider(restaurantId))
+      ..invalidate(inventoryItemsProvider(restaurantId));
+    setState(() => _sheet = null);
+    showMessage(context, message);
   }
 
   Future<void> _deleteSection(String restaurantId, MenuSection section) async {
@@ -126,12 +113,13 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
       destructive: true,
     );
     if (!ok) return;
-    if (_sectionId == section.id) _sectionId = null;
-    await _run(
-      () => ref.read(repositoryProvider).deleteSection(section.id),
-      restaurantId,
-      'Sekcja usunięta.',
-    );
+    if (mounted) {
+      setState(() {
+        if (_sheet case _SectionSheetOpen(:final sectionId) when sectionId == section.id) _sheet = null;
+        _sectionIds.remove(section.id);
+      });
+    }
+    await _run(() => ref.read(repositoryProvider).deleteSection(section.id), restaurantId, 'Sekcja usunięta.');
   }
 
   Future<void> _moveSection(String restaurantId, List<MenuSection> sections, int index, int delta) {
@@ -139,19 +127,6 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     final moved = ids.removeAt(index);
     ids.insert(index + delta, moved);
     return _run(() => ref.read(repositoryProvider).reorder('menu_sections', ids), restaurantId);
-  }
-
-  Future<void> _editItem(String restaurantId, MenuSection section, [MenuItem? item]) async {
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (_) => _ItemDialog(restaurantId: restaurantId, section: section, item: item),
-    );
-    if (saved == true) {
-      ref
-        ..invalidate(menuProvider(restaurantId))
-        ..invalidate(inventoryItemsProvider(restaurantId));
-      if (mounted) showMessage(context, item == null ? 'Pozycja dodana.' : 'Pozycja zapisana.');
-    }
   }
 
   Future<void> _deleteItem(String restaurantId, MenuItem item) async {
@@ -163,6 +138,8 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
       destructive: true,
     );
     if (!ok) return;
+    if (!mounted) return;
+    if (_sheet case _ItemSheetOpen(:final itemId) when itemId == item.id) setState(() => _sheet = null);
     await _run(() => ref.read(repositoryProvider).deleteItem(item.id), restaurantId, 'Pozycja usunięta.');
   }
 
@@ -199,6 +176,17 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     return _run(() => ref.read(repositoryProvider).reorder('menu_items', ids), restaurantId);
   }
 
+  static bool _matches(MenuItem item, String query) {
+    final texts = [
+      item.name,
+      ?item.description,
+      for (final v in item.variants) v.name,
+      for (final a in item.addons) a.name,
+      for (final a in item.allergens) allergenLabels[a] ?? a,
+    ];
+    return texts.any((t) => t.toLowerCase().contains(query));
+  }
+
   @override
   Widget build(BuildContext context) {
     final restaurant = ref.watch(currentRestaurantProvider);
@@ -208,223 +196,214 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
     final permissions = ref.watch(memberPermissionsProvider);
     final editable = restaurant.canManage && permissions.contains('menu_edit');
     final canToggle = permissions.contains('menu_availability') || permissions.contains('menu_edit');
-    final text = Theme.of(context).textTheme;
+    final sections = async.value ?? const <MenuSection>[];
+    final now = DateTime.now();
+    final query = _search.text.trim().toLowerCase();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        PageHeader(
-          actions: [
-            if (editable && async.hasValue)
-              FilledButton.icon(
-                onPressed: _busy ? null : () => _addSection(restaurant.id, async.value!.length),
-                icon: const Glyph(AppIcons.plus, size: 18),
-                label: const Text('Nowa sekcja'),
-              ),
-          ],
-        ),
-        if (!editable)
-          const ReadOnlyBanner(message: 'Menu zmienia kierownik albo właściciel lokalu.'),
-        Expanded(
-          child: async.when(
-            skipLoadingOnReload: true,
-            loading: () => const LoadingView(),
-            error: (e, _) => ErrorView(
-              error: e,
-              onRetry: () => ref.invalidate(menuProvider(restaurant.id)),
+    // Dania po filtrach i wyszukiwaniu, w działach po filtrach. Sama nazwa działu też trafia w wyszukiwanie.
+    final groups = <_Group>[
+      for (var i = 0; i < sections.length; i++)
+        if ((_sectionIds.isEmpty || _sectionIds.contains(sections[i].id)) &&
+            (_whens.isEmpty || _whens.contains(menuWhenOf(sections[i]))))
+          if (_visibleItems(sections[i], query) case final items
+              when items.isNotEmpty || (query.isEmpty && _states.isEmpty))
+            _Group(sections[i], items, i),
+    ];
+
+    int items(bool Function(MenuSection s, MenuItem i) test) => [
+      for (final s in sections)
+        for (final i in s.items)
+          if (test(s, i)) i,
+    ].length;
+
+    final panel = SidePanel(
+      header: const PanelTitle(icon: AppIcons.bookOpen, title: 'Menu'),
+      search: _search,
+      searchHint: 'Szukaj dania',
+      onSearch: () => setState(() {}),
+      actions: [
+        if (editable && sections.isNotEmpty)
+          PanelAction(
+            label: 'Dodaj pozycję',
+            active: _sheet is _ItemSheetOpen && (_sheet! as _ItemSheetOpen).itemId == null,
+            onTap: () => setState(
+              () => _sheet = _ItemSheetOpen(sectionId: groups.isNotEmpty ? groups.first.section.id : sections.first.id),
             ),
-            data: (sections) {
-              if (sections.isEmpty) {
-                return MessageView(
-                  icon: AppIcons.bookOpen,
-                  title: 'Menu jest puste',
-                  message: 'Zacznij od sekcji, na przykład „Przystawki” albo „Dania główne”.',
-                  actionLabel: editable ? 'Dodaj sekcję' : null,
-                  onAction: editable ? () => _addSection(restaurant.id, 0) : null,
-                );
-              }
-              final current = sections.firstWhere(
-                (s) => s.id == _sectionId,
-                orElse: () => sections.first,
-              );
-              return Padding(
-                padding: const EdgeInsets.fromLTRB(32, 0, 32, 24),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SizedBox(
-                      width: 300,
-                      child: Card(
-                        child: ListView(
-                          padding: const EdgeInsets.all(8),
-                          children: [
-                            for (var i = 0; i < sections.length; i++)
-                              _SectionTile(
-                                section: sections[i],
-                                selected: sections[i].id == current.id,
-                                editable: editable,
-                                onTap: () => setState(() => _sectionId = sections[i].id),
-                                onRename: () => _renameSection(restaurant.id, sections[i]),
-                                onDelete: () => _deleteSection(restaurant.id, sections[i]),
-                                onEvent: () => _sectionEvent(restaurant.id, sections[i]),
-                                onUp: i == 0 ? null : () => _moveSection(restaurant.id, sections, i, -1),
-                                onDown: i == sections.length - 1
-                                    ? null
-                                    : () => _moveSection(restaurant.id, sections, i, 1),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 20),
-                    Expanded(
-                      child: Card(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 16, 16, 8),
-                              child: Row(
-                                children: [
-                                  Expanded(child: Text(current.name, style: text.titleLarge)),
-                                  if (editable)
-                                    OutlinedButton.icon(
-                                      onPressed: () => _editItem(restaurant.id, current),
-                                      icon: const Glyph(AppIcons.plus, size: 16),
-                                      label: const Text('Dodaj pozycję'),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            Expanded(
-                              child: current.items.isEmpty
-                                  ? MessageView(
-                                      icon: AppIcons.forkKnife,
-                                      title: 'Brak pozycji',
-                                      message: editable
-                                          ? 'Dodaj pierwsze danie w tej sekcji.'
-                                          : 'W tej sekcji nie ma jeszcze dań.',
-                                    )
-                                  : ListView.separated(
-                                      padding: const EdgeInsets.fromLTRB(20, 4, 12, 16),
-                                      itemCount: current.items.length,
-                                      separatorBuilder: (_, _) => const Divider(height: 1),
-                                      itemBuilder: (context, i) => _ItemRow(
-                                        item: current.items[i],
-                                        editable: editable,
-                                        onEdit: () => _editItem(restaurant.id, current, current.items[i]),
-                                        onPhoto: () => _photo(restaurant.id, current.items[i]),
-                                        onRemovePhoto: () => _removePhoto(restaurant.id, current.items[i]),
-                                        onToggleAvailable: canToggle
-                                            ? () => _toggleAvailable(restaurant.id, current.items[i])
-                                            : null,
-                                        onDelete: () => _deleteItem(restaurant.id, current.items[i]),
-                                        onUp: i == 0 ? null : () => _moveItem(restaurant.id, current, i, -1),
-                                        onDown: i == current.items.length - 1
-                                            ? null
-                                            : () => _moveItem(restaurant.id, current, i, 1),
-                                      ),
-                                    ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
           ),
-        ),
+        if (editable)
+          PanelAction(
+            label: 'Nowa sekcja',
+            active: _sheet is _SectionSheetOpen && (_sheet! as _SectionSheetOpen).sectionId == null,
+            onTap: () => setState(() => _sheet = const _SectionSheetOpen()),
+          ),
       ],
-    );
-  }
-}
-
-class _SectionTile extends StatelessWidget {
-  const _SectionTile({
-    required this.section,
-    required this.selected,
-    required this.editable,
-    required this.onTap,
-    required this.onRename,
-    required this.onDelete,
-    required this.onUp,
-    required this.onDown,
-    required this.onEvent,
-  });
-
-  final MenuSection section;
-  final VoidCallback onEvent;
-  final bool selected;
-  final bool editable;
-  final VoidCallback onTap;
-  final VoidCallback onRename;
-  final VoidCallback onDelete;
-  final VoidCallback? onUp;
-  final VoidCallback? onDown;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    return Material(
-      color: selected ? AppColors.surfaceRaised : Colors.transparent,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        splashColor: Colors.transparent,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(section.name, style: text.labelLarge),
-                    Text(
-                      _positions(section.items.length),
-                      style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-                    ),
-                    if (section.eventId != null)
-                      Text(
-                        'Tylko na: ${section.eventTitle ?? 'wydarzenie'}'
-                        '${section.eventStarts == null || section.eventEnds == null ? '' : ' · ${sectionEventRange(section.eventStarts!, section.eventEnds!)}'}',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: text.bodySmall?.copyWith(color: AppColors.accent),
-                      ),
-                  ],
-                ),
-              ),
-              if (editable)
-                PopupMenuButton<String>(
-                  tooltip: 'Więcej',
-                  icon: Glyph(AppIcons.dotsVertical, size: 16, color: AppColors.textMuted),
-                  onSelected: (v) => switch (v) {
-                    'up' => onUp?.call(),
-                    'down' => onDown?.call(),
-                    'rename' => onRename(),
-                    'event' => onEvent(),
-                    _ => onDelete(),
-                  },
-                  itemBuilder: (_) => [
-                    const PopupMenuItem(value: 'rename', child: Text('Zmień nazwę')),
-                    const PopupMenuItem(value: 'event', child: Text('Tylko na wydarzenie…')),
-                    PopupMenuItem(value: 'up', enabled: onUp != null, child: const Text('Przesuń wyżej')),
-                    PopupMenuItem(value: 'down', enabled: onDown != null, child: const Text('Przesuń niżej')),
-                    PopupMenuItem(
-                      value: 'delete',
-                      child: Text('Usuń', style: TextStyle(color: AppColors.error)),
-                    ),
-                  ],
+      children: [
+        if (sections.isNotEmpty) ...[
+          FilterSection(
+            title: 'Sekcja',
+            first: true,
+            open: !_closed.contains('section'),
+            onToggle: () => _toggle(_closed, 'section'),
+            options: [
+              for (final s in sections)
+                (
+                  label: s.name,
+                  count: s.items.length,
+                  checked: _sectionIds.contains(s.id),
+                  onChanged: (_) => _toggle(_sectionIds, s.id),
+                  dot: null,
                 ),
             ],
           ),
-        ),
-      ),
+          FilterSection(
+            title: 'Kiedy w menu',
+            open: !_closed.contains('when'),
+            onToggle: () => _toggle(_closed, 'when'),
+            options: [
+              for (final (w, label) in const [
+                (MenuWhen.always, 'Zawsze'),
+                (MenuWhen.season, 'Sezonowe'),
+                (MenuWhen.event, 'Na wydarzenie'),
+              ])
+                (
+                  label: label,
+                  count: items((s, _) => menuWhenOf(s) == w),
+                  checked: _whens.contains(w),
+                  onChanged: (_) => _toggle(_whens, w),
+                  dot: null,
+                ),
+            ],
+          ),
+          FilterSection(
+            title: 'Dostępność',
+            open: !_closed.contains('state'),
+            onToggle: () => _toggle(_closed, 'state'),
+            options: [
+              for (final (key, label) in const [('on', 'Dostępne'), ('off', 'Niedostępne')])
+                (
+                  label: label,
+                  count: items((_, i) => i.available == (key == 'on')),
+                  checked: _states.contains(key),
+                  onChanged: (_) => _toggle(_states, key),
+                  dot: key == 'off' ? AppColors.error : null,
+                ),
+            ],
+          ),
+        ],
+      ],
     );
+
+    final content = async.when(
+      skipLoadingOnReload: true,
+      loading: () => const LoadingView(),
+      error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(menuProvider(restaurant.id))),
+      data: (_) => sections.isEmpty
+          ? MessageView(
+              icon: AppIcons.bookOpen,
+              title: 'Menu jest puste',
+              message: 'Zacznij od sekcji, na przykład „Przystawki” albo „Dania główne”.',
+              actionLabel: editable ? 'Dodaj sekcję' : null,
+              onAction: editable ? () => setState(() => _sheet = const _SectionSheetOpen()) : null,
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (!editable) const ReadOnlyBanner(message: 'Menu zmienia kierownik albo właściciel lokalu.'),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 16, 32, 16),
+                    child: _MenuTable(
+                      groups: groups,
+                      now: now,
+                      editable: editable,
+                      canToggle: canToggle,
+                      selectedItem: _sheet is _ItemSheetOpen ? (_sheet! as _ItemSheetOpen).itemId : null,
+                      selectedSection: _sheet is _SectionSheetOpen ? (_sheet! as _SectionSheetOpen).sectionId : null,
+                      sectionCount: sections.length,
+                      onOpenItem: (s, i) => setState(() => _sheet = _ItemSheetOpen(sectionId: s.id, itemId: i?.id)),
+                      onOpenSection: (s) => setState(() => _sheet = _SectionSheetOpen(s.id)),
+                      onMoveSection: (g, d) => _moveSection(restaurant.id, sections, g.index, d),
+                      onMoveItem: (g, i, d) => _moveItem(restaurant.id, g.section, i, d),
+                      onToggleAvailable: (i) => _toggleAvailable(restaurant.id, i),
+                      onDeleteItem: (i) => _deleteItem(restaurant.id, i),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+
+    return SidePanelLayout(
+      open: _panelOpen,
+      onToggle: () => setState(() => _panelOpen = !_panelOpen),
+      panel: panel,
+      content: content,
+      sheet: _buildSheet(restaurant.id, sections),
+    );
+  }
+
+  /// Dania działu po filtrach: bez wyszukiwania wszystkie z dostępnością, z wyszukiwaniem te z trafieniem (albo
+  /// wszystkie, gdy trafiła nazwa działu).
+  List<MenuItem> _visibleItems(MenuSection s, String query) {
+    final sectionHit = query.isNotEmpty && s.name.toLowerCase().contains(query);
+    return [
+      for (final i in s.items)
+        if ((_states.isEmpty || _states.contains(i.available ? 'on' : 'off')) &&
+            (query.isEmpty || sectionHit || _matches(i, query)))
+          i,
+    ];
+  }
+
+  Widget? _buildSheet(String restaurantId, List<MenuSection> sections) {
+    final open = _sheet;
+    if (open == null || sections.isEmpty && open is _ItemSheetOpen) return null;
+    switch (open) {
+      case _ItemSheetOpen(:final sectionId, :final itemId):
+        MenuItem? item;
+        if (itemId != null) {
+          for (final s in sections) {
+            for (final i in s.items) {
+              if (i.id == itemId) item = i;
+            }
+          }
+          if (item == null) return null;
+        }
+        return SizedBox(
+          key: ValueKey('pozycja ${itemId ?? 'nowa'}'),
+          width: sideSheetWidth,
+          child: _ItemSheet(
+            key: ValueKey('pozycja-okno ${itemId ?? 'nowa'}'),
+            restaurantId: restaurantId,
+            sections: sections,
+            sectionId: sectionId,
+            item: item,
+            onClose: () => setState(() => _sheet = null),
+            onSaved: (message) => _afterSave(restaurantId, message),
+            onDelete: item == null ? null : () => _deleteItem(restaurantId, item!),
+            onPhoto: item == null || _busy ? null : () => _photo(restaurantId, item!),
+            onRemovePhoto: item == null || _busy ? null : () => _removePhoto(restaurantId, item!),
+          ),
+        );
+      case _SectionSheetOpen(:final sectionId):
+        MenuSection? section;
+        if (sectionId != null) {
+          section = sections.where((s) => s.id == sectionId).firstOrNull;
+          if (section == null) return null;
+        }
+        return SizedBox(
+          key: ValueKey('sekcja ${sectionId ?? 'nowa'}'),
+          width: sideSheetWidth,
+          child: _SectionSheet(
+            key: ValueKey('sekcja-okno ${sectionId ?? 'nowa'}'),
+            restaurantId: restaurantId,
+            section: section,
+            position: sections.length,
+            onClose: () => setState(() => _sheet = null),
+            onSaved: (message) => _afterSave(restaurantId, message),
+            onDelete: section == null ? null : () => _deleteSection(restaurantId, section!),
+          ),
+        );
+    }
   }
 }
 
@@ -444,30 +423,245 @@ String _positions(int n) {
   return '$n pozycji';
 }
 
+/// Kiedy dział jest w menu, do pokazania przy nim: okres sezonu ze stanem albo wydarzenie. Null przy zwykłym dziale.
+Widget? _whenChip(MenuSection s, DateTime now) {
+  if (s.season case final season?) {
+    final active = season.contains(now);
+    return StatusChip(
+      label: '${season.statusAt(now)} · ${season.label}',
+      icon: active ? AppIcons.calendarCheck : AppIcons.calendarX,
+      color: active ? AppColors.accent : AppColors.textMuted,
+    );
+  }
+  if (s.eventId != null) {
+    final starts = s.eventStarts;
+    final ends = s.eventEnds;
+    final active = starts != null && ends != null && !now.isBefore(starts) && now.isBefore(ends);
+    return StatusChip(
+      label: 'Tylko na: ${s.eventTitle ?? 'wydarzenie'}'
+          '${starts == null || ends == null ? '' : ' · ${sectionEventRange(starts, ends)}'}',
+      icon: AppIcons.confetti,
+      color: active ? AppColors.accent : AppColors.textMuted,
+    );
+  }
+  return null;
+}
+
+/// Dania jako tabela pogrupowana w sekcje, jak Zespół w Pracownikach.
+class _MenuTable extends StatelessWidget {
+  const _MenuTable({
+    required this.groups,
+    required this.now,
+    required this.editable,
+    required this.canToggle,
+    required this.selectedItem,
+    required this.selectedSection,
+    required this.sectionCount,
+    required this.onOpenItem,
+    required this.onOpenSection,
+    required this.onMoveSection,
+    required this.onMoveItem,
+    required this.onToggleAvailable,
+    required this.onDeleteItem,
+  });
+
+  final List<_Group> groups;
+  final DateTime now;
+  final bool editable;
+  final bool canToggle;
+  final String? selectedItem;
+  final String? selectedSection;
+  final int sectionCount;
+
+  /// Dział i danie (null: nowe danie w tym dziale).
+  final void Function(MenuSection section, MenuItem? item) onOpenItem;
+  final ValueChanged<MenuSection> onOpenSection;
+  final void Function(_Group group, int delta) onMoveSection;
+  final void Function(_Group group, int index, int delta) onMoveItem;
+  final ValueChanged<MenuItem> onToggleAvailable;
+  final ValueChanged<MenuItem> onDeleteItem;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 40,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                tableHead(context, 'Pozycja', 4),
+                tableHead(context, 'Opcje i alergeny', 4),
+                tableHead(context, 'Cena', 0, width: _priceWidth, align: TextAlign.right),
+                const SizedBox(width: 16),
+                tableHead(context, 'Stan', 0, width: _stateWidth),
+                if (editable) const SizedBox(width: _actionsWidth),
+              ],
+            ),
+          ),
+        ),
+        Divider(height: 1, color: AppColors.ring),
+        Expanded(
+          child: groups.isEmpty
+              ? Center(
+                  child: Text(
+                    'Nic nie znaleziono. Zmień wyszukiwanie albo filtry po lewej.',
+                    style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                  ),
+                )
+              : ListView(
+                  children: [
+                    for (final g in groups) ...[
+                      _GroupHeader(
+                        group: g,
+                        now: now,
+                        editable: editable,
+                        selected: selectedSection == g.section.id,
+                        isFirst: g.index == 0,
+                        isLast: g.index == sectionCount - 1,
+                        onEdit: () => onOpenSection(g.section),
+                        onAdd: () => onOpenItem(g.section, null),
+                        onMove: (d) => onMoveSection(g, d),
+                      ),
+                      if (g.items.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
+                          child: Text(
+                            editable ? 'Brak pozycji. Dodaj pierwsze danie w tej sekcji.' : 'W tej sekcji nie ma jeszcze dań.',
+                            style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                          ),
+                        ),
+                      for (var i = 0; i < g.items.length; i++) ...[
+                        _ItemRow(
+                          item: g.items[i],
+                          editable: editable,
+                          canToggle: canToggle,
+                          selected: selectedItem == g.items[i].id,
+                          // Zmiana kolejności liczy się w całym dziale, nie w widoku po filtrach.
+                          onUp: g.section.items.indexOf(g.items[i]) <= 0
+                              ? null
+                              : () => onMoveItem(g, g.section.items.indexOf(g.items[i]), -1),
+                          onDown: g.section.items.indexOf(g.items[i]) >= g.section.items.length - 1
+                              ? null
+                              : () => onMoveItem(g, g.section.items.indexOf(g.items[i]), 1),
+                          onTap: editable ? () => onOpenItem(g.section, g.items[i]) : null,
+                          onToggleAvailable: () => onToggleAvailable(g.items[i]),
+                          onDelete: () => onDeleteItem(g.items[i]),
+                        ),
+                        Divider(height: 1, color: AppColors.ring),
+                      ],
+                    ],
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Nagłówek sekcji w tabeli: nazwa, liczba dań, kiedy jest w menu i przyciski (dodaj danie, zmień, wyżej, niżej).
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader({
+    required this.group,
+    required this.now,
+    required this.editable,
+    required this.selected,
+    required this.isFirst,
+    required this.isLast,
+    required this.onEdit,
+    required this.onAdd,
+    required this.onMove,
+  });
+
+  final _Group group;
+  final DateTime now;
+  final bool editable;
+  final bool selected;
+  final bool isFirst;
+  final bool isLast;
+  final VoidCallback onEdit;
+  final VoidCallback onAdd;
+  final ValueChanged<int> onMove;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final chip = _whenChip(group.section, now);
+    return Container(
+      color: selected ? AppColors.accentTint : AppColors.surfaceRaised,
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(group.section.name, style: text.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                Text(
+                  _positions(group.section.items.length),
+                  style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                ),
+                ?chip,
+              ],
+            ),
+          ),
+          if (editable) ...[
+            IconButton(
+              tooltip: 'Dodaj pozycję w tej sekcji',
+              icon: const Glyph(AppIcons.plus, size: 16),
+              onPressed: onAdd,
+            ),
+            IconButton(
+              tooltip: 'Zmień sekcję',
+              icon: const Glyph(AppIcons.pencil, size: 16),
+              onPressed: onEdit,
+            ),
+            IconButton(
+              tooltip: 'Przesuń sekcję wyżej',
+              icon: const Glyph(AppIcons.caretUp, size: 14),
+              onPressed: isFirst ? null : () => onMove(-1),
+            ),
+            IconButton(
+              tooltip: 'Przesuń sekcję niżej',
+              icon: const Glyph(AppIcons.caretDown, size: 14),
+              onPressed: isLast ? null : () => onMove(1),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _ItemRow extends ConsumerWidget {
   const _ItemRow({
     required this.item,
     required this.editable,
-    required this.onEdit,
-    required this.onPhoto,
-    required this.onRemovePhoto,
-    required this.onToggleAvailable,
-    required this.onDelete,
+    required this.canToggle,
+    required this.selected,
     required this.onUp,
     required this.onDown,
+    required this.onTap,
+    required this.onToggleAvailable,
+    required this.onDelete,
   });
 
   final MenuItem item;
   final bool editable;
-  final VoidCallback onEdit;
-  final VoidCallback onPhoto;
-  final VoidCallback onRemovePhoto;
 
-  /// Null: brak uprawnienia „Dostępność dań”.
-  final VoidCallback? onToggleAvailable;
-  final VoidCallback onDelete;
+  /// Brak uprawnienia „Dostępność dań”: stan tylko do odczytu.
+  final bool canToggle;
+  final bool selected;
   final VoidCallback? onUp;
   final VoidCallback? onDown;
+  final VoidCallback? onTap;
+  final VoidCallback onToggleAvailable;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -484,228 +678,564 @@ class _ItemRow extends ConsumerWidget {
       for (final r in item.ingredients)
         if (stock[r.itemId] case final i?) '${i.name.toLowerCase()} ${inventoryNumber(r.amount)} ${r.unit.label}',
     ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Zdjęcie dania: kliknięcie dodaje albo zmienia (z uprawnieniem „Edycja menu”).
-          if (item.photoUrl != null || editable) ...[
-            _PhotoThumb(
-              url: item.photoUrl,
-              onPick: editable ? onPhoto : null,
-              onRemove: editable && item.photoUrl != null ? onRemovePhoto : null,
-            ),
-            const SizedBox(width: 14),
-          ],
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+    final options = [
+      for (final v in item.variants) '${v.name} ${Fmt.price(v.priceGrosze)}',
+      if (item.addons.isNotEmpty) 'dodatki: ${item.addons.map((a) => a.name.toLowerCase()).join(', ')}',
+    ].join(' · ');
+    final state = StatusChip(
+      label: item.available ? 'Dostępne' : 'Niedostępne',
+      icon: item.available ? AppIcons.checkCircle : AppIcons.eyeSlash,
+      color: item.available ? AppColors.accent : AppColors.error,
+    );
+
+    return Material(
+      color: selected ? AppColors.accentTint : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        hoverColor: AppColors.surfaceRaised,
+        splashColor: Colors.transparent,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 4,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Flexible(
-                      child: Text(
-                        item.name,
-                        style: text.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: item.available ? null : AppColors.textMuted,
-                        ),
+                    _Thumb(url: item.photoUrl),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.name,
+                            style: text.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: item.available ? null : AppColors.textMuted,
+                            ),
+                          ),
+                          if (item.description != null)
+                            Text(
+                              item.description!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+                            ),
+                        ],
                       ),
                     ),
-                    if (!item.available) ...[
-                      const SizedBox(width: 8),
-                      Tag('NIEDOSTĘPNE', color: AppColors.error),
-                    ],
                   ],
                 ),
-                if (item.description != null)
-                  Text(
-                    item.description!,
-                    style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
-                  ),
-                if (item.variants.isNotEmpty || item.addons.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    [
-                      for (final v in item.variants) '${v.name} ${Fmt.price(v.priceGrosze)}',
-                      if (item.addons.isNotEmpty)
-                        'dodatki: ${item.addons.map((a) => a.name.toLowerCase()).join(', ')}',
-                    ].join(' · '),
-                    style: text.bodySmall?.copyWith(
-                      color: AppColors.textMuted,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                ],
-                if (recipe.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Row(
+              ),
+              Expanded(
+                flex: 4,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Glyph(AppIcons.package, size: 13, color: AppColors.textMuted),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          recipe.join(', '),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: text.bodySmall?.copyWith(
-                            color: AppColors.textMuted,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                          ),
+                      if (options.isNotEmpty)
+                        Text(
+                          options,
+                          style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
                         ),
+                      if (recipe.isNotEmpty) ...[
+                        if (options.isNotEmpty) const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Glyph(AppIcons.package, size: 13, color: AppColors.textMuted),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                recipe.join(', '),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (item.allergens.isNotEmpty) ...[
+                        if (options.isNotEmpty || recipe.isNotEmpty) const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [for (final a in item.allergens) Tag((allergenLabels[a] ?? a).toUpperCase())],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: _priceWidth,
+                child: Text(
+                  item.priceVaries ? 'od ${Fmt.price(item.fromPrice)}' : Fmt.price(item.fromPrice),
+                  textAlign: TextAlign.right,
+                  style: text.titleSmall?.copyWith(fontWeight: FontWeight.w600, fontFeatures: _tabular),
+                ),
+              ),
+              const SizedBox(width: 16),
+              SizedBox(
+                width: _stateWidth,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: canToggle
+                      ? Tooltip(
+                          message: item.available ? 'Skończyło się: oznacz jako niedostępne' : 'Znowu dostępne',
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: GestureDetector(onTap: onToggleAvailable, child: state),
+                          ),
+                        )
+                      : state,
+                ),
+              ),
+              if (editable)
+                SizedBox(
+                  width: _actionsWidth,
+                  child: PopupMenuButton<String>(
+                    tooltip: 'Więcej',
+                    padding: EdgeInsets.zero,
+                    icon: Glyph(AppIcons.dotsVertical, size: 16, color: AppColors.textMuted),
+                    onSelected: (v) => switch (v) {
+                      'edit' => onTap?.call(),
+                      'up' => onUp?.call(),
+                      'down' => onDown?.call(),
+                      _ => onDelete(),
+                    },
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(value: 'edit', child: Text('Edytuj')),
+                      PopupMenuItem(value: 'up', enabled: onUp != null, child: const Text('Przesuń wyżej')),
+                      PopupMenuItem(value: 'down', enabled: onDown != null, child: const Text('Przesuń niżej')),
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: Text('Usuń', style: TextStyle(color: AppColors.error)),
                       ),
                     ],
                   ),
-                ],
-                if (item.allergens.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final a in item.allergens)
-                        Tag((allergenLabels[a] ?? a).toUpperCase()),
-                    ],
-                  ),
-                ],
-              ],
-            ),
+                ),
+            ],
           ),
-          const SizedBox(width: 16),
-          Text(
-            item.priceVaries ? 'od ${Fmt.price(item.fromPrice)}' : Fmt.price(item.fromPrice),
-            style: text.titleSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-          const SizedBox(width: 8),
-          if (onToggleAvailable != null)
-            IconButton(
-              tooltip: item.available ? 'Skończyło się: oznacz jako niedostępne' : 'Znowu dostępne',
-              icon: Glyph(
-                item.available ? AppIcons.eye : AppIcons.eyeSlash,
-                size: 16,
-                color: item.available ? AppColors.textMuted : AppColors.error,
-              ),
-              onPressed: onToggleAvailable,
-            ),
-          if (editable) ...[
-            const SizedBox(width: 8),
-            IconButton(
-              tooltip: 'Przesuń wyżej',
-              icon: const Glyph(AppIcons.caretUp, size: 14),
-              onPressed: onUp,
-            ),
-            IconButton(
-              tooltip: 'Przesuń niżej',
-              icon: const Glyph(AppIcons.caretDown, size: 14),
-              onPressed: onDown,
-            ),
-            IconButton(
-              tooltip: 'Edytuj',
-              icon: const Glyph(AppIcons.pencil, size: 16),
-              onPressed: onEdit,
-            ),
-            DeleteButton(
-              tooltip: 'Usuń',
-              onPressed: onDelete,
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
 }
 
-Future<String?> _askName(
-  BuildContext context, {
-  required String title,
-  required String action,
-  String initial = '',
-}) {
-  return showDialog<String>(
-    context: context,
-    builder: (context) => _NameDialog(
-      title: title,
-      action: action,
-      label: 'Nazwa',
-      initial: initial,
-    ),
-  );
-}
+/// Miniatura zdjęcia dania w wierszu tabeli. Bez zdjęcia: ikona dania.
+class _Thumb extends StatelessWidget {
+  const _Thumb({required this.url});
 
-/// Okno z jednym polem tekstowym. Kontroler żyje tak długo jak okno.
-class _NameDialog extends StatefulWidget {
-  const _NameDialog({
-    required this.title,
-    required this.action,
-    required this.label,
-    this.initial = '',
-  });
-
-  final String title;
-  final String action;
-  final String label;
-  final String initial;
+  final String? url;
 
   @override
-  State<_NameDialog> createState() => _NameDialogState();
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 44,
+        height: 44,
+        color: AppColors.surfaceRaised,
+        child: url == null
+            ? Center(child: Glyph(AppIcons.forkKnife, size: 18, color: AppColors.textMuted))
+            : Image.network(
+                url!,
+                fit: BoxFit.cover,
+                cacheWidth: 96,
+                errorBuilder: (_, _, _) => Center(child: Glyph(AppIcons.warning, size: 16, color: AppColors.textMuted)),
+              ),
+      ),
+    );
+  }
 }
 
-class _NameDialogState extends State<_NameDialog> {
-  late final _controller = TextEditingController(text: widget.initial);
+// ---------------------------------------------------------------------------------------------------------------
+// Okno sekcji
+// ---------------------------------------------------------------------------------------------------------------
+
+/// Okno nowej albo zmienianej sekcji: nazwa i to, kiedy sekcja jest w menu (zawsze, w okresie albo tylko na
+/// wydarzenie).
+class _SectionSheet extends ConsumerStatefulWidget {
+  const _SectionSheet({
+    super.key,
+    required this.restaurantId,
+    required this.section,
+    required this.position,
+    required this.onClose,
+    required this.onSaved,
+    required this.onDelete,
+  });
+
+  final String restaurantId;
+
+  /// Null: nowa sekcja.
+  final MenuSection? section;
+
+  /// Miejsce nowej sekcji (na końcu).
+  final int position;
+  final VoidCallback onClose;
+  final ValueChanged<String> onSaved;
+  final VoidCallback? onDelete;
+
+  @override
+  ConsumerState<_SectionSheet> createState() => _SectionSheetState();
+}
+
+class _SectionSheetState extends ConsumerState<_SectionSheet> {
+  late final _name = TextEditingController(text: widget.section?.name ?? '');
+  late MenuWhen _when = widget.section == null ? MenuWhen.always : menuWhenOf(widget.section!);
+  late DateTime _from = widget.section?.season?.from ?? _today();
+  late DateTime _to = widget.section?.season?.to ?? _today().add(const Duration(days: 90));
+  late bool _yearly = widget.section?.season?.yearly ?? false;
+  late String? _eventId = widget.section?.eventId;
+  late final DateTime _eventsFrom = _today().subtract(const Duration(days: 1));
+  bool _busy = false;
+
+  static DateTime _today() {
+    final n = DateTime.now();
+    return DateTime(n.year, n.month, n.day);
+  }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _name.dispose();
     super.dispose();
   }
 
-  void _submit() {
-    final value = _controller.text.trim();
-    if (value.isNotEmpty) Navigator.pop(context, value);
+  MenuSeason get _season => MenuSeason(from: _from, to: _to, yearly: _yearly);
+
+  Future<void> _pickDate({required bool start}) async {
+    final initial = start ? _from : _to;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    setState(() {
+      final day = DateTime(picked.year, picked.month, picked.day);
+      if (start) {
+        // Przesunięcie początku przesuwa koniec o tyle samo, żeby okres się nie odwracał.
+        final length = _to.difference(_from);
+        _from = day;
+        if (!_yearly) _to = _from.add(length.isNegative ? Duration.zero : length);
+      } else {
+        _to = day;
+      }
+    });
+  }
+
+  Future<void> _save() async {
+    final name = _name.text.trim();
+    if (name.isEmpty) {
+      showMessage(context, 'Wpisz nazwę sekcji.', tone: ToastTone.warning);
+      return;
+    }
+    if (_when == MenuWhen.season && !_yearly && _to.isBefore(_from)) {
+      showMessage(context, 'Koniec okresu jest przed jego początkiem.', tone: ToastTone.warning);
+      return;
+    }
+    if (_when == MenuWhen.event && _eventId == null) {
+      showMessage(context, 'Wybierz wydarzenie z Kalendarza.', tone: ToastTone.warning);
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await ref
+          .read(repositoryProvider)
+          .saveSection(
+            id: widget.section?.id,
+            restaurantId: widget.restaurantId,
+            name: name,
+            position: widget.position,
+            eventId: _when == MenuWhen.event ? _eventId : null,
+            season: _when == MenuWhen.season ? _season : null,
+          );
+      widget.onSaved(widget.section == null ? 'Sekcja dodana.' : 'Sekcja zapisana.');
+    } catch (e) {
+      if (mounted) {
+        setState(() => _busy = false);
+        showError(context, e);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.title),
-      content: SizedBox(
-        width: 380,
-        child: TextField(
-          controller: _controller,
-          autofocus: true,
-          maxLength: 60,
-          decoration: InputDecoration(labelText: widget.label, counterText: ''),
-          onSubmitted: (_) => _submit(),
-        ),
+    final text = Theme.of(context).textTheme;
+    final isNew = widget.section == null;
+    final events = _when == MenuWhen.event
+        ? ref
+                  .watch(
+                    calendarEventsProvider((
+                      restaurantId: widget.restaurantId,
+                      from: _eventsFrom,
+                      to: _eventsFrom.add(const Duration(days: 400)),
+                    )),
+                  )
+                  .value ??
+              const <CalendarEvent>[]
+        : const <CalendarEvent>[];
+    final specials = [for (final e in events) if (e.kind == CalendarKind.special) e];
+
+    Widget dateRow(String label, DateTime value, {required bool start}) {
+      return Row(
+        children: [
+          SizedBox(width: 48, child: Text(label, style: text.bodyMedium?.copyWith(color: AppColors.textMuted))),
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () => _pickDate(start: start),
+              child: Text(
+                _yearly ? '${value.day} ${_monthName(value.month)}' : '${value.day} ${_monthName(value.month)} ${value.year}',
+                style: const TextStyle(fontFeatures: _tabular),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return SideSheetFrame(
+      title: isNew ? 'Nowa sekcja' : 'Sekcja: ${widget.section!.name}',
+      onClose: widget.onClose,
+      footer: Row(
+        children: [
+          if (widget.onDelete != null) ...[
+            TextButton(
+              onPressed: _busy ? null : widget.onDelete,
+              style: TextButton.styleFrom(foregroundColor: AppColors.error),
+              child: const Text('Usuń'),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Expanded(
+            child: FilledButton(
+              onPressed: _busy ? null : _save,
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+              child: Text(isNew ? 'Dodaj sekcję' : 'Zapisz'),
+            ),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
-          child: const Text('Anuluj'),
+      children: [
+        SheetField(
+          label: 'Nazwa',
+          child: TextField(
+            controller: _name,
+            autofocus: isNew,
+            maxLength: 60,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: sheetInput(hint: 'Na przykład: Menu letnie'),
+            onSubmitted: (_) => _save(),
+          ),
         ),
-        FilledButton(onPressed: _submit, child: Text(widget.action)),
+        const SizedBox(height: 24),
+        const SheetHeading('Kiedy w menu'),
+        const SizedBox(height: 10),
+        CardGrid(
+          children: [
+            ChoiceCard(
+              icon: AppIcons.bookOpen,
+              title: 'Zawsze',
+              selected: _when == MenuWhen.always,
+              onTap: () => setState(() => _when = MenuWhen.always),
+            ),
+            ChoiceCard(
+              icon: AppIcons.calendarDots,
+              title: 'Sezon',
+              selected: _when == MenuWhen.season,
+              onTap: () => setState(() => _when = MenuWhen.season),
+            ),
+            ChoiceCard(
+              icon: AppIcons.confetti,
+              title: 'Wydarzenie',
+              selected: _when == MenuWhen.event,
+              onTap: () => setState(() => _when = MenuWhen.event),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          switch (_when) {
+            MenuWhen.always => 'Sekcja jest w menu cały czas.',
+            MenuWhen.season =>
+              'Sekcja jest w menu tylko w wybranym okresie. Poza nim znika u gości, w Zamówieniach i u kelnera.',
+            MenuWhen.event => 'Sekcja jest w menu tylko w czasie wybranego wydarzenia z Kalendarza.',
+          },
+          style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+        ),
+        if (_when == MenuWhen.season) ...[
+          const SizedBox(height: 24),
+          const SheetHeading('Okres'),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final p in menuSeasonPresets)
+                ChoiceChip(
+                  label: Text(
+                    p.name,
+                    style: TextStyle(color: _season == p.season() ? AppColors.onAccent : AppColors.text),
+                  ),
+                  selected: _season == p.season(),
+                  onSelected: (_) => setState(() {
+                    final s = p.season();
+                    _from = s.from;
+                    _to = s.to;
+                    _yearly = true;
+                  }),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          dateRow('Od', _from, start: true),
+          const SizedBox(height: 8),
+          dateRow('Do', _to, start: false),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: Text('Powtarzaj co roku', style: text.bodyMedium)),
+              Switch(value: _yearly, onChanged: (v) => setState(() => _yearly = v)),
+            ],
+          ),
+          Text(
+            _yearly
+                ? 'Liczy się miesiąc i dzień, rok nie ma znaczenia. Okres może przechodzić przez Nowy Rok.'
+                : 'Jednorazowo: od pierwszego do ostatniego dnia włącznie.',
+            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '${_season.label} · ${_season.statusAt(DateTime.now())}',
+            style: text.labelLarge?.copyWith(color: AppColors.accent),
+          ),
+        ],
+        if (_when == MenuWhen.event) ...[
+          const SizedBox(height: 24),
+          const SheetHeading('Wydarzenie'),
+          const SizedBox(height: 8),
+          if (specials.isEmpty && widget.section?.eventId == null)
+            Text(
+              'Nie ma jeszcze wydarzeń dla gości. Dodaj je w Management → Kalendarz.',
+              style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+            ),
+          // Wydarzenie przypięte do sekcji, które wypadło z listy (minęło dawno), zostaje do wyboru.
+          if (widget.section?.eventId case final current? when !specials.any((e) => e.id == current))
+            _EventChoice(
+              title: widget.section!.eventTitle ?? 'Wydarzenie',
+              range: widget.section!.eventStarts == null || widget.section!.eventEnds == null
+                  ? ''
+                  : sectionEventRange(widget.section!.eventStarts!, widget.section!.eventEnds!),
+              color: AppColors.textMuted,
+              selected: _eventId == current,
+              onTap: () => setState(() => _eventId = current),
+            ),
+          for (final e in specials)
+            _EventChoice(
+              title: e.title,
+              range: sectionEventRange(e.startsAt, e.endsAt),
+              color: e.color.color,
+              selected: _eventId == e.id,
+              onTap: () => setState(() => _eventId = e.id),
+            ),
+        ],
       ],
     );
   }
 }
 
-class _ItemDialog extends ConsumerStatefulWidget {
-  const _ItemDialog({required this.restaurantId, required this.section, this.item});
+const _monthNames = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
 
-  final String restaurantId;
-  final MenuSection section;
-  final MenuItem? item;
+String _monthName(int month) => _monthNames[month - 1];
+
+/// Jedno wydarzenie do wyboru w oknie sekcji: kolor, nazwa, termin i zaznaczenie.
+class _EventChoice extends StatelessWidget {
+  const _EventChoice({
+    required this.title,
+    required this.range,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String title;
+  final String range;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
-  ConsumerState<_ItemDialog> createState() => _ItemDialogState();
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Glyph(selected ? AppIcons.checkCircle : AppIcons.circle, size: 18, color: selected ? AppColors.accent : color),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: text.bodyMedium),
+                  if (range.isNotEmpty) Text(range, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-class _ItemDialogState extends ConsumerState<_ItemDialog> {
+// ---------------------------------------------------------------------------------------------------------------
+// Okno dania
+// ---------------------------------------------------------------------------------------------------------------
+
+/// Okno nowego albo zmienianego dania: nazwa, sekcja, cena, opis, warianty, dodatki, receptura, VAT, dostępność,
+/// alergeny i zdjęcie.
+class _ItemSheet extends ConsumerStatefulWidget {
+  const _ItemSheet({
+    super.key,
+    required this.restaurantId,
+    required this.sections,
+    required this.sectionId,
+    required this.item,
+    required this.onClose,
+    required this.onSaved,
+    required this.onDelete,
+    required this.onPhoto,
+    required this.onRemovePhoto,
+  });
+
+  final String restaurantId;
+  final List<MenuSection> sections;
+  final String sectionId;
+
+  /// Null: nowe danie.
+  final MenuItem? item;
+  final VoidCallback onClose;
+  final ValueChanged<String> onSaved;
+  final VoidCallback? onDelete;
+  final VoidCallback? onPhoto;
+  final VoidCallback? onRemovePhoto;
+
+  @override
+  ConsumerState<_ItemSheet> createState() => _ItemSheetState();
+}
+
+class _ItemSheetState extends ConsumerState<_ItemSheet> {
   late final _name = TextEditingController(text: widget.item?.name ?? '');
   late final _description = TextEditingController(text: widget.item?.description ?? '');
   late final _price = TextEditingController(
@@ -715,6 +1245,7 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
   late final _variants = [for (final v in widget.item?.variants ?? const <MenuOption>[]) _OptionRow(v)];
   late final _addons = [for (final a in widget.item?.addons ?? const <MenuOption>[]) _OptionRow(a)];
   late final _recipe = [for (final r in widget.item?.ingredients ?? const <RecipeLine>[]) _RecipeRow(r)];
+  late String _sectionId = widget.sectionId;
   late int _vat = widget.item?.vatRate ?? 8;
   late bool _available = widget.item?.available ?? true;
   late bool _showInKitchen = widget.item?.showInKitchen ?? true;
@@ -843,17 +1374,20 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
       showMessage(context, 'Wpisz cenę, na przykład 32 albo 32,50.');
       return;
     }
+    final section = widget.sections.firstWhere((s) => s.id == _sectionId, orElse: () => widget.sections.first);
     setState(() => _busy = true);
     try {
       final repo = ref.read(repositoryProvider);
+      final moved = widget.item != null && widget.item!.sectionId != section.id;
       final id = await repo.saveItem(
         id: widget.item?.id,
-        sectionId: widget.section.id,
+        sectionId: section.id,
         name: _name.text,
         description: _description.text,
         priceGrosze: price,
         allergens: _allergens.toList(),
-        position: widget.item?.position ?? widget.section.items.length,
+        // Danie przeniesione do innej sekcji trafia na jej koniec.
+        position: widget.item == null || moved ? section.items.length : widget.item!.position,
         variants: variants,
         addons: addons,
         vatRate: _vat,
@@ -861,185 +1395,232 @@ class _ItemDialogState extends ConsumerState<_ItemDialog> {
         showInKitchen: _showInKitchen,
       );
       if (!_sameRecipe(recipe)) await repo.setMenuItemIngredients(id, recipe);
-      if (mounted) Navigator.pop(context, true);
+      widget.onSaved(widget.item == null ? 'Pozycja dodana.' : 'Pozycja zapisana.');
     } catch (e) {
-      if (mounted) showError(context, e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+        showError(context, e);
+      }
     }
+  }
+
+  Widget _switchRow(String title, String hint, bool value, ValueChanged<bool> onChanged) {
+    final text = Theme.of(context).textTheme;
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: text.titleSmall),
+              Text(hint, style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+            ],
+          ),
+        ),
+        Switch(value: value, onChanged: onChanged),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    return AlertDialog(
-      title: Text(widget.item == null ? 'Nowa pozycja: ${widget.section.name}' : 'Edytuj pozycję'),
-      content: SizedBox(
-        width: 520,
-        child: SingleChildScrollView(
-          // Odstęp u góry, żeby etykiety pól nie chowały się pod tytułem okna.
-          padding: const EdgeInsets.only(top: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    final isNew = widget.item == null;
+    final sectionName = widget.sections.where((s) => s.id == _sectionId).firstOrNull?.name ?? '';
+    return SideSheetFrame(
+      title: isNew ? 'Nowa pozycja' : 'Edytuj pozycję',
+      onClose: widget.onClose,
+      footer: Row(
+        children: [
+          if (widget.onDelete != null) ...[
+            TextButton(
+              onPressed: _busy ? null : widget.onDelete,
+              style: TextButton.styleFrom(foregroundColor: AppColors.error),
+              child: const Text('Usuń'),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Expanded(
+            child: FilledButton(
+              onPressed: _busy ? null : _save,
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+              child: Text(isNew ? 'Dodaj pozycję' : 'Zapisz'),
+            ),
+          ),
+        ],
+      ),
+      children: [
+        SheetField(
+          label: 'Nazwa',
+          child: TextField(
+            controller: _name,
+            autofocus: isNew,
+            maxLength: 80,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: sheetInput(hint: 'Na przykład: Pierogi ruskie'),
+          ),
+        ),
+        const SizedBox(height: 16),
+        SheetField(
+          label: 'Sekcja',
+          child: DropdownButtonFormField<String>(
+            key: ValueKey('sekcja-$sectionName'),
+            initialValue: widget.sections.any((s) => s.id == _sectionId) ? _sectionId : null,
+            isExpanded: true,
+            isDense: true,
+            icon: Glyph(AppIcons.caretDown, size: 14, color: AppColors.textMuted),
+            decoration: sheetInput(),
+            items: [
+              for (final s in widget.sections)
+                DropdownMenuItem(value: s.id, child: Text(s.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
+            ],
+            onChanged: (id) => setState(() => _sectionId = id ?? _sectionId),
+          ),
+        ),
+        const SizedBox(height: 16),
+        SheetField(
+          label: 'Cena',
+          child: _variants.isEmpty
+              ? TextField(
+                  controller: _price,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+                  decoration: sheetInput(hint: '0', suffix: 'zł'),
+                )
+              // Przy wariantach cenę ma każdy wariant osobno.
+              : TextField(enabled: false, decoration: sheetInput(hint: 'z wariantów')),
+        ),
+        const SizedBox(height: 16),
+        SheetField(
+          label: 'Opis (opcjonalnie)',
+          child: TextField(
+            controller: _description,
+            maxLength: 200,
+            minLines: 2,
+            maxLines: 4,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: sheetInput(),
+          ),
+        ),
+        const SizedBox(height: 24),
+        _OptionsEditor(
+          title: 'Warianty',
+          hint: 'Np. rozmiary: Mała 25 zł, Duża 39 zł. Gość i kelner wybierają jeden.',
+          addLabel: 'Dodaj',
+          namePlaceholder: 'Duża',
+          rows: _variants,
+          onChanged: () => setState(() {}),
+        ),
+        const SizedBox(height: 20),
+        _OptionsEditor(
+          title: 'Dodatki',
+          hint: 'Płatne dodatki doliczane do ceny, np. „Ser +4 zł”. Można wybrać kilka.',
+          addLabel: 'Dodaj',
+          namePlaceholder: 'Ser',
+          rows: _addons,
+          onChanged: () => setState(() {}),
+        ),
+        const SizedBox(height: 20),
+        _RecipeEditor(
+          items: ref.watch(inventoryItemsProvider(widget.restaurantId)).value ?? const [],
+          rows: _recipe,
+          onChanged: () => setState(() {}),
+          onNew: _newIngredient,
+        ),
+        const SizedBox(height: 24),
+        const SheetHeading('Stawka VAT'),
+        const SizedBox(height: 4),
+        Text('8% jedzenie na miejscu, 23% alkohol', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: SegmentedTabs<int>(
+            options: [for (final r in vatRates) (r, '$r%')],
+            selected: _vat,
+            onChanged: (v) => setState(() => _vat = v),
+          ),
+        ),
+        const SizedBox(height: 20),
+        _switchRow(
+          'Dostępne teraz',
+          'Wyłącz, gdy danie się skończy. Goście zobaczą je jako niedostępne.',
+          _available,
+          (v) => setState(() => _available = v),
+        ),
+        const SizedBox(height: 14),
+        _switchRow(
+          'Pokazuj na kuchni',
+          'Wyłącz dla pozycji, których kuchnia nie robi, np. napojów z baru.',
+          _showInKitchen,
+          (v) => setState(() => _showInKitchen = v),
+        ),
+        const SizedBox(height: 24),
+        const SheetHeading('Alergeny'),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final e in allergenLabels.entries)
+              FilterChip(
+                selected: _allergens.contains(e.key),
+                onSelected: (v) => setState(() => v ? _allergens.add(e.key) : _allergens.remove(e.key)),
+                label: Text(
+                  e.value,
+                  style: TextStyle(color: _allergens.contains(e.key) ? AppColors.onAccent : AppColors.text),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        const SheetHeading('Zdjęcie', optional: true),
+        const SizedBox(height: 10),
+        if (isNew)
+          Text(
+            'Zdjęcie dodasz po zapisaniu dania. Goście zobaczą je w aplikacji.',
+            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+          )
+        else
+          Row(
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _name,
-                      autofocus: true,
-                      maxLength: 80,
-                      decoration: const InputDecoration(labelText: 'Nazwa', counterText: ''),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  SizedBox(
-                    width: 130,
-                    // Przy wariantach cenę ma każdy wariant osobno.
-                    child: _variants.isEmpty
-                        ? TextField(
-                            controller: _price,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
-                            decoration: const InputDecoration(labelText: 'Cena', suffixText: 'zł'),
-                          )
-                        : const TextField(
-                            enabled: false,
-                            decoration: InputDecoration(
-                              labelText: 'Cena',
-                              hintText: 'z wariantów',
-                              floatingLabelBehavior: FloatingLabelBehavior.always,
-                            ),
-                          ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: _description,
-                maxLength: 200,
-                minLines: 1,
-                maxLines: 3,
-                decoration: const InputDecoration(labelText: 'Opis (opcjonalnie)'),
-              ),
-              const SizedBox(height: 8),
-              _OptionsEditor(
-                title: 'Warianty',
-                hint: 'Np. rozmiary: Mała 25 zł, Duża 39 zł. Gość i kelner wybierają jeden.',
-                addLabel: 'Dodaj wariant',
-                namePlaceholder: 'Duża',
-                rows: _variants,
-                onChanged: () => setState(() {}),
-              ),
-              const SizedBox(height: 16),
-              _OptionsEditor(
-                title: 'Dodatki',
-                hint: 'Płatne dodatki doliczane do ceny, np. „Ser +4 zł”. Można wybrać kilka.',
-                addLabel: 'Dodaj dodatek',
-                namePlaceholder: 'Ser',
-                rows: _addons,
-                onChanged: () => setState(() {}),
-              ),
-              const SizedBox(height: 16),
-              _RecipeEditor(
-                items: ref.watch(inventoryItemsProvider(widget.restaurantId)).value ?? const [],
-                rows: _recipe,
-                onChanged: () => setState(() {}),
-                onNew: _newIngredient,
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Stawka VAT', style: text.titleSmall),
-                        Text(
-                          '8% jedzenie na miejscu, 23% alkohol',
-                          style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  color: AppColors.surfaceRaised,
+                  child: widget.item!.photoUrl == null
+                      ? Center(child: Glyph(AppIcons.image, size: 22, color: AppColors.textMuted))
+                      : Image.network(
+                          widget.item!.photoUrl!,
+                          fit: BoxFit.cover,
+                          cacheWidth: 144,
+                          errorBuilder: (_, _, _) =>
+                              Center(child: Glyph(AppIcons.warning, size: 18, color: AppColors.textMuted)),
                         ),
-                      ],
-                    ),
-                  ),
-                  SegmentedTabs<int>(
-                    options: [for (final r in vatRates) (r, '$r%')],
-                    selected: _vat,
-                    onChanged: (v) => setState(() => _vat = v),
-                  ),
-                ],
+                ),
               ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Dostępne teraz', style: text.titleSmall),
-                        Text(
-                          'Wyłącz, gdy danie się skończy. Goście zobaczą je jako niedostępne.',
-                          style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-                        ),
-                      ],
+              const SizedBox(width: 14),
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    OutlinedButton(
+                      onPressed: widget.onPhoto,
+                      child: Text(widget.item!.photoUrl == null ? 'Dodaj zdjęcie' : 'Zmień zdjęcie'),
                     ),
-                  ),
-                  Switch(value: _available, onChanged: (v) => setState(() => _available = v)),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Pokazuj na kuchni', style: text.titleSmall),
-                        Text(
-                          'Wyłącz dla pozycji, których kuchnia nie robi, np. napojów z baru.',
-                          style: text.bodySmall?.copyWith(color: AppColors.textMuted),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Switch(value: _showInKitchen, onChanged: (v) => setState(() => _showInKitchen = v)),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Text('Alergeny', style: text.titleSmall),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final e in allergenLabels.entries)
-                    FilterChip(
-                      selected: _allergens.contains(e.key),
-                      onSelected: (v) => setState(
-                        () => v ? _allergens.add(e.key) : _allergens.remove(e.key),
+                    if (widget.item!.photoUrl != null)
+                      TextButton(
+                        onPressed: widget.onRemovePhoto,
+                        style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                        child: const Text('Usuń zdjęcie'),
                       ),
-                      label: Text(
-                        e.value,
-                        style: TextStyle(
-                          color: _allergens.contains(e.key) ? AppColors.onAccent : AppColors.text,
-                        ),
-                      ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
-          child: const Text('Anuluj'),
-        ),
-        FilledButton(onPressed: _busy ? null : _save, child: const Text('Zapisz')),
       ],
     );
   }
@@ -1062,7 +1643,8 @@ class _RecipeRow {
 }
 
 /// Receptura dania: ile czego zużywa jedna porcja. Po wysłaniu dania panel odejmuje to ze stanu
-/// w Inwentaryzacji. Goście w aplikacji tego nie widzą.
+/// w Inwentaryzacji. Goście w aplikacji tego nie widzą. W wąskim oknie każdy wiersz ma dwie linie:
+/// składnik, a pod nim ilość i jednostka.
 class _RecipeEditor extends StatelessWidget {
   const _RecipeEditor({required this.items, required this.rows, required this.onChanged, required this.onNew});
 
@@ -1084,11 +1666,6 @@ class _RecipeEditor extends StatelessWidget {
             const SizedBox(width: 8),
             Tag('TYLKO W PANELU', color: AppColors.textMuted),
             const Spacer(),
-            TextButton.icon(
-              onPressed: onNew,
-              icon: const Glyph(AppIcons.package, size: 14),
-              label: const Text('Nowy składnik'),
-            ),
             if (items.isNotEmpty && rows.length < 50)
               TextButton.icon(
                 onPressed: () {
@@ -1106,77 +1683,85 @@ class _RecipeEditor extends StatelessWidget {
           style: text.bodySmall?.copyWith(color: AppColors.textMuted),
         ),
         for (final row in rows) ...[
-          const SizedBox(height: 8),
-          Row(
+          const SizedBox(height: 10),
+          Column(
             key: ObjectKey(row),
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  // Klucz ze składnikiem: wybór wstawiony z „Nowy składnik” odświeża pole.
-                  key: ValueKey('${identityHashCode(row)}-${row.itemId}'),
-                  initialValue: byId.containsKey(row.itemId) ? row.itemId : null,
-                  isExpanded: true,
-                  isDense: true,
-                  icon: Glyph(AppIcons.caretDown, size: 14, color: AppColors.textMuted),
-                  hint: const Text('Wybierz składnik'),
-                  decoration: const InputDecoration(isDense: true),
-                  items: [
-                    for (final i in items)
-                      DropdownMenuItem(
-                        value: i.id,
-                        child: Text('${i.name} · ${i.package}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ),
-                  ],
-                  onChanged: (id) {
-                    row.itemId = id;
-                    // Po zmianie składnika jednostka wraca do jego jednostki porcji.
-                    row.unit = byId[id]?.unit.portion;
-                    onChanged();
-                  },
-                ),
-              ),
-              const SizedBox(width: 10),
-              SizedBox(
-                width: 88,
-                child: TextField(
-                  controller: row.amount,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
-                  textAlign: TextAlign.right,
-                  decoration: const InputDecoration(hintText: '0', isDense: true),
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 96,
-                child: switch (byId[row.itemId]) {
-                  final item? when item.unit.compatible.length > 1 => DropdownButtonFormField<InventoryUnit>(
-                    key: ValueKey('${row.itemId}-unit'),
-                    initialValue: row.unit ?? item.unit.portion,
-                    isDense: true,
-                    isExpanded: true,
-                    icon: Glyph(AppIcons.caretDown, size: 14, color: AppColors.textMuted),
-                    decoration: const InputDecoration(isDense: true),
-                    items: [
-                      for (final u in item.unit.compatible) DropdownMenuItem(value: u, child: Text(u.label)),
-                    ],
-                    onChanged: (u) {
-                      row.unit = u;
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      // Klucz ze składnikiem: wybór wstawiony z „Nowy składnik” odświeża pole.
+                      key: ValueKey('${identityHashCode(row)}-${row.itemId}'),
+                      initialValue: byId.containsKey(row.itemId) ? row.itemId : null,
+                      isExpanded: true,
+                      isDense: true,
+                      icon: Glyph(AppIcons.caretDown, size: 14, color: AppColors.textMuted),
+                      hint: const Text('Wybierz składnik'),
+                      decoration: sheetInput(),
+                      items: [
+                        for (final i in items)
+                          DropdownMenuItem(
+                            value: i.id,
+                            child: Text('${i.name} · ${i.package}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ),
+                      ],
+                      onChanged: (id) {
+                        row.itemId = id;
+                        // Po zmianie składnika jednostka wraca do jego jednostki porcji.
+                        row.unit = byId[id]?.unit.portion;
+                        onChanged();
+                      },
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Usuń',
+                    icon: const Glyph(AppIcons.close, size: 16),
+                    onPressed: () {
+                      rows.remove(row);
                       onChanged();
+                      WidgetsBinding.instance.addPostFrameCallback((_) => row.dispose());
                     },
                   ),
-                  final item? => Text(item.unit.label, style: text.bodyMedium),
-                  null => const SizedBox.shrink(),
-                },
+                ],
               ),
-              IconButton(
-                tooltip: 'Usuń',
-                icon: const Glyph(AppIcons.close, size: 16),
-                onPressed: () {
-                  rows.remove(row);
-                  onChanged();
-                  WidgetsBinding.instance.addPostFrameCallback((_) => row.dispose());
-                },
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: row.amount,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
+                      decoration: sheetInput(hint: 'Ilość na porcję'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  SizedBox(
+                    width: 104,
+                    child: switch (byId[row.itemId]) {
+                      final item? when item.unit.compatible.length > 1 => DropdownButtonFormField<InventoryUnit>(
+                        key: ValueKey('${row.itemId}-unit'),
+                        initialValue: row.unit ?? item.unit.portion,
+                        isDense: true,
+                        isExpanded: true,
+                        icon: Glyph(AppIcons.caretDown, size: 14, color: AppColors.textMuted),
+                        decoration: sheetInput(),
+                        items: [
+                          for (final u in item.unit.compatible) DropdownMenuItem(value: u, child: Text(u.label)),
+                        ],
+                        onChanged: (u) {
+                          row.unit = u;
+                          onChanged();
+                        },
+                      ),
+                      final item? => Text(item.unit.label, style: text.bodyMedium),
+                      null => const SizedBox.shrink(),
+                    },
+                  ),
+                  const SizedBox(width: 40),
+                ],
               ),
             ],
           ),
@@ -1189,6 +1774,14 @@ class _RecipeEditor extends StatelessWidget {
               style: text.bodySmall,
             ),
           ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: onNew,
+            icon: const Glyph(AppIcons.package, size: 14),
+            label: const Text('Nowy składnik'),
+          ),
+        ),
       ],
     );
   }
@@ -1257,21 +1850,17 @@ class _OptionsEditor extends StatelessWidget {
                 child: TextField(
                   controller: row.name,
                   maxLength: 40,
-                  decoration: InputDecoration(
-                    hintText: namePlaceholder,
-                    isDense: true,
-                    counterText: '',
-                  ),
+                  decoration: sheetInput(hint: namePlaceholder),
                 ),
               ),
               const SizedBox(width: 10),
               SizedBox(
-                width: 110,
+                width: 104,
                 child: TextField(
                   controller: row.price,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]'))],
-                  decoration: const InputDecoration(hintText: '0', suffixText: 'zł', isDense: true),
+                  decoration: sheetInput(hint: '0', suffix: 'zł'),
                 ),
               ),
               IconButton(
@@ -1288,62 +1877,6 @@ class _OptionsEditor extends StatelessWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-/// Miniatura zdjęcia dania. Bez zdjęcia: pole „Dodaj zdjęcie”. Menu: zmiana albo usunięcie.
-class _PhotoThumb extends StatelessWidget {
-  const _PhotoThumb({required this.url, required this.onPick, required this.onRemove});
-
-  final String? url;
-  final VoidCallback? onPick;
-  final VoidCallback? onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    final box = ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        width: 72,
-        height: 72,
-        color: AppColors.surfaceRaised,
-        child: url == null
-            ? Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Glyph(AppIcons.plus, size: 18, color: AppColors.textMuted),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Zdjęcie',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: AppColors.textMuted),
-                  ),
-                ],
-              )
-            : Image.network(
-                url!,
-                fit: BoxFit.cover,
-                cacheWidth: 144,
-                errorBuilder: (_, _, _) => Center(child: Glyph(AppIcons.warning, size: 18, color: AppColors.textMuted)),
-              ),
-      ),
-    );
-    if (onPick == null) return box;
-    if (url == null) {
-      return Tooltip(
-        message: 'Dodaj zdjęcie dania',
-        child: InkWell(borderRadius: BorderRadius.circular(10), onTap: onPick, child: box),
-      );
-    }
-    return PopupMenuButton<String>(
-      tooltip: 'Zdjęcie dania',
-      onSelected: (v) => v == 'remove' ? onRemove?.call() : onPick!(),
-      itemBuilder: (_) => [
-        const PopupMenuItem(value: 'change', child: Text('Zmień zdjęcie')),
-        if (onRemove != null)
-          PopupMenuItem(value: 'remove', child: Text('Usuń zdjęcie', style: TextStyle(color: AppColors.error))),
-      ],
-      child: box,
     );
   }
 }
