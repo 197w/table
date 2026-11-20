@@ -2558,6 +2558,122 @@ class VehicleCheck {
   );
 }
 
+/// Zamówienie z dostawą w rozliczeniach dostawców (Management → Rozliczenia dostawców, `panel_courier_settlements`).
+class SettlementOrder {
+  const SettlementOrder({
+    required this.id,
+    required this.number,
+    required this.at,
+    required this.totalGrosze,
+    required this.paymentChoice,
+    required this.delivered,
+    this.courseId,
+    this.address,
+    this.customer,
+    this.courierId,
+    this.courierName,
+    this.vehicleName,
+    this.vehiclePlate,
+  });
+
+  final String id;
+  final int number;
+
+  /// Dowiezienie, a gdy jeszcze nie dowiezione, wyjazd albo złożenie zamówienia.
+  final DateTime at;
+  final int totalGrosze;
+
+  /// cash, card_on_delivery, card_online albo prepaid.
+  final String paymentChoice;
+
+  /// Dowiezione (inaczej gotowe albo w drodze).
+  final bool delivered;
+  final String? courseId;
+  final String? address;
+  final String? customer;
+  final String? courierId;
+  final String? courierName;
+  final String? vehicleName;
+  final String? vehiclePlate;
+
+  /// Opłacone z góry: karta online albo przyjęte w panelu jako opłacone. Gotówka i karta przy odbiorze to dla
+  /// systemu zamówienie nieopłacone, bo dostawca pobiera pieniądze od gościa.
+  bool get paid => paymentChoice == 'card_online' || paymentChoice == 'prepaid';
+
+  /// Jak gość płaci: „Gotówka u dostawcy”, „Karta u dostawcy”, „Karta online”, „Opłacone wcześniej”.
+  String get paymentLabel => switch (paymentChoice) {
+    'cash' => 'Gotówka u dostawcy',
+    'card_on_delivery' => 'Karta u dostawcy',
+    'card_online' => 'Karta online',
+    'prepaid' => 'Opłacone wcześniej',
+    _ => '—',
+  };
+
+  /// Sama forma płatności do tabeli (opłacenie jest osobno): „Gotówka”, „Karta”, „Karta online”, „Z góry”.
+  String get paymentShort => switch (paymentChoice) {
+    'cash' => 'Gotówka',
+    'card_on_delivery' => 'Karta',
+    'card_online' => 'Karta online',
+    'prepaid' => 'Z góry',
+    _ => '—',
+  };
+
+  /// „Fiat Punto · BI 12345”. Null: dostawca nie miał tego dnia auta we Flocie.
+  String? get vehicleLabel => vehicleName == null ? null : [vehicleName!, ?vehiclePlate].join(' · ');
+
+  factory SettlementOrder.fromJson(Map<String, dynamic> json) => SettlementOrder(
+    id: json['id'] as String,
+    number: _toInt(json['number']),
+    at: _toDate(json['at']),
+    totalGrosze: _toInt(json['total_grosze']),
+    paymentChoice: json['payment_choice'] as String? ?? 'cash',
+    delivered: json['fulfillment'] == 'delivered',
+    courseId: json['course_id'] as String?,
+    address: (json['delivery_address'] as String?)?.ifEmpty,
+    customer: (json['customer_name'] as String?)?.ifEmpty,
+    courierId: json['courier_member'] as String?,
+    courierName: (json['courier_name'] as String?)?.ifEmpty,
+    vehicleName: (json['vehicle_name'] as String?)?.ifEmpty,
+    vehiclePlate: (json['vehicle_plate'] as String?)?.ifEmpty,
+  );
+}
+
+/// Kurs dostawcy: zamówienia z jednym numerem kursu jadą razem (zamówienie bez kursu to kurs z jednym zamówieniem).
+class CourierRun {
+  CourierRun(this.orders) : assert(orders.isNotEmpty);
+
+  /// Zamówienia kursu od najmniejszego numeru.
+  final List<SettlementOrder> orders;
+
+  String get key => orders.first.courseId ?? orders.first.id;
+
+  /// Najpóźniejszy czas z zamówień kursu.
+  DateTime get at => orders.map((o) => o.at).reduce((a, b) => a.isAfter(b) ? a : b);
+
+  String? get courierId => orders.map((o) => o.courierId).whereType<String>().firstOrNull;
+  String? get courierName => orders.map((o) => o.courierName).whereType<String>().firstOrNull;
+  String? get vehicleLabel => orders.map((o) => o.vehicleLabel).whereType<String>().firstOrNull;
+
+  int get totalGrosze => orders.fold(0, (sum, o) => sum + o.totalGrosze);
+
+  /// Kurs jest opłacony, gdy każde jego zamówienie jest opłacone z góry. Inaczej dostawca ma do rozliczenia
+  /// gotówkę albo kartę pobraną od gościa.
+  bool get paid => orders.every((o) => o.paid);
+
+  bool get delivered => orders.every((o) => o.delivered);
+
+  /// Kursy z listy zamówień (z bazy, najnowsze pierwsze), najnowsze pierwsze.
+  static List<CourierRun> group(List<SettlementOrder> orders) {
+    final byKey = <String, List<SettlementOrder>>{};
+    for (final o in orders) {
+      byKey.putIfAbsent(o.courseId ?? o.id, () => []).add(o);
+    }
+    return [
+      for (final list in byKey.values) CourierRun(list..sort((a, b) => a.number.compareTo(b.number))),
+    ]..sort((a, b) => b.at.compareTo(a.at));
+  }
+}
+
 /// Gość lokalu w bazie klientów: z rezerwacji i zamówień na wynos.
 class Customer {
   const Customer({

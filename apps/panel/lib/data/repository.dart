@@ -986,6 +986,17 @@ class PanelRepository {
     });
   }
 
+  /// Zamówienia z dostawą z kursów dostawców w dniach lokalu od [from] do [to] (Rozliczenia dostawców, 0090).
+  Future<List<SettlementOrder>> courierSettlements(String restaurantId, DateTime from, DateTime to) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>(
+        'panel_courier_settlements',
+        params: {'p_restaurant_id': restaurantId, 'p_from': _dateOnly(from), 'p_to': _dateOnly(to)},
+      );
+      return [for (final r in rows) SettlementOrder.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
   /// Auto dostawcy na dzień. [vehicleId] null: bez auta.
   Future<void> setVehicleDay(String restaurantId, DateTime day, String memberId, String? vehicleId, {String? editorId}) {
     return _guard(

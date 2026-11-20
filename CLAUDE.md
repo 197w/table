@@ -468,6 +468,17 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   i dostawcę (`UnclosedOrder.paymentNotice`). Nieopłacone: gotówka albo karta przy odbiorze (`payOnDelivery`);
   tak samo pisze etykieta (`{platnosc}`: „NIEOPŁACONE · Gotówka: 86,00 zł”), karta w Dostawach
   (`TakeawayOrder.paymentNotice`), powiadomienie o nowym zamówieniu i formularz zamówienia z panelu.
+  Rozliczenia dostawców (`/rozliczenia-dostawcow`, 0090, `settlements_screen.dart`, uprawnienie `day_close` jak
+  Podsumowanie dnia; 20.11.2026, prośba użytkownika): wszystkie kursy dostawców (`panel_courier_settlements(lokal, od,
+  do)`: dostawy gotowe, w drodze i dowiezione w dniach lokalu z godziną zamknięcia dnia) w układzie jak Pracownicy: po
+  lewej panel (wyszukiwanie po numerze, adresie, kliencie, dostawcy, aucie; filtry Dostawca z liczbą kursów i „Bez
+  dostawcy”, Opłacenie), nad tabelą okres (Dziś, Wczoraj, 7 dni, Ten miesiąc, Zeszły miesiąc), tabela Kiedy,
+  Zamówienia, Adres, Dostawca, Auto (z dnia z Floty: `vehicle_days`), Płatność, Kwota; na dole suma kursów opłaconych
+  (po filtrach) i mniejszą czcionką nieopłaconych. Zamówienia z jednym `course_id` to jeden kurs
+  (`CourierRun.group`), jego linie stoją równo w kolumnach. Opłacone: karta online i „opłacone wcześniej”
+  (`payment_choice` card_online, prepaid); gotówka i karta przy odbiorze to nieopłacone, choć po dowiezieniu
+  `payment_status` jest „paid” (dostawca pobrał pieniądze, do rozliczenia z lokalem). Kurs jest opłacony, gdy każde
+  jego zamówienie jest.
 - Informacje dla pracowników (0062, Pracownicy → `/informacje`, `features/staff/announcements_screen.dart`):
   osoba z uprawnieniem `announcements` (w 0062 dostały je stanowiska z `staff`, ALL ma zawsze, właściciel hasłem konta)
   pisze tytuł i treść, wybiera odbiorców (Wszyscy / Pracujący tego dnia: przyjęte godziny w grafiku albo zmiana w dniu

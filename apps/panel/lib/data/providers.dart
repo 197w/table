@@ -127,6 +127,15 @@ final selectedDayProvider = NotifierProvider<SelectedDayNotifier, DateTime>(
 
 typedef DayQuery = ({String restaurantId, DateTime day});
 
+/// Okres rozliczeń dostawców: lokal i dni lokalu od [from] do [to] włącznie.
+typedef SettlementQuery = ({String restaurantId, DateTime from, DateTime to});
+
+/// Zamówienia z dostawą z kursów dostawców (Management → Rozliczenia dostawców). Odświeżają się na żywo.
+final courierSettlementsProvider = FutureProvider.autoDispose.family<List<SettlementOrder>, SettlementQuery>((ref, q) {
+  ref.watch(ordersLiveProvider(q.restaurantId).select((s) => s.version));
+  return ref.watch(repositoryProvider).courierSettlements(q.restaurantId, q.from, q.to);
+});
+
 /// Wyszukiwanie w historii zamówień: lokal i wpisany tekst (imię, telefon albo adres).
 typedef OrderSearchQuery = ({String restaurantId, String query});
 

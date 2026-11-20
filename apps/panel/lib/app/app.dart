@@ -20,6 +20,7 @@ import '../features/management/day_screen.dart';
 import '../features/management/discounts_screen.dart';
 import '../features/management/export_screen.dart';
 import '../features/management/hours_screen.dart';
+import '../features/management/settlements_screen.dart';
 import '../features/management/unclosed_screen.dart';
 import '../features/menu/menu_screen.dart';
 import '../features/orders/order_history_screen.dart';
@@ -201,6 +202,7 @@ GoRouter _buildRouter(
           _page(PanelRoutes.announcements, const AnnouncementsScreen()),
           _page(PanelRoutes.daySummary, const DaySummaryScreen()),
           _page(PanelRoutes.unclosed, const UnclosedOrdersScreen()),
+          _page(PanelRoutes.settlements, const SettlementsScreen()),
           _page(PanelRoutes.hours, const HoursScreen()),
           _page(PanelRoutes.discounts, const DiscountsScreen()),
           _page(PanelRoutes.export, const ExportScreen()),
@@ -256,6 +258,7 @@ abstract final class PanelRoutes {
   static const stats = '/statystyki';
   static const daySummary = '/podsumowanie';
   static const unclosed = '/niezamkniete';
+  static const settlements = '/rozliczenia-dostawcow';
   static const hours = '/godziny';
   static const discounts = '/rabaty';
   static const export = '/eksport';
@@ -291,6 +294,8 @@ const _routePermissions = {
   PanelRoutes.stats: {'stats'},
   PanelRoutes.daySummary: {'day_close'},
   PanelRoutes.unclosed: {'day_close'},
+  // Rozliczenia dostawców (0090) ma to samo uprawnienie co Podsumowanie dnia.
+  PanelRoutes.settlements: {'day_close'},
   PanelRoutes.hours: {'timesheet'},
   PanelRoutes.discounts: {'discounts'},
   PanelRoutes.export: {'export'},
@@ -325,6 +330,7 @@ const panelTabLabels = {
   PanelRoutes.stats: 'Statystyki',
   PanelRoutes.daySummary: 'Podsumowanie dnia',
   PanelRoutes.unclosed: 'Niezamknięte zamówienia',
+  PanelRoutes.settlements: 'Rozliczenia dostawców',
   PanelRoutes.hours: 'Godziny pracy',
   PanelRoutes.discounts: 'Kody rabatowe',
   PanelRoutes.export: 'Eksport',

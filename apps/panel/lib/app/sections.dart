@@ -47,6 +47,8 @@ enum PanelSection {
     // Kalendarz wydarzeń lokalu i pracowników (8.11.2026, wygląd jak Notion Calendar).
     PanelTab(PanelRoutes.calendar, 'Kalendarz', AppIcons.calendar),
     PanelTab(PanelRoutes.unclosed, 'Niezamknięte zamówienia', AppIcons.hourglass),
+    // Kursy dostawców: zamówienia, adresy, auta i opłacenie (20.11.2026).
+    PanelTab(PanelRoutes.settlements, 'Rozliczenia dostawców', AppIcons.handCoins),
     PanelTab(PanelRoutes.hours, 'Godziny pracy', AppIcons.clockUser),
     PanelTab(PanelRoutes.menu, 'Menu', AppIcons.bookOpen),
     PanelTab(PanelRoutes.inventory, 'Inwentaryzacja', AppIcons.package),
