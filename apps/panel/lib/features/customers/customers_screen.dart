@@ -51,7 +51,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
             c.name.toLowerCase().contains(query) ||
             (c.company?.toLowerCase().contains(query) ?? false) ||
             (c.address?.toLowerCase().contains(query) ?? false) ||
-            (digits.length >= 3 && (c.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '').contains(digits)))
+            (digits.length >= 3 && (c.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '').contains(digits)) ||
+            (digits.length >= 3 && (c.nip ?? '').contains(digits)))
           c,
     ];
   }
@@ -237,6 +238,7 @@ class _CustomerTile extends StatelessWidget {
                   [
                     c.phone == null ? 'Bez telefonu' : Fmt.phone(c.phone),
                     ?c.company,
+                    if (c.nip != null) 'NIP ${c.nip}',
                   ].join(' · '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -485,20 +487,21 @@ class _CustomerDetail extends ConsumerWidget {
                 ],
               ),
               // Dane z zamówień na wynos: firma z NIP-em i ostatni adres dostawy.
-              if (c.company != null || c.address != null) ...[
+              if (c.company != null || c.nip != null || c.address != null) ...[
                 const SizedBox(height: 4),
                 Wrap(
                   spacing: 14,
                   runSpacing: 2,
                   children: [
-                    if (c.company != null)
+                    // NIP widać też bez nazwy firmy (klient podał tylko NIP przy zamówieniu).
+                    if (c.company != null || c.nip != null)
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Glyph(AppIcons.briefcase, size: 14, color: AppColors.textMuted),
                           const SizedBox(width: 6),
                           SelectableText(
-                            [c.company!, if (c.nip != null) 'NIP ${c.nip}'].join(' · '),
+                            [?c.company, if (c.nip != null) 'NIP ${c.nip}'].join(' · '),
                             style: text.bodyMedium,
                           ),
                         ],

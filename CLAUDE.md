@@ -458,7 +458,16 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   na żywo): otwarte rachunki i niezakończone zamówienia na wynos ze wszystkich dni, z poprzednich dni osobno na górze
   (czerwone), filtr Wszystkie / Na sali / Na wynos, kto otworzył, pozycje (niewysłane, na kuchni, do wydania), kwota;
   „Otwórz rachunek” (`/zamowienia?stolik=`), „Otwórz” (Dostawy, Odbiór albo szkic w Zamówieniach), „Zamknij”
-  (`SettleDialog`, z `orders_close`).
+  (`SettleDialog`, z `orders_close`). Od 20.11.2026 (0089, prośba użytkownika: „nie da się zamknąć albo anulować
+  dostawy”) wszystkie rodzaje są w jednej liście i mają te same akcje: „Zamknij” i „Anuluj” (`orders_close`). Dostawa
+  i odbiór w dowolnym etapie, także „w drodze”, zamyka `panel_takeaway_finish(order, metoda, member)` (dostarczone
+  i opłacone; przy gotówce i karcie przy odbiorze osoba wybiera formę, karta online i „opłacone wcześniej” wynikają
+  z zamówienia; dostawca zostaje przy zamówieniu do rozliczeń, jeśli był w drodze wraca do kolejki) a anuluje
+  `panel_takeaway_cancel(order, powód, member)` (też szkic i czekające na płatność, zwalnia dostawcę); rachunek na
+  sali anuluje `panel_cancel_order`. Kafel pokazuje napis „NIEOPŁACONE · gotówka u dostawcy” / „Opłacone”, adres
+  i dostawcę (`UnclosedOrder.paymentNotice`). Nieopłacone: gotówka albo karta przy odbiorze (`payOnDelivery`);
+  tak samo pisze etykieta (`{platnosc}`: „NIEOPŁACONE · Gotówka: 86,00 zł”), karta w Dostawach
+  (`TakeawayOrder.paymentNotice`), powiadomienie o nowym zamówieniu i formularz zamówienia z panelu.
 - Informacje dla pracowników (0062, Pracownicy → `/informacje`, `features/staff/announcements_screen.dart`):
   osoba z uprawnieniem `announcements` (w 0062 dostały je stanowiska z `staff`, ALL ma zawsze, właściciel hasłem konta)
   pisze tytuł i treść, wybiera odbiorców (Wszyscy / Pracujący tego dnia: przyjęte godziny w grafiku albo zmiana w dniu
