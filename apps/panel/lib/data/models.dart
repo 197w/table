@@ -2558,6 +2558,64 @@ class VehicleCheck {
   );
 }
 
+/// Faktura zakupu od dostawcy towaru (Inwentaryzacja → Faktury, 0091): kwota brutto, termin, opłacona albo nie,
+/// opcjonalnie powiązana z wpisem dostawy.
+class InventoryInvoice {
+  const InventoryInvoice({
+    required this.id,
+    required this.supplier,
+    required this.number,
+    required this.issuedOn,
+    required this.grossGrosze,
+    this.dueOn,
+    this.paidOn,
+    this.docId,
+    this.docAt,
+    this.note,
+    this.createdBy,
+  });
+
+  final String id;
+  final String supplier;
+  final String number;
+
+  /// Daty bez godziny (UTC).
+  final DateTime issuedOn;
+  final DateTime? dueOn;
+  final DateTime? paidOn;
+  final int grossGrosze;
+
+  /// Dostawa, której dotyczy faktura, i kiedy przyjechała.
+  final String? docId;
+  final DateTime? docAt;
+  final String? note;
+  final String? createdBy;
+
+  bool get paid => paidOn != null;
+
+  /// Nieopłacona po terminie płatności ([today]: dzień bez godziny).
+  bool overdue(DateTime today) => !paid && dueOn != null && dueOn!.isBefore(DateTime.utc(today.year, today.month, today.day));
+
+  /// Ile dni do terminu (ujemna: po terminie). Null: bez terminu albo opłacona.
+  int? daysToDue(DateTime today) => paid || dueOn == null
+      ? null
+      : dueOn!.difference(DateTime.utc(today.year, today.month, today.day)).inDays;
+
+  factory InventoryInvoice.fromJson(Map<String, dynamic> json) => InventoryInvoice(
+    id: json['id'] as String,
+    supplier: json['supplier'] as String? ?? '',
+    number: json['number'] as String? ?? '',
+    issuedOn: _day(json['issued_on']),
+    dueOn: json['due_on'] == null ? null : _day(json['due_on']),
+    paidOn: json['paid_on'] == null ? null : _day(json['paid_on']),
+    grossGrosze: _toInt(json['gross_grosze']),
+    docId: json['doc_id'] as String?,
+    docAt: _toDateOrNull(json['doc_at']),
+    note: (json['note'] as String?)?.ifEmpty,
+    createdBy: json['created_by'] as String?,
+  );
+}
+
 /// Zamówienie z dostawą w rozliczeniach dostawców (Management → Rozliczenia dostawców, `panel_courier_settlements`).
 class SettlementOrder {
   const SettlementOrder({

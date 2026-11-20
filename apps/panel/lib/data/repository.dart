@@ -1505,6 +1505,62 @@ class PanelRepository {
     });
   }
 
+  /// Faktury zakupu lokalu, najnowsze pierwsze (Inwentaryzacja → Faktury, uprawnienie „Edytowanie składników”).
+  Future<List<InventoryInvoice>> inventoryInvoices(String restaurantId) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>('panel_inventory_invoices', params: {'p_restaurant_id': restaurantId});
+      return [for (final r in rows) InventoryInvoice.fromJson(r as Map<String, dynamic>)];
+    });
+  }
+
+  /// Nowa faktura ([id] null) albo zmiana istniejącej. [paidOn] null: nieopłacona.
+  Future<void> saveInventoryInvoice(
+    String restaurantId, {
+    String? id,
+    required String supplier,
+    required String number,
+    required DateTime issuedOn,
+    DateTime? dueOn,
+    required int grossGrosze,
+    String? docId,
+    String? note,
+    DateTime? paidOn,
+    String? memberId,
+  }) {
+    return _guard(
+      () => _db.rpc<dynamic>('panel_save_inventory_invoice', params: {
+        'p_restaurant_id': restaurantId,
+        'p_id': id,
+        'p_supplier': supplier,
+        'p_number': number,
+        'p_issued_on': _dateOnly(issuedOn),
+        'p_due_on': dueOn == null ? null : _dateOnly(dueOn),
+        'p_gross_grosze': grossGrosze,
+        'p_doc_id': docId,
+        'p_note': note,
+        'p_paid_on': paidOn == null ? null : _dateOnly(paidOn),
+        'p_member_id': memberId,
+      }),
+    );
+  }
+
+  /// Oznacza fakturę jako opłaconą w danym dniu albo ([paidOn] null) jako nieopłaconą.
+  Future<void> setInventoryInvoicePaid(String id, DateTime? paidOn, {String? memberId}) {
+    return _guard(
+      () => _db.rpc<void>('panel_set_inventory_invoice_paid', params: {
+        'p_id': id,
+        'p_paid_on': paidOn == null ? null : _dateOnly(paidOn),
+        'p_member_id': memberId,
+      }),
+    );
+  }
+
+  Future<void> deleteInventoryInvoice(String id, {String? memberId}) {
+    return _guard(
+      () => _db.rpc<void>('panel_delete_inventory_invoice', params: {'p_id': id, 'p_member_id': memberId}),
+    );
+  }
+
   /// Dostawa albo usunięcie. [lines]: składnik, pełne opakowania i reszta (g, ml, szt.).
   Future<void> saveInventoryDoc(
     String restaurantId, {

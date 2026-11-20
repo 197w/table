@@ -479,6 +479,15 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (`payment_choice` card_online, prepaid); gotówka i karta przy odbiorze to nieopłacone, choć po dowiezieniu
   `payment_status` jest „paid” (dostawca pobrał pieniądze, do rozliczenia z lokalem). Kurs jest opłacony, gdy każde
   jego zamówienie jest.
+  Faktury w Inwentaryzacji (zakładka „Faktury” obok Historii, 0091, `inventory_invoices.dart`, tylko z uprawnieniem
+  `inventory_edit`, bo to pieniądze; 20.11.2026, prośba użytkownika „dodać faktury w management w inwentaryzacji”):
+  faktury zakupu od dostawców towaru: dostawca (z podpowiedziami z poprzednich faktur i dostaw), numer, data
+  wystawienia, termin płatności (skróty 0/7/14/30 dni), kwota brutto, opcjonalna dostawa z `inventory_docs`
+  (`doc_id`), notatka i „opłacona” z dniem zapłaty. Ten sam dostawca i numer drugi raz nie przejdzie. Lista z filtrem
+  Wszystkie / Do zapłaty / Opłacone, plakietki „Do zapłaty” i „Po terminie” z kwotami, „Opłać” / „Cofnij” w wierszu,
+  kliknięcie wiersza zmienia fakturę. Tabela `inventory_invoices` bez zasad RLS (tylko funkcje):
+  `panel_inventory_invoices`, `panel_save_inventory_invoice`, `panel_set_inventory_invoice_paid`,
+  `panel_delete_inventory_invoice`. Bez załączników (zdjęcia i PDF faktury) na razie.
 - Informacje dla pracowników (0062, Pracownicy → `/informacje`, `features/staff/announcements_screen.dart`):
   osoba z uprawnieniem `announcements` (w 0062 dostały je stanowiska z `staff`, ALL ma zawsze, właściciel hasłem konta)
   pisze tytuł i treść, wybiera odbiorców (Wszyscy / Pracujący tego dnia: przyjęte godziny w grafiku albo zmiana w dniu

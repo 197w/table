@@ -334,6 +334,11 @@ final inventoryDocsProvider = FutureProvider.autoDispose.family<List<InventoryDo
       .inventoryDocs(id, DateTime.now().subtract(const Duration(days: 60))),
 );
 
+/// Faktury zakupu lokalu (Inwentaryzacja → Faktury).
+final inventoryInvoicesProvider = FutureProvider.autoDispose.family<List<InventoryInvoice>, String>(
+  (ref, id) => (ref..cacheFor()).watch(repositoryProvider).inventoryInvoices(id),
+);
+
 final inventoryCountsProvider = FutureProvider.autoDispose.family<List<InventoryCount>, String>(
   (ref, id) => (ref..cacheFor()).watch(repositoryProvider).inventoryCounts(id),
 );

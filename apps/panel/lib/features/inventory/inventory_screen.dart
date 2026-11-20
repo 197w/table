@@ -8,6 +8,7 @@ import '../../data/providers.dart';
 import '../../shared/panel_select.dart';
 import '../../shared/panel_widgets.dart';
 import 'inventory_docs.dart';
+import 'inventory_invoices.dart';
 import 'inventory_pdf.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
@@ -42,8 +43,8 @@ List<(String?, List<InventoryItem>)> _byLocation(List<InventoryItem> items) {
   return [for (final k in keys) (k, groups[k]!), if (groups.containsKey(null)) (null, groups[null]!)];
 }
 
-/// Inwentaryzacja: zakładki Spis (trwająca inwentaryzacja), Składniki (lista ze stanem), Dostawy i usunięcia
-/// oraz Historia. Uprawnienia: `inventory_edit` (składniki, pojemniki, okres, usuwanie wpisów) i
+/// Inwentaryzacja: zakładki Spis (trwająca inwentaryzacja), Składniki (lista ze stanem), Dostawy i usunięcia,
+/// Historia oraz Faktury (od 20.11.2026, faktury zakupu od dostawców; tylko z uprawnieniem `inventory_edit`). Uprawnienia: `inventory_edit` (składniki, pojemniki, okres, usuwanie wpisów) i
 /// `inventory_count` (spis, dostawy, usunięcia).
 class InventoryScreen extends ConsumerStatefulWidget {
   const InventoryScreen({super.key});
@@ -161,6 +162,14 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     if (saved == true && mounted && _tab != 2 && _tab != 0) setState(() => _tab = 2);
   }
 
+  Future<void> _addInvoice(String restaurantId) async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => InvoiceDialog(restaurantId: restaurantId, memberId: _memberId),
+    );
+    if (saved == true) ref.invalidate(inventoryInvoicesProvider(restaurantId));
+  }
+
   @override
   Widget build(BuildContext context) {
     final restaurant = ref.watch(currentRestaurantProvider);
@@ -185,7 +194,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final next = nextInventoryDay(period, last?.finishedAt?.toLocal());
     final today = dateOnly(DateTime.now());
     final due = last == null || !today.isBefore(next!);
-    final tab = _tab ?? (open != null ? 0 : 1);
+    // Faktury widzi tylko osoba z uprawnieniem „Edytowanie składników”.
+    final tab = switch (_tab ?? (open != null ? 0 : 1)) {
+      4 when !canEdit => 1,
+      final t => t,
+    };
     final toOrder = items.where((i) => i.needsOrder(stock[i.id]?.stock)).length;
 
     final loading = (itemsAsync.isLoading && !itemsAsync.hasValue) || (countsAsync.isLoading && !countsAsync.hasValue);
@@ -199,7 +212,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             children: [
               // Napisy w pigułce jak w Rezerwacjach (5.11.2026, prośba użytkownika; wcześniej same ikony).
               SegmentedTabs<int>(
-                options: const [(0, 'Spis'), (1, 'Składniki'), (2, 'Dostawy i usunięcia'), (3, 'Historia')],
+                options: [
+                  (0, 'Spis'),
+                  (1, 'Składniki'),
+                  (2, 'Dostawy i usunięcia'),
+                  (3, 'Historia'),
+                  if (canEdit) (4, 'Faktury'),
+                ],
                 selected: tab,
                 onChanged: (t) => setState(() => _tab = t),
               ),
@@ -245,7 +264,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 icon: const Glyph(AppIcons.plus, size: 18),
                 label: const Text('Dodaj składnik'),
               ),
-            ] else if (tab == 2 && canCount && items.isNotEmpty) ...[
+            ] else if (tab == 4 && canEdit)
+              FilledButton.icon(
+                onPressed: () => _addInvoice(rid),
+                icon: const Glyph(AppIcons.plus, size: 18),
+                label: const Text('Faktura'),
+              )
+            else if (tab == 2 && canCount && items.isNotEmpty) ...[
               OutlinedButton.icon(
                 onPressed: () => _addDoc(rid, items, false),
                 icon: const Glyph(AppIcons.minusCircle, size: 18),
@@ -322,6 +347,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       memberId: _memberId,
                       onAdd: (delivery) => _addDoc(rid, items, delivery),
                     ),
+                    4 => InventoryInvoicesTab(restaurantId: rid, memberId: _memberId, onAdd: () => _addInvoice(rid)),
                     _ => _History(counts: finished, restaurant: restaurant.name),
                   },
           ),
