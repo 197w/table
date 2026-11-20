@@ -770,6 +770,25 @@ class PanelRepository {
     return _guard(() => _db.rpc<void>('panel_takeaway_discard', params: {'p_order_id': orderId}));
   }
 
+  /// Zamyka dostawę albo odbiór jako dostarczone i opłacone w dowolnym etapie (Niezamknięte zamówienia).
+  /// [method] liczy się przy gotówce i karcie przy odbiorze, reszta wynika z zamówienia.
+  Future<void> finishTakeaway(String orderId, PaymentMethod method, {String? memberId}) => _guard(
+    () => _db.rpc<void>('panel_takeaway_finish', params: {
+      'p_order_id': orderId,
+      'p_method': method.db,
+      'p_member_id': memberId,
+    }),
+  );
+
+  /// Anuluje dostawę albo odbiór w dowolnym etapie, także w drodze i szkic (Niezamknięte zamówienia).
+  Future<void> cancelTakeaway(String orderId, {String? reason, String? memberId}) => _guard(
+    () => _db.rpc<void>('panel_takeaway_cancel', params: {
+      'p_order_id': orderId,
+      'p_reason': reason,
+      'p_member_id': memberId,
+    }),
+  );
+
   /// Wcześniejsze zamówienia klienta po numerze telefonu.
   Future<CustomerLookup> customerLookup(String restaurantId, String phone) {
     return _guard(() async {
@@ -1838,7 +1857,8 @@ class PanelRepository {
           .select(
             'id, table_id, reservation_id, note, status, opened_at, kind, number, fulfillment, guests, guests_skipped, '
             'discount_grosze, deposit_grosze, delivery_fee_grosze, customer_name, customer_company, customer_phone, '
-            'delivery_address, opener:staff_members!opened_by_member(name), order_items(*)',
+            'delivery_address, payment_choice, courier:staff_members!orders_courier_member_fkey(name), '
+            'opener:staff_members!opened_by_member(name), order_items(*)',
           )
           .eq('restaurant_id', restaurantId)
           .eq('status', 'open')

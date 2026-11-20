@@ -13,10 +13,11 @@ const _tabular = [FontFeature.tabularFigures()];
 
 enum _Filter { all, dineIn, takeaway }
 
-/// Management → Niezamknięte zamówienia: otwarte rachunki na sali i niezakończone zamówienia na wynos
-/// ze wszystkich dni, najstarsze pierwsze. Te z poprzednich dni są osobno na górze, bo zwykle ktoś zapomniał
-/// zamknąć rachunek. Rachunek na sali można od razu zamknąć, resztę otworzyć w jej zakładce.
-/// Uprawnienie „Podsumowanie dnia”.
+/// Management → Niezamknięte zamówienia: otwarte rachunki na sali i niezakończone zamówienia na wynos (dostawy
+/// i odbiór) ze wszystkich dni, najstarsze pierwsze, w jednej liście. Te z poprzednich dni są osobno na górze, bo
+/// zwykle ktoś zapomniał zamknąć rachunek. Każde zamówienie, także dostawę w drodze, można stąd zamknąć („Zamknij”,
+/// przy gotówce i karcie przy odbiorze z wyborem, jak gość zapłacił) albo anulować („Anuluj”); „Otwórz” prowadzi
+/// do jego zakładki. Uprawnienie „Podsumowanie dnia”, zamykanie i anulowanie „Zamykanie rachunków”.
 class UnclosedOrdersScreen extends ConsumerStatefulWidget {
   const UnclosedOrdersScreen({super.key});
 
@@ -254,7 +255,13 @@ class _OrderTile extends ConsumerWidget {
     final stage = entry.stage;
     final permissions = ref.watch(memberPermissionsProvider);
     final canOpen = canOpenRoute(_route, permissions);
-    final canSettle = stage == null && o.active.isNotEmpty && permissions.contains('orders_close');
+    final canClose = permissions.contains('orders_close');
+    // Rachunek na sali z pozycjami albo przyjęte zamówienie na wynos (szkic i czekające na płatność tylko anulować).
+    final canSettle =
+        canClose &&
+        (stage == null
+            ? o.active.isNotEmpty
+            : stage != TakeawayStage.draft && stage != TakeawayStage.awaitingPayment);
     final (icon, color) = switch (o.kind) {
       OrderKind.dineIn => (AppIcons.forkKnife, TileColors.green),
       OrderKind.delivery => (AppIcons.moped, TileColors.violet),
@@ -291,6 +298,12 @@ class _OrderTile extends ConsumerWidget {
                       StatusChip(label: stage.label, icon: AppIcons.hourglass, color: AppColors.textMuted),
                     if (earlier)
                       StatusChip(label: 'z ${Fmt.dayShort(opened)}', icon: AppIcons.warning, color: TileColors.rose),
+                    if (entry.paymentNotice case final notice?)
+                      StatusChip(
+                        label: notice,
+                        icon: entry.payOnDelivery ? AppIcons.money : AppIcons.checkCircle,
+                        color: entry.payOnDelivery ? TileColors.amber : TileColors.green,
+                      ),
                   ],
                 ),
                 const SizedBox(height: 3),
@@ -298,6 +311,8 @@ class _OrderTile extends ConsumerWidget {
                   [
                     if (customer.isNotEmpty) customer,
                     itemsSummary(o),
+                    if (o.deliveryAddress != null && o.deliveryAddress!.isNotEmpty) o.deliveryAddress!,
+                    if (entry.courierName != null) 'dostawca: ${entry.courierName}',
                     if (entry.openedBy != null) 'otworzył(a): ${entry.openedBy}',
                   ].join(' · '),
                   maxLines: 2,
@@ -331,18 +346,174 @@ class _OrderTile extends ConsumerWidget {
               onPressed: () => context.go(_route),
               child: Text(stage == null ? 'Otwórz rachunek' : 'Otwórz'),
             ),
+          if (canClose) ...[
+            const SizedBox(width: 4),
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: AppColors.error),
+              onPressed: () => _cancel(context, ref),
+              child: const Text('Anuluj'),
+            ),
+          ],
           if (canSettle) ...[
             const SizedBox(width: 8),
             FilledButton(
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (_) => SettleDialog(restaurantId: restaurantId, orderId: o.id, title: 'Rachunek · $label'),
-              ),
+              onPressed: stage == null
+                  ? () => showDialog<void>(
+                      context: context,
+                      builder: (_) => SettleDialog(restaurantId: restaurantId, orderId: o.id, title: 'Rachunek · $label'),
+                    )
+                  : () => _finish(context, ref),
               child: const Text('Zamknij'),
             ),
           ],
         ],
       ),
+    );
+  }
+
+  void _refresh(WidgetRef ref) => ref
+    ..invalidate(unclosedOrdersProvider(restaurantId))
+    ..invalidate(takeawayOrdersProvider(restaurantId));
+
+  /// Zamknięcie dostawy albo odbioru: zamówienie jest dostarczone i opłacone, także gdy dostawca go nie zamknął.
+  Future<void> _finish(BuildContext context, WidgetRef ref) async {
+    final method = await showDialog<PaymentMethod>(
+      context: context,
+      builder: (_) => _FinishDialog(entry: entry, label: label),
+    );
+    if (method == null) return;
+    try {
+      await ref
+          .read(repositoryProvider)
+          .finishTakeaway(entry.order.id, method, memberId: ref.read(panelMemberProvider)?.dbMemberId);
+      _refresh(ref);
+      if (context.mounted) showMessage(context, '$label zamknięte.', tone: ToastTone.success);
+    } catch (e) {
+      if (context.mounted) showError(context, e);
+    }
+  }
+
+  /// Anulowanie rachunku albo zamówienia na wynos w dowolnym etapie.
+  Future<void> _cancel(BuildContext context, WidgetRef ref) async {
+    final o = entry.order;
+    final takeaway = entry.stage != null;
+    final reason = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Anulować: $label?'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                takeaway
+                    ? [
+                        'Zamówienie przestanie się liczyć, a gość zobaczy w aplikacji, że zostało odwołane.',
+                        if (entry.stage == TakeawayStage.onTheWay) 'Dostawca jest w drodze, więc uprzedź go.',
+                        if (entry.paymentChoice == 'card_online')
+                          'Gość zapłacił kartą online: zwrot zrobi operator płatności.',
+                      ].join(' ')
+                    : 'Pozycje rachunku zostaną anulowane. Przy daniach wysłanych na kuchnię potrzebny jest kierownik.',
+              ),
+              if (takeaway) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: reason,
+                  maxLength: 200,
+                  decoration: const InputDecoration(labelText: 'Powód dla gościa (opcjonalnie)'),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Wróć')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Anuluj zamówienie'),
+          ),
+        ],
+      ),
+    );
+    final text = reason.text;
+    reason.dispose();
+    if (ok != true) return;
+    try {
+      final repo = ref.read(repositoryProvider);
+      if (takeaway) {
+        await repo.cancelTakeaway(o.id, reason: text, memberId: ref.read(panelMemberProvider)?.dbMemberId);
+      } else {
+        await repo.cancelOrder(o.id);
+      }
+      _refresh(ref);
+      if (context.mounted) showMessage(context, '$label anulowane.', tone: ToastTone.success);
+    } catch (e) {
+      if (context.mounted) showError(context, e);
+    }
+  }
+}
+
+/// Zamknięcie dostawy albo odbioru z Niezamkniętych: przy gotówce i karcie przy odbiorze wybór, jak gość zapłacił.
+class _FinishDialog extends StatefulWidget {
+  const _FinishDialog({required this.entry, required this.label});
+
+  final UnclosedOrder entry;
+  final String label;
+
+  @override
+  State<_FinishDialog> createState() => _FinishDialogState();
+}
+
+class _FinishDialogState extends State<_FinishDialog> {
+  late PaymentMethod _method = widget.entry.paymentChoice == 'card_on_delivery' ? PaymentMethod.card : PaymentMethod.cash;
+
+  @override
+  Widget build(BuildContext context) {
+    final e = widget.entry;
+    final text = Theme.of(context).textTheme;
+    return AlertDialog(
+      title: Text('Zamknąć: ${widget.label}?'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              [
+                'Zamówienie zostanie oznaczone jako dostarczone i opłacone.',
+                if (e.stage == TakeawayStage.onTheWay) 'Dostawca jest w drodze: zamykasz je za niego.',
+              ].join(' '),
+            ),
+            const SizedBox(height: 14),
+            if (e.payOnDelivery) ...[
+              Text('Do zapłaty ${Fmt.price(e.order.billGrosze)}. Jak gość zapłacił?', style: text.titleSmall),
+              const SizedBox(height: 10),
+              SegmentedTabs<PaymentMethod>(
+                options: const [
+                  (PaymentMethod.cash, 'Gotówka'),
+                  (PaymentMethod.card, 'Karta'),
+                  (PaymentMethod.other, 'Inne'),
+                ],
+                selected: _method,
+                onChanged: (m) => setState(() => _method = m),
+              ),
+            ] else
+              Text(
+                'Gość zapłacił z góry (${e.paymentChoice == 'prepaid' ? 'przyjęte w panelu' : 'karta online'}).',
+                style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Wróć')),
+        FilledButton(onPressed: () => Navigator.pop(context, _method), child: const Text('Zamknij zamówienie')),
+      ],
     );
   }
 }

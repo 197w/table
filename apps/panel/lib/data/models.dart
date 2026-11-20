@@ -1954,9 +1954,26 @@ class Announcement {
 /// Niezamknięte zamówienie (Management → Niezamknięte zamówienia): rachunek albo zamówienie na wynos,
 /// z etapem i osobą, która je otworzyła.
 class UnclosedOrder {
-  const UnclosedOrder({required this.order, this.stage, this.openedBy});
+  const UnclosedOrder({required this.order, this.stage, this.openedBy, this.paymentChoice, this.courierName});
 
   final PanelOrder order;
+
+  /// Jak gość chce zapłacić za zamówienie na wynos: cash, card_online, card_on_delivery albo prepaid.
+  final String? paymentChoice;
+
+  /// Dostawca przypisany do dostawy.
+  final String? courierName;
+
+  /// Gość płaci przy dostawie albo odbiorze (gotówką albo kartą), więc zamówienie jest nieopłacone.
+  bool get payOnDelivery => paymentChoice == 'cash' || paymentChoice == 'card_on_delivery';
+
+  /// „NIEOPŁACONE · gotówka u dostawcy”, „Opłacone” albo null przy rachunku na sali.
+  String? get paymentNotice {
+    if (stage == null || paymentChoice == null) return null;
+    if (!payOnDelivery) return 'Opłacone';
+    final at = order.kind == OrderKind.delivery ? 'u dostawcy' : 'przy odbiorze';
+    return 'NIEOPŁACONE · ${paymentChoice == 'cash' ? 'gotówka' : 'karta'} $at';
+  }
 
   /// Etap zamówienia na wynos. Null: rachunek na sali.
   final TakeawayStage? stage;
@@ -1974,6 +1991,8 @@ class UnclosedOrder {
       order: order,
       stage: order.kind == OrderKind.dineIn ? null : TakeawayStage.from(json['fulfillment']),
       openedBy: (json['opener'] as Map<String, dynamic>?)?['name'] as String?,
+      paymentChoice: json['payment_choice'] as String?,
+      courierName: (json['courier'] as Map<String, dynamic>?)?['name'] as String?,
     );
   }
 }
