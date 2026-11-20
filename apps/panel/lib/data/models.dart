@@ -2558,6 +2558,18 @@ class VehicleCheck {
   );
 }
 
+/// Zniżka procentowa na dział menu w czasie wydarzenia specjalnego z Kalendarza (0092): goście zamawiający w aplikacji
+/// Table płacą o [percent] procent mniej za dania tego działu.
+class EventDiscount {
+  const EventDiscount({required this.sectionId, required this.percent});
+
+  final String sectionId;
+  final int percent;
+
+  factory EventDiscount.fromJson(Map<String, dynamic> json) =>
+      EventDiscount(sectionId: json['section_id'] as String, percent: _toInt(json['percent']));
+}
+
 /// Faktura zakupu od dostawcy towaru (Inwentaryzacja → Faktury, 0091): kwota brutto, termin, opłacona albo nie,
 /// opcjonalnie powiązana z wpisem dostawy.
 class InventoryInvoice {

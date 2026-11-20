@@ -9,6 +9,7 @@ import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/day_slot_picker.dart';
+import '../../shared/discounted_price.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -27,7 +28,12 @@ class OrderMenuScreen extends ConsumerWidget {
 
   Future<void> _add(BuildContext context, WidgetRef ref, MenuItem item) async {
     final line = item.variants.isEmpty && item.addons.isEmpty
-        ? CartLine(menuItemId: item.id, name: item.name, unitPriceGrosze: item.priceGrosze, quantity: 1)
+        ? CartLine(
+            menuItemId: item.id,
+            name: item.name,
+            unitPriceGrosze: item.priceAfterDiscount(item.priceGrosze),
+            quantity: 1,
+          )
         : await showTableSheet<CartLine>(
             context: context,
             builder: (_) => _OptionsSheet(item: item),
@@ -212,17 +218,16 @@ class _DishRow extends StatelessWidget {
                       style: text.bodySmall?.copyWith(color: AppColors.textMuted),
                     ),
                   const SizedBox(height: 4),
-                  Text(
-                    !item.available
-                        ? 'Chwilowo niedostępne'
-                        : item.priceVaries
-                        ? 'od ${Fmt.price(item.priceGrosze)}'
-                        : Fmt.price(item.priceGrosze),
-                    style: text.titleSmall?.copyWith(
-                      color: item.available ? AppColors.accent : AppColors.error,
-                      fontFeatures: _tabular,
+                  if (!item.available)
+                    Text(
+                      'Chwilowo niedostępne',
+                      style: text.titleSmall?.copyWith(color: AppColors.error, fontFeatures: _tabular),
+                    )
+                  else
+                    DiscountedPrice(
+                      item: item,
+                      style: text.titleSmall?.copyWith(color: AppColors.accent, fontFeatures: _tabular),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -286,7 +291,10 @@ class _OptionsSheetState extends State<_OptionsSheet> {
   final _addons = <MenuOption>{};
   int _quantity = 1;
 
-  int get _unit => (_variant?.priceGrosze ?? widget.item.priceGrosze) + _addons.fold(0, (s, a) => s + a.priceGrosze);
+  /// Cena sztuki po zniżce na dział (jeśli trwa wydarzenie ze zniżką), razem z wariantem i dodatkami.
+  int get _unit => widget.item.priceAfterDiscount(
+    (_variant?.priceGrosze ?? widget.item.priceGrosze) + _addons.fold(0, (s, a) => s + a.priceGrosze),
+  );
 
   @override
   Widget build(BuildContext context) {

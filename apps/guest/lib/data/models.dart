@@ -233,6 +233,28 @@ class MenuOption {
   ];
 }
 
+/// Zniżka procentowa na dział menu w czasie wydarzenia lokalu (0092): goście zamawiający w aplikacji płacą mniej.
+class SectionDiscount {
+  const SectionDiscount({required this.percent, required this.starts, required this.ends});
+
+  final int percent;
+  final DateTime starts;
+  final DateTime ends;
+
+  bool activeAt(DateTime t) => !t.isBefore(starts) && t.isBefore(ends);
+
+  /// Zniżki z odpowiedzi bazy: `event_section_discounts(percent, event:calendar_events(starts_at, ends_at))`.
+  static List<SectionDiscount> listFrom(Object? value) => [
+    for (final e in (value as List? ?? const []).cast<Map<String, dynamic>>())
+      if (e['event'] is Map<String, dynamic>)
+        if (DateTime.tryParse((e['event'] as Map<String, dynamic>)['starts_at'] as String? ?? '')?.toLocal()
+            case final starts?)
+          if (DateTime.tryParse((e['event'] as Map<String, dynamic>)['ends_at'] as String? ?? '')?.toLocal()
+              case final ends?)
+            SectionDiscount(percent: _toInt(e['percent']), starts: starts, ends: ends),
+  ];
+}
+
 class MenuItem {
   const MenuItem({
     required this.id,
@@ -245,7 +267,27 @@ class MenuItem {
     this.addons = const [],
     this.available = true,
     this.photoUrl,
+    this.discounts = const [],
   });
+
+  /// Zniżki na dział tego dania w czasie wydarzeń (0092).
+  final List<SectionDiscount> discounts;
+
+  /// Procent zniżki w chwili [at] (domyślnie teraz): największy z trwających wydarzeń. 0: bez zniżki.
+  int discountAt([DateTime? at]) {
+    final t = at ?? DateTime.now();
+    var best = 0;
+    for (final d in discounts) {
+      if (d.activeAt(t) && d.percent > best) best = d.percent;
+    }
+    return best;
+  }
+
+  /// Cena po zniżce na dział (zaokrąglona do grosza jak w bazie): dotyczy ceny dania razem z wariantem i dodatkami.
+  int priceAfterDiscount(int priceGrosze, [DateTime? at]) {
+    final p = discountAt(at);
+    return p <= 0 ? priceGrosze : (priceGrosze * (100 - p) + 50) ~/ 100;
+  }
 
   final String id;
   final String name;
@@ -269,8 +311,9 @@ class MenuItem {
   /// Zdjęcie dania dodane w panelu restauracji.
   final String? photoUrl;
 
-  factory MenuItem.fromJson(Map<String, dynamic> json) {
+  factory MenuItem.fromJson(Map<String, dynamic> json, {List<SectionDiscount> discounts = const []}) {
     return MenuItem(
+      discounts: discounts,
       id: json['id'] as String,
       name: json['name'] as String,
       description: json['description'] as String?,
@@ -315,9 +358,10 @@ class MenuSection {
       (season?.contains(t) ?? true);
 
   factory MenuSection.fromJson(Map<String, dynamic> json) {
+    final discounts = SectionDiscount.listFrom(json['discounts']);
     final items =
         (json['menu_items'] as List? ?? const [])
-            .map((e) => MenuItem.fromJson(e as Map<String, dynamic>))
+            .map((e) => MenuItem.fromJson(e as Map<String, dynamic>, discounts: discounts))
             .toList()
           ..sort((a, b) => a.position.compareTo(b.position));
     final event = json['event'] as Map<String, dynamic>?;

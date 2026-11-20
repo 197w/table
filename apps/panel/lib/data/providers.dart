@@ -334,6 +334,12 @@ final inventoryDocsProvider = FutureProvider.autoDispose.family<List<InventoryDo
       .inventoryDocs(id, DateTime.now().subtract(const Duration(days: 60))),
 );
 
+/// Zniżki na działy menu w wydarzeniu o danym numerze (Kalendarz, 0092).
+final eventDiscountsProvider = FutureProvider.autoDispose.family<List<EventDiscount>, String>(
+  // Nowe wydarzenie (jeszcze bez numeru, pusty napis) nie ma zniżek w bazie.
+  (ref, eventId) async => eventId.isEmpty ? const <EventDiscount>[] : ref.watch(repositoryProvider).eventDiscounts(eventId),
+);
+
 /// Faktury zakupu lokalu (Inwentaryzacja → Faktury).
 final inventoryInvoicesProvider = FutureProvider.autoDispose.family<List<InventoryInvoice>, String>(
   (ref, id) => (ref..cacheFor()).watch(repositoryProvider).inventoryInvoices(id),

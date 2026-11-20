@@ -1505,6 +1505,24 @@ class PanelRepository {
     });
   }
 
+  /// Zniżki na działy menu w wydarzeniu (0092).
+  Future<List<EventDiscount>> eventDiscounts(String eventId) {
+    return _guard(() async {
+      final rows = await _db.from('event_section_discounts').select('section_id, percent').eq('event_id', eventId);
+      return [for (final r in rows) EventDiscount.fromJson(r)];
+    });
+  }
+
+  /// Zastępuje zniżki wydarzenia podaną listą (pusta: bez zniżek). Uprawnienia „Kalendarz” i „Edytowanie menu”.
+  Future<void> setEventDiscounts(String eventId, List<({String sectionId, int percent})> discounts) {
+    return _guard(
+      () => _db.rpc<void>('panel_set_event_discounts', params: {
+        'p_event_id': eventId,
+        'p_discounts': [for (final d in discounts) {'section_id': d.sectionId, 'percent': d.percent}],
+      }),
+    );
+  }
+
   /// Faktury zakupu lokalu, najnowsze pierwsze (Inwentaryzacja → Faktury, uprawnienie „Edytowanie składników”).
   Future<List<InventoryInvoice>> inventoryInvoices(String restaurantId) {
     return _guard(() async {

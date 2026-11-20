@@ -4,6 +4,7 @@ import 'package:table_core/table_core.dart';
 
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../shared/discounted_price.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -275,8 +276,8 @@ class MenuItemTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 16),
-              Text(
-                item.priceVaries ? 'od ${Fmt.price(item.priceGrosze)}' : Fmt.price(item.priceGrosze),
+              DiscountedPrice(
+                item: item,
                 style: text.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: item.available ? AppColors.accent : AppColors.textMuted,

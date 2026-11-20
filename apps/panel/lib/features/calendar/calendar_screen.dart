@@ -154,7 +154,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
   bool get _canEdit => ref.read(memberPermissionsProvider).contains('calendar');
 
-  Future<void> _save(String restaurantId, CalendarEvent e, [_MenuChange? menu]) async {
+  Future<void> _save(String restaurantId, CalendarEvent e, [_MenuChange? menu, _DiscountChange? discounts]) async {
     final repo = ref.read(repositoryProvider);
     final String id;
     try {
@@ -172,6 +172,19 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         ref.invalidate(menuProvider(restaurantId));
       } catch (err) {
         ref.invalidate(menuProvider(restaurantId));
+        if (mounted) {
+          setState(() => _editing = e.copyWith(id: id));
+          showError(context, err);
+        }
+        return;
+      }
+    }
+    // Zniżki na działy (0092) też po zapisie wydarzenia; przy błędzie okno zostaje z numerem wydarzenia.
+    if (discounts != null) {
+      try {
+        await repo.setEventDiscounts(id, discounts);
+        ref.invalidate(eventDiscountsProvider(id));
+      } catch (err) {
         if (mounted) {
           setState(() => _editing = e.copyWith(id: id));
           showError(context, err);
@@ -450,7 +463,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               editable: editable,
               restaurantId: rid,
               onClose: () => setState(() => _editing = null),
-              onSave: (updated, menu) => _save(rid, updated, menu),
+              onSave: (updated, menu, discounts) => _save(rid, updated, menu, discounts),
               onDelete: e.id == null ? null : () => _delete(e),
               onDraft: (updated) {
                 // Nowe wydarzenie: zmiany godzin w oknie przesuwają też szkic w siatce.
@@ -1314,6 +1327,9 @@ class _MonthGrid extends StatelessWidget {
 /// i nazwy nowych, pustych działów (0088).
 typedef _MenuChange = ({List<String> ids, List<String> names});
 
+/// Zniżki na działy menu w czasie wydarzenia po zmianach w oknie (0092): dział i procent (1–90).
+typedef _DiscountChange = List<({String sectionId, int percent})>;
+
 /// Panel wydarzenia po prawej (jak szczegóły w Notion Calendar): nazwa, rodzaj, czas, kolor, opis i menu na
 /// wydarzenie specjalne. Bez uprawnienia „Kalendarz” tylko do odczytu.
 class _EventPanel extends ConsumerStatefulWidget {
@@ -1332,7 +1348,7 @@ class _EventPanel extends ConsumerStatefulWidget {
   final bool editable;
   final String restaurantId;
   final VoidCallback onClose;
-  final void Function(CalendarEvent event, _MenuChange? menu) onSave;
+  final void Function(CalendarEvent event, _MenuChange? menu, _DiscountChange? discounts) onSave;
   final VoidCallback? onDelete;
   final ValueChanged<CalendarEvent> onDraft;
 
@@ -1352,6 +1368,10 @@ class _EventPanelState extends ConsumerState<_EventPanel> {
 
   /// Działy menu przypięte do wydarzenia po zmianach w oknie. Null: bez zmian, czyli te z bazy.
   Set<String>? _pickedIds;
+
+  /// Zniżki na działy po zmianach w oknie (dział → procent, 0 do czasu wpisania liczby). Null: bez zmian, czyli te
+  /// z bazy.
+  Map<String, int>? _discounts;
 
   /// Nazwy nowych, pustych działów, które powstaną po zapisie wydarzenia.
   final _newSections = <String>[];
@@ -1388,6 +1408,22 @@ class _EventPanelState extends ConsumerState<_EventPanel> {
     final same = picked.length == attached.length && picked.containsAll(attached);
     if (same && _newSections.isEmpty) return null;
     return (ids: picked.toList(), names: List.of(_newSections));
+  }
+
+  /// Zniżki z bazy dla tego wydarzenia (dział → procent).
+  Map<String, int> _savedDiscounts() => {
+    for (final d in ref.read(eventDiscountsProvider(widget.event.id ?? '')).value ?? const <EventDiscount>[])
+      d.sectionId: d.percent,
+  };
+
+  /// Zniżki do zapisu razem z wydarzeniem. Null, gdy w oknie nic się nie zmieniło.
+  _DiscountChange? _discountChange() {
+    final current = _discounts;
+    if (current == null) return null;
+    final saved = _savedDiscounts();
+    final same = current.length == saved.length && current.entries.every((e) => saved[e.key] == e.value);
+    if (same) return null;
+    return [for (final e in current.entries) (sectionId: e.key, percent: e.value)];
   }
 
   void _addNewSection() {
@@ -1505,6 +1541,14 @@ class _EventPanelState extends ConsumerState<_EventPanel> {
         );
         return;
       }
+      if ((_discounts ?? _savedDiscounts()).isNotEmpty) {
+        showMessage(
+          context,
+          'Wydarzenie ma zniżki na działy. Usuń je, zanim zmienisz je na wydarzenie dla pracowników.',
+          tone: ToastTone.warning,
+        );
+        return;
+      }
     }
     setState(() {
       _kind = k;
@@ -1518,9 +1562,14 @@ class _EventPanelState extends ConsumerState<_EventPanel> {
       showMessage(context, 'Wpisz nazwę wydarzenia.', tone: ToastTone.warning);
       return;
     }
+    if ((_discounts?.values ?? const <int>[]).any((p) => p < 1 || p > 90)) {
+      showMessage(context, 'Zniżka na dział to od 1 do 90 procent.', tone: ToastTone.warning);
+      return;
+    }
     setState(() => _busy = true);
     final all = ref.read(menuProvider(widget.restaurantId)).value ?? const <MenuSection>[];
-    widget.onSave(_current, _kind == CalendarKind.special ? _menuChange(all) : null);
+    final special = _kind == CalendarKind.special;
+    widget.onSave(_current, special ? _menuChange(all) : null, special ? _discountChange() : null);
     if (mounted) setState(() => _busy = false);
   }
 
@@ -1541,6 +1590,11 @@ class _EventPanelState extends ConsumerState<_EventPanel> {
     ];
     final restaurant = ref.watch(currentRestaurantProvider);
     final canMenu = on && (restaurant?.canManage ?? false) && ref.watch(memberPermissionsProvider).contains('menu_edit');
+    // Zniżki na działy (0092): z bazy albo już zmienione w oknie.
+    ref.watch(eventDiscountsProvider(e.id ?? ''));
+    final discounts = _discounts ?? _savedDiscounts();
+    final discounted = [for (final s in allSections) if (discounts.containsKey(s.id)) s];
+    final discountable = [for (final s in allSections) if (!discounts.containsKey(s.id)) s];
     Widget when(String label, {required bool start}) {
       final value = start ? _start : (_allDay ? _addDays(_end, -1) : _end);
       return Row(
@@ -1742,12 +1796,128 @@ class _EventPanelState extends ConsumerState<_EventPanel> {
                 style: text.bodySmall?.copyWith(color: AppColors.textMuted),
               ),
             ),
+          const SizedBox(height: 24),
+          const SheetHeading('Zniżki na sekcje', optional: true),
+          const SizedBox(height: 4),
+          Text(
+            'Goście zamawiający w aplikacji Table (dostawa i odbiór) płacą mniej za dania z wybranej sekcji menu, ale '
+            'tylko w czasie wydarzenia. Zniżka liczy się od ceny dania razem z wariantem i dodatkami.',
+            style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 8),
+          if (discounted.isEmpty) Text('Bez zniżek.', style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
+          for (final s in discounted)
+            _DiscountLine(
+              key: ValueKey('zniżka ${s.id}'),
+              name: s.name,
+              percent: discounts[s.id]!,
+              enabled: canMenu,
+              onChanged: (p) => setState(() => _discounts = {...discounts, s.id: p}),
+              onRemove: canMenu ? () => setState(() => _discounts = {...discounts}..remove(s.id)) : null,
+            ),
+          if (canMenu) ...[
+            const SizedBox(height: 10),
+            PopupMenuButton<String>(
+              tooltip: 'Dodaj zniżkę na sekcję',
+              enabled: discountable.isNotEmpty,
+              onSelected: (id) => setState(() => _discounts = {...discounts, id: 10}),
+              itemBuilder: (_) => [
+                for (final s in discountable)
+                  PopupMenuItem(value: s.id, child: Text('${s.name} · ${_dishes(s.items.length)}')),
+              ],
+              child: _MenuAddButton(
+                label: discountable.isEmpty ? 'Wszystkie sekcje mają zniżkę' : 'Dodaj zniżkę na sekcję',
+                enabled: discountable.isNotEmpty,
+              ),
+            ),
+          ] else if (on)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Zniżki zmienia kierownik albo osoba z uprawnieniem „Edycja menu”.',
+                style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+              ),
+            ),
         ],
         if (e.createdByName != null) ...[
           const SizedBox(height: 24),
           Text('Dodał(a): ${e.createdByName}', style: text.bodySmall?.copyWith(color: AppColors.textMuted)),
         ],
       ],
+    );
+  }
+}
+
+/// Zniżka na dział w oknie wydarzenia: nazwa sekcji, pole z procentem i przycisk „usuń”.
+class _DiscountLine extends StatefulWidget {
+  const _DiscountLine({
+    super.key,
+    required this.name,
+    required this.percent,
+    required this.enabled,
+    required this.onChanged,
+    required this.onRemove,
+  });
+
+  final String name;
+  final int percent;
+  final bool enabled;
+
+  /// Wpisany procent; 0, gdy pole jest puste albo to nie liczba.
+  final ValueChanged<int> onChanged;
+  final VoidCallback? onRemove;
+
+  @override
+  State<_DiscountLine> createState() => _DiscountLineState();
+}
+
+class _DiscountLineState extends State<_DiscountLine> {
+  late final _controller = TextEditingController(text: widget.percent == 0 ? '' : '${widget.percent}');
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final p = int.tryParse(_controller.text) ?? 0;
+    final invalid = _controller.text.isNotEmpty && (p < 1 || p > 90);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Glyph(AppIcons.sealPercent, size: 16, color: AppColors.accent),
+          const SizedBox(width: 8),
+          Expanded(child: Text(widget.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: text.bodyMedium)),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 88,
+            child: TextField(
+              controller: _controller,
+              enabled: widget.enabled,
+              textAlign: TextAlign.right,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(2)],
+              style: TextStyle(color: invalid ? AppColors.error : null, fontFeatures: const [FontFeature.tabularFigures()]),
+              decoration: sheetInput(hint: '10').copyWith(suffixText: '%'),
+              onChanged: (v) {
+                setState(() {});
+                widget.onChanged(int.tryParse(v) ?? 0);
+              },
+            ),
+          ),
+          if (widget.onRemove != null)
+            IconButton(
+              tooltip: 'Usuń zniżkę',
+              visualDensity: VisualDensity.compact,
+              icon: const Glyph(AppIcons.close, size: 14),
+              onPressed: widget.onRemove,
+            ),
+        ],
+      ),
     );
   }
 }

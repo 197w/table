@@ -182,6 +182,7 @@ class Repository {
               'opening_hours(weekday, opens, closes), '
               'menu_sections(id, name, position, event_id, season_from, season_to, season_yearly, '
               'event:calendar_events!menu_sections_event_id_fkey(starts_at, ends_at), '
+              'discounts:event_section_discounts(percent, event:calendar_events(starts_at, ends_at)), '
               'menu_items(id, name, description, price_grosze, allergens, position, variants, addons, available, photo_url)), '
               // Wydarzenia specjalne lokalu (0080), które jeszcze trwają albo dopiero będą.
               'calendar_events!calendar_events_restaurant_id_fkey(id, title, description, starts_at, ends_at, all_day, color)',

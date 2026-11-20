@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../../shared/discounted_price.dart';
 import '../discover/restaurant_cards.dart';
 import '../likes/likes.dart';
 
@@ -730,7 +731,7 @@ class _MenuPreview extends StatelessWidget {
             separatorBuilder: (_, _) => const SizedBox(width: 12),
             itemBuilder: (context, i) {
               final item = items[i];
-              final price = item.priceVaries ? 'od ${Fmt.price(item.priceGrosze)}' : Fmt.price(item.priceGrosze);
+              final price = menuPriceText(item);
               return Semantics(
                 button: true,
                 label: '${item.name}, $price${item.available ? '' : ', chwilowo niedostępne'}. Otwórz menu',
