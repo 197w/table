@@ -31,8 +31,9 @@ class OrderMenuScreen extends ConsumerWidget {
         ? CartLine(
             menuItemId: item.id,
             name: item.name,
-            unitPriceGrosze: item.priceAfterDiscount(item.priceGrosze),
+            unitPriceGrosze: item.priceGrosze,
             quantity: 1,
+            discounts: item.discounts,
           )
         : await showTableSheet<CartLine>(
             context: context,
@@ -291,10 +292,11 @@ class _OptionsSheetState extends State<_OptionsSheet> {
   final _addons = <MenuOption>{};
   int _quantity = 1;
 
-  /// Cena sztuki po zniżce na dział (jeśli trwa wydarzenie ze zniżką), razem z wariantem i dodatkami.
-  int get _unit => widget.item.priceAfterDiscount(
-    (_variant?.priceGrosze ?? widget.item.priceGrosze) + _addons.fold(0, (s, a) => s + a.priceGrosze),
-  );
+  /// Cena sztuki z wariantem i dodatkami, jeszcze bez zniżki na dział.
+  int get _baseUnit => (_variant?.priceGrosze ?? widget.item.priceGrosze) + _addons.fold(0, (s, a) => s + a.priceGrosze);
+
+  /// Ta sama cena po zniżce na dział, jeśli trwa wydarzenie ze zniżką (do pokazania w przycisku).
+  int get _unit => widget.item.priceAfterDiscount(_baseUnit);
 
   @override
   Widget build(BuildContext context) {
@@ -364,10 +366,11 @@ class _OptionsSheetState extends State<_OptionsSheet> {
                     CartLine(
                       menuItemId: item.id,
                       name: item.name,
-                      unitPriceGrosze: _unit,
+                      unitPriceGrosze: _baseUnit,
                       quantity: _quantity,
                       variant: _variant?.name,
                       addons: [for (final a in item.addons) if (_addons.contains(a)) a.name],
+                      discounts: item.discounts,
                     ),
                   ),
                   child: Text('Dodaj · ${Fmt.price(_unit * _quantity)}'),

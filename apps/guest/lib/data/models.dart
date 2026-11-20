@@ -243,6 +243,19 @@ class SectionDiscount {
 
   bool activeAt(DateTime t) => !t.isBefore(starts) && t.isBefore(ends);
 
+  /// Największa zniżka z [discounts] trwająca w chwili [at] (domyślnie teraz). 0: bez zniżki.
+  static int bestAt(List<SectionDiscount> discounts, [DateTime? at]) {
+    final t = at ?? DateTime.now();
+    var best = 0;
+    for (final d in discounts) {
+      if (d.activeAt(t) && d.percent > best) best = d.percent;
+    }
+    return best;
+  }
+
+  /// Cena po zniżce, zaokrąglona do grosza jak w bazie (połówka w górę).
+  static int apply(int priceGrosze, int percent) => percent <= 0 ? priceGrosze : (priceGrosze * (100 - percent) + 50) ~/ 100;
+
   /// Zniżki z odpowiedzi bazy: `event_section_discounts(percent, event:calendar_events(starts_at, ends_at))`.
   static List<SectionDiscount> listFrom(Object? value) => [
     for (final e in (value as List? ?? const []).cast<Map<String, dynamic>>())
@@ -274,20 +287,10 @@ class MenuItem {
   final List<SectionDiscount> discounts;
 
   /// Procent zniżki w chwili [at] (domyślnie teraz): największy z trwających wydarzeń. 0: bez zniżki.
-  int discountAt([DateTime? at]) {
-    final t = at ?? DateTime.now();
-    var best = 0;
-    for (final d in discounts) {
-      if (d.activeAt(t) && d.percent > best) best = d.percent;
-    }
-    return best;
-  }
+  int discountAt([DateTime? at]) => SectionDiscount.bestAt(discounts, at);
 
   /// Cena po zniżce na dział (zaokrąglona do grosza jak w bazie): dotyczy ceny dania razem z wariantem i dodatkami.
-  int priceAfterDiscount(int priceGrosze, [DateTime? at]) {
-    final p = discountAt(at);
-    return p <= 0 ? priceGrosze : (priceGrosze * (100 - p) + 50) ~/ 100;
-  }
+  int priceAfterDiscount(int priceGrosze, [DateTime? at]) => SectionDiscount.apply(priceGrosze, discountAt(at));
 
   final String id;
   final String name;
@@ -1528,19 +1531,32 @@ class CartLine {
     required this.quantity,
     this.variant,
     this.addons = const [],
+    this.discounts = const [],
   });
 
   final String menuItemId;
   final String name;
+
+  /// Cena sztuki z wariantem i dodatkami, jeszcze bez zniżki na dział.
   final int unitPriceGrosze;
   final int quantity;
   final String? variant;
   final List<String> addons;
 
+  /// Zniżki na dział dania w czasie wydarzeń (0092). Cena po zniżce liczy się w chwili zamawiania, tak samo jak w bazie
+  /// (w chwili złożenia zamówienia), więc koszyk zostawiony na dłużej pokazuje aktualną cenę.
+  final List<SectionDiscount> discounts;
+
   /// To samo danie z tymi samymi opcjami łączy się w jedną pozycję.
   String get key => [menuItemId, variant ?? '', ...addons].join('|');
 
-  int get totalGrosze => unitPriceGrosze * quantity;
+  /// Cena sztuki po zniżce na dział w chwili [at] (domyślnie teraz).
+  int unitAt([DateTime? at]) => SectionDiscount.apply(unitPriceGrosze, SectionDiscount.bestAt(discounts, at));
+
+  /// Procent zniżki na to danie teraz. 0: bez zniżki.
+  int get discountPercent => SectionDiscount.bestAt(discounts);
+
+  int get totalGrosze => unitAt() * quantity;
 
   String? get details {
     final parts = [?variant, for (final a in addons) '+ ${a.toLowerCase()}'];
@@ -1554,6 +1570,7 @@ class CartLine {
     quantity: value,
     variant: variant,
     addons: addons,
+    discounts: discounts,
   );
 
   Map<String, dynamic> toJson() => {

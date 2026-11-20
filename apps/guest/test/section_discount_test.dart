@@ -82,4 +82,26 @@ void main() {
       expect(plain(menuPriceText(pizza.items.first, DateTime(2026, 11, 21))), '42,00 zł');
     });
   });
+
+  test('koszyk: cena bez zniżki i zniżki, cena po zniżce liczy się w chwili wyświetlania', () {
+    final live = DateTime.now();
+    final line = CartLine(
+      menuItemId: 'i1',
+      name: 'Margherita',
+      unitPriceGrosze: 4200,
+      quantity: 2,
+      discounts: [
+        SectionDiscount(percent: 25, starts: live.subtract(const Duration(hours: 1)), ends: live.add(const Duration(hours: 1))),
+      ],
+    );
+    expect(line.discountPercent, 25);
+    expect(line.unitAt(), 3150);
+    expect(line.totalGrosze, 6300);
+    // Po zakończeniu wydarzenia ta sama pozycja kosztuje znów pełną cenę.
+    expect(line.unitAt(live.add(const Duration(hours: 2))), 4200);
+    expect(line.withQuantity(3).totalGrosze, 9450);
+    expect(line.withQuantity(1).discounts, hasLength(1));
+    // Zapis dla bazy nie zawiera ceny: baza liczy ją sama.
+    expect(line.toJson().containsKey('unit_price_grosze'), isFalse);
+  });
 }

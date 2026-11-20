@@ -1591,7 +1591,7 @@ class _EventPanelState extends ConsumerState<_EventPanel> {
     final restaurant = ref.watch(currentRestaurantProvider);
     final canMenu = on && (restaurant?.canManage ?? false) && ref.watch(memberPermissionsProvider).contains('menu_edit');
     // Zniżki na działy (0092): z bazy albo już zmienione w oknie.
-    ref.watch(eventDiscountsProvider(e.id ?? ''));
+    final discountsReady = ref.watch(eventDiscountsProvider(e.id ?? '')).hasValue;
     final discounts = _discounts ?? _savedDiscounts();
     final discounted = [for (final s in allSections) if (discounts.containsKey(s.id)) s];
     final discountable = [for (final s in allSections) if (!discounts.containsKey(s.id)) s];
@@ -1819,7 +1819,8 @@ class _EventPanelState extends ConsumerState<_EventPanel> {
             const SizedBox(height: 10),
             PopupMenuButton<String>(
               tooltip: 'Dodaj zniżkę na sekcję',
-              enabled: discountable.isNotEmpty,
+              // Dopiero po wczytaniu zniżek wydarzenia, żeby zapis nie skasował tych z bazy.
+              enabled: discountsReady && discountable.isNotEmpty,
               onSelected: (id) => setState(() => _discounts = {...discounts, id: 10}),
               itemBuilder: (_) => [
                 for (final s in discountable)

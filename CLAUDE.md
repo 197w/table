@@ -151,7 +151,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Panel: flutter_map i latlong2 (mapa dostawców na kafelkach Mapbox, od 14.11.2026). Śledzenia dostawców z telefonów
   nie ma od 0068 (wróci w drugim etapie mapy), mapy u gościa też nie.
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0092, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0094, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -432,9 +432,14 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   poprzednią, wymaga `calendar` i `menu_edit`; tabela `event_section_discounts`, goście czytają zniżki wydarzeń
   specjalnych). W czasie wydarzenia (od początku do końca) goście zamawiający w aplikacji Table (dostawa, odbiór)
   płacą o ten procent mniej: cenę liczy baza w `guest_place_order` (`private.section_discount_percent(dział, chwila)`,
-  największa z trwających zniżek, od ceny dania z wariantem i dodatkami, zaokrąglenie do grosza, dla zamówienia na
-  godzinę liczy się ta godzina), a aplikacja gościa pokazuje to samo (`SectionDiscount`, `MenuItem.discountAt` /
-  `priceAfterDiscount`, `DiscountedPrice` z przekreśloną dawną ceną i „−20%”, cena w koszyku po zniżce). Zamówienia
+  największa z trwających zniżek, od ceny dania z wariantem i dodatkami, zaokrąglenie do grosza; liczy się chwila
+  złożenia zamówienia, także przy zamówieniu na godzinę, 0094), a aplikacja gościa pokazuje to samo
+  (`SectionDiscount`, `MenuItem.discountAt` / `priceAfterDiscount`, `DiscountedPrice` z przekreśloną dawną ceną
+  i „−20%”; `CartLine` trzyma cenę bez zniżki i listę zniżek, a cenę po zniżce liczy w chwili wyświetlania, więc koszyk
+  zostawiony na dłużej pokazuje aktualną). Tabela `event_section_discounts` ma własny `id` (0093), bo klucz główny
+  z dwóch kluczy obcych PostgREST traktuje jak tabelę łączącą wiele-do-wielu i każde zapytanie o `menu_sections`
+  z osadzonym `calendar_events` bez wskazanego klucza dawało PGRST201 (tak pyta panel w Menu); nowe tabele z dwoma
+  kluczami obcymi do tych samych dwóch tabel dostają surogat `id`. Zamówienia
   obsługi (Zamówienia w panelu, kelner) są bez zniżki. Starsza aplikacja gościa pokazuje pełną cenę, a zamówienie
   dostaje cenę ze zniżką.
   Table: sekcja „Wydarzenia” nad „Godziny otwarcia” na stronie lokalu (`_EventsCard`, `RestaurantEvent`,
