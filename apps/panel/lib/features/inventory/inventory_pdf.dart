@@ -44,7 +44,7 @@ ExportTable inventoryCountTable(InventoryCount count) => ExportTable(
           if (l.container != null && l.gross != null)
             '${inventoryGrouped(l.gross!)} g w poj. ${l.container} (−${inventoryGrouped(l.tare ?? 0)} g)'
           else if ((l.loose ?? 0) > 0)
-            '${inventoryGrouped(l.loose!)} ${l.unit.portion.label}',
+            l.unit.looseText(l.loose!),
         ].join(' + '),
         _qty(l.total, l.unit),
         _qty(l.previous, l.unit),

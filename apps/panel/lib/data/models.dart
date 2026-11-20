@@ -3576,6 +3576,19 @@ enum InventoryUnit {
 
   /// Ile mniejszych jednostek w jednej: 1000 dla l i kg, 1 dla pozostałych.
   double get portionFactor => this == InventoryUnit.l || this == InventoryUnit.kg ? 1000 : 1;
+
+  /// Ile jednostek [portion] (g, ml) jest w jednej jednostce wpisu reszty: 1000 dla kg i l, 1 dla pozostałych.
+  double get entryFactor => portionFactor;
+
+  /// Resztę (liczoną w g, ml albo szt.) piszemy w kilogramach albo litrach od 1000: „1500 g” → „1,5 kg”
+  /// (20.11.2026, prośba użytkownika: zamiast „reszty” kilogramy albo gramy).
+  String looseText(double loose) {
+    final p = portion;
+    if ((p == InventoryUnit.g || p == InventoryUnit.ml) && loose >= 1000) {
+      return '${inventoryNumber(loose / 1000)} ${p == InventoryUnit.g ? 'kg' : 'l'}';
+    }
+    return '${inventoryGrouped(loose)} ${p.label}';
+  }
 }
 
 /// Składnik w recepturze dania: ile zużywa jedna porcja, w jednostce [unit].
@@ -3952,7 +3965,7 @@ class InventoryDocLine {
   String get text {
     final parts = [
       if ((packages ?? 0) > 0) packCount(packages!, packName),
-      if ((loose ?? 0) > 0) '${inventoryGrouped(loose!)} ${unit.portion.label}',
+      if ((loose ?? 0) > 0) unit.looseText(loose!),
     ];
     final total = '${inventoryNumber(amount)} ${unit.label}';
     if (parts.isEmpty || (parts.length == 1 && parts.first == total)) return total;

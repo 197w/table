@@ -1007,7 +1007,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   od razu), `panel_inventory_finish`, `panel_inventory_discard`, lista `panel_inventory_counts`. Okres
   `restaurants.inventory_period` (day, week, two_weeks, month; `panel_set_inventory_period`), ustawia się w „Ustawienia lokalu”,
   następna inwentaryzacja liczona od ostatniej zakończonej. Uprawnienia: `inventory_edit` („Edytowanie składników”: składniki i okres)
-  i `inventory_count` („Wpisywanie ilości składników”), grupa „Inwentaryzacja”. W spisie pełne opakowania i obok reszta
+  i `inventory_count` („Wpisywanie ilości składników”), grupa „Inwentaryzacja”. W spisie pełne opakowania i obok „Luzem” (od 20.11.2026, prośba użytkownika: zamiast „reszty” kilogramy albo
+  gramy; wybór jednostki g albo kg, ml albo l kliknięciem, `LooseUnitPicker` w spisie i w oknie dostawy, zapis dalej
+  w g/ml/szt, `InventoryUnit.looseText` pisze od 1000 kilogramy i litry) reszta
   w g/ml/szt (`inventory_count_lines.packages`, `loose`; `quantity` = opakowania z resztą, 6 miejsc po przecinku),
   „Razem” w mniejszej jednostce (np. mąka 50 kg: 1 op. + 2500 g = 52 500 g).
   Od 0071 (wszystko liczy się samo z ruchów `inventory_movements`, rodzaje sale, delivery, removal):

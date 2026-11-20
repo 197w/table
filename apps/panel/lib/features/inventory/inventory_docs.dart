@@ -165,10 +165,55 @@ class InventoryDocTile extends StatelessWidget {
   }
 }
 
+/// Jednostka reszty przy polu ilości: g albo kg (ml albo l), kliknięcie ją zmienia. Sztuki mają jedną jednostkę.
+class LooseUnitPicker extends StatelessWidget {
+  const LooseUnitPicker({
+    super.key,
+    required this.units,
+    required this.selected,
+    required this.onChanged,
+    this.enabled = true,
+  });
+
+  final List<InventoryUnit> units;
+  final InventoryUnit selected;
+  final ValueChanged<InventoryUnit> onChanged;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = Text(selected.label, style: Theme.of(context).textTheme.bodyMedium);
+    if (units.length < 2) return label;
+    return PopupMenuButton<InventoryUnit>(
+      enabled: enabled,
+      tooltip: 'Jednostka: ${units.map((u) => u.label).join(' albo ')}',
+      onSelected: onChanged,
+      itemBuilder: (_) => [
+        for (final u in units)
+          PopupMenuItem(
+            value: u,
+            child: Text(u.label, style: TextStyle(fontWeight: u == selected ? FontWeight.w600 : FontWeight.w400)),
+          ),
+      ],
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          label,
+          const SizedBox(width: 3),
+          Glyph(AppIcons.caretDown, size: 12, color: AppColors.textMuted),
+        ],
+      ),
+    );
+  }
+}
+
 class _DocLine {
   String? itemId;
   final packages = TextEditingController();
   final loose = TextEditingController();
+
+  /// Jednostka, w której wpisano resztę (null: g albo ml składnika). Zmiana składnika ją zeruje.
+  InventoryUnit? looseUnit;
 
   void dispose() {
     packages.dispose();
@@ -176,7 +221,7 @@ class _DocLine {
   }
 }
 
-/// Nowa dostawa albo usunięcie: kiedy, składniki (pełne opakowania i reszta, razem liczy się samo),
+/// Nowa dostawa albo usunięcie: kiedy, składniki (pełne opakowania i luzem w g albo kg, razem liczy się samo),
 /// przy dostawie dostawca i numer dokumentu, przy usunięciu powód i wyjaśnienie (wymagane).
 class InventoryDocDialog extends ConsumerStatefulWidget {
   const InventoryDocDialog({
@@ -223,9 +268,17 @@ class _InventoryDocDialogState extends ConsumerState<InventoryDocDialog> {
     final item = _item(l.itemId);
     if (item == null) return null;
     final p = parseInventoryNumber(l.packages.text) ?? 0;
-    final lo = parseInventoryNumber(l.loose.text) ?? 0;
+    final lo = _looseBase(l) ?? 0;
     final total = p * item.capacity + lo / item.unit.portionFactor;
     return total > 0 ? total : null;
+  }
+
+  /// Reszta w g, ml albo sztukach składnika (wpisana w kg albo l jest przeliczona).
+  double? _looseBase(_DocLine l) {
+    final v = parseInventoryNumber(l.loose.text);
+    if (v == null) return null;
+    final unit = l.looseUnit ?? _item(l.itemId)?.unit.portion ?? InventoryUnit.g;
+    return double.parse((v * unit.entryFactor).toStringAsFixed(6));
   }
 
   Future<void> _pickWhen() async {
@@ -259,7 +312,7 @@ class _InventoryDocDialogState extends ConsumerState<InventoryDocDialog> {
           (
             itemId: l.itemId!,
             packages: parseInventoryNumber(l.packages.text),
-            loose: parseInventoryNumber(l.loose.text),
+            loose: _looseBase(l),
           ),
     ];
     String? problem;
@@ -404,7 +457,10 @@ class _InventoryDocDialogState extends ConsumerState<InventoryDocDialog> {
                                 style: panelMenuItemStyle(context, selected: item.id == l.itemId),
                               ),
                           ],
-                          onSelected: (id) => setState(() => l.itemId = id),
+                          onSelected: (id) => setState(() {
+                            l.itemId = id;
+                            l.looseUnit = null;
+                          }),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -434,8 +490,12 @@ class _InventoryDocDialogState extends ConsumerState<InventoryDocDialog> {
                           onChanged: (_) => setState(() {}),
                           decoration: InputDecoration(
                             isDense: true,
-                            hintText: 'reszta',
-                            suffixText: _item(l.itemId)?.unit.portion.label ?? 'g',
+                            hintText: 'luzem',
+                            suffix: LooseUnitPicker(
+                              units: _item(l.itemId)?.unit.compatible ?? const [InventoryUnit.g],
+                              selected: l.looseUnit ?? _item(l.itemId)?.unit.portion ?? InventoryUnit.g,
+                              onChanged: (u) => setState(() => l.looseUnit = u),
+                            ),
                           ),
                         ),
                       ),

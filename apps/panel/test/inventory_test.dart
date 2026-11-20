@@ -246,4 +246,29 @@ void main() {
     expect(inventoryDaysText(4.2), 'ok. 4 dni');
     expect(inventoryDaysText(400), 'ponad rok');
   });
+
+  test('luzem: gramy albo kilogramy, mililitry albo litry', () {
+    // Od 1000 g pisze się kilogramy, wpisać można w obu jednostkach (entryFactor).
+    expect(InventoryUnit.kg.looseText(500), '500 g');
+    expect(InventoryUnit.kg.looseText(1500), '1,5 kg');
+    expect(InventoryUnit.g.looseText(2000), '2 kg');
+    expect(InventoryUnit.l.looseText(250), '250 ml');
+    expect(InventoryUnit.l.looseText(2500), '2,5 l');
+    expect(InventoryUnit.szt.looseText(3), '3 szt.');
+    expect(InventoryUnit.kg.compatible, [InventoryUnit.g, InventoryUnit.kg]);
+    expect(InventoryUnit.kg.entryFactor, 1000);
+    expect(InventoryUnit.g.entryFactor, 1);
+
+    final line = InventoryDocLine.fromJson({
+      'item_id': 'i1',
+      'name': 'Mąka',
+      'unit': 'kg',
+      'capacity': 50,
+      'amount': 51.5,
+      'pack_name': 'worek',
+      'packages': 1,
+      'loose': 1500,
+    });
+    expect(line.text, '1 worek + 1,5 kg = 51,5 kg');
+  });
 }
