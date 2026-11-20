@@ -76,7 +76,7 @@ void main() {
     expect(labels.first['rodzaj'], 'DOSTAWA');
     expect(labels.first['godzina'], '19:30');
     expect(labels.first['adres'], 'ul. Lipowa 12/4, Białystok');
-    expect(labels.first['platnosc'], startsWith('Gotówka'));
+    expect(labels.first['platnosc'], startsWith('NIEOPŁACONE · Gotówka'));
   });
 
   test('wybrane działy menu, jedna etykieta na zamówienie i rodzaje zamówień', () {

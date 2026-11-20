@@ -2186,6 +2186,10 @@ class TakeawayOrder {
   /// Płaci przy dostawie albo odbiorze (gotówką albo kartą), a nie z góry.
   bool get payOnDelivery => (cash || cardOnDelivery) && !prepaid;
 
+  /// Napis o płatności dla obsługi w lokalu: przy gotówce i karcie przy odbiorze zamówienie jest nieopłacone,
+  /// więc „NIEOPŁACONE · gotówka u dostawcy”, w pozostałych razach to samo co [paymentLabel].
+  String get paymentNotice => payOnDelivery ? 'NIEOPŁACONE · ${paymentLabel.toLowerCase()}' : paymentLabel;
+
   /// Jak gość płaci, np. „Gotówka u dostawcy”, „Karta przy odbiorze”, „Karta online · opłacone”.
   String get paymentLabel {
     final at = kind == OrderKind.delivery ? 'u dostawcy' : 'przy odbiorze';

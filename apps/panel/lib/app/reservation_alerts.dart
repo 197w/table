@@ -108,6 +108,7 @@ class ReservationAlerts {
       order.customerName,
       ?order.address,
       Fmt.price(order.totalGrosze),
+      if (order.payOnDelivery) 'nieopłacone' else if (order.prepaid) 'opłacone',
       order.cash ? 'gotówka' : (order.cardOnDelivery ? 'karta przy odbiorze' : 'karta online'),
     ].join(' · ');
     Toasts.instance.show(

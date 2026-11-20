@@ -387,8 +387,10 @@ Map<String, String> _orderValues(TakeawayOrder o, String restaurantName) {
     'telefon': Fmt.phone(o.customerPhone),
     'adres': delivery ? (o.address ?? '') : '',
     'uwagi': [?o.note, if (delivery && o.addressNote != null) 'Do adresu: ${o.addressNote}'].join(' · '),
+    // Gotówka albo karta przy odbiorze to dla systemu zamówienie nieopłacone (20.11.2026, prośba użytkownika):
+    // na etykiecie jest napisane, że nieopłacone, i jaką formą ma zapłacić gość.
     'platnosc': o.payOnDelivery
-        ? '${o.cash ? 'Gotówka' : 'Karta'}: ${Fmt.price(o.totalGrosze)}'
+        ? 'NIEOPŁACONE · ${o.cash ? 'Gotówka' : 'Karta'}: ${Fmt.price(o.totalGrosze)}'
         : 'Opłacone',
     'kwota': Fmt.price(o.totalGrosze),
     'lokal': restaurantName,
@@ -446,7 +448,7 @@ Map<String, String> sampleLabelValues({required bool delivery, required String r
   'telefon': Fmt.phone('+48600100200'),
   'adres': delivery ? 'ul. Lipowa 12/4, Białystok' : '',
   'uwagi': delivery ? 'Proszę dzwonić domofonem · Do adresu: klatka B, 2 piętro' : 'Odbierze o 19:30',
-  'platnosc': delivery ? 'Gotówka: 86,00 zł' : 'Opłacone',
+  'platnosc': delivery ? 'NIEOPŁACONE · Gotówka: 86,00 zł' : 'Opłacone',
   'kwota': '86,00 zł',
   'lokal': restaurantName,
 };

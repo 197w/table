@@ -808,7 +808,7 @@ class TakeawayCustomerCard extends ConsumerWidget {
             o.prepaid ? AppIcons.checkCircle : (o.cardOnDelivery ? AppIcons.creditCard : AppIcons.money),
             o.prepaid
                 ? 'Opłacone'
-                : '${o.cardOnDelivery ? 'Kartą' : 'Gotówką'} '
+                : 'NIEOPŁACONE · ${o.cardOnDelivery ? 'karta' : 'gotówka'} '
                       '${o.kind == OrderKind.delivery ? 'u dostawcy' : 'przy odbiorze'}',
             color: o.prepaid ? AppColors.accent : _amber,
           ),

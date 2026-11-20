@@ -489,8 +489,8 @@ class _OrderCardState extends State<_OrderCard> {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    o.payOnDelivery ? 'Do zapłaty: ${o.paymentLabel.toLowerCase()}' : o.paymentLabel,
-                    style: muted,
+                    o.paymentNotice,
+                    style: o.payOnDelivery ? muted?.copyWith(color: _cashColor, fontWeight: FontWeight.w600) : muted,
                   ),
                 ),
                 Text(Fmt.price(o.totalGrosze), style: text.titleMedium?.copyWith(fontFeatures: _tabular)),
