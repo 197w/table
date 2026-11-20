@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
-import 'package:table_panel/app/app.dart';
 import 'package:table_panel/app/panel_theme.dart';
 import 'package:table_panel/data/models.dart';
 import 'package:table_panel/data/providers.dart';
