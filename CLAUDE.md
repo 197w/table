@@ -376,7 +376,17 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Sprzedaż (obrót, zamówienia netto, średni rachunek, formy płatności, kaucja), Kasa fiskalna (raport dobowy, netto
   z raportu, „Obrót w panelu” ze znaczkiem „Zgadza się” / „Różnica”, `_Match`), Terminale płatnicze („Karty
   w panelu”), Gotówka do koperty z rozbiciem, Gotówka w kasie (policzona, „Powinno być”), Platformy dostaw,
-  Notatka z „Zapisz podsumowanie”, Petty cash.
+  Notatka z „Zapisz podsumowanie”, Petty cash. Od 20.11.2026 przebudowane (prośba użytkownika: „strasznie
+  nieczytelne”; jedna kolumna dziewięciu kart z długimi opisami formuł): na górze baner z niezamkniętymi i cztery
+  kafle (`StatTile`): Obrót ze wszystkimi zamówieniami razem („57 zamówień · w lokalu 40 · na wynos 17”: lokal
+  i dostawy w jednym), Średni rachunek, Do koperty, Gotówka w kasie (policzona i różnica). Poniżej dwie kolumny (od
+  940 px, inaczej jedna): po lewej „Jak zapłacono” (pasek z udziałami gotówki, karty z terminala, karty online
+  i przelewów, wiersze z kwotą i procentem, rabaty, zadatki, kaucja, anulowane) i Petty cash, po prawej „Rozliczenie
+  dnia” krok po kroku: Kasa fiskalna, Terminale płatnicze, Gotówka w kasie, Platformy dostaw (gdy są), Gotówka do
+  koperty (rozbite na wiersze: raport − online − terminale − przelewy − kaucja) i Notatka; każdy blok ma jedną
+  kontrolę `_DiffChip` („Zgadza się” zielona, żółta „Różnica ±”, szara „Wpisz …”). Formuły są w podpowiedziach przy
+  ikonie „i”, nie w szarych opisach. Zapis w stałym pasku na dole z „Niezapisane zmiany” albo „Zapisano 23:40 ·
+  Kasia”. Dane i logika zapisu bez zmian (`daySummaryProvider`, `saveDayReport`):
   terminale (kilka, nazwa i kwota), policzona gotówka i notatka (`day_reports`, `panel_save_day_report`), petty cash
   (wydatki i wpłaty z kasy, `petty_cash`, `panel_add_petty`, `panel_delete_petty`); zgodność kwot zielona albo żółta różnica.
   Od 0079 (8.11.2026, prośby użytkownika): „Zamówienia netto” (opłacone bez anulowanych i pustych;
