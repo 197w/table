@@ -2349,6 +2349,15 @@ class Courier {
 }
 
 /// Bilecik na ekranie kuchni: pozycje jednego stolika wysłane za jednym razem.
+/// Napis o płatności zamówienia na wynos dla obsługi w lokalu (Kuchnia, Kompletowanie): gotówka i karta przy odbiorze to
+/// zamówienie nieopłacone („NIEOPŁACONE · gotówka u dostawcy”), a [choice] to `payment_choice` z bazy. Null: opłacone
+/// z góry albo rachunek na sali.
+String? takeawayPayNotice(OrderKind kind, Object? choice) {
+  if (kind == OrderKind.dineIn || (choice != 'cash' && choice != 'card_on_delivery')) return null;
+  final at = kind == OrderKind.delivery ? 'u dostawcy' : 'przy odbiorze';
+  return 'NIEOPŁACONE · ${choice == 'cash' ? 'gotówka' : 'karta'} $at';
+}
+
 class KitchenTicket {
   const KitchenTicket({
     required this.orderId,
@@ -2356,6 +2365,7 @@ class KitchenTicket {
     required this.items,
     this.tableId,
     this.waiter,
+    this.payNotice,
     this.takeawayLabel,
     this.address,
     this.customer,
@@ -2374,6 +2384,9 @@ class KitchenTicket {
 
   /// Komentarz do zamówienia na wynos i komentarz tylko dla pracowników, razem.
   final String? note;
+
+  /// „NIEOPŁACONE · gotówka u dostawcy” przy gotówce i karcie przy odbiorze (zamówienie na wynos).
+  final String? payNotice;
 
   /// „Dostawa #12” albo „Na wynos #12” zamiast stolika.
   final String? takeawayLabel;
@@ -2413,6 +2426,10 @@ class KitchenTicket {
           takeawayLabel: switch (list.first['orders'] as Map<String, dynamic>?) {
             final o? when o['kind'] != null && o['kind'] != 'dine_in' =>
               '${OrderKind.from(o['kind']).label} #${o['number'] ?? '?'}',
+            _ => null,
+          },
+          payNotice: switch (list.first['orders'] as Map<String, dynamic>?) {
+            final o? => takeawayPayNotice(OrderKind.from(o['kind']), o['payment_choice']),
             _ => null,
           },
           address: switch (list.first['orders'] as Map<String, dynamic>?) {
@@ -3082,10 +3099,14 @@ class ServingTicket {
     this.promisedAt,
     this.waiter,
     this.cooking = 0,
+    this.payNotice,
   });
 
   final String orderId;
   final String? tableId;
+
+  /// „NIEOPŁACONE · gotówka u dostawcy” przy gotówce i karcie przy odbiorze (zamówienie na wynos).
+  final String? payNotice;
 
   /// Dostawa albo odbiór osobisty. Null: rachunek na sali.
   final OrderKind? takeawayKind;
@@ -3161,6 +3182,7 @@ class ServingTicket {
           tableId: order['table_id'] as String?,
           takeawayKind: takeaway ? kind : null,
           takeawayNumber: takeaway ? _toInt(order['number']) : null,
+          payNotice: takeawayPayNotice(kind, order['payment_choice']),
           promisedAt: _toDateOrNull(order['promised_at']),
           items: takeaway ? all : shown,
           readySince: since,

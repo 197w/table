@@ -866,7 +866,7 @@ class PanelRepository {
     return _guard(() async {
       final rows = await _db
           .from('order_items')
-          .select('*, menu_items(show_in_kitchen), member:staff_members(name), orders!inner(table_id, status, kind, number, delivery_address, customer_name, customer_company, delivery_note, staff_note, scheduled_for, opener:staff_members!opened_by_member(name))')
+          .select('*, menu_items(show_in_kitchen), member:staff_members(name), orders!inner(table_id, status, kind, number, delivery_address, customer_name, customer_company, delivery_note, staff_note, scheduled_for, payment_choice, opener:staff_members!opened_by_member(name))')
           .eq('restaurant_id', restaurantId)
           .inFilter('status', ['sent', 'ready', 'cancelled'])
           .eq('orders.status', 'open')
@@ -1086,7 +1086,7 @@ class PanelRepository {
           .from('order_items')
           .select(
             '*, member:staff_members(name), '
-            'orders!inner(table_id, status, kind, number, fulfillment, promised_at, '
+            'orders!inner(table_id, status, kind, number, fulfillment, promised_at, payment_choice, '
             'opener:staff_members!opened_by_member(name))',
           )
           .eq('restaurant_id', restaurantId)

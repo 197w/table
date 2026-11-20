@@ -518,6 +518,29 @@ class _Card extends StatelessWidget {
               ],
             ),
           ),
+          // Gotówka albo karta przy odbiorze: zamówienie nieopłacone, z formą płatności.
+          if (ticket.payNotice != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
+              color: const Color(0xFFD99A15).withValues(alpha: 0.16),
+              child: Row(
+                children: [
+                  const Glyph(AppIcons.money, size: 20, color: Color(0xFFD99A15)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      ticket.payNotice!,
+                      style: text.titleSmall?.copyWith(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFFD99A15),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Column(

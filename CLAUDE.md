@@ -494,7 +494,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   sali anuluje `panel_cancel_order`. Kafel pokazuje napis „NIEOPŁACONE · gotówka u dostawcy” / „Opłacone”, adres
   i dostawcę (`UnclosedOrder.paymentNotice`). Nieopłacone: gotówka albo karta przy odbiorze (`payOnDelivery`);
   tak samo pisze etykieta (`{platnosc}`: „NIEOPŁACONE · Gotówka: 86,00 zł”), karta w Dostawach
-  (`TakeawayOrder.paymentNotice`), powiadomienie o nowym zamówieniu i formularz zamówienia z panelu.
+  (`TakeawayOrder.paymentNotice`), powiadomienie o nowym zamówieniu, formularz zamówienia z panelu oraz bilecik
+  w Kuchni i karta w Kompletowaniu (żółty pasek „NIEOPŁACONE · gotówka u dostawcy”, `takeawayPayNotice`,
+  `payment_choice` w zapytaniach o bilety).
   Rozliczenia dostawców (`/rozliczenia-dostawcow`, 0090, `settlements_screen.dart`, uprawnienie `day_close` jak
   Podsumowanie dnia; 20.11.2026, prośba użytkownika): wszystkie kursy dostawców (`panel_courier_settlements(lokal, od,
   do)`: dostawy gotowe, w drodze i dowiezione w dniach lokalu z godziną zamknięcia dnia) w układzie jak Pracownicy: po
