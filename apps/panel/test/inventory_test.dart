@@ -256,8 +256,22 @@ void main() {
     expect(InventoryUnit.l.looseText(2500), '2,5 l');
     expect(InventoryUnit.szt.looseText(3), '3 szt.');
     expect(InventoryUnit.kg.compatible, [InventoryUnit.g, InventoryUnit.kg]);
-    expect(InventoryUnit.kg.entryFactor, 1000);
-    expect(InventoryUnit.g.entryFactor, 1);
+    // Dwa pola: kilogramy (litry) i gramy (mililitry); sztuki mają jedno pole.
+    expect(InventoryUnit.kg.splitLoose(1500), (1.0, 500.0));
+    expect(InventoryUnit.kg.splitLoose(500), (null, 500.0));
+    expect(InventoryUnit.g.splitLoose(2000), (2.0, null));
+    expect(InventoryUnit.l.splitLoose(2250), (2.0, 250.0));
+    expect(InventoryUnit.szt.splitLoose(3), (null, 3.0));
+    expect(InventoryUnit.kg.splitLoose(null), (null, null));
+    expect(InventoryUnit.kg.joinLoose(1, 500), 1500);
+    expect(InventoryUnit.kg.joinLoose(2, null), 2000);
+    expect(InventoryUnit.kg.joinLoose(null, 250), 250);
+    expect(InventoryUnit.kg.joinLoose(null, null), isNull);
+    expect(InventoryUnit.ml.joinLoose(1, 100), 1100);
+    expect(InventoryUnit.szt.joinLoose(null, 4), 4);
+    expect(InventoryUnit.kg.looseLargeLabel, 'kg');
+    expect(InventoryUnit.ml.looseLargeLabel, 'l');
+    expect(InventoryUnit.szt.splitsLoose, isFalse);
 
     final line = InventoryDocLine.fromJson({
       'item_id': 'i1',

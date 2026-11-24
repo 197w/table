@@ -1666,6 +1666,11 @@ class PanelRepository {
   }
 
   /// Platformy dostaw lokalu (nazwy w kolejności), do kwot w podsumowaniu dnia.
+  /// Włącza albo wyłącza widoczność lokalu w aplikacji dla klientów (0096). Tylko lokal już zweryfikowany przez Table.
+  Future<void> setListed(String restaurantId, bool listed) {
+    return _guard(() => _db.rpc<void>('panel_set_listed', params: {'p_restaurant_id': restaurantId, 'p_listed': listed}));
+  }
+
   Future<void> setDeliveryPlatforms(String restaurantId, List<String> names) {
     return _guard(
       () => _db.rpc<void>('panel_set_delivery_platforms', params: {'p_restaurant_id': restaurantId, 'p_names': names}),

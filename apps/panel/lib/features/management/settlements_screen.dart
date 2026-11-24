@@ -89,8 +89,9 @@ List<CourierRun> filterRuns(
 
 /// Management → Rozliczenia dostawców (20.11.2026, prośba użytkownika): wszystkie kursy dostawców z numerami
 /// zamówień, opłaceniem, adresami, dostawcą i autem, w układzie jak Pracownicy: po lewej panel z wyszukiwaniem
-/// i filtrami (dostawcy, opłacone / nieopłacone), po prawej tabela, na dole suma kursów opłaconych. Opłacone to karta
-/// online i przyjęte z góry; gotówka i karta przy odbiorze to nieopłacone, bo dostawca pobiera je od gościa.
+/// i filtrami (dostawcy, opłacone / nieopłacone), po prawej tabela, na dole suma kursów opłaconych. Opłacone to
+/// zamówienia, które system ma jako opłacone (karta online, opłacone z góry i gotówka albo karta pobrana przy
+/// dowiezieniu); nieopłacone to te, za które dostawca dopiero ma pobrać pieniądze.
 /// Uprawnienie „Podsumowanie dnia”.
 class SettlementsScreen extends ConsumerStatefulWidget {
   const SettlementsScreen({super.key});
@@ -434,7 +435,7 @@ class _TotalsBar extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                'Nieopłacone (do rozliczenia z dostawcami): ${Fmt.price(totals.unpaidGrosze)} · ${_runs(totals.unpaidRuns)}',
+                'Nieopłacone (do pobrania przez dostawców): ${Fmt.price(totals.unpaidGrosze)} · ${_runs(totals.unpaidRuns)}',
                 style: text.bodySmall?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
               ),
             ],

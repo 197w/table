@@ -134,6 +134,7 @@ class SettingsScreen extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       for (final (i, section) in [
+                        RestaurantVisibilityCard(restaurant: restaurant, editable: restaurant.canManage),
                         _ReservationSettingsCard(
                           key: ValueKey('rezerwacje-${profile.id}'),
                           profile: profile,
@@ -164,6 +165,73 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ),
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Widoczność lokalu w aplikacji dla klientów (24.11.2026, prośba użytkownika): przełącznik na górze Ustawień lokalu.
+/// Wyłączony lokal znika w aplikacji Table (wyszukiwarka, strona lokalu, rezerwacje i zamówienia), a złożone
+/// rezerwacje i zamówienia zostają. Włączyć może tylko lokal już zweryfikowany przez Table (0096).
+class RestaurantVisibilityCard extends ConsumerStatefulWidget {
+  const RestaurantVisibilityCard({super.key, required this.restaurant, required this.editable});
+
+  final PanelRestaurant restaurant;
+  final bool editable;
+
+  @override
+  ConsumerState<RestaurantVisibilityCard> createState() => _RestaurantVisibilityCardState();
+}
+
+class _RestaurantVisibilityCardState extends ConsumerState<RestaurantVisibilityCard> {
+  bool _busy = false;
+
+  Future<void> _set(bool listed) async {
+    if (!listed) {
+      final ok = await confirm(
+        context,
+        title: 'Ukryć lokal w aplikacji?',
+        message: 'Klienci przestaną widzieć lokal w aplikacji Table: nie znajdą go w wyszukiwarce, nie zarezerwują '
+            'stolika i nie złożą zamówienia. Złożone rezerwacje i zamówienia zostają. Włączysz to tutaj w każdej chwili.',
+        action: 'Ukryj lokal',
+        destructive: true,
+      );
+      if (!ok) return;
+    }
+    setState(() => _busy = true);
+    try {
+      await ref.read(repositoryProvider).setListed(widget.restaurant.id, listed);
+      ref.invalidate(restaurantsProvider);
+      if (mounted) {
+        showMessage(
+          context,
+          listed ? 'Lokal jest znowu widoczny w aplikacji.' : 'Lokal jest ukryty w aplikacji.',
+          tone: ToastTone.success,
+        );
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final listed = widget.restaurant.listed;
+    return SettingsSection(
+      title: 'Widoczność w aplikacji',
+      children: [
+        SettingsRow(
+          title: 'Lokal widoczny dla klientów',
+          description: listed
+              ? 'Klienci znajdą lokal w aplikacji Table i mogą rezerwować stolik oraz zamawiać.'
+              : 'Lokal jest ukryty: nie ma go w wyszukiwarce i nie przyjmuje rezerwacji ani zamówień z aplikacji.',
+          trailing: Switch(
+            value: listed,
+            onChanged: widget.editable && !_busy ? _set : null,
           ),
         ),
       ],
@@ -804,6 +872,11 @@ class _DetailsFormState extends ConsumerState<_DetailsForm> {
   }
 }
 
+/// Zamknięcie nie później niż otwarcie (12:00–02:00) to zamknięcie następnego dnia, po północy (24.11.2026, prośba
+/// użytkownika). Zamknięcie o 24:00 to północ tego samego dnia.
+bool closesNextDay(TimeOfDay opens, TimeOfDay closes) =>
+    closes.hour * 60 + closes.minute <= opens.hour * 60 + opens.minute;
+
 class _DayHours {
   _DayHours({required this.open, required this.opens, required this.closes});
 
@@ -875,10 +948,11 @@ class _HoursFormState extends ConsumerState<_HoursForm> {
       if (!d.open) continue;
       final opensMin = d.opens.hour * 60 + d.opens.minute;
       final closesMin = d.closes.hour * 60 + d.closes.minute;
-      if (closesMin <= opensMin) {
+      if (closesMin == opensMin) {
         showMessage(
           context,
-          '${_weekdays[i]}: zamknięcie musi być później niż otwarcie. Lokale otwarte po północy obsłużymy w kolejnej wersji.',
+          '${_weekdays[i]}: zamknięcie musi być o innej godzinie niż otwarcie. Wcześniejsze niż otwarcie to zamknięcie '
+          'po północy.',
         );
         return;
       }
@@ -960,6 +1034,14 @@ class _HoursFormState extends ConsumerState<_HoursForm> {
                       value: _format(_days[i].closes),
                       onTap: enabled ? () => _pick(i, false) : null,
                     ),
+                    if (closesNextDay(_days[i].opens, _days[i].closes))
+                      Padding(
+                        padding: const EdgeInsets.only(left: 10),
+                        child: Text(
+                          'następnego dnia',
+                          style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                        ),
+                      ),
                   ] else
                     Text(
                       'Zamknięte',
@@ -1151,8 +1233,8 @@ class _ExceptionDialogState extends State<_ExceptionDialog> {
       showMessage(context, 'Wybierz dzień.');
       return;
     }
-    if (!_closed && _closes.hour * 60 + _closes.minute <= _opens.hour * 60 + _opens.minute) {
-      showMessage(context, 'Zamknięcie musi być później niż otwarcie.');
+    if (!_closed && _closes.hour * 60 + _closes.minute == _opens.hour * 60 + _opens.minute) {
+      showMessage(context, 'Zamknięcie musi być o innej godzinie niż otwarcie. Wcześniejsze to zamknięcie po północy.');
       return;
     }
     Navigator.pop(
@@ -1216,6 +1298,14 @@ class _ExceptionDialogState extends State<_ExceptionDialog> {
                       if (t != null) setState(() => _closes = t);
                     },
                   ),
+                  if (closesNextDay(_opens, _closes))
+                    Padding(
+                      padding: const EdgeInsets.only(left: 10),
+                      child: Text(
+                        'następnego dnia',
+                        style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                      ),
+                    ),
                 ],
               ),
             ],

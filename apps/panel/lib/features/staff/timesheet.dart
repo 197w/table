@@ -6,6 +6,8 @@ import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_select.dart';
 import '../../shared/panel_widgets.dart';
+import '../../shared/side_panel.dart';
+import '../../shared/staff_avatar.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 const _weekdayShort = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'];
@@ -214,7 +216,42 @@ class ShiftTile extends ConsumerWidget {
   }
 }
 
-/// Czas pracy w tygodniu: kto jest teraz w pracy, godziny każdego dnia i lista zmian.
+/// Pracownik w wierszu tabeli godzin: kółko z inicjałami i imię (jak w Zespole w Pracownikach).
+class _HoursName extends StatelessWidget {
+  const _HoursName(this.member);
+
+  final StaffMember member;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Row(
+      children: [
+        StaffAvatar(
+          name: member.name,
+          color: staffColors[member.color % staffColors.length],
+          size: 30,
+          dimmed: !member.active,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            member.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: text.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w500,
+              color: member.active ? AppColors.text : AppColors.textMuted,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Czas pracy w tygodniu: kto jest teraz w pracy, godziny każdego dnia w tabeli jak Zespół w Pracownikach (od
+/// 24.11.2026, prośba użytkownika: „zmień UI w godzinach pracy, tak jak w pracownikach”) i lista zmian.
 /// Dzień z poprawioną zmianą jest żółty.
 class Timesheet extends ConsumerWidget {
   const Timesheet({
@@ -263,98 +300,106 @@ class Timesheet extends ConsumerWidget {
           for (final m in members)
             if (m.active || shifts.any((s) => s.memberId == m.id)) m,
         ];
+        final shown = [
+          for (final s in shifts)
+            if (members.any((m) => m.id == s.memberId)) s,
+        ];
 
         return SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
+          padding: const EdgeInsets.fromLTRB(24, 16, 32, 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              WorkingNow(open: open, members: members),
-              const SizedBox(height: 16),
-              Card(
-                clipBehavior: Clip.antiAlias,
-                child: Column(
-                  children: [
-                    Container(
-                      color: AppColors.surfaceRaised,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      child: Row(
-                        children: [
-                          SizedBox(width: 220, child: Text('Pracownik', style: text.labelLarge)),
-                          for (var d = 0; d < 7; d++)
-                            Expanded(
-                              child: Text(
-                                '${_weekdayShort[d]} ${DateTime(week.year, week.month, week.day + d).day}',
-                                textAlign: TextAlign.center,
-                                style: text.labelLarge?.copyWith(color: AppColors.textMuted),
-                              ),
-                            ),
-                          SizedBox(width: 90, child: Text('Razem', textAlign: TextAlign.right, style: text.labelLarge)),
-                        ],
-                      ),
-                    ),
-                    if (rows.isEmpty)
-                      Padding(padding: const EdgeInsets.all(24), child: Text('Brak pracowników.', style: text.bodyMedium)),
-                    for (final m in rows)
-                      Container(
-                        decoration: BoxDecoration(border: Border(top: BorderSide(color: AppColors.ring))),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 220,
-                              child: Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.labelLarge),
-                            ),
-                            for (var d = 0; d < 7; d++)
-                              Expanded(
-                                child: Builder(
-                                  builder: (context) {
-                                    final list = dayShifts(m.id, d);
-                                    final hours = sum(list);
-                                    final edited = list.any((s) => s.isEdited);
-                                    return Text(
-                                      hours == Duration.zero ? '–' : hoursText(hours),
-                                      textAlign: TextAlign.center,
-                                      style: text.bodyMedium?.copyWith(
-                                        fontFeatures: _tabular,
-                                        fontWeight: edited ? FontWeight.w600 : null,
-                                        color: edited
-                                            ? editedColor
-                                            : hours == Duration.zero
-                                            ? AppColors.textDisabled
-                                            : null,
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            SizedBox(
-                              width: 90,
-                              child: Text(
-                                hoursText(sum(shifts.where((s) => s.memberId == m.id && !s.startedAt.isBefore(week)))),
-                                textAlign: TextAlign.right,
-                                style: text.titleSmall?.copyWith(fontFeatures: _tabular),
-                              ),
-                            ),
-                          ],
+              // „Teraz w pracy” tylko, gdy ktoś pracuje (bez długiego opisu przy pustej liście, jak w widoku miesiąca).
+              if (open.any((s) => members.any((m) => m.id == s.memberId))) ...[
+                WorkingNow(open: [for (final s in open) if (members.any((m) => m.id == s.memberId)) s], members: members),
+                const SizedBox(height: 16),
+              ],
+              SizedBox(
+                height: 40,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: [
+                      tableHead(context, 'Pracownik', 0, width: 220),
+                      for (var d = 0; d < 7; d++)
+                        tableHead(
+                          context,
+                          '${_weekdayShort[d]} ${DateTime(week.year, week.month, week.day + d).day}',
+                          1,
+                          align: TextAlign.center,
                         ),
-                      ),
-                  ],
+                      tableHead(context, 'Razem', 0, width: 90, align: TextAlign.right),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 16),
+              Divider(height: 1, color: AppColors.ring),
+              if (rows.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
+                    child: Text('Brak pracowników.', style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
+                  ),
+                ),
+              for (final m in rows) ...[
+                SizedBox(
+                  height: 52,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      children: [
+                        SizedBox(width: 220, child: _HoursName(m)),
+                        for (var d = 0; d < 7; d++)
+                          Expanded(
+                            child: Builder(
+                              builder: (context) {
+                                final list = dayShifts(m.id, d);
+                                final hours = sum(list);
+                                final edited = list.any((s) => s.isEdited);
+                                return Text(
+                                  hours == Duration.zero ? '–' : hoursText(hours),
+                                  textAlign: TextAlign.center,
+                                  style: text.bodyMedium?.copyWith(
+                                    fontFeatures: _tabular,
+                                    fontWeight: edited ? FontWeight.w600 : null,
+                                    color: edited
+                                        ? editedColor
+                                        : hours == Duration.zero
+                                        ? AppColors.textDisabled
+                                        : null,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        SizedBox(
+                          width: 90,
+                          child: Text(
+                            hoursText(sum(shifts.where((s) => s.memberId == m.id && !s.startedAt.isBefore(week)))),
+                            textAlign: TextAlign.right,
+                            style: text.titleSmall?.copyWith(fontFeatures: _tabular),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Divider(height: 1, color: AppColors.ring),
+              ],
+              const SizedBox(height: 24),
               PanelCard(
                 title: 'Zmiany w tym tygodniu',
                 icon: AppIcons.list,
                 iconColor: TileColors.blue,
-                child: shifts.isEmpty
+                child: shown.isEmpty
                     ? Text(
                         'W tym tygodniu nikt jeszcze nie zaczął zmiany.',
                         style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
                       )
                     : Column(
                         children: [
-                          for (final s in shifts.reversed) ShiftTile(shift: s, members: members, canEdit: canEdit),
+                          for (final s in shown.reversed) ShiftTile(shift: s, members: members, canEdit: canEdit),
                         ],
                       ),
               ),
@@ -366,7 +411,8 @@ class Timesheet extends ConsumerWidget {
   }
 }
 
-/// Godziny w miesiącu: każdy pracownik z sumą godzin. Stuknięcie w osobę rozwija jej zmiany do poprawy.
+/// Godziny w miesiącu w tabeli jak Zespół w Pracownikach: każdy pracownik z liczbą zmian, poprawkami i sumą godzin.
+/// Kliknięcie osoby rozwija jej zmiany do poprawy.
 class MonthHours extends ConsumerStatefulWidget {
   const MonthHours({
     super.key,
@@ -403,18 +449,23 @@ class _MonthHoursState extends ConsumerState<MonthHours> {
       loading: () => const LoadingView(),
       error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(shiftsProvider(query))),
       data: (all) {
-        final open = all.where((s) => s.isOpen).toList();
+        final open = [
+          for (final s in all)
+            if (s.isOpen && widget.members.any((m) => m.id == s.memberId)) s,
+        ];
         if (open.isNotEmpty) ref.watch(clockProvider);
-        final shifts = [for (final s in all) if (!s.startedAt.isBefore(from) && s.startedAt.isBefore(to)) s];
+        final shifts = [
+          for (final s in all)
+            if (!s.startedAt.isBefore(from) && s.startedAt.isBefore(to) && widget.members.any((m) => m.id == s.memberId)) s,
+        ];
         Duration sum(Iterable<StaffShift> list) => list.fold(Duration.zero, (a, s) => a + s.duration);
         final rows = [
           for (final m in widget.members)
             if (m.active || shifts.any((s) => s.memberId == m.id)) m,
         ]..sort((a, b) => sum(shifts.where((s) => s.memberId == b.id)).compareTo(sum(shifts.where((s) => s.memberId == a.id))));
-        final header = text.labelLarge?.copyWith(color: AppColors.textMuted);
 
         return SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
+          padding: const EdgeInsets.fromLTRB(24, 16, 32, 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -422,125 +473,137 @@ class _MonthHoursState extends ConsumerState<MonthHours> {
                 WorkingNow(open: open, members: widget.members),
                 const SizedBox(height: 16),
               ],
-              Card(
-                clipBehavior: Clip.antiAlias,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Container(
-                      color: AppColors.surfaceRaised,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      child: Row(
-                        children: [
-                          Expanded(child: Text('Pracownik', style: text.labelLarge)),
-                          SizedBox(width: 90, child: Text('Zmiany', textAlign: TextAlign.right, style: header)),
-                          SizedBox(width: 120, child: Text('Poprawione', textAlign: TextAlign.right, style: header)),
-                          SizedBox(width: 110, child: Text('Godziny', textAlign: TextAlign.right, style: text.labelLarge)),
-                          const SizedBox(width: 40),
-                        ],
-                      ),
-                    ),
-                    if (rows.isEmpty)
-                      Padding(padding: const EdgeInsets.all(24), child: Text('Brak pracowników.', style: text.bodyMedium)),
-                    for (final m in rows) ...[
-                      Builder(
-                        builder: (context) {
-                          final mine = [for (final s in shifts) if (s.memberId == m.id) s];
-                          final edited = mine.where((s) => s.isEdited).length;
-                          final diff = mine.fold(Duration.zero, (a, s) => a + (s.editDifference ?? Duration.zero));
-                          final open = _expanded.contains(m.id);
-                          return InkWell(
-                            onTap: mine.isEmpty
-                                ? null
-                                : () => setState(() => open ? _expanded.remove(m.id) : _expanded.add(m.id)),
-                            child: Container(
-                              decoration: BoxDecoration(border: Border(top: BorderSide(color: AppColors.ring))),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.labelLarge),
+              SizedBox(
+                height: 40,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: [
+                      tableHead(context, 'Pracownik', 1),
+                      tableHead(context, 'Zmiany', 0, width: 90, align: TextAlign.right),
+                      tableHead(context, 'Poprawione', 0, width: 130, align: TextAlign.right),
+                      tableHead(context, 'Godziny', 0, width: 110, align: TextAlign.right),
+                      const SizedBox(width: 40),
+                    ],
+                  ),
+                ),
+              ),
+              Divider(height: 1, color: AppColors.ring),
+              if (rows.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
+                    child: Text('Brak pracowników.', style: text.bodyMedium?.copyWith(color: AppColors.textMuted)),
+                  ),
+                ),
+              for (final m in rows) ...[
+                Builder(
+                  builder: (context) {
+                    final mine = [for (final s in shifts) if (s.memberId == m.id) s];
+                    final edited = mine.where((s) => s.isEdited).length;
+                    final diff = mine.fold(Duration.zero, (a, s) => a + (s.editDifference ?? Duration.zero));
+                    final isOpen = _expanded.contains(m.id);
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        hoverColor: AppColors.surfaceRaised,
+                        splashColor: Colors.transparent,
+                        onTap: mine.isEmpty
+                            ? null
+                            : () => setState(() => isOpen ? _expanded.remove(m.id) : _expanded.add(m.id)),
+                        child: SizedBox(
+                          height: 52,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Row(
+                              children: [
+                                Expanded(child: _HoursName(m)),
+                                SizedBox(
+                                  width: 90,
+                                  child: Text(
+                                    '${mine.length}',
+                                    textAlign: TextAlign.right,
+                                    style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
                                   ),
-                                  SizedBox(
-                                    width: 90,
-                                    child: Text(
-                                      '${mine.length}',
-                                      textAlign: TextAlign.right,
-                                      style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
+                                ),
+                                SizedBox(
+                                  width: 130,
+                                  child: Text(
+                                    edited == 0 ? '–' : '$edited · ${diffText(diff)}',
+                                    textAlign: TextAlign.right,
+                                    style: text.bodyMedium?.copyWith(
+                                      fontFeatures: _tabular,
+                                      color: edited == 0 ? AppColors.textDisabled : editedColor,
                                     ),
                                   ),
-                                  SizedBox(
-                                    width: 120,
-                                    child: Text(
-                                      edited == 0 ? '–' : '$edited · ${diffText(diff)}',
-                                      textAlign: TextAlign.right,
-                                      style: text.bodyMedium?.copyWith(
-                                        fontFeatures: _tabular,
-                                        color: edited == 0 ? AppColors.textDisabled : editedColor,
-                                      ),
-                                    ),
+                                ),
+                                SizedBox(
+                                  width: 110,
+                                  child: Text(
+                                    '${hoursText(sum(mine))} h',
+                                    textAlign: TextAlign.right,
+                                    style: text.titleSmall?.copyWith(fontFeatures: _tabular),
                                   ),
-                                  SizedBox(
-                                    width: 110,
-                                    child: Text(
-                                      '${hoursText(sum(mine))} h',
-                                      textAlign: TextAlign.right,
-                                      style: text.titleSmall?.copyWith(fontFeatures: _tabular),
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: 40,
-                                    child: mine.isEmpty
-                                        ? null
-                                        : AnimatedRotation(
-                                            turns: open ? 0.5 : 0,
-                                            duration: const Duration(milliseconds: 180),
-                                            child: Glyph(AppIcons.caretDown, size: 16, color: AppColors.textMuted),
-                                          ),
-                                  ),
-                                ],
-                              ),
+                                ),
+                                SizedBox(
+                                  width: 40,
+                                  child: mine.isEmpty
+                                      ? null
+                                      : AnimatedRotation(
+                                          turns: isOpen ? 0.5 : 0,
+                                          duration: const Duration(milliseconds: 180),
+                                          child: Glyph(AppIcons.caretDown, size: 16, color: AppColors.textMuted),
+                                        ),
+                                ),
+                              ],
                             ),
-                          );
-                        },
-                      ),
-                      if (_expanded.contains(m.id))
-                        Container(
-                          color: AppColors.surfaceRaised.withValues(alpha: 0.5),
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-                          child: Column(
-                            children: [
-                              for (final s in shifts.reversed)
-                                if (s.memberId == m.id)
-                                  ShiftTile(shift: s, members: widget.members, canEdit: widget.canEdit, showName: false),
-                            ],
                           ),
                         ),
-                    ],
-                    Container(
-                      decoration: BoxDecoration(border: Border(top: BorderSide(color: AppColors.ringStrong))),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      child: Row(
-                        children: [
-                          Expanded(child: Text('Razem', style: text.titleSmall)),
-                          SizedBox(
-                            width: 90,
-                            child: Text('${shifts.length}', textAlign: TextAlign.right, style: text.bodyMedium?.copyWith(fontFeatures: _tabular)),
-                          ),
-                          const SizedBox(width: 120),
-                          SizedBox(
-                            width: 110,
-                            child: Text(
-                              '${hoursText(sum(shifts))} h',
-                              textAlign: TextAlign.right,
-                              style: text.titleSmall?.copyWith(fontFeatures: _tabular),
-                            ),
-                          ),
-                          const SizedBox(width: 40),
-                        ],
                       ),
+                    );
+                  },
+                ),
+                if (_expanded.contains(m.id))
+                  Container(
+                    color: AppColors.surfaceRaised.withValues(alpha: 0.5),
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                    child: Column(
+                      children: [
+                        for (final s in shifts.reversed)
+                          if (s.memberId == m.id)
+                            ShiftTile(shift: s, members: widget.members, canEdit: widget.canEdit, showName: false),
+                      ],
                     ),
-                  ],
+                  ),
+                Divider(height: 1, color: AppColors.ring),
+              ],
+              SizedBox(
+                height: 52,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text('Razem', style: text.titleSmall)),
+                      SizedBox(
+                        width: 90,
+                        child: Text(
+                          '${shifts.length}',
+                          textAlign: TextAlign.right,
+                          style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
+                        ),
+                      ),
+                      const SizedBox(width: 130),
+                      SizedBox(
+                        width: 110,
+                        child: Text(
+                          '${hoursText(sum(shifts))} h',
+                          textAlign: TextAlign.right,
+                          style: text.titleSmall?.copyWith(fontFeatures: _tabular),
+                        ),
+                      ),
+                      const SizedBox(width: 40),
+                    ],
+                  ),
                 ),
               ),
             ],

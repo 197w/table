@@ -8,7 +8,7 @@ import 'package:table_panel/data/models.dart';
 import 'package:table_panel/features/inventory/inventory_docs.dart';
 
 void main() {
-  testWidgets('dostawa: reszta luzem w gramach albo kilogramach, suma się przelicza', (tester) async {
+  testWidgets('dostawa: luzem w dwóch polach (kilogramy i gramy), suma się przelicza', (tester) async {
     await tester.runAsync(() async {
       final loader = FontLoader('packages/table_core/Geist');
       for (final weight in ['Regular', 'Medium', 'SemiBold']) {
@@ -56,19 +56,21 @@ void main() {
 
     final packages = find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == 'pełne op.');
     final loose = find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == 'luzem');
-    expect(loose, findsOneWidget);
+    // Dwa pola luzem: kilogramy po lewej, gramy po prawej.
+    expect(loose, findsNWidgets(2));
+    expect(find.text('kg'), findsOneWidget);
+    expect(find.text('g'), findsOneWidget);
     await tester.enterText(packages, '1');
-    await tester.enterText(loose, '1,5');
+    await tester.enterText(loose.first, '1');
+    await tester.enterText(loose.last, '500');
     await tester.pump();
-    // Domyślnie gramy: 50 kg + 1,5 g.
+    // 50 kg w opakowaniu + 1 kg + 500 g = 51,5 kg.
     final totals = tester.widgetList<Text>(find.byType(Text)).map((t) => t.data).whereType<String>().where((t) => t.startsWith('=')).toList();
-    expect(totals, ['= 50,002 kg']);
-
-    // Przełączenie na kilogramy: te same 1,5 to teraz 1,5 kg.
-    await tester.tap(find.byType(LooseUnitPicker));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('kg').last);
-    await tester.pumpAndSettle();
-    expect(find.text('= 51,5 kg'), findsOneWidget);
+    expect(totals, ['= 51,5 kg']);
+    // Same gramy, bez kilogramów.
+    await tester.enterText(loose.first, '');
+    await tester.pump();
+    final grams = tester.widgetList<Text>(find.byType(Text)).map((t) => t.data).whereType<String>().where((t) => t.startsWith('=')).toList();
+    expect(grams, ['= 50,5 kg']);
   });
 }

@@ -2654,6 +2654,7 @@ class SettlementOrder {
     required this.totalGrosze,
     required this.paymentChoice,
     required this.delivered,
+    this.paymentStatus = 'unpaid',
     this.courseId,
     this.address,
     this.customer,
@@ -2673,6 +2674,10 @@ class SettlementOrder {
   /// cash, card_on_delivery, card_online albo prepaid.
   final String paymentChoice;
 
+  /// Status płatności w bazie: unpaid, pending (karta online czeka) albo paid. Gotówka i karta przy odbiorze są
+  /// „unpaid” aż dostawca dowiezie zamówienie i pobierze pieniądze, wtedy „paid”.
+  final String paymentStatus;
+
   /// Dowiezione (inaczej gotowe albo w drodze).
   final bool delivered;
   final String? courseId;
@@ -2683,9 +2688,10 @@ class SettlementOrder {
   final String? vehicleName;
   final String? vehiclePlate;
 
-  /// Opłacone z góry: karta online albo przyjęte w panelu jako opłacone. Gotówka i karta przy odbiorze to dla
-  /// systemu zamówienie nieopłacone, bo dostawca pobiera pieniądze od gościa.
-  bool get paid => paymentChoice == 'card_online' || paymentChoice == 'prepaid';
+  /// Opłacone według systemu (24.11.2026, poprawka: wcześniej tylko karta online i opłacone z góry, więc dowiezione
+  /// zamówienie za gotówkę nigdy nie wchodziło do sumy). Gotówka i karta przy odbiorze są nieopłacone do chwili,
+  /// gdy dostawca dowiezie zamówienie i pobierze pieniądze.
+  bool get paid => paymentStatus == 'paid';
 
   /// Jak gość płaci: „Gotówka u dostawcy”, „Karta u dostawcy”, „Karta online”, „Opłacone wcześniej”.
   String get paymentLabel => switch (paymentChoice) {
@@ -2714,6 +2720,7 @@ class SettlementOrder {
     at: _toDate(json['at']),
     totalGrosze: _toInt(json['total_grosze']),
     paymentChoice: json['payment_choice'] as String? ?? 'cash',
+    paymentStatus: json['payment_status'] as String? ?? 'unpaid',
     delivered: json['fulfillment'] == 'delivered',
     courseId: json['course_id'] as String?,
     address: (json['delivery_address'] as String?)?.ifEmpty,
@@ -2743,8 +2750,8 @@ class CourierRun {
 
   int get totalGrosze => orders.fold(0, (sum, o) => sum + o.totalGrosze);
 
-  /// Kurs jest opłacony, gdy każde jego zamówienie jest opłacone z góry. Inaczej dostawca ma do rozliczenia
-  /// gotówkę albo kartę pobraną od gościa.
+  /// Kurs jest opłacony, gdy każde jego zamówienie jest opłacone. Inaczej dostawca ma jeszcze do pobrania gotówkę
+  /// albo kartę od gościa.
   bool get paid => orders.every((o) => o.paid);
 
   bool get delivered => orders.every((o) => o.delivered);
@@ -3785,8 +3792,33 @@ enum InventoryUnit {
   /// Ile mniejszych jednostek w jednej: 1000 dla l i kg, 1 dla pozostałych.
   double get portionFactor => this == InventoryUnit.l || this == InventoryUnit.kg ? 1000 : 1;
 
-  /// Ile jednostek [portion] (g, ml) jest w jednej jednostce wpisu reszty: 1000 dla kg i l, 1 dla pozostałych.
-  double get entryFactor => portionFactor;
+  /// Czy resztę wpisuje się w dwóch polach: kilogramy albo litry po lewej i gramy albo mililitry po prawej (24.11.2026,
+  /// prośba użytkownika). Sztuki mają jedno pole.
+  bool get splitsLoose => this != InventoryUnit.szt;
+
+  /// Napis dużej jednostki reszty: „kg” albo „l”. Pusty przy sztukach.
+  String get looseLargeLabel => switch (this) {
+    InventoryUnit.kg || InventoryUnit.g => 'kg',
+    InventoryUnit.l || InventoryUnit.ml => 'l',
+    InventoryUnit.szt => '',
+  };
+
+  /// Resztę ([loose] w g, ml albo sztukach) na dwa pola: pełne kilogramy (litry) i reszta w gramach (mililitrach):
+  /// 1500 g to (1, 500). Sztuki: (null, ilość). Puste dostaje null.
+  (double?, double?) splitLoose(double? loose) {
+    if (loose == null) return (null, null);
+    if (!splitsLoose) return (null, loose);
+    final large = (loose / 1000).floorToDouble();
+    final small = double.parse((loose - large * 1000).toStringAsFixed(6));
+    return (large == 0 ? null : large, small == 0 && large > 0 ? null : small);
+  }
+
+  /// Odwrotnie do [splitLoose]: resztę w g, ml albo sztukach z dwóch pól. Oba puste: null.
+  double? joinLoose(double? large, double? small) {
+    if (large == null && small == null) return null;
+    final base = splitsLoose ? (large ?? 0) * 1000 : (large ?? 0);
+    return double.parse((base + (small ?? 0)).toStringAsFixed(6));
+  }
 
   /// Resztę (liczoną w g, ml albo szt.) piszemy w kilogramach albo litrach od 1000: „1500 g” → „1,5 kg”
   /// (20.11.2026, prośba użytkownika: zamiast „reszty” kilogramy albo gramy).

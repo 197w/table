@@ -151,7 +151,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Panel: flutter_map i latlong2 (mapa dostawców na kafelkach Mapbox, od 14.11.2026). Śledzenia dostawców z telefonów
   nie ma od 0068 (wróci w drugim etapie mapy), mapy u gościa też nie.
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0094, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0096, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -332,7 +332,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Pracownicy (Pracownicy: Zespół i Stanowiska, Grafik `/grafik`, Statystyki zespołu `/zespol`, Informacje dla
   pracowników `/informacje`),
   Baza klientów (Klienci `/klienci`, Opinie),
-  Management (Podsumowanie dnia `/podsumowanie`, Kalendarz `/kalendarz`, Niezamknięte zamówienia `/niezamkniete`, Godziny pracy `/godziny`,
+  Management (Podsumowanie dnia `/podsumowanie`, Kalendarz `/kalendarz`, Niezamknięte zamówienia `/niezamkniete`, Godziny pracy `/godziny` (od 24.11.2026 w układzie jak Pracownicy: panel z przełącznikiem Miesiąc / Tydzień, wyszukiwaniem, okresem, „Dopisz zmianę” i filtrami Pracownik i Zmiany, po prawej tabela godzin),
   Menu, Inwentaryzacja, Statystyki,
   Kody rabatowe `/rabaty`, Eksport `/eksport`);
   Kropki nowości (`tabNewsProvider`, `TabNews`, `_NewsDot`): nowa rezerwacja z aplikacji, nowe zamówienie na dostawę
@@ -357,6 +357,21 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   przyciski wszystkich rodzajów, przyciski z ikoną, pola w jednej linii (padding 8 + 24 + 8), ikony w polach,
   `PanelPill`; bez powiększania pola dotyku do 48 px (`materialTapTargetSize: shrinkWrap`). Wyjątki: duże przyciski
   dotykowe Kompletowania (48) i małe przyciski tekstowe w wierszach (32).
+- Widoczność lokalu w aplikacji dla klientów (0096, 24.11.2026, prośba użytkownika): pierwsza sekcja „Widoczność
+  w aplikacji” w Ustawieniach lokalu (`RestaurantVisibilityCard`), przełącznik `restaurants.listed` przez
+  `panel_set_listed` (kierownik albo właściciel). Wyłączenie pyta o potwierdzenie; wyłączony lokal znika dla gości
+  (wyszukiwarka, strona lokalu, rezerwacje, zamówienia), złożone rezerwacje i zamówienia zostają, obsługa dalej go
+  widzi. Włączyć można tylko lokal już zweryfikowany przez Table (`first_listed_at`, ustawiane triggerem przy
+  pierwszym `listed = true`; nowy lokal czeka na weryfikację ręcznie jak dotąd).
+- Godziny otwarcia po północy (0095, 24.11.2026, prośba użytkownika „dalej nie da się ustawić godziny zamknięcia
+  lokalu po północy”): zamknięcie nie później niż otwarcie (12:00–02:00) to zamknięcie następnego dnia, w edytorze
+  godzin i w dniach wyjątkowych z podpisem „następnego dnia” (`closesNextDay`); zamknięcie o 24:00 to północ jak
+  dotąd. Baza: `opening_hours` i `opening_exceptions` mają `closes <> opens`, `private.open_window(lokal, dzień)`
+  daje początek i koniec okna jako chwile lokalne (koniec po północy), a na nim liczą `available_slots` (wolne
+  godziny stolika sięgają przez północ), `book_table` (wizyta po północy należy do okna poprzedniego dnia),
+  `private.check_scheduled` (zamówienie na godzinę; liczy też dni wyjątkowe) i panel
+  (`reservationFitsHours`, kolizje rezerwacji po zmianie godzin). Aplikacja gościa: `openingStatus` (otwarte także
+  w nocnej końcówce), `orderSlots` (godziny po północy następnego dnia); lista oczekujących sięga do północy.
 - Ustawienia lokalu jako lista jak w UniFi (1.11.2026, prośba użytkownika; `SettingsSection` i `SettingsRow`
   w `panel_widgets.dart`): jedna kolumna sekcji (do 860 px, na środku), tytuł sekcji nad kartą, w karcie wiersze
   oddzielone linią: nazwa (i opis) po lewej, przełącznik, pole albo wybór po prawej, „Zapisz” pod ostatnim wierszem.
@@ -504,10 +519,11 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   dostawcy”, Opłacenie), nad tabelą okres (Dziś, Wczoraj, 7 dni, Ten miesiąc, Zeszły miesiąc), tabela Kiedy,
   Zamówienia, Adres, Dostawca, Auto (z dnia z Floty: `vehicle_days`), Płatność, Kwota; na dole suma kursów opłaconych
   (po filtrach) i mniejszą czcionką nieopłaconych. Zamówienia z jednym `course_id` to jeden kurs
-  (`CourierRun.group`), jego linie stoją równo w kolumnach. Opłacone: karta online i „opłacone wcześniej”
-  (`payment_choice` card_online, prepaid); gotówka i karta przy odbiorze to nieopłacone, choć po dowiezieniu
-  `payment_status` jest „paid” (dostawca pobrał pieniądze, do rozliczenia z lokalem). Kurs jest opłacony, gdy każde
-  jego zamówienie jest.
+  (`CourierRun.group`), jego linie stoją równo w kolumnach. Opłacone to `payment_status = paid` (24.11.2026, poprawka
+  na zgłoszenie „suma opłaconych nie działa”: wcześniej tylko karta online i opłacone wcześniej, więc dowiezione
+  zamówienie za gotówkę nigdy nie wchodziło do sumy): karta online i opłacone z góry od razu, gotówka i karta przy
+  odbiorze dopiero po dowiezieniu (do tej pory nieopłacone, system zna je tak od złożenia). Kurs jest opłacony, gdy
+  każde jego zamówienie jest.
   Faktury w Inwentaryzacji (zakładka „Faktury” obok Historii, 0091, `inventory_invoices.dart`, tylko z uprawnieniem
   `inventory_edit`, bo to pieniądze; 20.11.2026, prośba użytkownika „dodać faktury w management w inwentaryzacji”):
   faktury zakupu od dostawców towaru: dostawca (z podpowiedziami z poprzednich faktur i dostaw), numer, data
@@ -686,7 +702,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   pola (`MenuAnchor` z `crossAxisUnconstrained: false`), wiersze 40 px, najechany jaśniejszy, wybrany z haczykiem
   i pogrubiony. Wspólny styl: `panelMenuStyle`, `panelMenuItemStyle`, `panelMenuCheck`; `PanelTheme` daje ten wygląd
   też menu „⋯” (`popupMenuTheme`) i liście ze wpisywaniem (`dropdownMenuTheme`, składniki w Dokumentach
-  inwentaryzacji). Tylko panel; aplikacje na telefony zostają przy swoich wyborach.
+  inwentaryzacji). Tylko panel; aplikacje na telefony zostają przy swoich wyborach. Wszystkie rozwijane menu
+  (`PopupMenuButton`: „⋯”, wybór pojemnika, dodawanie działu i zniżki) otwierają się pod przyciskiem, nie na nim od
+  środka (24.11.2026, prośba użytkownika: „wszędzie od dołu”): `popupMenuTheme.position = PopupMenuPosition.under`.
   Zaokrąglenie (16.11.2026, prośba użytkownika, według zrzutów „Nowe wydarzenie” i „Zespół / Stanowiska”): przyciski
   z obrysem i tekstowe (`outlinedButtonTheme`, `textButtonTheme`, więc też `PanelAction`) mają promień 10 jak
   przyciski wypełnione i pola, a nie kształt pigułki (`StadiumBorder`). Tak samo wybór daty: `StepSwitcher`
@@ -1057,8 +1075,9 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   `restaurants.inventory_period` (day, week, two_weeks, month; `panel_set_inventory_period`), ustawia się w „Ustawienia lokalu”,
   następna inwentaryzacja liczona od ostatniej zakończonej. Uprawnienia: `inventory_edit` („Edytowanie składników”: składniki i okres)
   i `inventory_count` („Wpisywanie ilości składników”), grupa „Inwentaryzacja”. W spisie pełne opakowania i obok „Luzem” (od 20.11.2026, prośba użytkownika: zamiast „reszty” kilogramy albo
-  gramy; wybór jednostki g albo kg, ml albo l kliknięciem, `LooseUnitPicker` w spisie i w oknie dostawy, zapis dalej
-  w g/ml/szt, `InventoryUnit.looseText` pisze od 1000 kilogramy i litry) reszta
+  gramy; od 24.11.2026 w dwóch kolumnach: po lewej pełne kilogramy albo litry, po prawej gramy, mililitry albo sztuki,
+  zależnie od składnika, `InventoryUnit.splitLoose` / `joinLoose` / `looseLargeLabel`; w spisie i w oknie dostawy;
+  zapis dalej w g/ml/szt, `InventoryUnit.looseText` pisze od 1000 kilogramy i litry) reszta
   w g/ml/szt (`inventory_count_lines.packages`, `loose`; `quantity` = opakowania z resztą, 6 miejsc po przecinku),
   „Razem” w mniejszej jednostce (np. mąka 50 kg: 1 op. + 2500 g = 52 500 g).
   Od 0071 (wszystko liczy się samo z ruchów `inventory_movements`, rodzaje sale, delivery, removal):

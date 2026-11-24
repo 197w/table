@@ -165,58 +165,18 @@ class InventoryDocTile extends StatelessWidget {
   }
 }
 
-/// Jednostka reszty przy polu ilości: g albo kg (ml albo l), kliknięcie ją zmienia. Sztuki mają jedną jednostkę.
-class LooseUnitPicker extends StatelessWidget {
-  const LooseUnitPicker({
-    super.key,
-    required this.units,
-    required this.selected,
-    required this.onChanged,
-    this.enabled = true,
-  });
-
-  final List<InventoryUnit> units;
-  final InventoryUnit selected;
-  final ValueChanged<InventoryUnit> onChanged;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = Text(selected.label, style: Theme.of(context).textTheme.bodyMedium);
-    if (units.length < 2) return label;
-    return PopupMenuButton<InventoryUnit>(
-      enabled: enabled,
-      tooltip: 'Jednostka: ${units.map((u) => u.label).join(' albo ')}',
-      onSelected: onChanged,
-      itemBuilder: (_) => [
-        for (final u in units)
-          PopupMenuItem(
-            value: u,
-            child: Text(u.label, style: TextStyle(fontWeight: u == selected ? FontWeight.w600 : FontWeight.w400)),
-          ),
-      ],
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          label,
-          const SizedBox(width: 3),
-          Glyph(AppIcons.caretDown, size: 12, color: AppColors.textMuted),
-        ],
-      ),
-    );
-  }
-}
-
 class _DocLine {
   String? itemId;
   final packages = TextEditingController();
-  final loose = TextEditingController();
 
-  /// Jednostka, w której wpisano resztę (null: g albo ml składnika). Zmiana składnika ją zeruje.
-  InventoryUnit? looseUnit;
+
+  /// Luzem w dwóch polach: kilogramy (litry) i gramy (mililitry, sztuki).
+  final large = TextEditingController();
+  final loose = TextEditingController();
 
   void dispose() {
     packages.dispose();
+    large.dispose();
     loose.dispose();
   }
 }
@@ -273,12 +233,10 @@ class _InventoryDocDialogState extends ConsumerState<InventoryDocDialog> {
     return total > 0 ? total : null;
   }
 
-  /// Reszta w g, ml albo sztukach składnika (wpisana w kg albo l jest przeliczona).
+  /// Reszta w g, ml albo sztukach składnika z dwóch pól (kilogramy albo litry razem z gramami albo mililitrami).
   double? _looseBase(_DocLine l) {
-    final v = parseInventoryNumber(l.loose.text);
-    if (v == null) return null;
-    final unit = l.looseUnit ?? _item(l.itemId)?.unit.portion ?? InventoryUnit.g;
-    return double.parse((v * unit.entryFactor).toStringAsFixed(6));
+    final unit = _item(l.itemId)?.unit ?? InventoryUnit.g;
+    return unit.joinLoose(parseInventoryNumber(l.large.text), parseInventoryNumber(l.loose.text));
   }
 
   Future<void> _pickWhen() async {
@@ -457,10 +415,7 @@ class _InventoryDocDialogState extends ConsumerState<InventoryDocDialog> {
                                 style: panelMenuItemStyle(context, selected: item.id == l.itemId),
                               ),
                           ],
-                          onSelected: (id) => setState(() {
-                            l.itemId = id;
-                            l.looseUnit = null;
-                          }),
+                          onSelected: (id) => setState(() => l.itemId = id),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -480,6 +435,24 @@ class _InventoryDocDialogState extends ConsumerState<InventoryDocDialog> {
                         ),
                       ),
                       const SizedBox(width: 10),
+                      // Luzem: kilogramy (litry) po lewej, gramy (mililitry, sztuki) po prawej.
+                      Expanded(
+                        flex: 2,
+                        child: TextField(
+                          controller: l.large,
+                          enabled: _item(l.itemId)?.unit.splitsLoose ?? true,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          textAlign: TextAlign.right,
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            hintText: 'luzem',
+                            suffixText: _item(l.itemId)?.unit.looseLargeLabel ?? 'kg',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
                       Expanded(
                         flex: 2,
                         child: TextField(
@@ -491,11 +464,7 @@ class _InventoryDocDialogState extends ConsumerState<InventoryDocDialog> {
                           decoration: InputDecoration(
                             isDense: true,
                             hintText: 'luzem',
-                            suffix: LooseUnitPicker(
-                              units: _item(l.itemId)?.unit.compatible ?? const [InventoryUnit.g],
-                              selected: l.looseUnit ?? _item(l.itemId)?.unit.portion ?? InventoryUnit.g,
-                              onChanged: (u) => setState(() => l.looseUnit = u),
-                            ),
+                            suffixText: _item(l.itemId)?.unit.portion.label ?? 'g',
                           ),
                         ),
                       ),

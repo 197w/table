@@ -167,10 +167,14 @@ const soonMinutes = 60;
 
   String closesText(String hm) => hm == '24:00' ? 'północ' : hm;
   final today = DateTime(now.year, now.month, now.day);
-  final h = hoursFor(today);
-  if (h != null) {
-    final opens = at(today, h.opens);
-    final closes = at(today, h.closes);
+  // Okno otwarcia dnia: zamknięcie nie później niż otwarcie (12:00–02:00) to zamknięcie następnego dnia, więc lokal
+  // otwarty po północy jest otwarty także w nocnej końcówce poprzedniego dnia (24.11.2026).
+  for (final day in [DateTime(today.year, today.month, today.day - 1), today]) {
+    final h = hoursFor(day);
+    if (h == null) continue;
+    final opens = at(day, h.opens);
+    var closes = at(day, h.closes);
+    if (!closes.isAfter(opens)) closes = DateTime(day.year, day.month, day.day + 1, closes.hour, closes.minute);
     if (!now.isBefore(opens) && now.isBefore(closes)) {
       if (closes.difference(now).inMinutes < soonMinutes) {
         return (state: OpenState.closingSoon, label: 'Wkrótce zamknięcie – ${closesText(h.closes)}');
@@ -671,7 +675,10 @@ class RestaurantDetail {
       }
 
       opens = at(h.opens);
-      closes = at(h.closes);
+      var end = at(h.closes);
+      // Zamknięcie po północy: ostatnie godziny zamówienia są już następnego dnia.
+      if (!end.isAfter(opens)) end = DateTime(day.year, day.month, day.day + 1, end.hour, end.minute);
+      closes = end;
     }
     final lead = kind == OrderKind.delivery ? leadDeliveryMin : leadPickupMin;
     // 5 minut zapasu na wypełnienie koszyka i płatność.
@@ -845,8 +852,9 @@ List<String> halfHours(String opens, String closes) {
     return int.parse(p[0]) * 60 + int.parse(p[1]);
   }
 
-  final end = minutes(closes) == 0 ? 24 * 60 : minutes(closes);
   final start = minutes(opens);
+  // Zamknięcie o północy albo po niej: lista oczekujących sięga do północy (przedział godzin jest w jednym dniu).
+  final end = minutes(closes) <= start ? 24 * 60 : minutes(closes);
   return [
     for (var m = ((start + 29) ~/ 30) * 30; m <= end; m += 30)
       '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}',

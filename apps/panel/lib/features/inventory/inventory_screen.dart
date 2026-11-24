@@ -19,9 +19,10 @@ String _hm(DateTime t) => '${_two(t.toLocal().hour)}:${_two(t.toLocal().minute)}
 /// Kolumny Składników: składnik, opakowanie, inwentaryzacja, ruchy od niej, stan teraz.
 const _flex = [5, 3, 3, 3, 2];
 
-/// Kolumny spisu: składnik, opakowanie, pełne opakowania, luzem (g albo kg), razem, różnica. Stanu „powinno być” w spisie
+/// Kolumny spisu: składnik, opakowanie, pełne opakowania, luzem w kilogramach (litrach) i w gramach (mililitrach),
+/// razem, różnica. Stanu „powinno być” w spisie
 /// nie ma (11.11.2026, prośba użytkownika: tylko w Historii), różnica liczy się dalej na żywo.
-const _countFlex = [5, 3, 3, 4, 2, 2];
+const _countFlex = [5, 3, 3, 3, 3, 2, 2];
 
 /// „+2,5 kg”, „−300 g”, „0 kg”.
 String _signed(double v, InventoryUnit unit) {
@@ -517,9 +518,9 @@ class _CountSheet extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             canCount
-                ? 'Wpisz pełne opakowania, a obok ile jest luzem: w gramach albo kilogramach (płyny w mililitrach albo '
-                      'litrach, reszta sztuk w sztukach; jednostkę zmienia kliknięcie), np. woda: 11 zgrzewek '
-                      'i 9 butelek. Ważysz w pojemniku? Wybierz go przy wadze: panel sam odejmie jego wagę. '
+                ? 'Wpisz pełne opakowania, a obok ile jest luzem: kilogramy (litry) w pierwszym polu i gramy (mililitry) '
+                      'w drugim, np. 1 kg i 500 g; sztuki wpisujesz w drugim polu, np. woda: 11 zgrzewek i 9 butelek. '
+                      'Ważysz w pojemniku? Wybierz go przy wadze: panel sam odejmie jego wagę. '
                       'Różnica liczy się w trakcie pisania. Enter przechodzi dalej.'
                 : 'Ilości wpisuje osoba z uprawnieniem „Wpisywanie ilości składników”.',
             style: text.bodySmall?.copyWith(color: AppColors.textMuted),
@@ -537,7 +538,8 @@ class _CountSheet extends StatelessWidget {
                     ('Składnik', TextAlign.left),
                     ('Opakowanie', TextAlign.left),
                     ('Pełne opakowania', TextAlign.left),
-                    ('Luzem', TextAlign.left),
+                    ('Luzem: kg, l', TextAlign.left),
+                    ('Luzem: g, ml', TextAlign.left),
                     ('Razem', TextAlign.right),
                     ('Różnica', TextAlign.right),
                   ],
@@ -607,12 +609,13 @@ class _CountRow extends StatefulWidget {
 class _CountRowState extends State<_CountRow> {
   late double? _packages;
 
-  /// Luzem w g, ml albo sztukach składnika (z pojemnikiem: waga z pojemnikiem w g).
-  late double? _loose;
+  /// Luzem w dwóch polach: pełne kilogramy (litry) i gramy (mililitry, sztuki). Z pojemnikiem to waga z pojemnikiem.
+  late double? _large;
+  late double? _small;
   late String? _containerId;
 
-  /// Jednostka, w której wpisuje się luzem: g albo kg, ml albo l (null: mniejsza). Z pojemnikiem zawsze g.
-  InventoryUnit? _looseUnit;
+  /// Luzem w g, ml albo sztukach składnika z obu pól.
+  double? get _loose => widget.item.unit.joinLoose(_large, _small);
 
   @override
   void initState() {
@@ -630,16 +633,13 @@ class _CountRowState extends State<_CountRow> {
     final l = widget.line;
     // Starsze spisy mają tylko liczbę opakowań (także ułamkową).
     _packages = l == null ? null : (l.packages ?? (l.loose == null ? l.quantity : null));
-    _loose = l == null ? null : (l.containerId != null ? l.gross : l.loose);
+    final split = widget.item.unit.splitLoose(l == null ? null : (l.containerId != null ? l.gross : l.loose));
+    _large = split.$1;
+    _small = split.$2;
     _containerId = l == null ? (widget.item.weighed ? widget.item.containerId : null) : l.containerId;
   }
 
   InventoryContainer? get _container => widget.containers.where((c) => c.id == _containerId).firstOrNull;
-
-  InventoryUnit get _entryUnit => _looseUnit ?? widget.item.unit.portion;
-
-  /// Wpisana wartość luzem w g, ml albo sztukach (bez zaokrągleń z mnożenia).
-  double? _toBase(double? v) => v == null ? null : double.parse((v * _entryUnit.entryFactor).toStringAsFixed(6));
 
   /// Razem w jednostce składnika z tego, co wpisano (bez zapisu).
   double? get _total {
@@ -689,26 +689,40 @@ class _CountRowState extends State<_CountRow> {
               ),
             ),
           ),
+          // Luzem po lewej w kilogramach albo litrach, po prawej w gramach, mililitrach albo sztukach (24.11.2026,
+          // prośba użytkownika: dwie kolumny zamiast wyboru jednostki). Sztuki mają tylko prawe pole.
           Expanded(
             flex: _countFlex[3],
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: item.unit.splitsLoose
+                  ? _QuantityField(
+                      initial: _large,
+                      enabled: widget.enabled,
+                      suffix: item.unit.looseLargeLabel,
+                      width: 124,
+                      integerOnly: true,
+                      onChanged: (v) => setState(() => _large = v),
+                      onSave: (v) {
+                        _large = v;
+                        return _save();
+                      },
+                    )
+                  : null,
+            ),
+          ),
+          Expanded(
+            flex: _countFlex[4],
             child: Row(
               children: [
                 _QuantityField(
-                  key: ValueKey(box == null ? 'luzem ${_entryUnit.key}' : 'luzem w pojemniku'),
-                  initial: _loose == null ? null : (box == null ? _loose! / _entryUnit.entryFactor : _loose),
+                  initial: _small,
                   enabled: widget.enabled,
                   suffix: box == null ? item.unit.portion.label : 'g z poj.',
-                  suffixWidget: box == null && item.unit.compatible.length > 1
-                      ? LooseUnitPicker(
-                          units: item.unit.compatible,
-                          selected: _entryUnit,
-                          enabled: widget.enabled,
-                          onChanged: (u) => setState(() => _looseUnit = u),
-                        )
-                      : null,
-                  onChanged: (v) => setState(() => _loose = box == null ? _toBase(v) : v),
+                  width: 124,
+                  onChanged: (v) => setState(() => _small = v),
                   onSave: (v) {
-                    _loose = box == null ? _toBase(v) : v;
+                    _small = v;
                     return _save();
                   },
                 ),
@@ -748,7 +762,7 @@ class _CountRowState extends State<_CountRow> {
             ),
           ),
           Expanded(
-            flex: _countFlex[4],
+            flex: _countFlex[5],
             child: Text(
               total == null ? '—' : '${inventoryNumber(total)} ${item.unit.label}',
               textAlign: TextAlign.right,
@@ -756,7 +770,7 @@ class _CountRowState extends State<_CountRow> {
             ),
           ),
           Expanded(
-            flex: _countFlex[5],
+            flex: _countFlex[6],
             child: Text(
               diff == null ? '—' : _signed(diff, item.unit),
               textAlign: TextAlign.right,
@@ -778,18 +792,20 @@ class _QuantityField extends StatefulWidget {
     required this.initial,
     required this.enabled,
     required this.onSave,
-    super.key,
     this.onChanged,
     this.suffix = 'op.',
-    this.suffixWidget,
+    this.width = 150,
+    this.integerOnly = false,
   });
 
   final double? initial;
   final bool enabled;
   final String suffix;
 
-  /// Zamiast napisu [suffix]: np. wybór jednostki.
-  final Widget? suffixWidget;
+  final double width;
+
+  /// Tylko cyfry (pełne kilogramy i litry).
+  final bool integerOnly;
   final Future<bool> Function(double? quantity) onSave;
   final ValueChanged<double?>? onChanged;
 
@@ -865,7 +881,7 @@ class _QuantityFieldState extends State<_QuantityField> {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 150,
+      width: widget.width,
       child: TextField(
         controller: _controller,
         focusNode: _focus,
@@ -873,7 +889,7 @@ class _QuantityFieldState extends State<_QuantityField> {
         textAlign: TextAlign.right,
         textInputAction: TextInputAction.next,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(widget.integerOnly ? r'[0-9]' : r'[0-9.,]'))],
         style: const TextStyle(fontFeatures: _tabular, fontSize: 15),
         onChanged: (raw) {
           final value = raw.trim().isEmpty ? null : parseInventoryNumber(raw);
@@ -884,8 +900,7 @@ class _QuantityFieldState extends State<_QuantityField> {
           isDense: true,
           hintText: '—',
           errorText: _invalid ? 'Wpisz liczbę' : null,
-          suffixText: widget.suffixWidget == null ? widget.suffix : null,
-          suffix: widget.suffixWidget,
+          suffixText: widget.suffix,
           prefixIcon: SizedBox(
             width: 32,
             child: Center(

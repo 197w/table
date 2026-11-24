@@ -203,6 +203,9 @@ abstract final class PanelTheme {
           side: BorderSide(color: p.ringStrong),
         ),
         menuPadding: const EdgeInsets.all(6),
+        // Każde rozwijane menu otwiera się pod przyciskiem, a nie na nim od środka (24.11.2026, prośba użytkownika:
+        // „wszędzie ma wyskakiwać od dołu”), jak lista wyboru `PanelSelect`.
+        position: PopupMenuPosition.under,
         mouseCursor: const WidgetStatePropertyAll(SystemMouseCursors.click),
       ),
       dropdownMenuTheme: DropdownMenuThemeData(menuStyle: panelMenuStyle(palette: p)),

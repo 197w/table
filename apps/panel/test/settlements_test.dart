@@ -33,6 +33,8 @@ SettlementOrder _order(
   'delivery_address': address ?? 'Lipowa $number, Białystok',
   'customer_name': 'Klient $number',
   'payment_choice': choice,
+  // Opłacone z góry od razu, gotówka i karta przy odbiorze dopiero po dowiezieniu.
+  'payment_status': (choice == 'card_online' || choice == 'prepaid' || delivered) ? 'paid' : 'unpaid',
   'total_grosze': total,
   'courier_member': courier,
   'courier_name': courierName,
@@ -56,18 +58,21 @@ void main() {
       expect(runs.last.orders.single.number, 9);
     });
 
-    test('opłacone: karta online i opłacone z góry; gotówka i karta przy odbiorze to nieopłacone', () {
+    test('opłacone według systemu: z góry od razu, gotówka i karta przy odbiorze dopiero po dowiezieniu', () {
       expect(_order('a', 1, choice: 'card_online').paid, isTrue);
       expect(_order('a', 1, choice: 'prepaid').paid, isTrue);
-      expect(_order('a', 1, choice: 'cash').paid, isFalse);
-      expect(_order('a', 1, choice: 'card_on_delivery').paid, isFalse);
+      expect(_order('a', 1, choice: 'cash', delivered: false).paid, isFalse);
+      expect(_order('a', 1, choice: 'card_on_delivery', delivered: false).paid, isFalse);
+      // Po dowiezieniu gotówka i karta przy odbiorze są opłacone (dostawca pobrał pieniądze).
+      expect(_order('a', 1, choice: 'cash').paid, isTrue);
+      expect(_order('a', 1, choice: 'card_on_delivery').paid, isTrue);
       expect(_order('a', 1, choice: 'cash').paymentLabel, 'Gotówka u dostawcy');
       expect(_order('a', 1, choice: 'card_on_delivery').paymentLabel, 'Karta u dostawcy');
       expect(_order('a', 1, choice: 'cash').paymentShort, 'Gotówka');
       // Kurs z jednym nieopłaconym zamówieniem jest nieopłacony (dostawca ma coś do rozliczenia).
       final mixed = CourierRun.group([
         _order('a', 1, course: 'k', choice: 'card_online'),
-        _order('b', 2, course: 'k', choice: 'cash'),
+        _order('b', 2, course: 'k', choice: 'cash', delivered: false),
       ]).single;
       expect(mixed.paid, isFalse);
     });
@@ -75,7 +80,7 @@ void main() {
     test('filtry: dostawca, opłacenie i wyszukiwanie; sumy opłaconych i nieopłaconych', () {
       final runs = CourierRun.group([
         _order('a', 1, choice: 'card_online', total: 7000),
-        _order('b', 2, choice: 'cash', total: 3000, courier: 'm2', courierName: 'Ola', vehicle: null, plate: null),
+        _order('b', 2, choice: 'cash', total: 3000, delivered: false, courier: 'm2', courierName: 'Ola', vehicle: null, plate: null),
         _order('c', 3, choice: 'prepaid', total: 2000, courier: null, courierName: null, vehicle: null, plate: null),
       ]);
       expect(filterRuns(runs).length, 3);
@@ -91,6 +96,15 @@ void main() {
       expect(totals.unpaidGrosze, 3000);
       expect(totals.unpaidRuns, 1);
       expect(totals.orders, 3);
+    });
+
+    test('jedno dowiezione zamówienie za gotówkę to kurs opłacony i wchodzi do sumy', () {
+      final runs = CourierRun.group([_order('a', 1, choice: 'cash', total: 4500)]);
+      expect(runs.single.paid, isTrue);
+      final totals = settlementTotals(runs);
+      expect(totals.paidGrosze, 4500);
+      expect(totals.paidRuns, 1);
+      expect(totals.unpaidGrosze, 0);
     });
 
     test('okresy: dziś, 7 dni, ten i poprzedni miesiąc', () {
@@ -125,7 +139,7 @@ void main() {
     AppColors.use(PanelPalette.dark);
     final orders = [
       _order('a', 11, course: 'k1', choice: 'card_online', total: 6000, at: DateTime(2026, 11, 20, 18, 50)),
-      _order('b', 12, course: 'k1', choice: 'cash', total: 4000, at: DateTime(2026, 11, 20, 19)),
+      _order('b', 12, course: 'k1', choice: 'cash', total: 4000, delivered: false, at: DateTime(2026, 11, 20, 19)),
       _order('c', 9, choice: 'prepaid', total: 3000, courier: 'm2', courierName: 'Ola', vehicle: 'Skuter', plate: null),
     ];
     await tester.pumpWidget(

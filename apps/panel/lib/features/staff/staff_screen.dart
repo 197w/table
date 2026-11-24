@@ -8,22 +8,13 @@ import '../../data/providers.dart';
 import '../../shared/panel_select.dart';
 import '../../shared/panel_widgets.dart';
 import '../../shared/side_panel.dart';
+import '../../shared/staff_avatar.dart';
 import '../fleet/vehicle_days.dart';
 import 'timesheet.dart';
 
-const _tabular = [FontFeature.tabularFigures()];
+export '../../shared/staff_avatar.dart' show staffColors;
 
-/// Kolory pracowników w kalendarzu. Czytelne w jasnym i ciemnym motywie.
-const staffColors = [
-  Color(0xFF16A37F),
-  Color(0xFF3B82F6),
-  Color(0xFFE08A1E),
-  Color(0xFFD9467A),
-  Color(0xFF8B5CF6),
-  Color(0xFF0EA5B7),
-  Color(0xFFB45309),
-  Color(0xFF64748B),
-];
+const _tabular = [FontFeature.tabularFigures()];
 
 const _weekdayShort = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'];
 
@@ -34,9 +25,6 @@ DateTime _weekStart(DateTime d) {
 
 String _two(int n) => n.toString().padLeft(2, '0');
 String _hm(DateTime t) => '${_two(t.toLocal().hour)}:${_two(t.toLocal().minute)}';
-
-String _initials(String name) =>
-    name.split(' ').where((p) => p.isNotEmpty).take(2).map((p) => p[0].toUpperCase()).join();
 
 /// Pracownicy w układzie jak „People” w UniFi (31.10.2026, wzór od użytkownika): po lewej panel z zakładkami Zespół
 /// i Stanowiska, wyszukiwaniem, wyborem lokalu (tylko ALL), „Dodaj pracownika” i filtrami, obok niego okno dodawania
@@ -402,15 +390,10 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
             onTap: () => _openRole(null),
           ),
       ],
+      // Opis pod „Dodaj stanowisko” usunięty (24.11.2026, prośba użytkownika: niepotrzebny, podobny jest pod
+      // grafikiem). Stanowiska systemowe mają kłódkę w tabeli.
       children: view == _View.positions
-          ? [
-              Text(
-                'ALL, Kelner, Kucharz i Dostawca dodał system i nie da się ich zmienić ani usunąć, bo korzystają '
-                'z nich pakiety Table. Własne stanowiska dodajesz tutaj. Pracownik otworzy tylko te zakładki '
-                'i przyciski, do których jego stanowisko ma uprawnienia.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
-              ),
-            ]
+          ? const <Widget>[]
           : _filterSections(filters, ref.read(_panelProvider.notifier), all, positions, week.working),
     );
 
@@ -1291,7 +1274,7 @@ class _TeamRow extends StatelessWidget {
                       final badges = box.maxWidth >= 260;
                       return Row(
                         children: [
-                          _Avatar(
+                          StaffAvatar(
                             name: m.name,
                             color: staffColors[m.color % staffColors.length],
                             size: 30,
@@ -1486,38 +1469,6 @@ class _PositionChip extends StatelessWidget {
   }
 }
 
-class _Avatar extends StatelessWidget {
-  const _Avatar({required this.name, required this.color, this.size = 40, this.dimmed = false});
-
-  final String name;
-  final Color color;
-  final double size;
-  final bool dimmed;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = dimmed ? AppColors.textMuted : color;
-    return Container(
-      width: size,
-      height: size,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(size / 2),
-      ),
-      child: Text(
-        _initials(name),
-        style: TextStyle(
-          fontFamily: AppTheme.fontFamily,
-          fontSize: size * 0.36,
-          fontWeight: FontWeight.w600,
-          color: c,
-        ),
-      ),
-    );
-  }
-}
-
 // ---------------------------------------------------------------
 // Szczegóły pracownika: dane, kod do panelu i statystyki
 // ---------------------------------------------------------------
@@ -1598,7 +1549,7 @@ class _MemberDetailsState extends ConsumerState<_MemberDetails> {
           const SizedBox(height: 12),
           Row(
             children: [
-              _Avatar(name: member.name, color: color, size: 56, dimmed: !member.active),
+              StaffAvatar(name: member.name, color: color, size: 56, dimmed: !member.active),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -3544,7 +3495,7 @@ class _RoleEditorState extends ConsumerState<_RoleEditor> {
                             padding: const EdgeInsets.symmetric(vertical: 5),
                             child: Row(
                               children: [
-                                _Avatar(
+                                StaffAvatar(
                                   name: m.name,
                                   color: staffColors[m.color % staffColors.length],
                                   size: 26,
