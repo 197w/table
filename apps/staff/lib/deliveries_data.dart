@@ -132,13 +132,6 @@ class Course {
   /// Kurs można oddać, dopóki zamówienie jest w lokalu.
   bool get canHandOver => stage != CourseStage.onTheWay;
 
-  /// Adres do nawigacji: Google Maps otwiera trasę samochodem.
-  Uri get navigationUri => Uri.https('www.google.com', '/maps/dir/', {
-    'api': '1',
-    'destination': address,
-    'travelmode': 'driving',
-  });
-
   Uri get phoneUri => Uri(scheme: 'tel', path: customerPhone.replaceAll(' ', ''));
 
   factory Course.fromJson(Map<String, dynamic> j) => Course(
@@ -162,6 +155,61 @@ class Course {
     prepaid: j['payment_choice'] == 'prepaid',
     items: [for (final i in j['items'] as List? ?? const []) CourseItem.fromJson(i as Map<String, dynamic>)],
   );
+}
+
+/// Trasa samochodem w domyślnej nawigacji telefonu (24.11.2026, prośba użytkownika: „przycisk pinezki”, a przy kilku
+/// dostawach trasa przez wszystkie punkty).
+///
+/// - iPhone: link Apple Maps (`maps.apple.com`), który otwiera nawigację ustawioną w telefonie jako domyślną
+///   (w Unii Europejskiej od iOS 18.4 można wybrać np. Google Maps albo Waze), inaczej Apple Maps. Jeden adres:
+///   `?daddr=…&dirflg=d` (działa w każdej wersji iOS), kilka: `/directions?destination=…&waypoint=…&mode=driving`
+///   (przystanki po kolei, iOS 18.4 i nowsze).
+/// - Android: jeden adres przez `geo:` (otwiera aplikację ustawioną jako domyślna do map i nawigacji), kilka przez link
+///   Google Maps z przystankami (`waypoints`), bo `geo:` nie ma przystanków.
+///
+/// [addresses] po kolei, ostatni to cel; puste i powtórzone są pomijane. Pusta lista: null.
+Uri? routeUri(List<String> addresses, {required bool ios}) {
+  final stops = <String>[];
+  for (final a in addresses) {
+    final clean = a.trim();
+    if (clean.isNotEmpty && !stops.contains(clean)) stops.add(clean);
+  }
+  if (stops.isEmpty) return null;
+  final destination = stops.last;
+  final waypoints = stops.sublist(0, stops.length - 1);
+  if (ios) {
+    if (waypoints.isEmpty) {
+      return Uri.https('maps.apple.com', '/', {'daddr': destination, 'dirflg': 'd'});
+    }
+    return Uri.https('maps.apple.com', '/directions', {
+      'destination': destination,
+      'waypoint': waypoints,
+      'mode': 'driving',
+    });
+  }
+  if (waypoints.isEmpty) return Uri.parse('geo:0,0?q=${Uri.encodeComponent(destination)}');
+  return Uri.https('www.google.com', '/maps/dir/', {
+    'api': '1',
+    'destination': destination,
+    'waypoints': waypoints.join('|'),
+    'travelmode': 'driving',
+  });
+}
+
+/// Przystanki trasy przez kilka dostaw: najpierw te w drodze (jeśli jakaś jest, tylko one), po kolei według godziny
+/// obiecanej gościowi, potem numeru.
+List<Course> routeStops(List<Course> courses) {
+  final onTheWay = courses.where((c) => c.stage == CourseStage.onTheWay).toList();
+  final list = onTheWay.isNotEmpty ? onTheWay : List.of(courses);
+  list.sort((a, b) {
+    final pa = a.promisedAt;
+    final pb = b.promisedAt;
+    if (pa != null && pb != null && pa != pb) return pa.compareTo(pb);
+    if (pa != null && pb == null) return -1;
+    if (pa == null && pb != null) return 1;
+    return a.number.compareTo(b.number);
+  });
+  return list;
 }
 
 /// Dostawca na zmianie w kolejce lokalu.

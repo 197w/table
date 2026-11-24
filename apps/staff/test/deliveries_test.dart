@@ -41,7 +41,7 @@ void main() {
     expect(course.cash, isTrue);
     expect(course.canHandOver, isFalse);
     expect(course.items.single.details, 'Duża, + ser');
-    expect(course.navigationUri.queryParameters['destination'], 'Lipowa 1/2, Białystok');
+    expect(routeUri([course.address], ios: true)!.queryParameters['daddr'], 'Lipowa 1/2, Białystok');
     expect(course.phoneUri.toString(), 'tel:600100200');
   });
 

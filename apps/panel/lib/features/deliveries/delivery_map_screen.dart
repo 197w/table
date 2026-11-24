@@ -7,11 +7,15 @@ import 'package:latlong2/latlong.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
+import '../../data/courier_history.dart';
 import '../../data/delivery_map.dart';
 import '../../data/providers.dart';
+import '../../shared/panel_select.dart';
 import '../../shared/panel_widgets.dart';
 import '../../shared/side_panel.dart';
 import '../staff/staff_screen.dart' show staffColors;
+
+part 'courier_history_view.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -49,8 +53,8 @@ typedef _Route = ({String signature, DateTime at, LatLng start, List<String> sto
 /// motywu), lokal, cele dostaw z numerem przystanku, kursy w kolorze dostawcy z najszybszą trasą (kolejność
 /// przystanków z czasów jazdy z korkami z Mapbox), czas jazdy i przyjazd pod każdy adres, dostawcy z pozycją
 /// z telefonu, gdy ją wysyła. Sama proponuje połączenie dostaw czekających w lokalu, gdy adresy są blisko siebie
-/// („Połącz” = `panel_takeaway_merge`). Po lewej panel z zakładkami Kursy i Dostawcy. Dane z bazy co 15 sekund,
-/// trasy co 5 minut albo po zmianie kursu.
+/// („Połącz” = `panel_takeaway_merge`). Po lewej panel z zakładkami Kursy, Dostawcy i Historia (trasy dostawców
+/// z telefonów, `_CourierHistory`, 24.11.2026). Dane z bazy co 15 sekund, trasy co 5 minut albo po zmianie kursu.
 class DeliveryMapScreen extends ConsumerStatefulWidget {
   const DeliveryMapScreen({super.key, this.tileProvider});
 
@@ -321,13 +325,28 @@ class _DeliveryMapScreenState extends ConsumerState<DeliveryMapScreen> {
         ? const <CourseSuggestion>[]
         : suggestCourses(courses: map.courses, seconds: _seconds, now: _now, dismissed: _dismissed);
 
+    final tabs = SegmentedTabs<int>(
+      options: const [(0, 'Kursy'), (1, 'Dostawcy'), (2, 'Historia')],
+      selected: _tab,
+      expand: true,
+      onChanged: (t) => setState(() {
+        // Historia ma własną mapę: ta mapa po powrocie zgłosi gotowość od nowa.
+        if (t == 2 || _tab == 2) _mapReady = false;
+        _tab = t;
+      }),
+    );
+    if (_tab == 2) {
+      return _CourierHistory(
+        header: tabs,
+        panelOpen: _panelOpen,
+        onToggle: () => setState(() => _panelOpen = !_panelOpen),
+        live: map,
+        tileProvider: widget.tileProvider,
+      );
+    }
+
     final panel = SidePanel(
-      header: SegmentedTabs<int>(
-        options: const [(0, 'Kursy'), (1, 'Dostawcy')],
-        selected: _tab,
-        expand: true,
-        onChanged: (t) => setState(() => _tab = t),
-      ),
+      header: tabs,
       children: map == null
           ? const []
           : _tab == 0

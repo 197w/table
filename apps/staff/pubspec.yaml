@@ -24,6 +24,8 @@ dependencies:
   intl: any
   mobile_scanner: any
   url_launcher: any
+  # Pozycja dostawcy na zmianie (mapa i historia tras w panelu, 0097).
+  geolocator: ^14.0.3
   adaptive_platform_ui: ^1.0.2
   image_picker: ^1.2.4
   shared_preferences: ^2.5.5

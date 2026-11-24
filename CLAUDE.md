@@ -30,8 +30,8 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   panelu), „Zeskanuj kod” na stałe na dole. Zamówienia: podsumowanie sali (otwarte rachunki, do wydania, do wysłania),
   kafle stolików z liczbami i ikonami (dzwonek = do wydania, samolocik = do wysłania), rachunek z grupami „Do wydania /
   Do wysłania / Na kuchni / Wydane” i podpowiedzią o przesuwaniu w lewo, niedostępne dania z chipem zamiast
-  przezroczystości. Dostawy: etap kursu i „na 19:30” jako chipy, „Nawiguj” z obrysem (pełny kolor ma tylko
-  „Odebrałem” albo „Dostarczone”), kolejka z „Wolny / W kursie”, kafle „Kursy” i „Gotówka”, pulsowanie stoi przy
+  przezroczystości. Dostawy: etap kursu i „na 19:30” jako chipy, „Trasa” z pinezką i obrysem (pełny kolor ma tylko
+  „Odebrałem” albo „Dostarczone”; trasy i wymuszona lokalizacja dostawcy niżej przy mapie dostawców), kolejka z „Wolny / W kursie”, kafle „Kursy” i „Gotówka”, pulsowanie stoi przy
   „Ogranicz ruch”. Kalendarz (jak Apple Calendar, 9.11.2026 według zrzutu i nagrania użytkownika): w pasku po lewej
   „‹ 2026” (natywna szklana pigułka ze strzałką i rokiem rysowanymi przez Fluttera, `GlassTextButton(icon:)`; znak
   symbolu SF w napisie UIKit dawał „?”; poza iOS 26 `_YearPill`),
@@ -147,11 +147,11 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
 - go_router 18, flutter_riverpod 3 (Notifier), supabase_flutter 2 (`publishableKey`), shared_preferences
   (SharedPreferencesAsync), flutter_svg. Gość: geolocator, url_launcher, add_2_calendar, package_info_plus.
   Panel: window_manager (minimalny rozmiar okna 1100×720), file_selector (logo, zdjęcia, zapis plików eksportu), pdf (eksport do PDF).
-  Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta).
-  Panel: flutter_map i latlong2 (mapa dostawców na kafelkach Mapbox, od 14.11.2026). Śledzenia dostawców z telefonów
-  nie ma od 0068 (wróci w drugim etapie mapy), mapy u gościa też nie.
+  Gość i pracownik: adaptive_platform_ui (Liquid Glass na iOS 26). Pracownik: image_picker (zdjęcia auta),
+  geolocator (pozycja dostawcy na zmianie, od 24.11.2026, 0097).
+  Panel: flutter_map i latlong2 (mapa dostawców na kafelkach Mapbox, od 14.11.2026). Mapy u gościa nie ma.
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0096, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0097, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -1016,9 +1016,39 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   klient czeka najwyżej 10 min dłużej; najbliższe pierwsze, każdy kurs w jednej propozycji; na mapie przerywana
   kreska między adresami, na liście „Połącz” (`panel_takeaway_merge`, dostawca jak w Dostawach) i „Pomiń”. Dane
   z bazy co 15 s. Bez klucza Mapbox mapa jest bez kafelków z informacją, jak go dodać, a lista kursów działa bez
-  tras. Testy: `test/delivery_map_test.dart` (udawane odpowiedzi Mapbox). Drugi etap (telefony): wysyłanie pozycji
-  (`staff_share_location` nadal nic nie zapisuje), nawigacja, CarPlay i Android Auto.
-  Ze starej mapy (0053, 0061, wyłączonej w 0068) zostały: `staff_locations`, `courier_routes`, kolumny
+  tras. Testy: `test/delivery_map_test.dart` (udawane odpowiedzi Mapbox).
+  Pozycja dostawców i historia tras (0097, 24.11.2026, prośba użytkownika: „Mapa w Dostawcy zostaje, dodaj wymuszoną
+  lokalizację w aplikacji dla pracowników (jeśli posiada stanowisko Dostawca), dodaj do tego historię tras … żeby
+  sprawdzić np. czy dany kierowca nie pojechał naokoło”; na telefonie bez mapy, kafle kursów zostają). Table for
+  employees (`apps/staff/lib/courier_location.dart`): dostawca na zmianie (`Job.isCourier`) bez zgody na lokalizację
+  albo z wyłączoną lokalizacją telefonu nie widzi kursów, tylko `LocationGateView` z „Zezwól na lokalizację” /
+  „Otwórz ustawienia” (`locationGateProvider`, sprawdzany od nowa po powrocie do aplikacji, `AppLifecycleListener`
+  w `shell.dart`). Ze zgodą `CourierLocationService` (jeden na aplikację, `courierLocationProvider`, uruchamia go
+  `_syncTracking` w `shell.dart`) zbiera pozycje z geolocator (co 15 m; Android: usługa z powiadomieniem „Zmiana
+  dostawcy”, więc też w tle, bez ACCESS_BACKGROUND_LOCATION; iOS: `UIBackgroundModes` location, niebieski wskaźnik)
+  i co 20 s albo co 15 punktów wysyła paczkę `staff_share_locations(member, punkty)`; bez internetu punkty czekają
+  (do 2000). Koniec zmiany zatrzymuje wysyłanie (ostatnie punkty jeszcze idą). Baza zapisuje tylko dostawcę
+  (`private.is_courier`) z trwającą zmianą, pomija punkty niedokładne (ponad 150 m), z przyszłości i starsze niż
+  12 h, ostatni punkt daje do `staff_locations` (mapa na żywo), każdy do `courier_track_points` (RLS bez zasad,
+  starsze niż 30 dni kasowane przy zapisie). Nad kursami „Lokal widzi Twoją pozycję · wysłana 18:42”. Trasy na
+  telefonie w domyślnej nawigacji (`routeUri` w `deliveries_data.dart`): pinezka „Trasa” przy kursie (jeden adres:
+  Android `geo:0,0?q=adres`, czyli aplikacja nawigacji wybrana w telefonie; iOS Apple Maps `daddr`, w UE z iOS 18.4
+  też domyślna aplikacja nawigacji), a przy kilku adresach karta „Trasa przez N adresy” z „Otwórz trasę
+  w nawigacji” (po kolei `routeStops`: tylko dostawy w drodze, gdy jakaś jest, według obiecanej godziny; iOS Apple
+  Maps `/directions` z `waypoint`, Android Google Maps `api=1` z `waypoints`, bo `geo:` nie ma przystanków).
+  Panel: trzecia zakładka mapy „Historia” (`courier_history_view.dart`, część `delivery_map_screen.dart`; dane
+  `data/courier_history.dart`): dzień lokalu (`StepSwitcher`, 30 dni wstecz) i dostawca (`panel_courier_days`:
+  z trasą albo dostawami w tym dniu), jego trasa (`panel_courier_history`: punkty i dostawy z godzinami) podzielona
+  na kursy (od „Odebrałem” do ostatniego „Dostarczone”, `courierRides`) i powroty do lokalu (do pierwszego punktu
+  150 m od lokalu). Każdy zakończony odcinek: przejechane km z telefonu wobec najkrótszej trasy z Mapbox przez te same
+  miejsca (miejsce dowiezienia = pozycja telefonu przy „Dostarczone”, bez niej adres z geokodowania; najszybsza
+  kolejność), „Objazd +2,3 km (+45%)” na czerwono przy ponad 30% i ponad 1 km dłużej, inaczej „Trasa w normie”,
+  „Kolejność adresów inna niż najszybsza”, spóźnienie wobec obiecanej godziny, postoje (co najmniej 4 min w promieniu
+  60 m, poza lokalem i adresami, `trackStops`) i przerwy w danych (`trackGaps`). Na mapie cała trasa dnia, kursy
+  w kolorze dostawcy, powroty przerywane, wybrany kurs z najkrótszą trasą przerywaną kreską, miejsca dowiezienia,
+  postoje. Dziś odświeża się co minutę. Testy: `apps/panel/test/courier_history_test.dart`,
+  `apps/staff/test/courier_route_test.dart`. Nawigacja w CarPlay i Android Auto jeszcze nie.
+  Ze starej mapy (0053, 0061, wyłączonej w 0068) zostały: `courier_routes`, kolumny
   `orders.delivery_lat/lng/geo` i `restaurants.courier_tracking` (nieużywane), `staff_courier_position` nic nie robi,
   `guest_courier_position` zwraca null. Funkcja Edge `maps` i sekret `GOOGLE_MAPS_SERVER_KEY` zostały w Supabase,
   ale nic ich nie używa (do usunięcia przez użytkownika w panelu Supabase).

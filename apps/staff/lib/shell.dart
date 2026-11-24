@@ -6,6 +6,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:table_car/table_car.dart';
 import 'package:table_core/table_core.dart';
 
+import 'courier_location.dart';
 import 'data.dart';
 import 'deliveries_screen.dart';
 import 'home_screen.dart';
@@ -34,6 +35,9 @@ class _StaffShellState extends ConsumerState<StaffShell> {
 
   /// Dostawca na zmianie: co 2 minuty sprawdzamy, czy zmiana trwa.
   Timer? _jobsCheck;
+
+  /// Powrót do aplikacji (np. z ustawień lokalizacji): zgoda na lokalizację może być inna.
+  late final _lifecycle = AppLifecycleListener(onResume: () => ref.invalidate(locationGateProvider));
 
   @override
   void initState() {
@@ -68,13 +72,28 @@ class _StaffShellState extends ConsumerState<StaffShell> {
 
   @override
   void dispose() {
+    _lifecycle.dispose();
     _jobsCheck?.cancel();
     _car?.cancel();
     super.dispose();
   }
 
+  /// Wysyłanie pozycji: tylko dostawca na zmianie, z zgodą na lokalizację (24.11.2026). Koniec zmiany je zatrzymuje.
+  void _syncTracking() {
+    final jobs = ref.watch(jobsProvider).value ?? const <Job>[];
+    final courier = jobs.where((j) => j.working && j.isCourier).firstOrNull;
+    final gate = ref.watch(locationGateProvider).value;
+    final memberId = courier != null && gate == LocationGate.ready ? courier.memberId : null;
+    final service = ref.read(courierLocationProvider);
+    if (service.memberId != memberId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => service.update(memberId));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    _lifecycle;
+    _syncTracking();
     // Zakładki trzymają stan (np. wybrany miesiąc w grafiku) przy przełączaniu.
     final body = IndexedStack(
       index: _tab,

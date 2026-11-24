@@ -7,6 +7,7 @@ import 'package:table_core/table_core.dart';
 
 import '../app/platform.dart';
 import '../app/reservation_alerts.dart';
+import 'courier_history.dart';
 import 'delivery_map.dart';
 import 'models.dart';
 import 'repository.dart';
@@ -827,6 +828,18 @@ final customerLookupProvider = FutureProvider.autoDispose.family<CustomerLookup,
 /// Mapa dostawców (Dostawy → Mapa): dane z bazy; ekran mapy odświeża je co 15 sekund.
 final deliveryMapProvider = FutureProvider.autoDispose.family<DeliveryMap, String>(
   (ref, id) => (ref..cacheFor()).watch(repositoryProvider).deliveryMap(id),
+);
+
+/// Dostawcy z trasą albo dostawami w dniu lokalu (Mapa → Historia).
+final courierDaysProvider = FutureProvider.autoDispose.family<List<CourierDay>, DayQuery>(
+  (ref, q) => (ref..cacheFor()).watch(repositoryProvider).courierDays(q.restaurantId, dateOnly(q.day)),
+);
+
+typedef CourierHistoryQuery = ({String restaurantId, String memberId, DateTime day});
+
+/// Trasa dostawcy w dniu lokalu (Mapa → Historia).
+final courierHistoryProvider = FutureProvider.autoDispose.family<CourierTrack, CourierHistoryQuery>(
+  (ref, q) => (ref..cacheFor()).watch(repositoryProvider).courierHistory(q.restaurantId, q.memberId, dateOnly(q.day)),
 );
 
 /// Zapytania do Mapbox z kluczem z env.json (jeden klient na panel: pamięć znalezionych adresów).

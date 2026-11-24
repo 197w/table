@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:table_core/table_core.dart';
 
+import 'courier_history.dart';
 import 'delivery_map.dart';
 import 'models.dart';
 
@@ -853,6 +854,28 @@ class PanelRepository {
         params: {'p_restaurant_id': restaurantId},
       );
       return DeliveryMap.fromJson(json);
+    });
+  }
+
+  /// Dostawcy z trasą z telefonu albo dostawami w dniu lokalu (historia tras, 0097).
+  Future<List<CourierDay>> courierDays(String restaurantId, DateTime day) {
+    return _guard(() async {
+      final rows = await _db.rpc<List<dynamic>>(
+        'panel_courier_days',
+        params: {'p_restaurant_id': restaurantId, 'p_day': _dateOnly(day)},
+      );
+      return [for (final r in rows.cast<Map<String, dynamic>>()) CourierDay.fromJson(r)];
+    });
+  }
+
+  /// Trasa dostawcy w dniu lokalu: punkty z telefonu i jego dostawy (0097).
+  Future<CourierTrack> courierHistory(String restaurantId, String memberId, DateTime day) {
+    return _guard(() async {
+      final json = await _db.rpc<Map<String, dynamic>>(
+        'panel_courier_history',
+        params: {'p_restaurant_id': restaurantId, 'p_member_id': memberId, 'p_day': _dateOnly(day)},
+      );
+      return CourierTrack.fromJson(json);
     });
   }
 

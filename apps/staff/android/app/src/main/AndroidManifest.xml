@@ -1,6 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Pozycja dostawcy w drodze: gość widzi ją na mapie w aplikacji Table. -->
+    <!-- Pozycja dostawcy na zmianie (24.11.2026): lokal widzi ją na mapie dostawców i w historii tras. Pozycja idzie
+         też w tle (dostawca w nawigacji) przez usługę z powiadomieniem (geolocator, typ „location”), więc bez
+         ACCESS_BACKGROUND_LOCATION. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <application
         android:label="Table for employees"
         android:name="${applicationName}"
@@ -43,10 +49,14 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
-        <!-- Dostawy: nawigacja do adresu i telefon do gościa (url_launcher). -->
+        <!-- Dostawy: trasa w domyślnej nawigacji (geo: jeden adres, https: kilka) i telefon do gościa (url_launcher). -->
         <intent>
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="geo"/>
         </intent>
         <intent>
             <action android:name="android.intent.action.DIAL"/>

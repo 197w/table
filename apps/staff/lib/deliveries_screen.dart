@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
@@ -5,6 +6,7 @@ import 'package:table_car/table_car.dart';
 import 'package:table_core/table_core.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'courier_location.dart';
 import 'data.dart';
 import 'deliveries_data.dart';
 import 'ui.dart';
@@ -48,7 +50,45 @@ class DeliveriesTab extends ConsumerWidget {
         ),
       );
     }
+    // Wymuszona lokalizacja: dostawca na zmianie widzi kursy dopiero po zgodzie na lokalizację (24.11.2026).
+    if (working.isCourier) {
+      final gate = ref.watch(locationGateProvider).value;
+      if (gate != null && gate != LocationGate.ready && gate != LocationGate.unsupported) {
+        return Scaffold(
+          appBar: AppBar(leading: glassLeading(context), title: const Text('Dostawy')),
+          body: LocationGateView(gate: gate),
+        );
+      }
+    }
     return DeliveriesScreen(job: working);
+  }
+}
+
+/// Bez zgody na lokalizację: wyjaśnienie i przycisk, który pyta o zgodę albo otwiera ustawienia telefonu.
+class LocationGateView extends ConsumerWidget {
+  const LocationGateView({super.key, required this.gate});
+
+  final LocationGate gate;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final (title, action) = switch (gate) {
+      LocationGate.serviceOff => ('Włącz lokalizację w telefonie', 'Otwórz ustawienia lokalizacji'),
+      LocationGate.deniedForever => ('Zezwól na lokalizację', 'Otwórz ustawienia aplikacji'),
+      _ => ('Zezwól na lokalizację', 'Zezwól na lokalizację'),
+    };
+    return MessageView(
+      icon: AppIcons.gpsSlash,
+      title: title,
+      message:
+          'Na zmianie dostawcy lokal widzi Twoją pozycję i trasę kursów (także gdy jesteś w nawigacji). Bez tego nie '
+          'zobaczysz kursów. Po końcu zmiany aplikacja przestaje wysyłać pozycję.',
+      actionLabel: action,
+      onAction: () async {
+        await requestLocationGate();
+        ref.invalidate(locationGateProvider);
+      },
+    );
   }
 }
 
@@ -83,6 +123,14 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
   Future<void> _open(Uri uri, String problem) async {
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && mounted) showMessage(context, problem, tone: ToastTone.error);
+  }
+
+  /// Trasa w domyślnej nawigacji telefonu do jednego adresu albo przez kilka po kolei.
+  Future<void> _route(List<Course> stops) async {
+    final uri = routeUri([for (final c in stops) c.address], ios: defaultTargetPlatform == TargetPlatform.iOS);
+    if (uri == null) return;
+    HapticFeedback.selectionClick();
+    await _open(uri, 'Nie udało się otworzyć nawigacji. Sprawdź, czy w telefonie jest aplikacja do map.');
   }
 
   Future<void> _delivered(Course course) async {
@@ -179,9 +227,13 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
               children: [
                 // Lokal z flotą: przed pierwszym kursem kontrola auta (bez niej kolejka nie daje kursów).
                 _VehicleCard(job: widget.job, onDone: () => ref.invalidate(deliveryBoardProvider(_key))),
+                _LocationStatus(job: widget.job),
                 if (board.courses.isEmpty)
                   _WaitingCard(board: board, memberId: widget.job.memberId)
-                else
+                else ...[
+                  // Kilka adresów do rozwiezienia: jedna trasa przez wszystkie w domyślnej nawigacji.
+                  if (routeStops(board.courses) case final stops when stops.map((c) => c.address).toSet().length > 1)
+                    _RouteAllCard(stops: stops, onTap: () => _route(stops)),
                   // Dostawy połączone w jeden kurs są obok siebie i odbiera się je razem.
                   for (final (course, mates) in groupCourses(board.courses)) ...[
                     _CourseCard(
@@ -189,7 +241,7 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
                       mates: mates,
                       busy: _busy,
                       restaurantName: board.restaurantName,
-                      onNavigate: () => _open(course.navigationUri, 'Nie udało się otworzyć nawigacji.'),
+                      onNavigate: () => _route([course]),
                       onCall: () => _open(course.phoneUri, 'Nie udało się zadzwonić. Numer: ${course.customerPhone}'),
                       onPickUp: () => _run(
                         () => ref.read(deliveriesRepositoryProvider).pickUp(course.id, widget.job.memberId),
@@ -202,6 +254,7 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
                     ),
                     const SizedBox(height: 14),
                   ],
+                ],
                 if (board.courses.isNotEmpty && board.waiting > 0)
                   _Hint(
                     icon: AppIcons.clock,
@@ -511,8 +564,8 @@ class _CourseCard extends StatelessWidget {
                   side: BorderSide(color: AppColors.accent.withValues(alpha: 0.6)),
                 ),
                 onPressed: onNavigate,
-                icon: const Glyph(AppIcons.navigation, size: 18),
-                label: const Text('Nawiguj'),
+                icon: const Glyph(AppIcons.mapPin, size: 18),
+                label: const Text('Trasa'),
               ),
               second: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
@@ -591,6 +644,95 @@ class _CourseCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Trasa przez kilka adresów naraz: numery dostaw po kolei i przycisk otwierający nawigację.
+class _RouteAllCard extends StatelessWidget {
+  const _RouteAllCard({required this.stops, required this.onTap});
+
+  final List<Course> stops;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 14),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                IconTile(AppIcons.mapTrifold, color: AppColors.accent, size: 40),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Trasa przez ${stops.length} adresy', style: text.titleMedium),
+                      Text(
+                        'Po kolei: ${stops.map((c) => '#${c.number}').join(' → ')}',
+                        style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+              onPressed: onTap,
+              icon: const Glyph(AppIcons.navigation, size: 18),
+              label: const Text('Otwórz trasę w nawigacji'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Wysyłanie pozycji na zmianie dostawcy: krótka informacja, że lokal widzi pozycję, i kiedy ostatnio doszła.
+class _LocationStatus extends ConsumerWidget {
+  const _LocationStatus({required this.job});
+
+  final Job job;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!job.isCourier) return const SizedBox.shrink();
+    final service = ref.watch(courierLocationProvider);
+    final text = Theme.of(context).textTheme;
+    return ValueListenableBuilder<TrackingStatus>(
+      valueListenable: service.status,
+      builder: (context, status, _) {
+        if (!status.active) return const SizedBox.shrink();
+        final last = status.lastSentAt;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Row(
+            children: [
+              Glyph(AppIcons.mapPin, size: 16, color: AppColors.accent),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  [
+                    'Lokal widzi Twoją pozycję',
+                    if (last != null) 'wysłana ${hm(last)}',
+                    if (status.pending > 0 && last == null) 'czeka na internet',
+                  ].join(' · '),
+                  style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

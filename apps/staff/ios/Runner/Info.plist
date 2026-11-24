@@ -4,6 +4,14 @@
 <dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Aparat skanuje kod QR z panelu restauracji, żeby rozpocząć zmianę, i robi zdjęcia auta dostawcy na początku i końcu zmiany.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Na zmianie dostawcy lokal widzi Twoją pozycję na mapie dostawców i trasę kursów. Poza zmianą aplikacja nie wysyła pozycji.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Na zmianie dostawcy lokal widzi Twoją pozycję i trasę kursów także wtedy, gdy jesteś w nawigacji. Poza zmianą aplikacja nie wysyła pozycji.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
