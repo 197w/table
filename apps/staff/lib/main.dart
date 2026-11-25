@@ -10,6 +10,7 @@ import 'package:table_panel/tablet.dart';
 import 'data.dart';
 import 'login_screen.dart';
 import 'shell.dart';
+import 'ui.dart';
 
 /// Table for employees: aplikacja dla pracowników lokalu. Zmianę zaczyna się skanem kodu QR
 /// z panelu restauracji, tutaj też widać przepracowane godziny.
@@ -69,7 +70,7 @@ class StaffApp extends ConsumerWidget {
       // więc dostaje jasność motywu aplikacji: jasny motyw przy ciemnym telefonie miał ciemne szkło (9.11.2026).
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(platformBrightness: brightness),
-        child: ToastHost(child: child ?? const SizedBox.shrink()),
+        child: TapToDismissKeyboard(child: ToastHost(child: child ?? const SizedBox.shrink())),
       ),
       // Sesja z kodu z e-maila liczy się dopiero po haśle.
       home: ValueListenableBuilder<bool>(

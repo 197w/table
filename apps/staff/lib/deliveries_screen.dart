@@ -85,7 +85,19 @@ class LocationGateView extends ConsumerWidget {
           'zobaczysz kursów. Po końcu zmiany aplikacja przestaje wysyłać pozycję.',
       actionLabel: action,
       onAction: () async {
-        await requestLocationGate();
+        try {
+          await requestLocationGate();
+        } catch (e) {
+          // Bez systemowego pytania: powód na ekranie i droga przez ustawienia telefonu.
+          if (context.mounted) {
+            showMessage(
+              context,
+              'Nie udało się zapytać o lokalizację ($e). Włącz ją w Ustawieniach telefonu: Table for employees → '
+              'Lokalizacja.',
+              tone: ToastTone.error,
+            );
+          }
+        }
         ref.invalidate(locationGateProvider);
       },
     );

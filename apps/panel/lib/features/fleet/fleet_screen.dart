@@ -59,6 +59,9 @@ class _FleetScreenState extends ConsumerState<FleetScreen> {
   final _closed = <String>{};
   bool _panelOpen = true;
 
+  /// Pojazd z otwartym oknem „Przebieg i zdjęcia” po prawej.
+  Vehicle? _checks;
+
   @override
   void dispose() {
     _search.dispose();
@@ -182,10 +185,8 @@ class _FleetScreenState extends ConsumerState<FleetScreen> {
                 today: today,
                 notes: notes,
                 onOpen: canEdit ? (v) => _edit(restaurant.id, v) : null,
-                onChecks: (v) => showDialog<void>(
-                  context: context,
-                  builder: (_) => VehicleChecksDialog(restaurantId: restaurant.id, vehicle: v),
-                ),
+                checksOpen: _checks?.id,
+                onChecks: (v) => setState(() => _checks = _checks?.id == v.id ? null : v),
               ),
             ),
     );
@@ -195,6 +196,16 @@ class _FleetScreenState extends ConsumerState<FleetScreen> {
       onToggle: () => setState(() => _panelOpen = !_panelOpen),
       panel: panel,
       content: content,
+      // „Przebieg i zdjęcia” z prawej, nad tabelą (25.11.2026, zamiast okna na środku).
+      endSheet: switch (_checks) {
+        final v? => VehicleChecksSheet(
+          key: ValueKey(v.id),
+          restaurantId: restaurant.id,
+          vehicle: v,
+          onClose: () => setState(() => _checks = null),
+        ),
+        null => null,
+      },
     );
   }
 }
@@ -207,9 +218,13 @@ class _VehicleTable extends StatelessWidget {
     required this.notes,
     required this.onOpen,
     required this.onChecks,
+    this.checksOpen,
   });
 
   final List<Vehicle> vehicles;
+
+  /// Pojazd z otwartym oknem „Przebieg i zdjęcia”.
+  final String? checksOpen;
 
   /// Kto jeździ danym pojazdem dziś.
   final Map<String, String?> today;
@@ -261,6 +276,7 @@ class _VehicleTable extends StatelessWidget {
                       notes: notes[v.id] ?? const [],
                       onTap: onOpen == null ? null : () => onOpen!(v),
                       onChecks: () => onChecks(v),
+                      checksOpen: checksOpen == v.id,
                     );
                   },
                 ),
@@ -277,6 +293,7 @@ class _VehicleRow extends StatelessWidget {
     required this.notes,
     required this.onTap,
     required this.onChecks,
+    this.checksOpen = false,
   });
 
   final Vehicle vehicle;
@@ -284,6 +301,9 @@ class _VehicleRow extends StatelessWidget {
   final List<Note> notes;
   final VoidCallback? onTap;
   final VoidCallback onChecks;
+
+  /// Okno „Przebieg i zdjęcia” tego pojazdu jest otwarte.
+  final bool checksOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -416,10 +436,18 @@ class _VehicleRow extends StatelessWidget {
                   width: _checksWidth,
                   child: Align(
                     alignment: Alignment.centerRight,
+                    // Aparat w kolorze aplikacji (25.11.2026, prośba użytkownika), przy otwartym oknie wypełniony.
                     child: IconButton(
                       tooltip: 'Przebieg i zdjęcia',
                       onPressed: onChecks,
-                      icon: const Glyph(AppIcons.camera, size: 18),
+                      style: ButtonStyle(
+                        foregroundColor: WidgetStateProperty.resolveWith(
+                          (s) => s.contains(WidgetState.hovered) || s.contains(WidgetState.pressed)
+                              ? Color.lerp(AppColors.accent, Colors.white, 0.3)
+                              : AppColors.accent,
+                        ),
+                      ),
+                      icon: Glyph(checksOpen ? AppIcons.camera.duotone : AppIcons.camera, size: 18),
                     ),
                   ),
                 ),

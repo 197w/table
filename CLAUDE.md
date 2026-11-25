@@ -55,7 +55,10 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   aplikacja buduje się od nowa, więc Konto otwiera stronę z powrotem, `_themeOpen`; zmiana z `ThemeFade` jak w Table),
   grupa „Odśwież dane” i „Wyloguj się”. Wiersze z `settings_list.dart` (`SettingsGroup`, `SettingsRow`,
   `SettingsChoiceRow`, `SettingsSwitchRow`; osobna biblioteka, bo panel ma własne `SettingsRow`). Zakładka zostaje ta
-  sama po zmianie motywu. Inwentaryzacja z telefonu tylko na zmianie (0084, przycisk tylko przy `job.working`). Pod pływającym dolnym menu iOS 26 (`extendBody`) listy zakładek mają u dołu dodane
+  sama po zmianie motywu. Inwentaryzacja z telefonu tylko na zmianie (0084, przycisk tylko przy `job.working`).
+  Stuknięcie w tło (poza polem i przyciskami) chowa klawiaturę na każdym ekranie (`TapToDismissKeyboard` w `ui.dart`,
+  w `MaterialApp.builder`; 25.11.2026, prośba użytkownika: przy przebiegu auta i wyszukiwaniu składnika nie dało się
+  zamknąć klawiatury). Pod pływającym dolnym menu iOS 26 (`extendBody`) listy zakładek mają u dołu dodane
   `MediaQuery.paddingOf(context).bottom` (9.11.2026: uwaga na tydzień chowała się pod menu). Podgląd ekranów: test
   golden poza repozytorium, jak przy panelu.
   „Zakończ zmianę” (31.10.2026, wzór od użytkownika: okno wyboru sposobu zamówienia z aplikacji McDonald's) otwiera
@@ -151,7 +154,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   geolocator (pozycja dostawcy na zmianie, od 24.11.2026, 0097).
   Panel: flutter_map i latlong2 (mapa dostawców na kafelkach Mapbox, od 14.11.2026). Mapy u gościa nie ma.
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0097, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0098, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -605,13 +608,18 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   „na zmianie”); dostawca może też sam wybrać auto przy kontroli. Kontrola auta (`vehicle_checks`): w lokalu
   z aktywnymi pojazdami (`private.vehicle_check_required`) dostawca przed pierwszym kursem wpisuje przebieg i robi
   cztery zdjęcia dookoła (przód, tył, boki), a przed końcem zmiany to samo jeszcze raz (`staff_vehicle_status`,
-  `staff_vehicle_check`; przebieg nie mniejszy niż ostatni, wymagany dla auta i skutera). Bez kontroli początku
+  `staff_vehicle_check`; przebieg nie mniejszy niż ostatni, wymagany dla auta i skutera; od 25.11.2026 telefon
+  pokazuje to od razu pod polem „Mniej niż ostatnio (130 km)”). Kontrolę robi tylko dostawca danego dnia (0098, niżej
+  przy Grafiku). Bez kontroli początku
   kolejka nie daje mu kursów (`private.vehicle_ready` w `private.courier_queue`). Zdjęcia: image_picker 1280 px,
   jakość 72, prywatny zasobnik `vehicle-photos` (`{lokal}/{auto}/{dzień}/...jpg`, `private.can_use_vehicle_photos`).
   Telefon: `vehicle_check.dart` (`VehicleCheckScreen`), otwiera się po zeskanowaniu kodu i przy „Zakończ zmianę”,
-  karta przypomnienia w Dostawach. Panel: na karcie pojazdu „Dziś: dostawca” i „Przebieg i zdjęcia”
-  (`features/fleet/vehicle_days.dart`, `VehicleChecksDialog`: 30 dni, dzień po dniu z przejechanymi km, zdjęcia
-  z podpisanych adresów, kliknięcie powiększa). Notatki o pojeździe (0047): `vehicle_notes` (autor z zalogowanego pracownika albo
+  karta przypomnienia w Dostawach. Panel: w tabeli pojazdów aparat w kolorze aplikacji (przy otwartym oknie
+  duotone) otwiera „Przebieg i zdjęcia” przy prawej krawędzi nad tabelą (`VehicleChecksSheet` w
+  `features/fleet/vehicle_days.dart`, `SidePanelLayout.endSheet`, `SideSheetFrame(end: true)`, 600 px; 25.11.2026,
+  prośba użytkownika: „nie popup, tylko jak przy dodawaniu, po prawej stronie, może zakrywać resztę”; wcześniej
+  okno na środku): 30 dni, dzień po dniu z przejechanymi km, w każdej kontroli wiersz z rodzajem, osobą, godziną
+  i przebiegiem, pod nim zdjęcia z podpisanych adresów, kliknięcie powiększa; zamyka „Zamknij”. Notatki o pojeździe (0047): `vehicle_notes` (autor z zalogowanego pracownika albo
   „Konto restauracji”, `private.note_author`), `panel_add_vehicle_note`, `panel_delete_vehicle_note`; w oknie pojazdu
   po prawej, karta pokazuje ostatnią. Stare „Uwagi” (`vehicles.note`) przeszły do notatek z autorem „Uwagi”.
 - Stawki i zarobki (0046, 0047): w oknie pracownika rodzaj umowy („Umowa”: zlecenie, zlecenie – student do 26 lat,
@@ -772,7 +780,16 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   na tydzień (`staff_week_notes`, `staff_set_week_note`; w panelu ikona przy nazwisku). Pracownik może mieć kilka
   stanowisk (`staff_member_positions`, `panel_set_member_positions`, okno pracownika „Dodatkowe stanowiska”; uprawnienia
   to suma, `private.member_permissions`, dostawca: `private.is_courier`), w grafiku stanowisko na dzień
-  (`staff_schedule.position_id`, wybór w oknie dnia, widać w aplikacji). Pod siatką: przyjętych osób, godziny pracy dnia
+  (`staff_schedule.position_id`, wybór w oknie dnia, widać w aplikacji). Dostawca danego dnia (0098, 25.11.2026,
+  prośba użytkownika: „jeśli pracownik danego dnia nie pracuje jako Dostawca, nie musi wpisywać licznika i robić
+  zdjęć”; `private.courier_today`, `private.position_is_courier`): przyjęte godziny w Grafiku na ten dzień ze
+  stanowiskiem decydują (stanowisko z „deliveries” = dostawca, inne = nie); bez stanowiska w Grafiku na ten dzień
+  decyduje główne stanowisko (bez głównego: dowolne, jak dawniej). Dzień = początek trwającej zmiany (zmiana otwarta
+  ponad 20 h liczy się do dziś). Na tym stoją kolejka kursów (`private.courier_queue`, więc też mapa, przydział
+  i oddanie kursu), kontrola auta (`staff_vehicle_status.required`), `is_courier` w `staff_my_jobs`
+  i `staff_deliveries` (wymuszona lokalizacja i zakładka Dostawy w telefonie) oraz `staff_share_locations`.
+  W REVE stanowiska „Właściciel” i „Menadzer” mają zaznaczone „Dostawy (kurier)”, więc bez Grafiku ich osoby są
+  dostawcami; Wiktor (ALL + Dostawca) jest dostawcą tylko w dni z Grafikiem jako Dostawca. Pod siatką: przyjętych osób, godziny pracy dnia
   i ile osób na jakim stanowisku; kolumna „Tydzień” z godzinami pracownika.
 - Statystyki (Management) w układzie jak Pracownicy (4.11.2026, prośba użytkownika; kafle i wykresy zostały): po
   lewej zwijany panel (bez wyszukiwania) z zakładkami Sprzedaż (`panel_sales_stats`), Goście (dawniej „Rezerwacje
@@ -1020,10 +1037,14 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Pozycja dostawców i historia tras (0097, 24.11.2026, prośba użytkownika: „Mapa w Dostawcy zostaje, dodaj wymuszoną
   lokalizację w aplikacji dla pracowników (jeśli posiada stanowisko Dostawca), dodaj do tego historię tras … żeby
   sprawdzić np. czy dany kierowca nie pojechał naokoło”; na telefonie bez mapy, kafle kursów zostają). Table for
-  employees (`apps/staff/lib/courier_location.dart`): dostawca na zmianie (`Job.isCourier`) bez zgody na lokalizację
+  employees (`apps/staff/lib/courier_location.dart`): dostawca danego dnia na zmianie (`Job.isCourier`, 0098) bez zgody na lokalizację
   albo z wyłączoną lokalizacją telefonu nie widzi kursów, tylko `LocationGateView` z „Zezwól na lokalizację” /
   „Otwórz ustawienia” (`locationGateProvider`, sprawdzany od nowa po powrocie do aplikacji, `AppLifecycleListener`
-  w `shell.dart`). Ze zgodą `CourierLocationService` (jeden na aplikację, `courierLocationProvider`, uruchamia go
+  w `shell.dart`). Na iPhonie zgodę daje własny kanał `pl.table.staff/location` (`LocationPermissionChannel`
+  w `ios/Runner/AppDelegate.swift`: `requestWhenInUseAuthorization` i `locationManagerDidChangeAuthorization`,
+  `iosLocationGate`), bo przez geolocator „Zezwól na lokalizację” nie pokazywało systemowego pytania (25.11.2026;
+  wtyczka po przerwanym pytaniu odpowiada „already running”); błąd pokazuje się w powiadomieniu z drogą przez
+  Ustawienia telefonu. Ze zgodą `CourierLocationService` (jeden na aplikację, `courierLocationProvider`, uruchamia go
   `_syncTracking` w `shell.dart`) zbiera pozycje z geolocator (co 15 m; Android: usługa z powiadomieniem „Zmiana
   dostawcy”, więc też w tle, bez ACCESS_BACKGROUND_LOCATION; iOS: `UIBackgroundModes` location, niebieski wskaźnik)
   i co 20 s albo co 15 punktów wysyła paczkę `staff_share_locations(member, punkty)`; bez internetu punkty czekają

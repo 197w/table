@@ -6,6 +6,7 @@ import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_select.dart';
 import '../../shared/panel_widgets.dart';
+import '../../shared/side_panel.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -75,59 +76,58 @@ class VehicleDayPicker extends ConsumerWidget {
   }
 }
 
+/// Szerokość okna „Przebieg i zdjęcia” (cztery zdjęcia w rzędzie).
+const vehicleChecksSheetWidth = 600.0;
+
 /// Flota → „Przebieg i zdjęcia”: kontrole auta z ostatnich 30 dni, dzień po dniu (kierowca, przebieg na początku
-/// i na końcu zmiany, przejechane kilometry i cztery zdjęcia dookoła; kliknięcie powiększa zdjęcie).
-class VehicleChecksDialog extends ConsumerWidget {
-  const VehicleChecksDialog({super.key, required this.restaurantId, required this.vehicle});
+/// i na końcu zmiany, przejechane kilometry i cztery zdjęcia dookoła; kliknięcie powiększa zdjęcie). Od 25.11.2026
+/// (prośba użytkownika: „niech nie wyskakuje popup, tylko jak przy dodawaniu, po prawej stronie”) okno przy prawej
+/// krawędzi nad tabelą (`SidePanelLayout.endSheet`), a nie okno na środku.
+class VehicleChecksSheet extends ConsumerWidget {
+  const VehicleChecksSheet({super.key, required this.restaurantId, required this.vehicle, required this.onClose});
 
   final String restaurantId;
   final Vehicle vehicle;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final text = Theme.of(context).textTheme;
-    final async = ref.watch(vehicleChecksProvider((restaurantId: restaurantId, vehicleId: vehicle.id)));
-    return AlertDialog(
-      title: Text('${vehicle.name}${vehicle.plate == null ? '' : ' · ${vehicle.plate}'}'),
-      content: SizedBox(
-        width: 760,
-        height: 600,
-        child: async.when(
-          loading: () => const LoadingView(),
-          error: (e, _) => ErrorView(
-            error: e,
-            onRetry: () => ref.invalidate(vehicleChecksProvider((restaurantId: restaurantId, vehicleId: vehicle.id))),
-          ),
-          data: (checks) {
-            if (checks.isEmpty) {
-              return MessageView(
+    final query = (restaurantId: restaurantId, vehicleId: vehicle.id);
+    final async = ref.watch(vehicleChecksProvider(query));
+    final checks = async.value ?? const <VehicleCheck>[];
+    final byDay = <DateTime, List<VehicleCheck>>{};
+    for (final c in checks) {
+      byDay.putIfAbsent(c.day, () => []).add(c);
+    }
+    return SizedBox(
+      width: vehicleChecksSheetWidth,
+      child: SideSheetFrame(
+        end: true,
+        title: 'Przebieg i zdjęcia',
+        subtitle: [vehicle.name, ?vehicle.plate].join(' · '),
+        onClose: onClose,
+        children: [
+          if (async.isLoading && !async.hasValue)
+            const Padding(padding: EdgeInsets.only(top: 80), child: LoadingView())
+          else if (async.hasError && !async.hasValue)
+            ErrorView(error: async.error!, onRetry: () => ref.invalidate(vehicleChecksProvider(query)))
+          else if (checks.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 60),
+              child: MessageView(
                 icon: AppIcons.camera.duotone,
                 title: 'Brak kontroli',
                 message: 'Dostawca robi zdjęcia i wpisuje przebieg w Table for employees na początku i końcu zmiany.',
-              );
-            }
-            final byDay = <DateTime, List<VehicleCheck>>{};
-            for (final c in checks) {
-              byDay.putIfAbsent(c.day, () => []).add(c);
-            }
-            return ListView(
-              children: [
-                for (final entry in byDay.entries) ...[
-                  _DayHeader(day: entry.key, checks: entry.value),
-                  for (final c in entry.value.reversed) _CheckRow(check: c),
-                  const SizedBox(height: 12),
-                ],
-              ],
-            );
-          },
-        ),
+              ),
+            )
+          else
+            for (final entry in byDay.entries) ...[
+              _DayHeader(day: entry.key, checks: entry.value),
+              for (final c in entry.value.reversed) _CheckRow(check: c),
+              const SizedBox(height: 12),
+            ],
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text('Zamknij', style: text.labelLarge),
-        ),
-      ],
     );
   }
 }
@@ -177,38 +177,39 @@ class _CheckRow extends ConsumerWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: AppColors.surfaceRaised, borderRadius: BorderRadius.circular(12)),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 190,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                StatusChip(
-                  label: c.start ? 'Początek zmiany' : 'Koniec zmiany',
-                  icon: c.start ? AppIcons.signIn : AppIcons.doorOpen,
-                  color: c.start ? TileColors.blue : TileColors.violet,
+          Row(
+            children: [
+              StatusChip(
+                label: c.start ? 'Początek zmiany' : 'Koniec zmiany',
+                icon: c.start ? AppIcons.signIn : AppIcons.doorOpen,
+                color: c.start ? TileColors.blue : TileColors.violet,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  [?c.memberName, Fmt.time(c.createdAt)].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.bodyMedium?.copyWith(fontFeatures: _tabular),
                 ),
-                const SizedBox(height: 6),
-                Text([?c.memberName, Fmt.time(c.createdAt)].join(' · '), style: text.bodyMedium),
-                Text(
-                  c.odometerKm == null ? 'bez przebiegu' : _km(c.odometerKm!),
-                  style: text.titleMedium?.copyWith(fontFeatures: _tabular),
-                ),
-              ],
-            ),
+              ),
+              Text(
+                c.odometerKm == null ? 'bez przebiegu' : _km(c.odometerKm!),
+                style: text.titleMedium?.copyWith(fontFeatures: _tabular),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final (i, path) in c.photos.indexed)
-                  _Thumb(url: urls[path], label: i < _sides.length ? _sides[i] : 'Zdjęcie'),
-              ],
-            ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final (i, path) in c.photos.indexed)
+                _Thumb(url: urls[path], label: i < _sides.length ? _sides[i] : 'Zdjęcie'),
+            ],
           ),
         ],
       ),

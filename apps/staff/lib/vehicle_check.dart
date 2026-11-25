@@ -126,9 +126,27 @@ class _VehicleCheckScreenState extends ConsumerState<VehicleCheckScreen> {
   bool _busy = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Błąd przebiegu widać od razu przy polu, nie dopiero po „Zapisz”.
+    _km.addListener(() => setState(() {}));
+  }
+
+  @override
   void dispose() {
     _km.dispose();
     super.dispose();
+  }
+
+  int? get _kmValue => int.tryParse(_km.text.replaceAll(RegExp(r'\s'), ''));
+
+  /// Przebieg mniejszy niż ostatnio wpisany dla tego auta (25.11.2026: „licznik nie może być niższy niż ostatnio”;
+  /// baza też go nie przyjmie). Null: w porządku.
+  String? _kmProblem(CheckVehicle vehicle) {
+    final km = _kmValue;
+    final last = vehicle.lastKm;
+    if (km == null || last == null || km >= last) return null;
+    return 'Mniej niż ostatnio ($last km). Sprawdź licznik.';
   }
 
   Future<void> _shoot(int side) async {
@@ -151,7 +169,7 @@ class _VehicleCheckScreenState extends ConsumerState<VehicleCheckScreen> {
 
   Future<void> _save(VehicleStatus status) async {
     final vehicle = status.vehicle(_vehicleId);
-    final km = int.tryParse(_km.text.replaceAll(RegExp(r'\s'), ''));
+    final km = _kmValue;
     String? problem;
     if (vehicle == null) {
       problem = 'Wybierz auto.';
@@ -275,6 +293,7 @@ class _VehicleCheckScreenState extends ConsumerState<VehicleCheckScreen> {
                       labelText: vehicle.needsOdometer ? 'Przebieg z licznika' : 'Przebieg (opcjonalnie)',
                       suffixText: 'km',
                       helperText: _hint(vehicle, status),
+                      errorText: _kmProblem(vehicle),
                     ),
                   ),
                 ],

@@ -22,6 +22,7 @@ class SidePanelLayout extends StatelessWidget {
     required this.panel,
     required this.content,
     this.sheet,
+    this.endSheet,
   });
 
   final bool open;
@@ -29,6 +30,10 @@ class SidePanelLayout extends StatelessWidget {
   final Widget panel;
   final Widget content;
   final Widget? sheet;
+
+  /// Okno przy prawej krawędzi, nad treścią (może ją zakryć), np. „Przebieg i zdjęcia” we Flocie (25.11.2026).
+  /// Wysuwa się z prawej; ma własną szerokość.
+  final Widget? endSheet;
 
   @override
   Widget build(BuildContext context) {
@@ -79,6 +84,21 @@ class SidePanelLayout extends StatelessWidget {
               left: width - 10,
               top: 18,
               child: _EdgeButton(open: open, onTap: onToggle),
+            ),
+            Positioned(
+              top: 0,
+              bottom: 0,
+              right: 0,
+              child: AnimatedSwitcher(
+                duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : PanelMotion.tab,
+                transitionBuilder: (child, animation) => SlideTransition(
+                  position: Tween(begin: const Offset(1, 0), end: Offset.zero).animate(
+                    CurvedAnimation(parent: animation, curve: AppMotion.easeOut),
+                  ),
+                  child: child,
+                ),
+                child: endSheet ?? const SizedBox.shrink(key: ValueKey('bez okna z prawej')),
+              ),
             ),
           ],
         );
@@ -422,21 +442,36 @@ const sideSheetWidth = 368.0;
 
 /// Ramka okna obok panelu: tytuł z „Zamknij”, przewijana treść i przycisk na dole.
 class SideSheetFrame extends StatelessWidget {
-  const SideSheetFrame({super.key, required this.title, required this.onClose, required this.children, this.footer});
+  const SideSheetFrame({
+    super.key,
+    required this.title,
+    required this.onClose,
+    required this.children,
+    this.footer,
+    this.subtitle,
+    this.end = false,
+  });
 
   final String title;
+
+  /// Mniejszy napis pod tytułem (np. rejestracja pojazdu).
+  final String? subtitle;
   final VoidCallback onClose;
   final List<Widget> children;
 
   /// Przyciski na dole (np. „Usuń” i „Zapisz”). Null: bez paska na dole.
   final Widget? footer;
 
+  /// Okno przy prawej krawędzi (`SidePanelLayout.endSheet`): kreska po lewej i cień nad treścią.
+  final bool end;
+
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: AppColors.surface,
-        border: Border(right: BorderSide(color: AppColors.ring)),
+        border: end ? Border(left: BorderSide(color: AppColors.ring)) : Border(right: BorderSide(color: AppColors.ring)),
+        boxShadow: end ? const [BoxShadow(color: Color(0x55000000), blurRadius: 24, offset: Offset(-6, 0))] : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -448,11 +483,24 @@ class SideSheetFrame extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        if (subtitle case final subtitle?)
+                          Text(
+                            subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+                          ),
+                      ],
                     ),
                   ),
                   IconButton(

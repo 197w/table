@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -31,11 +32,31 @@ enum LocationGate {
 bool get _mobile =>
     !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
 
+/// Zgoda na lokalizację na iPhonie wprost z CoreLocation (`AppDelegate.swift`, `LocationPermissionChannel`;
+/// 25.11.2026: przez wtyczkę geolocator „Zezwól na lokalizację” nie pokazywało systemowego pytania).
+const _iosLocation = MethodChannel('pl.table.staff/location');
+
+bool get _ios => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+/// Stan z CoreLocation: notDetermined, restricted, denied, whenInUse, always.
+LocationGate iosLocationGate(String? status) => switch (status) {
+  'whenInUse' || 'always' => LocationGate.ready,
+  'denied' || 'restricted' => LocationGate.deniedForever,
+  _ => LocationGate.denied,
+};
+
 /// Stan zgody na lokalizację teraz.
 Future<LocationGate> checkLocationGate() async {
   if (!_mobile) return LocationGate.unsupported;
   try {
     if (!await Geolocator.isLocationServiceEnabled()) return LocationGate.serviceOff;
+    if (_ios) {
+      try {
+        return iosLocationGate(await _iosLocation.invokeMethod<String>('status'));
+      } on MissingPluginException {
+        // Wersja aplikacji bez kanału: jak dotąd przez geolocator.
+      }
+    }
     return switch (await Geolocator.checkPermission()) {
       LocationPermission.always || LocationPermission.whileInUse => LocationGate.ready,
       LocationPermission.deniedForever => LocationGate.deniedForever,
@@ -46,7 +67,8 @@ Future<LocationGate> checkLocationGate() async {
   }
 }
 
-/// Prosi o zgodę albo otwiera ustawienia telefonu, gdy zapytać już się nie da. Zwraca stan po próbie.
+/// Prosi o zgodę (systemowe pytanie) albo otwiera ustawienia telefonu, gdy zapytać już się nie da. Zwraca stan po
+/// próbie. Błąd (np. brak wtyczki) idzie dalej, żeby ekran mógł go pokazać.
 Future<LocationGate> requestLocationGate() async {
   final gate = await checkLocationGate();
   switch (gate) {
@@ -55,11 +77,16 @@ Future<LocationGate> requestLocationGate() async {
     case LocationGate.deniedForever:
       await Geolocator.openAppSettings();
     case LocationGate.denied:
-      try {
-        await Geolocator.requestPermission();
-      } on Object {
-        await Geolocator.openAppSettings();
+      if (_ios) {
+        try {
+          final status = await _iosLocation.invokeMethod<String>('request');
+          if (iosLocationGate(status) == LocationGate.deniedForever) await Geolocator.openAppSettings();
+          return await checkLocationGate();
+        } on MissingPluginException {
+          // Wersja aplikacji bez kanału: niżej przez geolocator.
+        }
       }
+      await Geolocator.requestPermission();
     case LocationGate.ready || LocationGate.unsupported:
       break;
   }

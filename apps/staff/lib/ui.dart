@@ -205,6 +205,24 @@ class CardsSkeleton extends StatelessWidget {
 }
 
 /// Dolny pasek ekranu z głównym działaniem, nad dolnym menu aplikacji.
+/// Stuknięcie w tło (poza polem tekstowym i przyciskami) chowa klawiaturę na każdym ekranie aplikacji, np. przy
+/// przebiegu auta i wyszukiwaniu składnika w inwentaryzacji (25.11.2026, prośba użytkownika: „nie da się wyłączyć
+/// klawiatury po kliknięciu w tło”). Pola i przyciski wygrywają stuknięcie, więc działają jak dotąd.
+class TapToDismissKeyboard extends StatelessWidget {
+  const TapToDismissKeyboard({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+      child: child,
+    );
+  }
+}
+
 class BottomActionBar extends StatelessWidget {
   const BottomActionBar({super.key, required this.child});
 
