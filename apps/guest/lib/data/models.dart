@@ -424,9 +424,13 @@ class RestaurantEvent {
     this.description,
     this.allDay = false,
     this.color = 'green',
+    this.restaurantId,
   });
 
   final String id;
+
+  /// Lokal (w liście wydarzeń do Odkrywaj; na stronie lokalu niepotrzebny).
+  final String? restaurantId;
   final String title;
   final String? description;
   final DateTime startsAt;
@@ -446,7 +450,66 @@ class RestaurantEvent {
     endsAt: DateTime.parse(json['ends_at'] as String).toLocal(),
     allDay: json['all_day'] == true,
     color: json['color'] as String? ?? 'green',
+    restaurantId: json['restaurant_id'] as String?,
   );
+}
+
+/// Krótko, kiedy jest wydarzenie, na znaczek: „Trwa teraz”, „Dziś 18:00”, „Jutro 18:00”, „Pt 18:00”, „28 lis”
+/// (całodniowe bez godziny).
+String eventBadgeWhen(RestaurantEvent e, DateTime now) {
+  if (e.activeAt(now)) return 'Trwa teraz';
+  const days = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Niedz'];
+  const months = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
+  DateTime day(DateTime t) => DateTime(t.year, t.month, t.day);
+  final diff = day(e.startsAt).difference(day(now)).inDays;
+  final time = e.allDay
+      ? ''
+      : ' ${e.startsAt.hour.toString().padLeft(2, '0')}:${e.startsAt.minute.toString().padLeft(2, '0')}';
+  if (diff == 0) return 'Dziś$time';
+  if (diff == 1) return 'Jutro$time';
+  if (diff > 1 && diff < 7) return '${days[e.startsAt.weekday - 1]}$time';
+  return '${e.startsAt.day} ${months[e.startsAt.month - 1]}$time';
+}
+
+/// Wydarzenie do pokazania przy każdym lokalu w Odkrywaj: trwające, a bez niego najbliższe (lista od najwcześniejszego).
+Map<String, RestaurantEvent> featuredEvents(List<RestaurantEvent> events, DateTime now) {
+  final byRestaurant = <String, RestaurantEvent>{};
+  for (final e in events) {
+    final id = e.restaurantId;
+    if (id == null || !e.endsAt.isAfter(now)) continue;
+    final current = byRestaurant[id];
+    if (current == null || (!current.activeAt(now) && e.activeAt(now))) byRestaurant[id] = e;
+  }
+  return byRestaurant;
+}
+
+/// Co wydarzenie daje gościom (26.11.2026, żeby wydarzenia były widoczne): zniżki na działy menu w czasie
+/// wydarzenia (zniżka należy do wydarzenia o tych samych godzinach) i działy menu tylko na to wydarzenie.
+/// Klucz: numer wydarzenia; najpierw największe zniżki.
+Map<String, List<String>> eventPerksFrom(List<dynamic> sections, List<RestaurantEvent> events) {
+  final discounts = <String, List<(int, String)>>{};
+  final menus = <String, List<String>>{};
+  for (final raw in sections.cast<Map<String, dynamic>>()) {
+    final name = (raw['name'] as String? ?? '').trim();
+    if (name.isEmpty) continue;
+    if (raw['event_id'] case final String eventId) menus.putIfAbsent(eventId, () => []).add(name);
+    for (final d in SectionDiscount.listFrom(raw['discounts'])) {
+      for (final e in events) {
+        if (e.startsAt == d.starts && e.endsAt == d.ends && d.percent > 0) {
+          discounts.putIfAbsent(e.id, () => []).add((d.percent, name));
+        }
+      }
+    }
+  }
+  return {
+    for (final e in events)
+      if (discounts.containsKey(e.id) || menus.containsKey(e.id))
+        e.id: [
+          for (final (percent, name) in (discounts[e.id] ?? const <(int, String)>[])..sort((a, b) => b.$1.compareTo(a.$1)))
+            '−$percent% · $name',
+          for (final name in menus[e.id] ?? const <String>[]) 'Specjalne menu · $name',
+        ],
+  };
 }
 
 /// „Dziś 18:00–23:00”, „Pt, 14 lis · 18:00–23:00”, „14–16 lis” (całodniowe i wielodniowe).
@@ -492,6 +555,7 @@ class RestaurantDetail {
     required this.hours,
     required this.menu,
     this.events = const [],
+    this.eventPerks = const {},
     required this.rating,
     this.description,
     this.deliveryEnabled = false,
@@ -591,6 +655,9 @@ class RestaurantDetail {
 
   /// Wydarzenia specjalne lokalu, które trwają albo dopiero będą (najbliższe pierwsze).
   final List<RestaurantEvent> events;
+
+  /// Zniżki i specjalne menu każdego wydarzenia (`eventPerksFrom`), np. „−20% · Pizze”.
+  final Map<String, List<String>> eventPerks;
   final Rating rating;
 
   /// Zadatek przy rezerwacji: od ilu osób i ile za osobę. Null: lokal nie bierze zadatku.
@@ -642,6 +709,7 @@ class RestaurantDetail {
       hours: hours,
       menu: menu,
       events: events,
+      eventPerks: eventPerksFrom(json['menu_sections'] as List? ?? const [], events),
       rating: rating,
       deliveryEnabled: json['delivery_enabled'] == true,
       pickupEnabled: json['pickup_enabled'] == true,

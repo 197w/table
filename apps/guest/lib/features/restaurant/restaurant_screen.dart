@@ -11,6 +11,7 @@ import '../../data/providers.dart';
 import '../../shared/discounted_price.dart';
 import '../discover/restaurant_cards.dart';
 import '../likes/likes.dart';
+import 'event_widgets.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 const _weekdayNames = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota', 'Niedziela'];
@@ -86,7 +87,14 @@ class _Page extends ConsumerStatefulWidget {
 
 class _PageState extends ConsumerState<_Page> {
   final _reviewsKey = GlobalKey();
+  final _eventsKey = GlobalKey();
   bool _allReviews = false;
+
+  void _toEvents() {
+    final target = _eventsKey.currentContext;
+    if (target == null) return;
+    Scrollable.ensureVisible(target, duration: _motion(context, 350), curve: AppMotion.easeOut, alignment: 0.1);
+  }
 
   void _toReviews() {
     final target = _reviewsKey.currentContext;
@@ -107,7 +115,7 @@ class _PageState extends ConsumerState<_Page> {
         constraints: const BoxConstraints(maxWidth: 960),
         child: CustomScrollView(
           slivers: [
-            _Hero(restaurant: r),
+            _Hero(restaurant: r, onEvent: _toEvents),
             SliverToBoxAdapter(
               child: _Header(restaurant: r, onMap: widget.onMap),
             ),
@@ -119,6 +127,33 @@ class _PageState extends ConsumerState<_Page> {
                 onReviews: _toReviews,
               ),
             ),
+            // Wydarzenia lokalu wysoko i w kolorze wydarzenia (26.11.2026, prośba użytkownika: „wydarzenia nie są
+            // za bardzo widoczne i krzykliwe”; wcześniej blady wiersz pod ocenami).
+            if (r.events.isNotEmpty)
+              SliverToBoxAdapter(
+                child: KeyedSubtree(
+                  key: _eventsKey,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final (i, e) in r.events.indexed) ...[
+                          if (i > 0) const SizedBox(height: 12),
+                          EventCard(
+                            event: e,
+                            featured: i == 0,
+                            perks: r.eventPerks[e.id] ?? const [],
+                            onMenu: dishes > 0 && (r.eventPerks[e.id]?.isNotEmpty ?? false)
+                                ? () => context.push(AppRoutes.menu(r.id))
+                                : null,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
@@ -148,16 +183,6 @@ class _PageState extends ConsumerState<_Page> {
                 child: _RatingCard(rating: r.rating),
               ),
             ),
-            // Wydarzenia specjalne lokalu (Kalendarz w panelu) nad godzinami otwarcia.
-            if (r.events.isNotEmpty) ...[
-              const SliverToBoxAdapter(child: SectionTitle('Wydarzenia')),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _EventsCard(events: r.events),
-                ),
-              ),
-            ],
             const SliverToBoxAdapter(child: SectionTitle('Godziny otwarcia')),
             SliverToBoxAdapter(
               child: Padding(
@@ -278,9 +303,12 @@ class _DescriptionState extends State<_Description> {
 
 /// Zdjęcie na całą szerokość. Przy przewijaniu chowa się w pasek z nazwą lokalu.
 class _Hero extends StatelessWidget {
-  const _Hero({required this.restaurant});
+  const _Hero({required this.restaurant, this.onEvent});
 
   final RestaurantDetail restaurant;
+
+  /// Stuknięcie w znaczek wydarzenia na zdjęciu: przewija do kart wydarzeń.
+  final VoidCallback? onEvent;
 
   @override
   Widget build(BuildContext context) {
@@ -347,6 +375,17 @@ class _Hero extends StatelessWidget {
                     ),
                   ),
                 ),
+                // Najbliższe wydarzenie od razu na zdjęciu (26.11.2026).
+                if (r.events.firstOrNull case final event?)
+                  Positioned(
+                    left: 16,
+                    right: 16,
+                    bottom: 16,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: EventBadge(event: event, onTap: onEvent),
+                    ),
+                  ),
               ],
             ),
           );
@@ -908,87 +947,6 @@ class _Bar extends StatelessWidget {
               value == null ? '–' : Fmt.rating(v),
               style: const TextStyle(fontWeight: FontWeight.w600, fontFeatures: _tabular),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Wydarzenia specjalne lokalu: kolorowa kreska, nazwa, kiedy, opis i „Trwa teraz”.
-class _EventsCard extends StatelessWidget {
-  const _EventsCard({required this.events});
-
-  final List<RestaurantEvent> events;
-
-  static const _colors = {
-    'green': Color(0xFF2FB673),
-    'blue': Color(0xFF3B82F6),
-    'violet': Color(0xFF7C5CFF),
-    'amber': Color(0xFFD99A15),
-    'rose': Color(0xFFE5484D),
-    'teal': Color(0xFF14A3A8),
-    'gray': Color(0xFF8A8F98),
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final now = DateTime.now();
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Column(
-          children: [
-            for (final (i, e) in events.indexed) ...[
-              if (i > 0) Divider(height: 1, color: AppColors.ring),
-              Semantics(
-                label: '${e.title}, ${restaurantEventWhen(e, now)}${e.activeAt(now) ? ', trwa teraz' : ''}'
-                    '${e.description == null ? '' : '. ${e.description}'}',
-                excludeSemantics: true,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Container(
-                          width: 4,
-                          decoration: BoxDecoration(
-                            color: _colors[e.color] ?? AppColors.accent,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(child: Text(e.title, style: text.titleSmall)),
-                                  if (e.activeAt(now)) const Tag('TRWA TERAZ'),
-                                ],
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                restaurantEventWhen(e, now),
-                                style: text.bodyMedium?.copyWith(color: AppColors.textMuted, fontFeatures: _tabular),
-                              ),
-                              if (e.description != null) ...[
-                                const SizedBox(height: 4),
-                                Text(e.description!, style: text.bodyMedium),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
       ),

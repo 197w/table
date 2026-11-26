@@ -48,6 +48,7 @@ class DiscoverScreen extends ConsumerWidget {
             ref
               ..invalidate(citiesProvider)
               ..invalidate(cuisineRowsProvider)
+              ..invalidate(upcomingEventsProvider)
               ..invalidate(searchResultsProvider);
             await ref.read(searchResultsProvider.future);
           },

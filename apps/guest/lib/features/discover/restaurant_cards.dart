@@ -1,10 +1,13 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
 import '../../app/app.dart';
 import '../../data/models.dart';
+import '../../data/providers.dart';
 import '../likes/likes.dart';
+import '../restaurant/event_widgets.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -270,7 +273,7 @@ String restaurantMeta(RestaurantSummary r, {required bool showDistance, required
 
 /// Karta lokalu do przeglądania: zdjęcie na całą szerokość, a nazwa i szczegóły pod nim,
 /// więc karta wygląda tak samo bez względu na zdjęcie, które wgrał lokal.
-class RestaurantCard extends StatelessWidget {
+class RestaurantCard extends ConsumerWidget {
   const RestaurantCard({
     super.key,
     required this.restaurant,
@@ -287,16 +290,21 @@ class RestaurantCard extends StatelessWidget {
   final bool bestMatch;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final text = Theme.of(context).textTheme;
     final r = restaurant;
+    // Wydarzenie lokalu (trwające albo w ciągu tygodnia) jako znaczek na zdjęciu (26.11.2026).
+    final event = ref.watch(upcomingEventsProvider.select((a) => a.value?[r.id]));
     void open() => context.push(AppRoutes.restaurant(r.id));
     // Serce leży nad kartą (poza jej opisem dla czytnika), żeby było osobnym przyciskiem.
     return Stack(
       children: [
         Semantics(
           button: true,
-          label: restaurantSemantics(r, showDistance: showDistance, unit: unit, bestMatch: bestMatch),
+          label: [
+            restaurantSemantics(r, showDistance: showDistance, unit: unit, bestMatch: bestMatch),
+            if (event != null) eventSemantics(event, DateTime.now()),
+          ].join('. '),
           excludeSemantics: true,
           onTap: open,
           child: PressScale(
@@ -314,6 +322,13 @@ class RestaurantCard extends StatelessWidget {
                         child: RestaurantCover(url: r.coverUrl, cuisine: r.cuisine),
                       ),
                       if (bestMatch) const Positioned(top: 12, left: 12, child: BestMatchLabel()),
+                      if (event != null)
+                        Positioned(
+                          left: 12,
+                          right: 12,
+                          bottom: 12,
+                          child: Align(alignment: Alignment.centerLeft, child: EventBadge(event: event)),
+                        ),
                     ],
                   ),
                   Padding(
@@ -389,7 +404,7 @@ class RestaurantCard extends StatelessWidget {
 }
 
 /// Zwarty wiersz lokalu do szybkiego porównania: miniatura, nazwa, szczegóły, ocena i odległość w kolumnie.
-class RestaurantRow extends StatelessWidget {
+class RestaurantRow extends ConsumerWidget {
   const RestaurantRow({
     super.key,
     required this.restaurant,
@@ -404,13 +419,17 @@ class RestaurantRow extends StatelessWidget {
   final bool bestMatch;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final text = Theme.of(context).textTheme;
     final r = restaurant;
+    final event = ref.watch(upcomingEventsProvider.select((a) => a.value?[r.id]));
     void open() => context.push(AppRoutes.restaurant(r.id));
     return Semantics(
       button: true,
-      label: restaurantSemantics(r, showDistance: showDistance, unit: unit, bestMatch: bestMatch),
+      label: [
+        restaurantSemantics(r, showDistance: showDistance, unit: unit, bestMatch: bestMatch),
+        if (event != null) eventSemantics(event, DateTime.now()),
+      ].join('. '),
       excludeSemantics: true,
       onTap: open,
       child: PressScale(
@@ -453,6 +472,7 @@ class RestaurantRow extends StatelessWidget {
                       style: text.bodySmall?.copyWith(color: AppColors.textMuted),
                     ),
                     if (r.hours.isNotEmpty) OpenStatusLine(restaurant: r, compact: true),
+                    if (event != null) EventLine(event: event),
                     if (r.matchedDish != null) _MatchedDish(name: r.matchedDish!),
                     const SizedBox(height: 4),
                     Row(

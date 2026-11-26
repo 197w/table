@@ -56,9 +56,13 @@ Rezerwacje stolików i ranking kuchni. Repozytorium ma trzy aplikacje Flutter i 
   grupa „Odśwież dane” i „Wyloguj się”. Wiersze z `settings_list.dart` (`SettingsGroup`, `SettingsRow`,
   `SettingsChoiceRow`, `SettingsSwitchRow`; osobna biblioteka, bo panel ma własne `SettingsRow`). Zakładka zostaje ta
   sama po zmianie motywu. Inwentaryzacja z telefonu tylko na zmianie (0084, przycisk tylko przy `job.working`).
-  Stuknięcie w tło (poza polem i przyciskami) chowa klawiaturę na każdym ekranie (`TapToDismissKeyboard` w `ui.dart`,
+  Dotknięcie poza polem tekstowym chowa klawiaturę na każdym ekranie (`TapToDismissKeyboard` w `ui.dart`,
   w `MaterialApp.builder`; 25.11.2026, prośba użytkownika: przy przebiegu auta i wyszukiwaniu składnika nie dało się
-  zamknąć klawiatury). Pod pływającym dolnym menu iOS 26 (`extendBody`) listy zakładek mają u dołu dodane
+  zamknąć klawiatury). Tylko `Listener` z trafieniem w `TextFieldTapRegion` (`dismissKeyboardOutsideField`), bez
+  rozpoznawania gestów: pierwsza wersja z `GestureDetector(onTap:)` nad aplikacją wstrzymywała rozstrzygnięcie dotyku
+  do podniesienia palca i na iPhonie natywne dolne menu (UITabBar) przestało reagować na stuknięcia, działało tylko
+  przesunięcie (26.11.2026; test `keyboard_odometer_test.dart`). Nie stawiać rozpoznawania gestów nad natywnymi
+  kontrolkami. Pod pływającym dolnym menu iOS 26 (`extendBody`) listy zakładek mają u dołu dodane
   `MediaQuery.paddingOf(context).bottom` (9.11.2026: uwaga na tydzień chowała się pod menu). Podgląd ekranów: test
   golden poza repozytorium, jak przy panelu.
   „Zakończ zmianę” (31.10.2026, wzór od użytkownika: okno wyboru sposobu zamówienia z aplikacji McDonald's) otwiera
@@ -460,8 +464,18 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   kluczami obcymi do tych samych dwóch tabel dostają surogat `id`. Zamówienia
   obsługi (Zamówienia w panelu, kelner) są bez zniżki. Starsza aplikacja gościa pokazuje pełną cenę, a zamówienie
   dostaje cenę ze zniżką.
-  Table: sekcja „Wydarzenia” nad „Godziny otwarcia” na stronie lokalu (`_EventsCard`, `RestaurantEvent`,
-  `restaurantEventWhen`, najwyżej 6 trwających albo przyszłych, „TRWA TERAZ”). Table for employees: zakładka
+  Table: wydarzenia „krzykliwie” (26.11.2026, prośba użytkownika: „wydarzenia nie są za bardzo widoczne i krzykliwe”;
+  wcześniej blady wiersz pod ocenami; `features/restaurant/event_widgets.dart`): na stronie lokalu zaraz pod szybkimi
+  akcjami duże karty w kolorze wydarzenia (`EventCard`: gradient i poświata w kolorze z panelu, `calendarColorFromDb`,
+  napis biały albo ciemny według jasności, konfetti w tle, pigułka „TRWA TERAZ” z pulsującą kropką albo „DZIŚ 18:00” /
+  „JUTRO” / „SOB 18:00”, `eventBadgeWhen`; nazwa, godziny `restaurantEventWhen`, opis, znaczki zniżek i specjalnego
+  menu wydarzenia i „Zobacz menu”), najwyżej 6 trwających albo przyszłych, tylko `kind = special`. Zniżki i menu
+  wydarzenia liczy `eventPerksFrom` (zniżka działu należy do wydarzenia o tych samych godzinach: „−20% · Pizze”,
+  „Specjalne menu · Zimowe dania”, `RestaurantDetail.eventPerks`). Na zdjęciu lokalu znaczek najbliższego wydarzenia
+  (`EventBadge`, stuknięcie przewija do kart). W Odkrywaj znaczek na zdjęciu karty i linia w zwartym wierszu
+  (`EventLine`) dla lokali z wydarzeniem trwającym albo w ciągu 7 dni (`upcomingEventsProvider`, `featuredEvents`:
+  trwające przed najbliższym; `Repository.upcomingEvents` czyta `calendar_events` wprost, RLS
+  `calendar_events_public`); test `apps/guest/test/events_test.dart`. Table for employees: zakładka
   Kalendarz (dawniej Grafik, `schedule_screen.dart`) pokazuje wydarzenia ze wszystkich lokali pracownika jako kropki
   w siatce i karty pod wybranym dniem (`calendar_screen.dart`: `StaffEvent`, `staffCalendarProvider`,
   `CalendarEventTile`, `eventColor`); „+” przy uprawnieniu `calendar` dodaje wydarzenie (`AddEventSheet`,

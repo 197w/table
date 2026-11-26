@@ -340,6 +340,12 @@ RestaurantSummary? bestMatch(
 // Lokal
 // ---------------------------------------------------------------
 
+/// Wydarzenie przy każdym lokalu w Odkrywaj: trwające albo najbliższe w ciągu tygodnia (`featuredEvents`).
+final upcomingEventsProvider = FutureProvider<Map<String, RestaurantEvent>>((ref) async {
+  final events = await ref.watch(repositoryProvider).upcomingEvents();
+  return featuredEvents(events, DateTime.now());
+});
+
 final restaurantProvider = FutureProvider.autoDispose
     .family<RestaurantDetail, String>(
       (ref, id) => ref.watch(repositoryProvider).restaurant(id),

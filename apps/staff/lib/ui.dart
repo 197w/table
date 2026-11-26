@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show HitTestResult;
 import 'package:material_ui/material_ui.dart';
 import 'package:table_core/table_core.dart';
 
@@ -205,9 +206,14 @@ class CardsSkeleton extends StatelessWidget {
 }
 
 /// Dolny pasek ekranu z głównym działaniem, nad dolnym menu aplikacji.
-/// Stuknięcie w tło (poza polem tekstowym i przyciskami) chowa klawiaturę na każdym ekranie aplikacji, np. przy
-/// przebiegu auta i wyszukiwaniu składnika w inwentaryzacji (25.11.2026, prośba użytkownika: „nie da się wyłączyć
-/// klawiatury po kliknięciu w tło”). Pola i przyciski wygrywają stuknięcie, więc działają jak dotąd.
+/// Dotknięcie poza polem tekstowym chowa klawiaturę na każdym ekranie aplikacji, np. przy przebiegu auta
+/// i wyszukiwaniu składnika w inwentaryzacji (25.11.2026, prośba użytkownika: „nie da się wyłączyć klawiatury po
+/// kliknięciu w tło”).
+///
+/// Tylko podgląda dotyk ([Listener]), bez rozpoznawania gestów: 26.11.2026 wersja z `GestureDetector(onTap:)` nad całą
+/// aplikacją psuła na iPhonie natywne kontrolki (dolne menu UITabBar, „Wstecz”): jej rozpoznawanie stuknięcia
+/// wstrzymywało rozstrzygnięcie dotyku do podniesienia palca, więc natywny widok dostawał stuknięcie za późno
+/// i go nie rozpoznawał (przesunięcie po menu działało). Nie dodawać tu rozpoznawania gestów.
 class TapToDismissKeyboard extends StatelessWidget {
   const TapToDismissKeyboard({super.key, required this.child});
 
@@ -215,12 +221,27 @@ class TapToDismissKeyboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return Listener(
       behavior: HitTestBehavior.translucent,
-      onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+      onPointerDown: (event) => dismissKeyboardOutsideField(context, event.position),
       child: child,
     );
   }
+}
+
+/// Chowa klawiaturę, gdy dotknięto miejsca [position] poza polem tekstowym (i poza jego paskiem kopiuj / wklej:
+/// wszystko w `TextFieldTapRegion`). Bez aktywnego pola nic nie robi.
+void dismissKeyboardOutsideField(BuildContext context, Offset position) {
+  final focus = FocusManager.instance.primaryFocus;
+  final focused = focus?.context;
+  if (focus == null || focused == null || focused.findAncestorStateOfType<EditableTextState>() == null) return;
+  final result = HitTestResult();
+  WidgetsBinding.instance.hitTestInView(result, position, View.of(context).viewId);
+  final inField = result.path.any((entry) {
+    final target = entry.target;
+    return target is RenderTapRegion && target.groupId == EditableText;
+  });
+  if (!inField) focus.unfocus();
 }
 
 class BottomActionBar extends StatelessWidget {

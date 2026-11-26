@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -10,7 +11,7 @@ import 'package:table_staff/vehicle_check.dart';
 // 25.11.2026: klawiatura chowa się po stuknięciu w tło, przebieg mniejszy niż ostatnio widać od razu przy polu,
 // a zgoda na lokalizację na iPhonie idzie wprost z CoreLocation.
 void main() {
-  testWidgets('stuknięcie w tło chowa klawiaturę, przycisk i pole nie', (tester) async {
+  testWidgets('dotknięcie poza polem chowa klawiaturę, dotknięcie pola nie, przyciski działają', (tester) async {
     var pressed = 0;
     await tester.pumpWidget(
       MaterialApp(
@@ -18,7 +19,7 @@ void main() {
         home: Scaffold(
           body: Column(
             children: [
-              const TextField(key: Key('pole')),
+              const TextField(key: Key('pole'), decoration: InputDecoration(labelText: 'Szukaj')),
               TextButton(onPressed: () => pressed++, child: const Text('Plus')),
               const SizedBox(height: 300, child: Center(child: Text('Tło'))),
             ],
@@ -31,21 +32,52 @@ void main() {
     bool focused() => tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus;
     expect(focused(), isTrue);
 
-    // Przycisk działa, a pole zostaje aktywne (np. „+” obok ilości).
+    // Stuknięcie w pole (także w napis pola) nie zamyka klawiatury.
+    await tester.tap(find.text('Szukaj'));
+    await tester.pump();
+    expect(focused(), isTrue);
+
+    // Przycisk działa i chowa klawiaturę.
     await tester.tap(find.text('Plus'));
     await tester.pump();
     expect(pressed, 1);
-    expect(focused(), isTrue);
+    expect(focused(), isFalse);
 
-    // Stuknięcie w pole nie zamyka klawiatury.
+    // Tło zamyka.
     await tester.tap(find.byKey(const Key('pole')));
     await tester.pump();
     expect(focused(), isTrue);
-
-    // Tło zamyka.
     await tester.tap(find.text('Tło'));
     await tester.pump();
     expect(focused(), isFalse);
+  });
+
+  // 26.11.2026: wersja z GestureDetector nad aplikacją wstrzymywała rozstrzygnięcie dotyku do podniesienia palca,
+  // przez co natywne dolne menu na iPhonie nie reagowało na stuknięcia. Widok, który rozpoznaje dotyk sam (jak natywna
+  // kontrolka), ma wygrać od razu przy dotknięciu.
+  testWidgets('nie wstrzymuje dotyku dla natywnych kontrolek', (tester) async {
+    final solo = _SoloRecognizer();
+    addTearDown(solo.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => TapToDismissKeyboard(child: child!),
+        home: Scaffold(
+          body: Center(
+            child: RawGestureDetector(
+              gestures: {
+                _SoloRecognizer: GestureRecognizerFactoryWithHandlers<_SoloRecognizer>(() => solo, (_) {}),
+              },
+              child: const SizedBox(width: 200, height: 50, child: Text('Zakładka')),
+            ),
+          ),
+        ),
+      ),
+    );
+    final gesture = await tester.startGesture(tester.getCenter(find.text('Zakładka')));
+    await tester.pump();
+    expect(solo.acceptedBeforeUp, isTrue);
+    await gesture.up();
+    await tester.pump();
   });
 
   testWidgets('przebieg mniejszy niż ostatnio: błąd od razu przy polu', (tester) async {
@@ -109,4 +141,34 @@ void main() {
     expect(iosLocationGate('restricted'), LocationGate.deniedForever);
     expect(iosLocationGate(null), LocationGate.denied);
   });
+}
+
+/// Jak natywny widok: przyjmuje dotyk, gdy nikt inny go nie chce, i pamięta, czy stało się to jeszcze przed
+/// podniesieniem palca.
+class _SoloRecognizer extends OneSequenceGestureRecognizer {
+  bool _up = false;
+  bool acceptedBeforeUp = false;
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    _up = false;
+    startTrackingPointer(event.pointer, event.transform);
+  }
+
+  @override
+  void handleEvent(PointerEvent event) {
+    if (event is PointerUpEvent) _up = true;
+    stopTrackingIfPointerNoLongerDown(event);
+  }
+
+  @override
+  void acceptGesture(int pointer) {
+    if (!_up) acceptedBeforeUp = true;
+  }
+
+  @override
+  void didStopTrackingLastPointer(int pointer) {}
+
+  @override
+  String get debugDescription => 'natywny widok';
 }

@@ -168,6 +168,22 @@ class Repository {
     });
   }
 
+  /// Wydarzenia specjalne lokali, które trwają albo zaczną się w ciągu tygodnia (znaczek na kartach w Odkrywaj).
+  Future<List<RestaurantEvent>> upcomingEvents() {
+    return _guard(() async {
+      final now = DateTime.now().toUtc();
+      final rows = await _db
+          .from('calendar_events')
+          .select('id, restaurant_id, title, description, starts_at, ends_at, all_day, color')
+          .eq('kind', 'special')
+          .gt('ends_at', now.toIso8601String())
+          .lt('starts_at', now.add(const Duration(days: 7)).toIso8601String())
+          .order('starts_at')
+          .limit(300);
+      return [for (final r in rows) RestaurantEvent.fromJson(r)];
+    });
+  }
+
   Future<RestaurantDetail> restaurant(String id) {
     return _guard(() async {
       // Oba zapytania startują równocześnie, a rekord zachowuje ich typy.
@@ -185,9 +201,11 @@ class Repository {
               'discounts:event_section_discounts(percent, event:calendar_events(starts_at, ends_at)), '
               'menu_items(id, name, description, price_grosze, allergens, position, variants, addons, available, photo_url)), '
               // Wydarzenia specjalne lokalu (0080), które jeszcze trwają albo dopiero będą.
-              'calendar_events!calendar_events_restaurant_id_fkey(id, title, description, starts_at, ends_at, all_day, color)',
+              'calendar_events!calendar_events_restaurant_id_fkey(id, kind, title, description, starts_at, ends_at, all_day, color)',
             )
             .eq('id', id)
+            // Tylko wydarzenia dla gości (pracownik lokalu widzi w bazie także spotkania obsługi).
+            .eq('calendar_events.kind', 'special')
             .gte('calendar_events.ends_at', DateTime.now().toUtc().toIso8601String())
             .order('starts_at', referencedTable: 'calendar_events')
             .limit(6, referencedTable: 'calendar_events')
