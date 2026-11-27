@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:table_core/table_core.dart' show cuisineOrder;
 
 import '../core/location.dart';
 import 'models.dart';
@@ -210,7 +211,8 @@ final cuisineRowsProvider = FutureProvider<List<CuisineRow>>(
   (ref) => ref.watch(repositoryProvider).cuisineRows(),
 );
 
-/// Kuchnie dostępne w oglądanym mieście, z liczbą lokali.
+/// Kuchnie dostępne w oglądanym mieście (albo w pobliżu), z liczbą lokali, w kolejności listy kuchni świata
+/// (`cuisineNames`). Pozostałych kuchni z listy nie pokazujemy (27.11.2026, prośba użytkownika).
 final cuisinesProvider = Provider<List<({String slug, int count})>>((ref) {
   final rows = ref.watch(cuisineRowsProvider).value ?? const <CuisineRow>[];
   final city = ref.watch(effectiveCityProvider);
@@ -221,7 +223,7 @@ final cuisinesProvider = Provider<List<({String slug, int count})>>((ref) {
     }
   }
   final list = [for (final e in counts.entries) (slug: e.key, count: e.value)]
-    ..sort((a, b) => cuisineLabel(a.slug).compareTo(cuisineLabel(b.slug)));
+    ..sort((a, b) => cuisineOrder(a.slug).compareTo(cuisineOrder(b.slug)));
   return list;
 });
 

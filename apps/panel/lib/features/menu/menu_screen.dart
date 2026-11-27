@@ -146,12 +146,15 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
 
   Future<void> _photo(String restaurantId, MenuItem item) async {
     try {
-      final jpeg = await pickMenuPhoto();
-      if (jpeg == null) return;
+      final picked = await pickImage(ImageSpec.dish);
+      if (picked == null) return;
+      final note = imageNote(picked, ImageSpec.dish);
       await _run(
-        () => ref.read(repositoryProvider).uploadMenuPhoto(restaurantId: restaurantId, itemId: item.id, jpeg: jpeg),
+        () => ref
+            .read(repositoryProvider)
+            .uploadMenuPhoto(restaurantId: restaurantId, itemId: item.id, jpeg: picked.jpeg),
         restaurantId,
-        'Zdjęcie „${item.name}” zapisane. Goście zobaczą je w aplikacji.',
+        ['Zdjęcie „${item.name}” zapisane. Goście zobaczą je w aplikacji.', ?note].join(' '),
       );
     } on FormatException {
       if (mounted) showMessage(context, 'Nie udało się odczytać zdjęcia. Wybierz plik JPG, PNG albo WEBP.');
@@ -1572,6 +1575,14 @@ class _ItemSheetState extends ConsumerState<_ItemSheet> {
         ),
         const SizedBox(height: 24),
         const SheetHeading('Zdjęcie', optional: true),
+        const SizedBox(height: 6),
+        // Dokładny rozmiar (27.11.2026, prośba użytkownika): jeden plik na wszystkie urządzenia.
+        Text(
+          'Wymiary: ${ImageSpec.dish.label}, JPG, PNG albo WEBP. Tak duże jest zdjęcie po powiększeniu w menu, '
+          'w miniaturach aplikacja tylko je zmniejsza. Plik o innych wymiarach panel przytnie od środka do kwadratu '
+          'i dopasuje rozmiar.',
+          style: text.bodySmall?.copyWith(color: AppColors.textMuted),
+        ),
         const SizedBox(height: 10),
         if (isNew)
           Text(

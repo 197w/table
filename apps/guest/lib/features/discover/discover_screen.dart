@@ -21,7 +21,7 @@ double _tapRow(BuildContext context, double fontSize) =>
 Duration _motion(BuildContext context, int ms) =>
     MediaQuery.disableAnimationsOf(context) ? Duration.zero : Duration(milliseconds: ms);
 
-/// Odkrywaj: wyszukiwarka, kategorie kuchni z własnymi ikonami, szybkie filtry z „Filtry” i „Sortuj”,
+/// Odkrywaj: wyszukiwarka, kategorie kuchni z ilustracjami, szybkie filtry z „Filtry” i „Sortuj”,
 /// liczba lokali i przełącznik widoku (karty ze zdjęciem albo zwarte wiersze).
 class DiscoverScreen extends ConsumerWidget {
   const DiscoverScreen({super.key});
@@ -341,7 +341,8 @@ class _SearchFieldState extends ConsumerState<_SearchField> {
   }
 }
 
-/// Kategorie kuchni: własne ikony na spokojnym tle, żeby nie konkurowały ze zdjęciami jedzenia niżej.
+/// Kategorie kuchni z ilustracjami jak w aplikacjach z jedzeniem (27.11.2026, prośba użytkownika, wzór: kategorie
+/// z Uber Eats). Tylko kuchnie lokali w oglądanym mieście albo w pobliżu (`cuisinesProvider`).
 class _CuisineRow extends ConsumerWidget {
   const _CuisineRow({required this.selected});
 
@@ -354,20 +355,19 @@ class _CuisineRow extends ConsumerWidget {
     final notifier = ref.read(discoverFilterProvider.notifier);
     final label = MediaQuery.textScalerOf(context).scale(12) * 1.3;
     return SizedBox(
-      height: 16 + 56 + 6 + label + 8,
+      height: 14 + _CuisineTile.art + 6 + label + 8,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(12, 16, 12, 0),
+        padding: const EdgeInsets.fromLTRB(10, 14, 10, 0),
         children: [
           _CuisineTile(
-            icon: AppIcons.squaresFour,
             label: 'Wszystkie',
             selected: selected == null,
             onTap: () => notifier.setCuisine(null),
           ),
           for (final c in cuisines)
             _CuisineTile(
-              icon: cuisineIcon(c.slug),
+              slug: c.slug,
               label: cuisineLabel(c.slug),
               selected: selected == c.slug,
               // Drugie dotknięcie wybranej kuchni pokazuje znowu wszystkie.
@@ -383,9 +383,13 @@ class _CuisineRow extends ConsumerWidget {
 }
 
 class _CuisineTile extends StatelessWidget {
-  const _CuisineTile({required this.icon, required this.label, required this.selected, required this.onTap});
+  const _CuisineTile({this.slug, required this.label, required this.selected, required this.onTap});
 
-  final AppIconData icon;
+  /// Wysokość pola ilustracji (ilustracje duże jak w aplikacjach z jedzeniem).
+  static const art = 72.0;
+
+  /// Kuchnia z ilustracją; null: „Wszystkie”.
+  final String? slug;
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -401,25 +405,48 @@ class _CuisineTile extends StatelessWidget {
         onTap: onTap,
         // Kafelek tak szeroki, jak nazwa kuchni: przy dużej czcionce słowo się nie łamie i nie ucina.
         child: Container(
-          constraints: const BoxConstraints(minWidth: 76),
+          constraints: const BoxConstraints(minWidth: 80),
           padding: const EdgeInsets.symmetric(horizontal: 6),
           child: Column(
             children: [
-              AnimatedContainer(
-                duration: _motion(context, 180),
-                curve: Curves.easeOut,
-                width: 56,
-                height: 56,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: selected ? AppColors.accentTint : AppColors.surface,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: selected ? AppColors.accent : AppColors.ring, width: selected ? 1.5 : 1),
-                ),
-                child: Glyph(
-                  selected ? icon.duotone : icon,
-                  size: 26,
-                  color: selected ? AppColors.accent : AppColors.text,
+              // Ilustracja bez ramki, jak kategorie w aplikacjach z jedzeniem; wybrana kuchnia ma pod spodem
+              // koło w kolorze akcentu i lekko się powiększa.
+              SizedBox(
+                width: art,
+                height: art,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    AnimatedContainer(
+                      duration: _motion(context, 180),
+                      curve: Curves.easeOut,
+                      // „Wszystkie” to mniejsze koło z ikoną, kuchnie mają koło pod całą ilustracją.
+                      width: slug == null ? 60 : art,
+                      height: slug == null ? 60 : art,
+                      decoration: BoxDecoration(
+                        color: selected ? AppColors.accentTint : (slug == null ? AppColors.surface : null),
+                        shape: BoxShape.circle,
+                        border: selected
+                            ? Border.all(color: AppColors.accent, width: 1.5)
+                            : slug == null
+                            ? Border.all(color: AppColors.ring)
+                            : null,
+                      ),
+                    ),
+                    AnimatedScale(
+                      scale: selected ? 1.06 : 1,
+                      duration: _motion(context, 180),
+                      curve: Curves.easeOut,
+                      child: switch (slug) {
+                        final slug? => CuisineArt(slug: slug, size: art - 4),
+                        null => Glyph(
+                          selected ? AppIcons.squaresFour.duotone : AppIcons.squaresFour,
+                          size: 26,
+                          color: selected ? AppColors.accent : AppColors.text,
+                        ),
+                      },
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 6),

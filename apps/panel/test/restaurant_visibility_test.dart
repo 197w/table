@@ -24,7 +24,7 @@ class _Repo implements PanelRepository {
 }
 
 void main() {
-  Future<_Repo> open(WidgetTester tester, {required bool listed, bool editable = true}) async {
+  Future<_Repo> open(WidgetTester tester, {required bool listed, bool editable = true, bool hasBanner = true}) async {
     await tester.runAsync(() async {
       final loader = FontLoader('packages/table_core/Geist');
       for (final weight in ['Regular', 'Medium', 'SemiBold']) {
@@ -53,7 +53,9 @@ void main() {
         ],
         child: MaterialApp(
           theme: PanelTheme.build(PanelPalette.dark),
-          home: Scaffold(body: RestaurantVisibilityCard(restaurant: restaurant, editable: editable)),
+          home: Scaffold(
+            body: RestaurantVisibilityCard(restaurant: restaurant, editable: editable, hasBanner: hasBanner),
+          ),
         ),
       ),
     );
@@ -91,6 +93,24 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Ukryć lokal w aplikacji?'), findsNothing);
     expect(repo.calls, [('r1', true)]);
+  });
+
+  testWidgets('ukryty lokal bez banneru: włączyć się nie da, opis mówi dlaczego', (tester) async {
+    final repo = await open(tester, listed: false, hasBanner: false);
+    expect(find.text('Lokal jest ukryty. Żeby go włączyć, dodaj najpierw banner poniżej.'), findsOneWidget);
+    expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNull);
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    expect(repo.calls, isEmpty);
+  });
+
+  testWidgets('widoczny lokal bez banneru (sprzed 0099) można ukryć', (tester) async {
+    final repo = await open(tester, listed: true, hasBanner: false);
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ukryj lokal'));
+    await tester.pumpAndSettle();
+    expect(repo.calls, [('r1', false)]);
   });
 
   testWidgets('bez uprawnień do ustawień przełącznik jest wyłączony', (tester) async {

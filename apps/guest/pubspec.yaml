@@ -34,3 +34,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # Ilustracje kuchni w Odkrywaj (Higgsfield, 27.11.2026).
+  assets:
+    - assets/cuisines/

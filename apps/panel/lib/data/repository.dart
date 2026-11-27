@@ -2362,10 +2362,11 @@ class PanelRepository {
   }
 
   // -------------------------------------------------------------
-  // Logo lokalu
+  // Banner lokalu i zdjęcia dań
   // -------------------------------------------------------------
 
-  static const logoBucket = 'restaurant-logos';
+  /// Banner leży w dawnym folderze logo (logo nie wgrywa się od 27.11.2026, prośba użytkownika).
+  static const coverBucket = 'restaurant-logos';
   static const menuPhotoBucket = 'menu-photos';
 
   /// Wgrywa zdjęcie dania (już zmniejszone, JPG) i zapisuje jego adres przy pozycji menu.
@@ -2392,46 +2393,16 @@ class PanelRepository {
     return _guard(() => _db.from('menu_items').update({'photo_url': null}).eq('id', itemId));
   }
 
-  /// Wgrywa logo do Storage i zapisuje jego publiczny adres w profilu lokalu.
-  Future<String> uploadLogo({
-    required String restaurantId,
-    required Uint8List bytes,
-    required String extension,
-  }) {
-    return _guard(() async {
-      final ext = extension.toLowerCase() == 'jpeg' ? 'jpg' : extension.toLowerCase();
-      final contentType = switch (ext) {
-        'png' => 'image/png',
-        'webp' => 'image/webp',
-        _ => 'image/jpeg',
-      };
-      // Nowa nazwa przy każdej zmianie, żeby aplikacje nie pokazywały starego logo z pamięci podręcznej.
-      final path = '$restaurantId/logo-${DateTime.now().millisecondsSinceEpoch}.$ext';
-      await _db.storage.from(logoBucket).uploadBinary(
-        path,
-        bytes,
-        fileOptions: FileOptions(contentType: contentType),
-      );
-      final url = _db.storage.from(logoBucket).getPublicUrl(path);
-      await updateProfile(restaurantId, {'logo_url': url});
-      return url;
-    });
-  }
-
-  Future<void> removeLogo(String restaurantId) {
-    return updateProfile(restaurantId, {'logo_url': null});
-  }
-
-  /// Wgrywa zdjęcie lokalu (już zmniejszone, JPG) do folderu logo i zapisuje je w profilu.
+  /// Wgrywa banner lokalu (już przygotowany, JPG 1920 × 1080) i zapisuje go w profilu.
   Future<String> uploadCover({required String restaurantId, required Uint8List jpeg}) {
     return _guard(() async {
       final path = '$restaurantId/cover-${DateTime.now().millisecondsSinceEpoch}.jpg';
-      await _db.storage.from(logoBucket).uploadBinary(
+      await _db.storage.from(coverBucket).uploadBinary(
         path,
         jpeg,
         fileOptions: const FileOptions(contentType: 'image/jpeg'),
       );
-      final url = _db.storage.from(logoBucket).getPublicUrl(path);
+      final url = _db.storage.from(coverBucket).getPublicUrl(path);
       await updateProfile(restaurantId, {'cover_url': url});
       return url;
     });

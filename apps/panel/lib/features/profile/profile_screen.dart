@@ -1,4 +1,3 @@
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
@@ -55,9 +54,15 @@ class ProfileScreen extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _LogoCard(profile: profile, editable: restaurant.canManage),
+                        // Widoczność i banner na górze (27.11.2026, prośba użytkownika: „Widoczność w aplikacji
+                        // przenieś do Dane lokalu”; logo usunięte).
+                        RestaurantVisibilityCard(
+                          restaurant: restaurant,
+                          editable: restaurant.canManage,
+                          hasBanner: profile.coverUrl != null,
+                        ),
                         const SizedBox(height: 20),
-                        _CoverCard(profile: profile, editable: restaurant.canManage),
+                        _BannerCard(profile: profile, listed: restaurant.listed, editable: restaurant.canManage),
                         const SizedBox(height: 20),
                         _DetailsForm(
                           key: ValueKey('dane-${profile.id}'),
@@ -102,7 +107,7 @@ class ProfileScreen extends ConsumerWidget {
 }
 
 /// „Ustawienia lokalu”: jak lokal działa w Table. Rezerwacje w aplikacji, grafik pracowników,
-/// okres inwentaryzacji oraz dostawa i odbiór. Dane lokalu (adres, godziny, logo) są w „Dane lokalu”.
+/// okres inwentaryzacji oraz dostawa i odbiór. Widoczność w aplikacji, banner, adres i godziny są w „Dane lokalu”.
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -134,7 +139,6 @@ class SettingsScreen extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       for (final (i, section) in [
-                        RestaurantVisibilityCard(restaurant: restaurant, editable: restaurant.canManage),
                         _ReservationSettingsCard(
                           key: ValueKey('rezerwacje-${profile.id}'),
                           profile: profile,
@@ -172,14 +176,23 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-/// Widoczność lokalu w aplikacji dla klientów (24.11.2026, prośba użytkownika): przełącznik na górze Ustawień lokalu.
-/// Wyłączony lokal znika w aplikacji Table (wyszukiwarka, strona lokalu, rezerwacje i zamówienia), a złożone
-/// rezerwacje i zamówienia zostają. Włączyć może tylko lokal już zweryfikowany przez Table (0096).
+/// Widoczność lokalu w aplikacji dla klientów (24.11.2026, prośba użytkownika; od 27.11.2026 na górze „Dane lokalu”,
+/// wcześniej w Ustawieniach lokalu). Wyłączony lokal znika w aplikacji Table (wyszukiwarka, strona lokalu, rezerwacje
+/// i zamówienia), a złożone rezerwacje i zamówienia zostają. Włączyć może tylko lokal już zweryfikowany przez Table
+/// (0096) i tylko z bannerem (0099, 27.11.2026, prośba użytkownika).
 class RestaurantVisibilityCard extends ConsumerStatefulWidget {
-  const RestaurantVisibilityCard({super.key, required this.restaurant, required this.editable});
+  const RestaurantVisibilityCard({
+    super.key,
+    required this.restaurant,
+    required this.editable,
+    required this.hasBanner,
+  });
 
   final PanelRestaurant restaurant;
   final bool editable;
+
+  /// Lokal ma banner w „Dane lokalu”. Bez niego widoczności nie da się włączyć.
+  final bool hasBanner;
 
   @override
   ConsumerState<RestaurantVisibilityCard> createState() => _RestaurantVisibilityCardState();
@@ -220,21 +233,39 @@ class _RestaurantVisibilityCardState extends ConsumerState<RestaurantVisibilityC
 
   @override
   Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
     final listed = widget.restaurant.listed;
-    return SettingsSection(
+    // Ukryty lokal bez banneru: przełącznik wyłączony, z powodem (baza i tak by odmówiła).
+    final blocked = !listed && !widget.hasBanner;
+    return PanelCard(
       title: 'Widoczność w aplikacji',
-      children: [
-        SettingsRow(
-          title: 'Lokal widoczny dla klientów',
-          description: listed
-              ? 'Klienci znajdą lokal w aplikacji Table i mogą rezerwować stolik oraz zamawiać.'
-              : 'Lokal jest ukryty: nie ma go w wyszukiwarce i nie przyjmuje rezerwacji ani zamówień z aplikacji.',
-          trailing: Switch(
-            value: listed,
-            onChanged: widget.editable && !_busy ? _set : null,
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Lokal widoczny dla klientów', style: text.titleSmall),
+                const SizedBox(height: 4),
+                Text(
+                  listed
+                      ? 'Klienci znajdą lokal w aplikacji Table i mogą rezerwować stolik oraz zamawiać.'
+                      : blocked
+                      ? 'Lokal jest ukryty. Żeby go włączyć, dodaj najpierw banner poniżej.'
+                      : 'Lokal jest ukryty: nie ma go w wyszukiwarce i nie przyjmuje rezerwacji ani zamówień '
+                            'z aplikacji.',
+                  style: text.bodyMedium?.copyWith(color: blocked ? AppColors.warning : AppColors.textMuted),
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
+          const SizedBox(width: 16),
+          Switch(
+            value: listed,
+            onChanged: widget.editable && !_busy && !blocked ? _set : null,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -765,8 +796,8 @@ class _DetailsFormState extends ConsumerState<_DetailsForm> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final enabled = widget.editable;
-    final cuisines = {...cuisineLabels};
-    cuisines.putIfAbsent(_cuisine, () => Fmt.capitalize(_cuisine));
+    final cuisines = {...cuisineNames};
+    cuisines.putIfAbsent(_cuisine, () => cuisineLabel(_cuisine));
 
     return PanelCard(
       title: 'Dane lokalu',
@@ -1355,163 +1386,45 @@ class _TimeButton extends StatelessWidget {
   }
 }
 
-class _LogoCard extends ConsumerStatefulWidget {
-  const _LogoCard({required this.profile, required this.editable});
+/// Banner lokalu (`restaurants.cover_url`): na liście lokali w aplikacji Table (na całą szerokość karty) i na górze
+/// strony lokalu, zawsze 16:9. Jeden plik 1920 × 1080 px (27.11.2026, prośba użytkownika: dokładny rozmiar dla
+/// urządzenia, na którym banner jest największy, na mniejszych tylko pomniejszony). Bez banneru lokal nie może być
+/// widoczny w aplikacji (0099); widoczny lokal może banner tylko zmienić.
+class _BannerCard extends ConsumerStatefulWidget {
+  const _BannerCard({required this.profile, required this.listed, required this.editable});
 
   final RestaurantProfile profile;
+  final bool listed;
   final bool editable;
 
   @override
-  ConsumerState<_LogoCard> createState() => _LogoCardState();
+  ConsumerState<_BannerCard> createState() => _BannerCardState();
 }
 
-class _LogoCardState extends ConsumerState<_LogoCard> {
-  bool _busy = false;
-
-  static const _maxBytes = 2 * 1024 * 1024;
-
-  Future<void> _pick() async {
-    final file = await openFile(
-      acceptedTypeGroups: const [
-        XTypeGroup(
-          label: 'Obrazy',
-          extensions: ['png', 'jpg', 'jpeg', 'webp'],
-          uniformTypeIdentifiers: ['public.png', 'public.jpeg', 'org.webmproject.webp'],
-        ),
-      ],
-    );
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
-    if (bytes.length > _maxBytes) {
-      if (mounted) showMessage(context, 'Logo może mieć najwyżej 2 MB. Zmniejsz plik i spróbuj ponownie.');
-      return;
-    }
-    final name = file.name.toLowerCase();
-    final ext = name.contains('.') ? name.split('.').last : 'png';
-    if (!['png', 'jpg', 'jpeg', 'webp'].contains(ext)) {
-      if (mounted) showMessage(context, 'Wybierz plik PNG, JPG albo WEBP.');
-      return;
-    }
-    setState(() => _busy = true);
-    try {
-      await ref.read(repositoryProvider).uploadLogo(
-        restaurantId: widget.profile.id,
-        bytes: bytes,
-        extension: ext,
-      );
-      ref
-        ..invalidate(profileProvider(widget.profile.id))
-        ..invalidate(restaurantsProvider);
-      if (mounted) showMessage(context, 'Logo zapisane. Goście zobaczą je w aplikacji.');
-    } catch (e) {
-      if (mounted) showError(context, e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _remove() async {
-    final ok = await confirm(
-      context,
-      title: 'Usunąć logo?',
-      message: 'W aplikacji zamiast logo pojawią się inicjały lokalu.',
-      action: 'Usuń',
-      destructive: true,
-    );
-    if (!ok) return;
-    setState(() => _busy = true);
-    try {
-      await ref.read(repositoryProvider).removeLogo(widget.profile.id);
-      ref
-        ..invalidate(profileProvider(widget.profile.id))
-        ..invalidate(restaurantsProvider);
-    } catch (e) {
-      if (mounted) showError(context, e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final profile = widget.profile;
-    return PanelCard(
-      title: 'Logo',
-      child: Row(
-        children: [
-          ImageOutline(
-            radius: 20,
-            child: RestaurantLogo(name: profile.name, logoUrl: profile.logoUrl, size: 88, radius: 20),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Logo widzą goście na liście lokali, na stronie lokalu i przy rezerwacjach. '
-                  'Najlepiej kwadratowe, PNG, JPG albo WEBP, do 2 MB.',
-                  style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
-                ),
-                if (widget.editable) ...[
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      FilledButton.icon(
-                        onPressed: _busy ? null : _pick,
-                        icon: const Glyph(AppIcons.plus, size: 16),
-                        label: Text(profile.logoUrl == null ? 'Wgraj logo' : 'Zmień logo'),
-                      ),
-                      if (profile.logoUrl != null) ...[
-                        const SizedBox(width: 8),
-                        TextButton(
-                          onPressed: _busy ? null : _remove,
-                          style: TextButton.styleFrom(foregroundColor: AppColors.error),
-                          child: const Text('Usuń'),
-                        ),
-                      ],
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Zdjęcie lokalu na liście lokali w aplikacji Table (na całą szerokość karty) i na górze strony lokalu.
-/// Bez zdjęcia aplikacja pokazuje pierwsze zdjęcie dania z menu, a bez niego kartę z ikoną kuchni.
-class _CoverCard extends ConsumerStatefulWidget {
-  const _CoverCard({required this.profile, required this.editable});
-
-  final RestaurantProfile profile;
-  final bool editable;
-
-  @override
-  ConsumerState<_CoverCard> createState() => _CoverCardState();
-}
-
-class _CoverCardState extends ConsumerState<_CoverCard> {
+class _BannerCardState extends ConsumerState<_BannerCard> {
   bool _busy = false;
 
   Future<void> _pick() async {
-    final Uint8List? jpeg;
+    final PickedImage? picked;
     try {
-      jpeg = await pickMenuPhoto();
+      picked = await pickImage(ImageSpec.banner);
     } on FormatException {
       if (mounted) showMessage(context, 'To nie jest zdjęcie. Wybierz plik JPG, PNG albo WEBP.');
       return;
     }
-    if (jpeg == null) return;
+    if (picked == null) return;
     setState(() => _busy = true);
     try {
-      await ref.read(repositoryProvider).uploadCover(restaurantId: widget.profile.id, jpeg: jpeg);
+      await ref.read(repositoryProvider).uploadCover(restaurantId: widget.profile.id, jpeg: picked.jpeg);
       ref.invalidate(profileProvider(widget.profile.id));
-      if (mounted) showMessage(context, 'Zdjęcie zapisane. Goście zobaczą je na liście lokali.');
+      final note = imageNote(picked, ImageSpec.banner);
+      if (mounted) {
+        showMessage(
+          context,
+          ['Banner zapisany. Goście zobaczą go na liście lokali i na stronie lokalu.', ?note].join(' '),
+          tone: note == null ? ToastTone.success : ToastTone.warning,
+        );
+      }
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {
@@ -1522,8 +1435,8 @@ class _CoverCardState extends ConsumerState<_CoverCard> {
   Future<void> _remove() async {
     final ok = await confirm(
       context,
-      title: 'Usunąć zdjęcie lokalu?',
-      message: 'Na liście lokali pojawi się pierwsze zdjęcie dania z menu albo karta z ikoną kuchni.',
+      title: 'Usunąć banner?',
+      message: 'Bez banneru lokalu nie da się włączyć w aplikacji, dopóki nie dodasz nowego.',
       action: 'Usuń',
       destructive: true,
     );
@@ -1544,7 +1457,7 @@ class _CoverCardState extends ConsumerState<_CoverCard> {
     final text = Theme.of(context).textTheme;
     final url = widget.profile.coverUrl;
     return PanelCard(
-      title: 'Zdjęcie na liście lokali',
+      title: 'Banner lokalu',
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1571,8 +1484,15 @@ class _CoverCardState extends ConsumerState<_CoverCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Zdjęcie jedzenia albo wnętrza na całą szerokość karty lokalu w aplikacji Table. '
-                  'Najlepiej poziome (16:9). Bez niego aplikacja pokazuje pierwsze zdjęcie dania z menu.',
+                  'Wymiary: ${ImageSpec.banner.label}, JPG, PNG albo WEBP.',
+                  style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Zdjęcie jedzenia albo wnętrza na liście lokali i na górze strony lokalu w aplikacji Table. Tak duży '
+                  'jest banner na tablecie; na telefonach aplikacja pokazuje cały obraz, tylko mniejszy. Plik '
+                  'o innych wymiarach panel przytnie od środka do 16:9 i dopasuje rozmiar. Bez banneru lokal nie może '
+                  'być widoczny w aplikacji.',
                   style: text.bodyMedium?.copyWith(color: AppColors.textMuted),
                 ),
                 if (widget.editable) ...[
@@ -1582,9 +1502,10 @@ class _CoverCardState extends ConsumerState<_CoverCard> {
                       FilledButton.icon(
                         onPressed: _busy ? null : _pick,
                         icon: const Glyph(AppIcons.plus, size: 16),
-                        label: Text(url == null ? 'Wgraj zdjęcie' : 'Zmień zdjęcie'),
+                        label: Text(url == null ? 'Wgraj banner' : 'Zmień banner'),
                       ),
-                      if (url != null) ...[
+                      // Widoczny lokal nie może zostać bez banneru (0099): najpierw trzeba go ukryć.
+                      if (url != null && !widget.listed) ...[
                         const SizedBox(width: 8),
                         TextButton(
                           onPressed: _busy ? null : _remove,

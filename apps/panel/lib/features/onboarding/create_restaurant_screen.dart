@@ -6,30 +6,6 @@ import 'package:table_core/table_core.dart';
 import '../../data/providers.dart';
 import '../../shared/panel_select.dart';
 
-/// Rodzaje kuchni: klucz w bazie i nazwa. Te same klucze zna aplikacja dla gości.
-const cuisines = <String, String>{
-  'polska': 'Polska',
-  'wloska': 'Włoska',
-  'francuska': 'Francuska',
-  'grecka': 'Grecka',
-  'hiszpanska': 'Hiszpańska',
-  'gruzinska': 'Gruzińska',
-  'turecka': 'Turecka',
-  'japonska': 'Japońska',
-  'chinska': 'Chińska',
-  'tajska': 'Tajska',
-  'wietnamska': 'Wietnamska',
-  'koreanska': 'Koreańska',
-  'indyjska': 'Indyjska',
-  'meksykanska': 'Meksykańska',
-  'amerykanska': 'Amerykańska',
-  'wegetarianska': 'Wegetariańska',
-  'weganska': 'Wegańska',
-  'srodziemnomorska': 'Śródziemnomorska',
-  'kawiarnia': 'Kawiarnia',
-  'inna': 'Inna',
-};
-
 /// Pierwsze kroki nowego konta restauracji: dane lokalu. Potem właściciel dodaje
 /// pracowników, salę i menu. Gościom lokal pokaże się po weryfikacji przez Table.
 class CreateRestaurantScreen extends ConsumerStatefulWidget {
@@ -171,7 +147,7 @@ class _CreateRestaurantScreenState extends ConsumerState<CreateRestaurantScreen>
                           initialValue: _cuisine,
                           decoration: const InputDecoration(labelText: 'Kuchnia'),
                           items: [
-                            for (final c in cuisines.entries)
+                            for (final c in cuisineNames.entries)
                               DropdownMenuItem(value: c.key, child: Text(c.value)),
                           ],
                           onChanged: (v) => setState(() => _cuisine = v),

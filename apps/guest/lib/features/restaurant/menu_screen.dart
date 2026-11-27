@@ -360,9 +360,16 @@ class MenuItemTile extends StatelessWidget {
                     children: [
                       Text(item.name, style: text.headlineSmall?.copyWith(fontWeight: FontWeight.w600)),
                       const SizedBox(height: 14),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(22),
-                        child: InteractiveViewer(child: Image.network(photo, fit: BoxFit.contain)),
+                      // Najwyżej 600 punktów (plik z panelu: 1200 × 1200 px), na tablecie na środku. Całe zdjęcie,
+                      // bo starsze zdjęcia dań nie są kwadratowe.
+                      Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 600),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(22),
+                            child: InteractiveViewer(child: Image.network(photo, fit: BoxFit.contain)),
+                          ),
+                        ),
                       ),
                     ],
                   ),

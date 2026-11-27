@@ -301,7 +301,8 @@ class _DescriptionState extends State<_Description> {
   }
 }
 
-/// Zdjęcie na całą szerokość. Przy przewijaniu chowa się w pasek z nazwą lokalu.
+/// Banner na całą szerokość, zawsze 16:9 jak plik z panelu (1920 × 1080 px), więc na każdym urządzeniu widać cały
+/// obraz, tylko mniejszy (27.11.2026, prośba użytkownika). Przy przewijaniu chowa się w pasek z nazwą lokalu.
 class _Hero extends StatelessWidget {
   const _Hero({required this.restaurant, this.onEvent});
 
@@ -314,11 +315,11 @@ class _Hero extends StatelessWidget {
   Widget build(BuildContext context) {
     final r = restaurant;
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    final width = MediaQuery.sizeOf(context).width.clamp(0.0, 960.0);
     final background = Theme.of(context).scaffoldBackgroundColor;
-    return SliverAppBar(
+    // Szerokość strony, nie ekranu: na tablecie strona lokalu ma 820 punktów (`TabletWidth`).
+    return SliverLayoutBuilder(builder: (context, constraints) => SliverAppBar(
       pinned: true,
-      expandedHeight: width * 9 / 16,
+      expandedHeight: constraints.crossAxisExtent * 9 / 16,
       backgroundColor: background,
       surfaceTintColor: Colors.transparent,
       automaticallyImplyLeading: false,
@@ -391,7 +392,7 @@ class _Hero extends StatelessWidget {
           );
         },
       ),
-    );
+    ));
   }
 }
 
@@ -751,9 +752,9 @@ class _MenuPreview extends StatelessWidget {
             .take(10)
             .toList();
     final scaler = MediaQuery.textScalerOf(context);
-    const width = 168.0;
-    // Zdjęcie 4:3, dwie linie nazwy i cena: wysokość rośnie z czcionką systemu.
-    final height = width * 3 / 4 + 12 + scaler.scale(14) * 1.35 * 2 + scaler.scale(14) * 1.35 + 14;
+    const width = 148.0;
+    // Zdjęcie kwadratowe jak plik z panelu (1200 × 1200 px), dwie linie nazwy i cena: wysokość rośnie z czcionką.
+    final height = width + 12 + scaler.scale(14) * 1.35 * 2 + scaler.scale(14) * 1.35 + 14;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -785,7 +786,7 @@ class _MenuPreview extends StatelessWidget {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(16),
                           child: AspectRatio(
-                            aspectRatio: 4 / 3,
+                            aspectRatio: 1,
                             child: Opacity(
                               opacity: item.available ? 1 : 0.5,
                               child: RestaurantCover(url: item.photoUrl, cuisine: r.cuisine, compact: true),

@@ -912,17 +912,6 @@ const allergenLabels = <String, String>{
   'mięczaki': 'Mięczaki',
 };
 
-const cuisineLabels = <String, String>{
-  'polska': 'Polska',
-  'wloska': 'Włoska',
-  'japonska': 'Japońska',
-  'wietnamska': 'Wietnamska',
-  'gruzinska': 'Gruzińska',
-  'weganska': 'Wegańska',
-  'francuska': 'Francuska',
-  'indyjska': 'Indyjska',
-};
-
 // ---------------------------------------------------------------
 // Opinie i statystyki
 // ---------------------------------------------------------------

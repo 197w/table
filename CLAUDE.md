@@ -158,7 +158,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   geolocator (pozycja dostawcy na zmianie, od 24.11.2026, 0097).
   Panel: flutter_map i latlong2 (mapa dostawców na kafelkach Mapbox, od 14.11.2026). Mapy u gościa nie ma.
 - Supabase: projekt `slcxxvcxheuxqajliuil` („Aplikacja”, eu-west-1). Migracje w `supabase/migrations`
-  (0001–0098, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
+  (0001–0099, wszystkie wdrożone). Funkcje Edge w `supabase/functions` (wdrażane przez MCP Supabase). Dane testowe: `supabase/seed.sql` (Białystok), `supabase/seed_krakow.sql` (Kraków)
   i `supabase/seed_panel.sql` (strefy i rozstawienie stolików), wszystkie wgrane.
 - Nowa kolumna `restaurants` zmieniana wprost z panelu (`updateProfile`) potrzebuje `grant update (kolumna) on public.restaurants to authenticated`: tabela ma zgody tylko na wybrane kolumny (0012, 0041).
 - Kody SMS w trybie testowym trafiają do tabeli `private.dev_sms_outbox` (hook `dev_send_sms_hook`).
@@ -202,13 +202,26 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   (m.in. `ordering`: zamawianie z dostawą i na wynos).
   Odkrywaj (`features/discover`, nowy wygląd z 10.2026): powitanie na całą szerokość, wyszukiwarka
   „Szukaj lokali, dań albo kuchni” (`search_restaurants` od 0060 szuka też po kuchni i nazwach dań, `matched_dish`
-  = „W menu: …”), kategorie kuchni z własnymi ikonami na spokojnym tle (`cuisineIcon`, ikony Phosphor z better-icons),
+  = „W menu: …”), kategorie kuchni z ilustracjami (od 27.11.2026, prośba użytkownika ze zrzutami kategorii z Uber Eats:
+  „przy użyciu skilla higgsfield zmień wybór kuchni na coś w tym stylu, wszystkie kuchnie świata, ale tylko te z twojego
+  miasta”): `CuisineArt` w `restaurant_cards.dart`, pliki `apps/guest/assets/cuisines/<klucz>.webp` (192 px,
+  przezroczyste tło, 54 kuchnie, razem ok. 470 KB; Higgsfield Z Image, cztery arkusze 4×4 pocięte skryptem, bo konto
+  miało 0,65 kredytu), ilustracja 68 px bez ramki, wybrana na kole w kolorze akcentu, „Wszystkie” jako ikona w kole;
+  pokazane są tylko kuchnie lokali w oglądanym mieście albo w pobliżu (`cuisinesProvider`), w kolejności listy.
+  Lista kuchni świata jest jedna w `table_core/src/cuisines.dart` (`cuisineNames`: klucz w `restaurants.cuisine`
+  i nazwa, alfabetycznie po polsku, „Inna” na końcu; `cuisineLabel`, `cuisinePhrase` „kuchnia polska” / „kawiarnia”,
+  `cuisineOrder`); używa jej też panel (wybór w „Dane lokalu” i przy zakładaniu lokalu). Nowa kuchnia potrzebuje
+  ilustracji (bez niej pokazuje się „Inna”). Karta lokalu bez banneru ma ilustrację kuchni zamiast ikony,
   w rzędzie filtrów „W pobliżu” albo miasto, „Filtry” (okno: ceny, ocena, odległość, rezerwacja w aplikacji, dostawa,
   na wynos; licznik „Pokaż N lokali”),
   „Sortuj” (Polecane / Najlepsza kuchnia / Najbliżej) i szybkie filtry, liczba lokali i przełącznik widoku
-  (`DiscoverLayout`: karty ze zdjęciem albo zwarte wiersze, zapamiętany). Karta: zdjęcie na całą szerokość
+  (`DiscoverLayout`: karty ze zdjęciem albo zwarte wiersze, zapamiętany). Karta: banner 16:9 na całą szerokość
   (`restaurants.cover_url` z „Dane lokalu” w panelu, inaczej pierwsze zdjęcie dania, inaczej karta w kolorze kuchni
-  z ikoną, `RestaurantCover`), nazwa i szczegóły pod zdjęciem. Górna karta przy „Polecane” ma „Najlepsze
+  z ilustracją, `RestaurantCover`), nazwa i szczegóły pod zdjęciem. Banner na stronie lokalu też zawsze 16:9 z
+  prawdziwej szerokości strony (`SliverLayoutBuilder`; na tablecie strona ma 820 punktów, wcześniej wysokość liczona
+  z szerokości ekranu ucinała banner), więc plik 1920 × 1080 widać na każdym urządzeniu w całości, tylko mniejszy.
+  Zdjęcia dań kwadratowe (miniatury w menu i koszyku, pasek dań na stronie lokalu od 27.11.2026 1:1 zamiast 4:3,
+  powiększenie najwyżej 600 punktów i całe zdjęcie, bo starsze nie są kwadratowe). Górna karta przy „Polecane” ma „Najlepsze
   dopasowanie” (`bestMatch`: ocena, odległość, kuchnie lokali z rezerwacji i zamówień gościa). Filtry z okna działają
   na gotowej liście (`applyDiscoverFilter`, `discoverResultsProvider`). To samo zdjęcie jest na górze strony lokalu.
   Dostępność (zasady skilla ui-ux-pro-max): pola dotyku co najmniej 48 dp (`DropdownPill.tapHeight`, pigułki 40 px
@@ -364,12 +377,28 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   przyciski wszystkich rodzajów, przyciski z ikoną, pola w jednej linii (padding 8 + 24 + 8), ikony w polach,
   `PanelPill`; bez powiększania pola dotyku do 48 px (`materialTapTargetSize: shrinkWrap`). Wyjątki: duże przyciski
   dotykowe Kompletowania (48) i małe przyciski tekstowe w wierszach (32).
-- Widoczność lokalu w aplikacji dla klientów (0096, 24.11.2026, prośba użytkownika): pierwsza sekcja „Widoczność
-  w aplikacji” w Ustawieniach lokalu (`RestaurantVisibilityCard`), przełącznik `restaurants.listed` przez
+- Widoczność lokalu w aplikacji dla klientów (0096, 24.11.2026, prośba użytkownika): od 27.11.2026 pierwsza karta
+  „Widoczność w aplikacji” na górze „Dane lokalu” (prośba: „przenieś do Dane lokalu”; wcześniej w Ustawieniach
+  lokalu; `RestaurantVisibilityCard`), przełącznik `restaurants.listed` przez
   `panel_set_listed` (kierownik albo właściciel). Wyłączenie pyta o potwierdzenie; wyłączony lokal znika dla gości
   (wyszukiwarka, strona lokalu, rezerwacje, zamówienia), złożone rezerwacje i zamówienia zostają, obsługa dalej go
   widzi. Włączyć można tylko lokal już zweryfikowany przez Table (`first_listed_at`, ustawiane triggerem przy
-  pierwszym `listed = true`; nowy lokal czeka na weryfikację ręcznie jak dotąd).
+  pierwszym `listed = true`; nowy lokal czeka na weryfikację ręcznie jak dotąd) i tylko z bannerem (0099, 27.11.2026,
+  prośba: „restauracja może włączyć widoczność tylko, kiedy w Dane lokalu jest ustawiony banner”; trigger
+  `restaurants_listed_cover` na zmianie `listed` albo `cover_url`: bez banneru nie włączy, widoczny lokal nie usunie
+  banneru, tylko go zmieni; panel wyłącza przełącznik z „dodaj najpierw banner poniżej” i chowa „Usuń” przy
+  widocznym lokalu). Lokale widoczne bez banneru sprzed 0099 (dane testowe w Białymstoku i Krakowie) zostają
+  widoczne, dopóki ich ktoś nie ukryje; wpisy z plików seed (insert) nie są sprawdzane.
+- Obrazy z panelu mają jeden stały rozmiar (27.11.2026, prośba użytkownika: „w opisach dokładne rozmiary, jeden
+  rozmiar, najlepiej dla urządzenia, gdzie obraz jest największy; na mniejszych skalowany”; `shared/menu_photo.dart`:
+  `ImageSpec`, `pickImage`, `PickedImage`, `imageNote`): panel przycina plik od środka do proporcji i zmienia rozmiar
+  dokładnie na banner 1920 × 1080 px (16:9; strona lokalu na tablecie 820 punktów × 2 px ≈ 1640 px, telefon do
+  440 × 3 = 1320 px) albo zdjęcie dania 1200 × 1200 px (kwadrat; powiększenie w menu do 600 punktów × 2), JPG 82.
+  Wymiary stoją w opisie przy wgrywaniu, a powiadomienie po zapisie mówi, gdy plik został przycięty albo był mniejszy
+  (może być nieostry). Logo lokalu nie da się już wgrać ani usunąć (27.11.2026, prośba: „usuń możliwość dodania
+  logo”; karta Logo i `uploadLogo` usunięte); istniejące `logo_url` (tylko REVE) dalej się wyświetla tam, gdzie
+  dotąd (lista i strona lokalu, przełącznik lokalu w panelu, etykiety), a bez logo są inicjały. Banner leży
+  w zasobniku `restaurant-logos` (`PanelRepository.coverBucket`).
 - Godziny otwarcia po północy (0095, 24.11.2026, prośba użytkownika „dalej nie da się ustawić godziny zamknięcia
   lokalu po północy”): zamknięcie nie później niż otwarcie (12:00–02:00) to zamknięcie następnego dnia, w edytorze
   godzin i w dniach wyjątkowych z podpisem „następnego dnia” (`closesNextDay`); zamknięcie o 24:00 to północ jak
@@ -609,7 +638,7 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   Doszła tylko chwila anulowania pozycji (`order_items.cancelled_at`, trigger). Model zdarzenia z polskimi tytułami
   jest w `table_core` (`ActivityEvent`). Logów nie ma w aplikacji mobilnej (usunięte na prośbę użytkownika);
   `panel_activity(p_member_id)` zostało w bazie.
-- Dane lokalu: logo, dane, poziom cen, dane właściciela, godziny, dni wyjątkowe.
+- Dane lokalu: widoczność w aplikacji, banner, dane, poziom cen, dane właściciela, godziny, dni wyjątkowe.
 - Flota (`/flota`, uprawnienie `fleet`, 0045) w układzie jak Pracownicy (4.11.2026, prośba użytkownika: lista zamiast
   kafli; `SidePanel` z „Dodaj pojazd” i filtrami Rodzaj / Stan / Dziś, tabela `_VehicleTable`: pojazd z ikoną
   w kolorze rodzaju i odznaką „Nieużywany”, rejestracja, VIN, dzisiejszy dostawca z zieloną kropką, ostatnia

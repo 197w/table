@@ -11,29 +11,35 @@ import '../restaurant/event_widgets.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
-/// Własna ikona kategorii kuchni (zamiast zdjęć, żeby nie konkurowała ze zdjęciami jedzenia).
-AppIconData cuisineIcon(String slug) => switch (slug) {
-  'polska' => AppIcons.cookingPot,
-  'wloska' => AppIcons.pizza,
-  'francuska' => AppIcons.wine,
-  'grecka' => AppIcons.cheese,
-  'hiszpanska' => AppIcons.shrimp,
-  'gruzinska' => AppIcons.bread,
-  'turecka' => AppIcons.fire,
-  'japonska' => AppIcons.fish,
-  'chinska' => AppIcons.bowlSteam,
-  'tajska' => AppIcons.pepper,
-  'wietnamska' => AppIcons.bowlFood,
-  'koreanska' => AppIcons.fireSimple,
-  'indyjska' => AppIcons.grains,
-  'meksykanska' => AppIcons.avocado,
-  'amerykanska' => AppIcons.hamburger,
-  'wegetarianska' => AppIcons.carrot,
-  'weganska' => AppIcons.plant,
-  'srodziemnomorska' => AppIcons.fishSimple,
-  'kawiarnia' => AppIcons.coffee,
-  _ => AppIcons.forkKnife,
-};
+/// Ilustracja kuchni (Higgsfield, 27.11.2026, prośba użytkownika: wybór kuchni „w tym stylu” jak kategorie
+/// w aplikacjach z jedzeniem; `assets/cuisines/<klucz>.webp`, 192 px, przezroczyste tło). Kuchnia bez ilustracji
+/// (spoza `cuisineNames`) dostaje ilustrację „Inna”.
+class CuisineArt extends StatelessWidget {
+  const CuisineArt({super.key, required this.slug, required this.size});
+
+  final String slug;
+  final double size;
+
+  static String asset(String slug) => 'assets/cuisines/${cuisineNames.containsKey(slug) ? slug : 'inna'}.webp';
+
+  @override
+  Widget build(BuildContext context) {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    return Image.asset(
+      asset(slug),
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      excludeFromSemantics: true,
+      cacheWidth: (size * dpr).round().clamp(1, 192),
+      errorBuilder: (_, _, _) => SizedBox(
+        width: size,
+        height: size,
+        child: Center(child: Glyph(AppIcons.forkKnife, size: size * 0.5, color: AppColors.textMuted)),
+      ),
+    );
+  }
+}
 
 /// Kolor kuchni na karcie bez zdjęcia: przygaszony, żeby karty bez zdjęć nie krzyczały.
 Color cuisineColor(String slug) => switch (slug) {
@@ -126,22 +132,22 @@ class _CuisineCover extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          // Duża, wyblakła ikona w rogu daje karcie charakter bez zdjęcia.
+          // Duża, wyblakła ilustracja w rogu daje karcie charakter bez zdjęcia.
           if (!compact)
             Positioned(
-              right: -18,
-              bottom: -26,
-              child: Glyph(cuisineIcon(slug).duotone, size: 150, color: color.withValues(alpha: 0.16)),
+              right: -24,
+              bottom: -30,
+              child: Opacity(opacity: 0.14, child: CuisineArt(slug: slug, size: 150)),
             ),
           Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Glyph(cuisineIcon(slug).duotone, size: compact ? 28 : 46, color: color),
+                CuisineArt(slug: slug, size: compact ? 44 : 72),
                 if (!compact) ...[
                   const SizedBox(height: 8),
                   Text(
-                    'Kuchnia ${cuisineLabel(slug).toLowerCase()}',
+                    Fmt.capitalize(cuisinePhrase(slug)),
                     style: TextStyle(
                       fontFamily: AppTheme.fontFamily,
                       fontSize: 13,
@@ -208,7 +214,7 @@ String restaurantSemantics(
 }) => [
   if (bestMatch) 'Najlepsze dopasowanie',
   r.name,
-  'kuchnia ${cuisineLabel(r.cuisine).toLowerCase()}',
+  cuisinePhrase(r.cuisine),
   'ceny ${r.priceLevel} na 4',
   if (showDistance) Fmt.distance(r.distanceM, unit),
   if (r.foodAvg != null && r.verifiedReviews > 0)

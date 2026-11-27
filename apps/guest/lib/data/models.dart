@@ -16,40 +16,6 @@ int _toInt(Object? value) {
 }
 
 // ---------------------------------------------------------------
-// Kuchnie
-// ---------------------------------------------------------------
-
-const _cuisineLabels = <String, String>{
-  'polska': 'Polska',
-  'wloska': 'Włoska',
-  'francuska': 'Francuska',
-  'grecka': 'Grecka',
-  'hiszpanska': 'Hiszpańska',
-  'gruzinska': 'Gruzińska',
-  'turecka': 'Turecka',
-  'japonska': 'Japońska',
-  'chinska': 'Chińska',
-  'tajska': 'Tajska',
-  'wietnamska': 'Wietnamska',
-  'koreanska': 'Koreańska',
-  'indyjska': 'Indyjska',
-  'meksykanska': 'Meksykańska',
-  'amerykanska': 'Amerykańska',
-  'wegetarianska': 'Wegetariańska',
-  'weganska': 'Wegańska',
-  'srodziemnomorska': 'Śródziemnomorska',
-  'kawiarnia': 'Kawiarnia',
-  'inna': 'Inna',
-};
-
-String cuisineLabel(String slug) {
-  final label = _cuisineLabels[slug];
-  if (label != null) return label;
-  if (slug.isEmpty) return slug;
-  return slug[0].toUpperCase() + slug.substring(1);
-}
-
-// ---------------------------------------------------------------
 // Lokale
 // ---------------------------------------------------------------
 
