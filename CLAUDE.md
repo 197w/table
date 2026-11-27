@@ -204,9 +204,12 @@ Windows wymaga Visual Studio Build Tools z modułem C++ i włączonego trybu dew
   „Szukaj lokali, dań albo kuchni” (`search_restaurants` od 0060 szuka też po kuchni i nazwach dań, `matched_dish`
   = „W menu: …”), kategorie kuchni z ilustracjami (od 27.11.2026, prośba użytkownika ze zrzutami kategorii z Uber Eats:
   „przy użyciu skilla higgsfield zmień wybór kuchni na coś w tym stylu, wszystkie kuchnie świata, ale tylko te z twojego
-  miasta”): `CuisineArt` w `restaurant_cards.dart`, pliki `apps/guest/assets/cuisines/<klucz>.webp` (192 px,
-  przezroczyste tło, 54 kuchnie, razem ok. 470 KB; Higgsfield Z Image, cztery arkusze 4×4 pocięte skryptem, bo konto
-  miało 0,65 kredytu), ilustracja 68 px bez ramki, wybrana na kole w kolorze akcentu, „Wszystkie” jako ikona w kole;
+  miasta”): `CuisineArt` w `restaurant_cards.dart`, pliki `apps/guest/assets/cuisines/<klucz>.webp` (384 px,
+  przezroczyste tło, 54 kuchnie, razem ok. 1,1 MB; Higgsfield Z Image, cztery arkusze 4×4 pocięte skryptem, bo konto
+  miało 0,65 kredytu; tego samego wieczoru wycięte od nowa po „zdjęcia wyboru kuchni są w słabej jakości”: wcześniej
+  192 px, szare obwódki i plamy cienia, ucięta rączka paelli i spodek filiżanki; teraz krawędź z matowania (pymatting),
+  przedmiot z u2net (rembg), cień rzucany na tło jako półprzezroczysta czerń, więc na jasnym tle wygląda jak
+  w oryginale, a w ciemnym motywie znika; tło arkusza liczone lokalnie, bo nie jest jednolite), ilustracja 68 px bez ramki, wybrana na kole w kolorze akcentu, „Wszystkie” jako ikona w kole;
   pokazane są tylko kuchnie lokali w oglądanym mieście albo w pobliżu (`cuisinesProvider`), w kolejności listy.
   Lista kuchni świata jest jedna w `table_core/src/cuisines.dart` (`cuisineNames`: klucz w `restaurants.cuisine`
   i nazwa, alfabetycznie po polsku, „Inna” na końcu; `cuisineLabel`, `cuisinePhrase` „kuchnia polska” / „kawiarnia”,

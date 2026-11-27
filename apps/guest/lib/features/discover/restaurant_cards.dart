@@ -12,8 +12,9 @@ import '../restaurant/event_widgets.dart';
 const _tabular = [FontFeature.tabularFigures()];
 
 /// Ilustracja kuchni (Higgsfield, 27.11.2026, prośba użytkownika: wybór kuchni „w tym stylu” jak kategorie
-/// w aplikacjach z jedzeniem; `assets/cuisines/<klucz>.webp`, 192 px, przezroczyste tło). Kuchnia bez ilustracji
-/// (spoza `cuisineNames`) dostaje ilustrację „Inna”.
+/// w aplikacjach z jedzeniem; `assets/cuisines/<klucz>.webp`, przezroczyste tło). Od 27.11.2026 wieczorem 384 px
+/// („zdjęcia wyboru kuchni są w słabej jakości”): kafelek 68 punktów na iPhonie to 204 px, więc plik jest tylko
+/// pomniejszany. Kuchnia bez ilustracji (spoza `cuisineNames`) dostaje ilustrację „Inna”.
 class CuisineArt extends StatelessWidget {
   const CuisineArt({super.key, required this.slug, required this.size});
 
@@ -31,7 +32,8 @@ class CuisineArt extends StatelessWidget {
       height: size,
       fit: BoxFit.contain,
       excludeFromSemantics: true,
-      cacheWidth: (size * dpr).round().clamp(1, 192),
+      cacheWidth: (size * dpr).round().clamp(1, 384),
+      filterQuality: FilterQuality.medium,
       errorBuilder: (_, _, _) => SizedBox(
         width: size,
         height: size,
